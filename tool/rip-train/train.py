@@ -29,6 +29,9 @@ import torch.nn.functional as F
 
 import ripmodel
 
+# frames read before a window for PCEN's average to settle, over three of its time constants
+WARM = 128
+
 
 class MelFile:
     """A loop's log-mel frames, read from its file as sliced: the frames of 40000
@@ -137,7 +140,7 @@ def load_corpus(d: str):
     return manifest, loops
 
 
-def sample(mel, lab: Label, start: int, window: int):
+def sample(mel, lab: Label, start: int, window: int, channels: int):
     """the window of `window` frames from start: its features and targets, the
     frames past the loop's end padded with zeros and masked out"""
     b = min(start + window, len(mel))
@@ -158,7 +161,8 @@ def sample(mel, lab: Label, start: int, window: int):
         release[max(f - 1, 0):max(min(f + 2, window), 0), p] = 1
     out.update(strike=strike, release=release, velocity=velocity, heard=heard)
     out["valid"] = np.concatenate([np.ones(window - pad, np.float32), np.zeros(pad, np.float32)])
-    return ripmodel.features(take(mel[start:b])), out
+    a = max(start - WARM, 0) if channels > 1 else start
+    return ripmodel.features(take(mel[a:b]), channels)[start - a:], out
 
 
 def stack(samples):
@@ -167,21 +171,21 @@ def stack(samples):
     return torch.from_numpy(np.stack(mels)), {k: v if k == "wave" else v.float() for k, v in out.items()}
 
 
-def batch(draw, window: int, size: int, rng: random.Random):
+def batch(draw, window: int, size: int, rng: random.Random, channels: int):
     """size random windows of `window` frames from the loops draw() picks"""
     samples = []
     for _ in range(size):
         mel, lab = draw()
-        samples.append(sample(mel, lab, rng.randrange(max(len(mel) - window, 0) + 1), window))
+        samples.append(sample(mel, lab, rng.randrange(max(len(mel) - window, 0) + 1), window, channels))
     return stack(samples)
 
 
-def validation(loops, window: int):
+def validation(loops, window: int, channels: int):
     """every held-out loop cut into windows of `window` frames, fixed, so the held-out loss is comparable step to step"""
     mels, tgs = [], []
     for mel, lab in loops:
         for start in range(0, max(len(mel) - 1, 1), window):
-            m, tg = stack([sample(mel, lab, start, window)])
+            m, tg = stack([sample(mel, lab, start, window, channels)])
             mels.append(m)
             tgs.append(tg)
     return mels, tgs
@@ -254,6 +258,7 @@ def main() -> None:
     ap.add_argument("--towers", default="", help="stacks of their own after the shared input, layers:heads each in the heads' order, comma-separated: 2:2,4:7 gives onset and drums two layers and the rest four")
     ap.add_argument("--convs", default="", help="convolutions before the input layer, channels x frames x features / pool each, comma-separated: 16x3x3/1,16x3x3/2,32x3x3/2")
     ap.add_argument("--attention-window", type=int, default=64, help="frames attended either side")
+    ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--shard-seed", type=int, default=0, help="offsets the stream the windows are drawn from, so a round's workers see different loops; the starting weights stay --seed's")
     ap.add_argument("--checkpoint", default="", help="write a .pt every --every steps, and resume from it when present")
@@ -271,10 +276,12 @@ def main() -> None:
     towers = [tuple(int(v) for v in t.split(":")) for t in args.towers.split(",") if t]
     if any(len(t) != 2 for t in towers) or towers and sum(h for _, h in towers) != len(ripmodel.HEADS):
         raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodel.HEADS)}")
-    cfg = ripmodel.Config(convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers)
+    cfg = ripmodel.Config(channels=2 if args.pcen else 1, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers)
     resume = bool(args.checkpoint) and os.path.exists(args.checkpoint)
     start = args.checkpoint if resume else args.init
     ck = torch.load(start, map_location=args.device) if start else None
+    if ck is not None and "cfg" in ck:
+        ck["cfg"] = {"channels": 1, **ck["cfg"]}  # a checkpoint from before channels has one
     # refused before the corpus loads: load_state_dict names only a tensor's size,
     # and takes another head count or window without a word
     if ck is not None and ck.get("cfg") != asdict(cfg):
@@ -283,7 +290,7 @@ def main() -> None:
     holdout = args.holdout if args.holdout >= 0 else (len(loops) // 10 if len(loops) >= 5 else 0)
     held = loops[len(loops) - holdout:] if holdout else []
     loops = loops[:len(loops) - holdout] if holdout else loops
-    val_mels, val_tgs = validation(held, args.window) if held else ([], [])
+    val_mels, val_tgs = validation(held, args.window, cfg.channels) if held else ([], [])
     assert manifest["mel_bands"] == ripmodel.MEL_BANDS and manifest["pitches"] == ripmodel.PITCHES
     assert manifest["voice_genes"] == ripmodel.VOICE_GENES and len(manifest["waves"]) == ripmodel.WAVES
     mixed, share = [], 0.0
@@ -331,10 +338,10 @@ def main() -> None:
 
     # the next batch is built while the device works on this one; only that thread draws from rng
     pool = ThreadPoolExecutor(1)
-    ahead = pool.submit(batch, draw, args.window, args.batch, rng)
+    ahead = pool.submit(batch, draw, args.window, args.batch, rng, cfg.channels)
     while step < args.steps:
         mel, t = ahead.result()
-        ahead = pool.submit(batch, draw, args.window, args.batch, rng)
+        ahead = pool.submit(batch, draw, args.window, args.batch, rng, cfg.channels)
         mel, t = mel.to(args.device), {k: v.to(args.device) for k, v in t.items()}
         lr = args.lr * 0.5 * (1 + math.cos(math.pi * step / args.steps))  # cosine to zero
         for g in opt.param_groups:

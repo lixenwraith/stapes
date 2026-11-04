@@ -30,20 +30,36 @@ HEADS = [("onset", 1), ("drums", DRUMS), ("pitch", PITCHES), ("voicing", 1), ("w
 # the energy 80 dB under a full-scale sine's, where the model's logarithm floors
 FLOOR = 1e-8
 
+# PCEN, as lixenwraith/audio/ripmodel's constants
+FRAME_SEC = 256 / 22050
+PCEN_TIME, PCEN_GAIN, PCEN_BIAS, PCEN_POWER, PCEN_EPS = 0.4, 0.98, 2.0, 0.5, 1e-6
 
-def features(mel: np.ndarray) -> np.ndarray:
+
+def features(mel: np.ndarray, channels: int = 1) -> np.ndarray:
     """The model's input from log-mel frames as the corpus stores them, log1p(100 e):
     each band's energy in dB over FLOOR less the frame's mean, and the mean itself,
-    both over 80 dB, so a frame's loudness is one input and the bands are level-free,
-    as lixenwraith/audio/ripmodel's features computes them"""
-    db = 10 * np.log10(np.expm1(mel.astype(np.float64)) / 100 + FLOOR)
+    both over 80 dB, so a frame's loudness is one input and the bands are level-free;
+    with two channels, each band's PCEN and their mean after them; as
+    lixenwraith/audio/ripmodel's features computes them"""
+    e = np.expm1(mel.astype(np.float64)) / 100
+    db = 10 * np.log10(e + FLOOR)
     level = db.mean(axis=-1, keepdims=True)
-    return np.concatenate([(db - level) / 80, (level + 80) / 80], axis=-1).astype(np.float32)
+    out = [(db - level) / 80, (level + 80) / 80]
+    if channels == 2:
+        smooth = 1 - math.exp(-FRAME_SEC / PCEN_TIME)
+        avg, a = np.empty_like(e), e[0]
+        for t, row in enumerate(e):
+            a = (1 - smooth) * a + smooth * row
+            avg[t] = a
+        p = (e / (PCEN_EPS + avg) ** PCEN_GAIN + PCEN_BIAS) ** PCEN_POWER - PCEN_BIAS ** PCEN_POWER
+        out += [p, p.mean(axis=-1, keepdims=True)]
+    return np.concatenate(out, axis=-1).astype(np.float32)
 
 
 @dataclass
 class Config:
     inputs: int = INPUTS
+    channels: int = 1  # of inputs each, a frame laying them end to end
     # (channels, frames, features, pool) each: a kernel centred on each frame
     # and feature, GELU, then the features max-pooled; none feeds the frames on
     convs: list = field(default_factory=list)
@@ -60,7 +76,7 @@ class Config:
     @property
     def features(self) -> int:
         """what the input layer takes a frame as"""
-        n, ch = self.inputs, 1
+        n, ch = self.inputs, self.channels
         for out, _, _, pool in self.convs:
             n, ch = n // pool, out
         return n * ch
@@ -131,7 +147,7 @@ class RipModel(nn.Module):
     def __init__(self, cfg: Config):
         super().__init__()
         self.cfg = cfg
-        chans = [1] + [c[0] for c in cfg.convs]
+        chans = [cfg.channels] + [c[0] for c in cfg.convs]
         self.convs = nn.ModuleList(nn.Conv2d(chans[i], out, (t, f), padding=(t // 2, f // 2)) for i, (out, t, f, _) in enumerate(cfg.convs))
         self.input = nn.Linear(cfg.features, cfg.dim)
         if cfg.towers:
@@ -146,10 +162,10 @@ class RipModel(nn.Module):
             self.out = nn.Linear(cfg.dim, cfg.out_size)
 
     def forward(self, mel: torch.Tensor) -> torch.Tensor:
-        """mel: B T inputs → B T out_size, raw scores; the heads are slices."""
+        """mel: B T channels*inputs → B T out_size, raw scores; the heads are slices."""
         x = mel
         if self.cfg.convs:
-            x = x[:, None]  # B 1 T F
+            x = x.view(x.shape[0], x.shape[1], self.cfg.channels, self.cfg.inputs).transpose(1, 2)  # B C T F
             for conv, (_, _, _, pool) in zip(self.convs, self.cfg.convs):
                 x = F.gelu(conv(x))
                 if pool > 1:
@@ -166,7 +182,7 @@ class RipModel(nn.Module):
 # --- the weight file lixenwraith/transformer loads ---
 
 MAGIC = b"VIFT"
-VERSION = 2
+VERSION = 3
 
 
 def _fnv64a(data: bytes) -> int:
@@ -198,7 +214,7 @@ def export(model: RipModel, path: str) -> None:
     cfg = model.cfg
     body = bytearray(MAGIC)
     body += struct.pack("<I", VERSION)
-    body += struct.pack("<6I", cfg.inputs, cfg.dim, cfg.heads, cfg.layers, cfg.ffn, cfg.window)
+    body += struct.pack("<7I", cfg.inputs, cfg.channels, cfg.dim, cfg.heads, cfg.layers, cfg.ffn, cfg.window)
     body += struct.pack("<I", len(cfg.convs))
     for c in cfg.convs:
         body += struct.pack("<4I", *c)

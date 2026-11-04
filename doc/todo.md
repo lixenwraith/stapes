@@ -79,8 +79,7 @@ front-end seam. What remains, in the design's order:
    by hand. Towers (7d: no gain for 43% more weights) are tried again once the
    heads compete with the strike head. For a rip of live music: a bench of the
    loops through a phone mic, a room and crowd noise at 20 to 0 dB, the same
-   chain in the corpus, PCEN in place of the static logarithm, and a rip over a
-   moving window. Also: the fit gave Für Elise's bass a non-piano voice, with
+   chain in the corpus, and a rip over a moving window. Also: the fit gave Für Elise's bass a non-piano voice, with
    [vif#989](https://github.com/lixenwraith/vif/pull/989)'s drive trap under it. Then: real recordings with their notes in the
    corpus (item 1: `corpus <dir> from` writes E-GMD's, `train.py --mix` mixes
    them in; still lacking a held-out score for a `from` corpus, E-GMD's ET

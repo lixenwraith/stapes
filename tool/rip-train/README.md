@@ -85,6 +85,7 @@ tool/rip-train/pipeline.sh install
 | `DIM`, `HEADS`, `LAYERS`, `FFN` | 256, 8, 4, 1024 | the model's width, attention heads, layers and feed-forward width, `train.py`'s `--dim`, `--heads`, `--layers` and `--ffn`; a `CHECKPOINT` or `INIT` of another shape is refused |
 | `CONVS`, `TOWERS` | none | convolutions before the input layer, and towers of layers over it, each computing a run of the heads, `train.py`'s `--convs` and `--towers` |
 | `MIX` | empty | another corpus and the share of windows drawn from it, `dir:share`, such as recordings with their MIDI files (`corpus <dir> from`) |
+| `PCEN` | empty | `pcen`: a second input channel, each band's PCEN and their mean, `train.py`'s `--pcen`; a `CHECKPOINT` or `INIT` of the other channel count is refused |
 | `HOLDOUT`, `EVERY` | 200, 1000 | loops held out, and how often they are scored and a checkpoint written |
 | `OUT`, `CHECKPOINT` | `$CORPUS/ripmodel.bin`, `$CORPUS/ripmodel.pt` | the weight file, and the checkpoint a stopped run resumes from |
 | `ROOT` | `~/.config/stapes` | the stapes root, under `$XDG_CONFIG_HOME` when that is set: `install` copies the weights into it as `ripmodel.bin`, and `bench` hears with its `rip.toml` |
@@ -326,8 +327,13 @@ window of 64 frames either side, 3.2 million weights. `--convs
 channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:7`
 splits the layers into towers over the shared input layer, each its layers and
 the run of heads it computes in `ripmodel.HEADS` order: the onset and the drums
-on two layers, the rest on four. The losses: onsets,
-drums, pitches and each pitch's strikes and releases (within a frame of a
+on two layers, the rest on four. `--pcen` gives the model a second channel of
+230 inputs: each band's PCEN, its energy over its own average of the last 0.4
+s, and their mean ([audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)),
+the first convolution taking the two as its channels. Since the average looks
+back, `train.py` computes a window's from 128 frames before it (`WARM`, three
+of its time constants), so a window starts as settled as it would in a rip.
+The losses: onsets, drums, pitches and each pitch's strikes and releases (within a frame of a
 note's start and end) as weighted binary cross-entropy, voicing likewise, the
 wave as cross-entropy and the voice genes as squared error over frames a note
 sounds in, and each strike's velocity as squared error where the corpus gives
@@ -341,6 +347,9 @@ distance, attention banded to the window, and the output layer's slices as the
 heads, in `ripmodel.HEADS` order. `export` writes the tensors by the names and in
 the order `lixenwraith/transformer` reads them, with an FNV-1a 64 trailer the
 loader checks ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)).
+It writes the file's version 3, the channels after the inputs, which needs
+transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio
+refuses it, of one channel or two.
 A change to either side is a change to both: check a random model's outputs on
 a corpus loop from the two before trusting a trained file, as the module's
 [agent notes](https://github.com/lixenwraith/transformer/blob/main/doc/agent-notes.md)

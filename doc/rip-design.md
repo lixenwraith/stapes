@@ -224,7 +224,10 @@ offline (`song <name> <file.wav>`).
   frames and bands before the input layer, each pooled over the bands
   (`transformer.Conv`), and split the layers into towers over the shared input
   layer, each computing a run of the heads (`transformer.Tower`), so the drums
-  need not share the pitch's layers. `tool/rip-train` is its PyTorch
+  need not share the pitch's layers, and give the model a second input
+  channel (`transformer.Config.Channels`): each band's PCEN and their mean,
+  in which what a room or a microphone holds steady fades and a strike stands
+  out at any level. `tool/rip-train` is its PyTorch
   twin and writes the weight file `lixenwraith/transformer` loads
   ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md));
   the instructions are its README.
@@ -727,6 +730,41 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   from its rip uncoded: F1 between the two 0.93 at Opus 96 kbps and 0.82 at 32 on
   lossless piano notes, 0.85 and 0.71 on Billie Jean, though the input moves only
   about 1 dB; the recordings are themselves Opus at 133 to 141 kbps.
+- The eleventh and twelfth rounds trained one shape on one corpus, each
+  hearing it differently, since a model's input is worked out from the stored
+  frames as it trains: corpus 11 (40000 loops of four bars, `aug gen codec`,
+  400 held out), 40000 steps of batch 8 over windows of 512 frames, seed 1,
+  the convolutions 16x3x3/1, 16x3x3/2 and 32x3x3/2, width 256, eight heads,
+  four layers, feed-forward 1024, 64 frames either side. 11a heard the frames
+  as they are (3,715,598 weights). 12b added a noise floor in training, over
+  the stored frames in half the windows: the bands under a low corner of 60 to
+  400 Hz cut by up to 24 dB over an octave and a half, those over a high
+  corner of 3 to 10 kHz by up to 24 dB an octave, a ripple of up to 6 dB over
+  nine knots, and a steady floor added in power, its band mean -78 to -50 dB,
+  shaped as the phone take's room in two draws of five and otherwise pink,
+  brown or flat with up to 4 dB of ripple, where the corpus's own noise sits
+  40 to 65 dB under the loop (the trainer's `--channel`, to land later). 12a
+  added PCEN as a second channel over 12b's floor (3,715,742 weights). The F1
+  pooled over Für Elise, the origin and the intro as above, the melody
+  register as one line, each model at its best `strike` and `strike_again`
+  (release 0.9); then the same three played through laptop speakers and
+  recorded by a phone at 30 cm with a fan audible, cut back into pieces by
+  sync chirps:
+
+  ```
+                            clean   phone take
+  11a  neither              0.676   0.522
+  12b  noise floor          0.687   0.583
+  12a  noise floor, PCEN    0.711   0.623
+  ```
+
+  The sweeps were strike 0.75 to 0.9 by 0.05 against strike_again 0.92, 0.94
+  and 0.96 for 11a, and strike 0.7, 0.8 and 0.9 against strike_again 0.8,
+  0.85, 0.9, 0.94 and 0.96 for 12b and 12a; 11a's phone figure is the better
+  of two settings run by hand (strike 0.8, strike_again 0.8 or 0.94), a
+  narrower search. The phone take is not a clean test: it shaped the training
+  noise. Over the noise floor alone PCEN gained 0.024 clean and 0.040 on the
+  phone take; the floor gained 0.011 and 0.061 over neither.
 
 ## 9. Decisions
 

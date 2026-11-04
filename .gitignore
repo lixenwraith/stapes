@@ -1,0 +1,5 @@
+/stapes
+bin/
+dev/
+tool/rip-train/.venv/
+__pycache__/

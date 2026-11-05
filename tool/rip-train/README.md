@@ -9,8 +9,11 @@ the forward pass it runs on and the weight file this writes
 ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)).
 Where the model stands in the pipeline, and why its features are made in Go, is
 in [Rip design](../../doc/rip-design.md) §2 and §3; the runs so far and their
-numbers are in its §8. This file is the hands-on guide: setup, the pipeline end
-to end, and how to turn a run toward the music you care about.
+numbers are in its §8. [Rip training](../../doc/rip-training.md) follows the data
+byte by byte, from a loop's frames and labels through the inputs and targets to
+the weight file, with the latest rounds' numbers. This file is the hands-on guide:
+setup, the pipeline end to end, and how to turn a run toward the music you care
+about.
 
 ## What a run is
 
@@ -85,6 +88,8 @@ tool/rip-train/pipeline.sh install
 | `DIM`, `HEADS`, `LAYERS`, `FFN` | 256, 8, 4, 1024 | the model's width, attention heads, layers and feed-forward width, `train.py`'s `--dim`, `--heads`, `--layers` and `--ffn`; a `CHECKPOINT` or `INIT` of another shape is refused |
 | `CONVS`, `TOWERS` | none | convolutions before the input layer, and towers of layers over it, each computing a run of the heads, `train.py`'s `--convs` and `--towers` |
 | `MIX` | empty | another corpus and the share of windows drawn from it, `dir:share`, such as recordings with their MIDI files (`corpus <dir> from`) |
+| `OVER` | empty | a corpus of drums alone and the share of windows that lay it over a loop with no drums of its own, `dir:share`, at -12 to +6 dB of the loop's power, a hit labelled only where it can be heard, `train.py`'s `--over` |
+| `CHANNEL` | empty | a noise bank and the share of windows heard through a small speaker, a room and a phone, `file.npz:share`, `train.py`'s `--channel`; `make_noise.py` builds the bank ([Phones](#turning-a-run-toward-your-music)) |
 | `PCEN` | empty | `pcen`: a second input channel, each band's PCEN and their mean, `train.py`'s `--pcen`; a `CHECKPOINT` or `INIT` of the other channel count is refused |
 | `HOLDOUT`, `EVERY` | 200, 1000 | loops held out, and how often they are scored and a checkpoint written |
 | `OUT`, `CHECKPOINT` | `$CORPUS/ripmodel.bin`, `$CORPUS/ripmodel.pt` | the weight file, and the checkpoint a stopped run resumes from |
@@ -282,12 +287,27 @@ To write your own:
   and `duration`, as E-GMD's metadata has them), and `train.py --mix
   <dir>:<share>` draws that share of the windows from it, labelled by the
   MIDI's notes, velocities and hits, a tom's or a cymbal's an onset of no drum,
-  the voices unknown. A batch run into the same directory joins it, numbered
-  after the loops there, so a batch's recordings can be deleted once it is in.
+  the voices unknown, and `--over <dir>:<share>` lays a corpus of drums alone
+  over loops with no drums in that share of the windows, a hit labelled only
+  where it stands out of the rest. Both draw a recording by its length, so a minutes-long one
+  counts for its minutes, and a corpus's `skip.txt`, a loop's name
+  (`loop_123`) a line, lists those the trainer leaves out, such as recordings
+  whose MIDI sits off their audio. A batch run into the same directory joins
+  it, numbered after the loops there, so a batch's recordings can be deleted
+  once it is in.
   Weights trained on a corpus carry its licence (E-GMD's CC BY 4.0 asks for
   credit; MAESTRO's CC BY-NC-SA 4.0 binds them). A recording without its MIDI
   is held out, judged by ear and by the two-witness check (two recordings of
   one piece, their transcripts compared, as `doc/rip-design.md` §8 does).
+- **Phones.** A phone that hears a laptop's speaker cuts the lows and the highs
+  and holds a room's noise 7 to 15 dB under the music, where a corpus's sits 40
+  to 65 dB down. `CHANNEL=noise.npz:0.5` hears half the windows through a
+  speaker, a room and a phone drawn per window ([Rip
+  training §6](../../doc/rip-training.md#6-what-may-change-a-windows-frames)).
+  The noise bank is two minutes of white noise as mel frames and the band shape
+  of a real room, which `python3 tool/rip-train/make_noise.py <quiet.wav>
+  <out.npz>` builds from a 16-bit mono WAV of a room with no music, as a phone
+  hears it; keep it beside the corpus, out of the checkout.
 - **The model's shape.** `--dim`, `--layers`, `--heads`, `--ffn` and
   `--attention-window` on `train.py` reshape it; the weight file carries the
   shape, so `ripmodel` loads any of them as long as the inputs and heads are its.
@@ -322,7 +342,7 @@ exists, `--init` starts from a `.pt`'s weights alone (no optimizer state, step
 230 inputs, the corpus's 229 bands in dB over the frame's mean and the mean
 itself (`ripmodel.features`, derived from the stored frames), width 256, eight
 heads, four layers, feed-forward 1024, a
-window of 64 frames either side, 3.2 million weights. `--convs
+window of 64 frames either side, 3.3 million weights. `--convs
 16x3x3/1,32x3x3/2` puts convolutions before the input layer, each its
 channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:7`
 splits the layers into towers over the shared input layer, each its layers and

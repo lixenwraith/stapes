@@ -122,17 +122,19 @@ flowchart LR
    steps two bars do not share over the steps either has, a hit by drum and step
    and a note by step and pitch, an accidental keeping a note off the key; next by reconstruction, the rip of the
    member's render against the bar's.
-6. **Compression.** Bars within a threshold of one another, a few per cent of
-   their steps, merge into one member. The mechanical pass runs first
-   (`Cluster`: each bar its own group, the two nearest groups merged by their
-   mean distance while it holds within the threshold, the medoid standing for
-   each), then a search over the assignment refines it: a genome of each bar's
-   representative under `CategoricalPerturbator`, scored by the representatives
-   in use, heavily by any bar farther from its own than the threshold and
-   lightly by the mean distance, seeded with the mechanical answer and taken only
-   when better. On the sample recording the search rarely beats the greedy pass
-   under this distance; it earns its place when the distance is reconstruction,
-   which is why it is there.
+6. **Compression.** Bars within a threshold of one another merge into one
+   member: a few per cent of their steps in the notes, 40 in the beat, where a
+   rip's errors are scattered hits and a drummer's change is many at once. The
+   mechanical pass runs first (`Cluster`: each bar its own group, the two
+   nearest groups merged by their mean distance while it holds within the
+   threshold, the medoid standing for each), then a search over the assignment
+   refines it: a genome of each bar's representative under
+   `CategoricalPerturbator`, scored by the representatives in use, heavily by
+   any bar farther from its own than the threshold and lightly by the mean
+   distance, seeded with the mechanical answer and taken only when better. On
+   the sample recording the search rarely beats the greedy pass under this
+   distance; it earns its place when the distance is reconstruction, which is
+   why it is there.
 7. **The loop.** The song is rendered (`RenderTimeline`) and ripped back on its
    own grid (`Ripper.Grid`: the tempo and the downbeat pinned, the decoders of
    both skipped), since the tempo decoder hears a clean render of

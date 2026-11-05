@@ -29,33 +29,44 @@ type compressOptions struct {
 
 var defaultCompress = compressOptions{generations: 40, pool: 32, seed: 1}
 
+// compressPercent is each part's default difference within which its bars merge:
+// a rip's errors are scattered hits, a drummer's real change is many at once
+var compressPercent = [audio.RipParts]float64{audio.RipBeat: 40, audio.RipMelody: 5, audio.RipBass: 5}
+
 func cmdCompress(s *Session, a []string) error {
 	rp, ok := s.rips[a[0]]
 	if !ok {
 		return fmt.Errorf("%q: nothing ripped under that name this session (rip first)", a[0])
 	}
-	pct := 5.0
-	if len(a) > 1 {
-		f, err := strconv.ParseFloat(a[1], 64)
+	pct := compressPercent
+	for i, arg := range a[1:] {
+		f, err := strconv.ParseFloat(arg, 64)
 		if err != nil || f <= 0 || f > 100 {
-			return fmt.Errorf("percent %q: want more than 0, up to 100", a[1])
+			return fmt.Errorf("percent %q: want more than 0, up to 100", arg)
 		}
-		pct = f
+		if i == 0 {
+			pct[audio.RipMelody], pct[audio.RipBass] = f, f
+		} else {
+			pct[audio.RipBeat] = f
+		}
 	}
-	return s.compress(a[0], rp.rip, pct/100, s.compressOpt)
+	var threshold [audio.RipParts]float64
+	for part, p := range pct {
+		threshold[part] = p / 100
+	}
+	return s.compress(a[0], rp.rip, threshold, s.compressOpt)
 }
 
-// compress matches a rip's bars to as few patterns as the threshold allows, part
-// by part: the greedy grouping first, then a search over the assignment with a
-// term for the patterns in use, and writes the dictionary and the song into the
-// document in place of what an earlier compress of the name made. The song is
-// rendered and ripped back, and that rip compared with the first, so what the
-// compression lost is heard as a score.
-func (s *Session) compress(name string, r *audio.Rip, threshold float64, o compressOptions) error {
+// compress matches a rip's bars to as few patterns as each part's threshold
+// allows, the greedy grouping refined by a search with a term for the patterns
+// in use, and writes the dictionary and the song in place of what an earlier
+// compress of the name made. The song's render is ripped back against the rip,
+// so what the compression lost is a score.
+func (s *Session) compress(name string, r *audio.Rip, threshold [audio.RipParts]float64, o compressOptions) error {
 	var assign [audio.RipParts][]int
 	parts := 0
 	for part := range audio.RipParts {
-		greedy := r.Cluster(part, threshold)
+		greedy := r.Cluster(part, threshold[part])
 		bars := 0
 		for _, rep := range greedy {
 			if rep >= 0 {
@@ -67,7 +78,7 @@ func (s *Session) compress(name string, r *audio.Rip, threshold float64, o compr
 			continue
 		}
 		parts++
-		refined := refineAssignment(r, part, greedy, threshold, o)
+		refined := refineAssignment(r, part, greedy, threshold[part], o)
 		assign[part] = refined
 		before, after := distinct(greedy), distinct(refined)
 		line := fmt.Sprintf("%s: %d bar(s) in %d pattern(s)", audio.RipPartNames[part], bars, after)
@@ -137,11 +148,10 @@ func distinct(assign []int) int {
 }
 
 // refineAssignment searches the assignment of a part's bars to the bars that
-// stand for them, from the greedy grouping: each entry of the genome names a
-// bar's representative among the bars with the part, scored by the
-// representatives in use, heavily by any bar farther from its own than the
-// threshold and lightly by the mean distance. An assignment better than the
-// greedy one is taken, each group's medoid standing for it.
+// stand for them, seeded with the greedy grouping: a genome of each bar's
+// representative, scored by the representatives in use, heavily by any bar
+// farther from its own than the threshold and lightly by the mean distance; a
+// better one is taken, each group's medoid standing for it.
 func refineAssignment(r *audio.Rip, part audio.RipPart, greedy []int, threshold float64, o compressOptions) []int {
 	var bars []int
 	for b, rep := range greedy {
@@ -641,14 +651,11 @@ type tonalFloor struct {
 	distance float64
 }
 
-// refineVoices searches each register's voice by the song's score: a genome of
-// the voice's genes and wave, seeded with the voice in hand and every registered
-// one, each candidate registered under the register's name while the song's
-// render is heard beside the recording; the voice that sounds nearest stays,
-// the one in hand when none beats it. A candidate that sounds further from the
-// recording's notes than the floor by more than refineDrift is not heard: the
-// score of the whole mix would otherwise favour a voice that fills it over one
-// that sounds like the line. The registry holds each candidate, so one worker.
+// refineVoices searches each register's voice, genes and wave, by the song's
+// score, seeded with the voice in hand and every registered one; the nearest
+// stays. A candidate further from the recording's notes than the floor by more
+// than refineDrift is not heard, or the mix's score favours a voice that fills
+// it over one like the line. One worker: the registry holds each candidate.
 func (s *Session) refineVoices(name string, rp *ripped, d *audio.SongDef, base float64, o refineOptions, floors [3]tonalFloor) (float64, error) {
 	for reg, at := range lineVoices(rp.rip) {
 		if *at == nil {
@@ -740,15 +747,11 @@ func (s *Session) refineVoices(name string, rp *ripped, d *audio.SongDef, base f
 	return base, nil
 }
 
-// refineSteps sweeps the song's tonal steps: each is tried a semitone and an
-// octave either way, the recording's strongest pitch at its step, a step
-// earlier and later, a step longer and shorter, and silent, judged on the bars
-// that play its pattern, and the best move is kept when it gains; then a step a
-// line leaves empty tries that strongest pitch, the one way in for a note the
-// rip missed. A step left silent is dropped at the end, and a sweep that does
-// not carry to the whole song is undone. One sweep is a round's share. A move
-// touches one note's frames in a thousand, which a search over every step's
-// genes at once could not see in its budget.
+// refineSteps sweeps the song's tonal steps, a round's share: each tried a
+// semitone and an octave either way, at the recording's strongest pitch, a step
+// earlier, later, longer, shorter and silent, the best gain on the bars playing
+// its pattern kept; then an empty step tries that pitch, a missed note's way in.
+// A sweep the whole song does not gain from is undone; silent steps are dropped.
 func (s *Session) refineSteps(rp *ripped, d *audio.SongDef, base float64, o refineOptions) (float64, error) {
 	type step struct {
 		pat     string

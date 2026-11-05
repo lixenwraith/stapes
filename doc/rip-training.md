@@ -11,12 +11,10 @@ the reasoning and the history of the rounds.
 
 Where each part stands:
 
-- **In released code:** `MelFrames`, the first input plane, the heads, `corpus`,
-  `corpus <dir> from`, `corpus ... sampled`, `--mix`.
-- **Landing with transformer and audio v0.2.0:** the second input plane and weight
-  file version 3.
-- **Landing in stapes:** `--channel`, `--over` with its heard-hit rule, draws by
-  length, `skip.txt`, `make_noise.py`.
+- **In released code:** `MelFrames`, the first and second input planes, the heads,
+  weight file version 3, `corpus`, `corpus <dir> from`, `corpus ... sampled`, `--mix`,
+  `--channel`, `--over` with its heard-hit rule, draws by length, `skip.txt`,
+  `make_noise.py`.
 - **In no repository yet:** the phone take's scripts, which play, align and cut a
   recording of a known file.
 

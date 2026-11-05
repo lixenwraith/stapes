@@ -137,13 +137,14 @@ flowchart LR
    why it is there.
 7. **The loop.** The song is rendered (`RenderTimeline`) and ripped back on its
    own grid (`Ripper.Grid`: the tempo and the downbeat pinned, the decoders of
-   both skipped), since the tempo decoder hears a clean render of
-   sixteenth-dense patterns a metrical level away as readily as the recording
-   (the sample's 86 bpm came back as 115) and the bar-line decoder a beat late
-   when the render's downbeat carries no kick; that rip is compared with the
-   recording's (`CompareRips`), and the score `compress` prints is how much of
-   the rip survives as the song, drums, melody and bass apart: a grade of the
-   fitted voices and the dictionary, with those decoders graded by `tune`.
+   both skipped, `Ripper.Meter` the song's), since the tempo decoder hears a
+   clean render of sixteenth-dense patterns a metrical level away as readily as
+   the recording (the sample's 86 bpm came back as 115) and the bar-line decoder
+   a beat late when the render's downbeat carries no kick; that rip is compared
+   with the recording's (`CompareRips`), and the score `compress` prints is how
+   much of the rip survives as the song, drums, melody and bass apart: a
+   grade of the fitted voices and the dictionary, with those decoders graded
+   by `tune`.
    `refine` then moves the voices and the steps in turn, judged not by that
    rip-back, which cannot see the rip's own mistakes (a note misheard in the
    recording is misheard the same way in the render), but by `Fidelity`: the

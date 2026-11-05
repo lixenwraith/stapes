@@ -1506,6 +1506,29 @@ func TestRipPinsTheMeter(t *testing.T) {
 	}
 }
 
+// TestASongRipsBackInItsMeter: the song compress makes of a rip in 3/4 is heard
+// back on its own grid in its meter, every bar line shared with the rip's,
+// where heard back in 4/4 it shares one line in three
+func TestASongRipsBackInItsMeter(t *testing.T) {
+	wav := filepath.Join(t.TempDir(), "loop.wav")
+	writeWAV(t, wav, thumpLoop())
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("rip %s waltz 5 meter 3/4\ncompress waltz 20\n", wav))
+	d, ok := s.songs.get("waltz")
+	if !ok {
+		t.Fatalf("no song from compress:\n%s", out.String())
+	}
+	score, err := s.songScore(d, s.rips["waltz"].rip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if score.Bars != 1 {
+		t.Errorf("the song rips back with %.2f of the rip's bar lines, want them all:\n%s", score.Bars, out.String())
+	}
+}
+
 // TestRipReadsAMIDIFileAsAScore: a .mid given to rip is its transcript, nothing
 // heard: patterns, the shipped voices under the rip's names and the tempo, and
 // compress, song, notes, agree and truth work from it as from a recording's

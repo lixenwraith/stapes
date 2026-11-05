@@ -242,17 +242,15 @@ func refineAssignment(r *audio.Rip, part audio.RipPart, greedy []int, threshold 
 }
 
 // songScore renders a song through the engine and rips the render on the
-// song's own grid, its tempo and its downbeat at the start pinned, so the score
-// is of the hits and the notes and not of the tempo and bar-line decoders, and
-// compares that rip with want: how much of a rip survives as the song
+// song's own grid, its tempo, its downbeat at the start and its meter pinned, so
+// the score is of the hits and the notes and not of the tempo and bar-line
+// decoders, and compares that rip with want: how much of a rip survives as the song
 func (s *Session) songScore(d *audio.SongDef, want *audio.Rip) (audio.RipScore, error) {
 	buf, err := s.renderSong(d, nil)
 	if err != nil {
 		return audio.RipScore{}, err
 	}
-	rp := s.ripper()
-	rp.Grid = &audio.RipGrid{BPM: d.BPM}
-	got, err := rp.Samples(buf, audio.AudioSampleRate)
+	got, err := s.songRipper(d).Samples(buf, audio.AudioSampleRate)
 	if err != nil {
 		return audio.RipScore{}, err
 	}

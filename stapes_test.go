@@ -695,12 +695,11 @@ func TestUndoKeyTakesBackAKeysEdit(t *testing.T) {
 	}
 }
 
-// waitFor polls an engine-side condition. Transport and slot commands travel
-// the mixer's queue and take effect on its tick — asserting engine state
-// synchronously after an exec races that tick (reliably so under -race).
-// Registry state is the exception: RegisterPattern is mutex-synchronous and
-// may be asserted directly. A loaded run drops ticks, and a verb under the race
-// detector on a busy runner takes many seconds, so the deadline is wide.
+// waitFor polls an engine-side condition: transport and slot commands take
+// effect on the mixer's tick, so asserting them right after an exec races it
+// (reliably under -race); RegisterPattern is mutex-synchronous and needs no
+// wait. A loaded run drops ticks, and a verb under the race detector on a busy
+// runner takes many seconds, so the deadline is wide.
 func waitFor(t *testing.T, cond func() bool, msg string) {
 	t.Helper()
 	for deadline := time.Now().Add(60 * time.Second); time.Now().Before(deadline); {
@@ -1510,6 +1509,61 @@ validate all
 	if n := len(rp.rip.Notes); n != len(notes)-1 || !strings.Contains(out.String(), fmt.Sprintf("against %d note(s) given, transposed +0", n+1)) ||
 		strings.Count(out.String(), "only given 0") != 2 || !strings.Contains(out.String(), "melody only given: D8@0.00\n") {
 		t.Errorf("the score did not agree with its file:\n%s", out.String())
+	}
+}
+
+// TestCompressMergesScatteredFalseHitsNotNotes: by default the beat's bars merge
+// within 40% and the notes' within 5%, so bars of twelve hits, each but the first
+// with a false hit of its own, play one beat pattern, while melody bars a note
+// apart keep a pattern each
+func TestCompressMergesScatteredFalseHitsNotNotes(t *testing.T) {
+	const bpm, bars = 100, 4
+	step := 60.0 / bpm / audio.StepsPerBeat
+	var notes []audio.RipNote
+	var hits []audio.RipHit
+	hit := func(b, at int, d audio.InstrumentType) {
+		hits = append(hits, audio.RipHit{Start: float64(b*audio.StepsPerBar+at) * step, Drum: d, Vel: 1})
+	}
+	extra := [bars]struct {
+		at int
+		d  audio.InstrumentType
+	}{{}, {6, audio.InstrKick}, {10, audio.InstrSnare}, {7, audio.InstrHihat}}
+	for b := range bars {
+		for at := 0; at < audio.StepsPerBar; at += 2 {
+			hit(b, at, audio.InstrHihat)
+			start := float64(b*audio.StepsPerBar+at) * step
+			pitch := [...]int{60, 62, 64, 65, 67, 69, 71, 72 + 2*b}[at/2]
+			notes = append(notes, audio.RipNote{Start: start, End: start + 2*step, MIDI: pitch, Vel: 0.8})
+		}
+		hit(b, 0, audio.InstrKick)
+		hit(b, 8, audio.InstrKick)
+		hit(b, 4, audio.InstrSnare)
+		hit(b, 12, audio.InstrSnare)
+		if b > 0 {
+			hit(b, extra[b].at, extra[b].d)
+		}
+	}
+	var buf bytes.Buffer
+	if err := audio.WriteMIDI(&buf, notes, hits, bpm); err != nil {
+		t.Fatal(err)
+	}
+	mid := filepath.Join(t.TempDir(), "score.mid")
+	os.WriteFile(mid, buf.Bytes(), 0o644)
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("rip %s score\ncompress score\n", mid))
+	d, ok := s.songs.get("score")
+	if !ok || len(d.Bars) != bars {
+		t.Fatalf("song %+v after compress:\n%s", d, out.String())
+	}
+	beat, melody := map[string]bool{}, map[string]bool{}
+	for _, bar := range d.Bars {
+		beat[bar[audio.RipPartSlots[audio.RipBeat]]] = true
+		melody[bar[audio.RipPartSlots[audio.RipMelody]]] = true
+	}
+	if len(beat) != 1 || len(melody) != bars {
+		t.Errorf("%d beat and %d melody pattern(s) over %d bars, want 1 and %d:\n%s", len(beat), len(melody), bars, bars, out.String())
 	}
 }
 

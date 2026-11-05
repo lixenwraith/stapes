@@ -10,7 +10,7 @@ terms, the sound, the voice, the sequencer, the rip and the rest, are in the
 audio library's [term index](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md);
 an entry here that names one links there.
 
-[A](#a) · [B](#b) · [F](#f) · [L](#l) · [M](#m) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [V](#v)
+[A](#a) · [B](#b) · [C](#c) · [F](#f) · [L](#l) · [M](#m) · [O](#o) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [V](#v)
 
 ## A
 
@@ -21,6 +21,12 @@ an entry here that names one links there.
 ## B
 
 **bright** — A **rip**'s brightness of a note, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#b)), which `notes` prints, counting the unmeasured. [Stapes §4](stapes.md#4-the-rips-verbs) · `stapes` `cmdNotes`
+
+## C
+
+**channel** (also: plane, `--channel`, `CHANNEL`, noise bank, `noise.npz`, `make_noise.py`) — two senses.
+- *Input*: one plane of 230 inputs a frame the rip's model reads, the first the bands in dB over the frame's level and the level, a second, when the file has one, each band's **PCEN** and their mean. [Rip training §4](rip-training.md#4-the-input-two-planes) · `tool/rip-train` `ripmodel.features`
+- *Phone*: what a small speaker, a room and a phone do to a training window, drawn per window for `CHANNEL`'s share of them (`train.py --channel <file.npz>:<share>`): the lows and highs cut, a ripple across the bands and a steady noise floor added in power, shaped from a noise bank, two minutes of white noise as mel frames and a real room's band shape, which `make_noise.py <quiet.wav> <out.npz>` builds. [Rip training §6](rip-training.md#6-what-may-change-a-windows-frames) · [rip-train README](../tool/rip-train/README.md#turning-a-run-toward-your-music) · `tool/rip-train` `Channel`, make_noise.py
 
 ## F
 
@@ -38,17 +44,21 @@ an entry here that names one links there.
 
 **mixer** — The pane that draws every slot on one timeline, a row a track, and mutes a slot or a track or solos a track through `mute slot`, `mute track` and `solo track`, a silent track dimmed; the audio engine's mixer goroutine is in the [audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#m). See also **solo**. [Stapes §1](stapes.md#1-what-it-offers) · `stapes` `mixerKey`, `drawMixRow`
 
+## O
+
+**over** (also: `--over`, `OVER`, real drums, heard hit, `stands_out`) — The trainer's overlay of a corpus of drums alone, such as E-GMD's, on a loop with no drums of its own, for `OVER`'s share of the windows (`train.py --over <dir>:<share>`), at -12 to +6 dB of the loop's power and added in power; a hit joins the onset and drum targets only where what it adds tops everything else sounding over its best ten bands (`stands_out`), judged after the **channel**. [Rip training §6](rip-training.md#6-what-may-change-a-windows-frames) · `tool/rip-train` `sample`, `stands_out`
+
 ## P
 
 **pattern editor** (also: editor, keys, grid, piano roll, take, yank, `n`, `e`) — The editor of one pattern, new (`n`, empty and playing along in the first silent slot) or edited (`e`), which its frame and header say, on two tabs: keys, two octaves and a third of a tracker layout drawn as a piano, each note of the key `key` set dotted, whose take is recorded over the pattern's length and written into it as a track a voice through `take`, each note on the degree of the key that sounds it; and grid, the tracks on a step grid under a bar ruler and the playhead, or with `r` one tonal track as a piano roll; `y` yanks the cursor's track, `Y` adds it to the yank, and `p` pastes the yank into the pattern open (`mix <pattern>.track.<n>...`), the tracks meeting at a length each loops in, or in the browser makes a new pattern of it (`cp`), refusing a yanked track that has changed since; `J`/`K` move the cursor's track down or up (`mv <pattern>.track.<n> <j>`), the order a build-up reveals the tracks in (`armReveal`). Every edit runs a command, so a script can make it, and `u` undoes what the last key did; `^D` twice deletes the pattern. See also **stapes**. [Stapes §1](stapes.md#1-what-it-offers) · `stapes` tui_editor.go, tui_keys.go
 
-**PCEN** (also: `--pcen`, `PCEN`, `WARM`) — The rip model's optional second input channel, each band's per-channel energy normalization and their mean, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#p)): `train.py --pcen`, `PCEN=pcen` to the pipeline, trains a model of two channels, reading 128 frames before each window (`WARM`) so the average has settled where the window starts. See also **ripmodel**. [rip-train README](../tool/rip-train/README.md) · [Rip design §8](rip-design.md#8-measured-on-the-sample-recording) · `tool/rip-train` `ripmodel.features`
+**PCEN** (also: `--pcen`, `PCEN`, `WARM`) — The rip model's optional second input channel, each band's per-channel energy normalization and their mean, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#p)): `train.py --pcen`, `PCEN=pcen` to the pipeline, trains a model of two channels, reading 128 frames before each window (`WARM`) so the average has settled where the window starts. See also **ripmodel**, **channel**. [rip-train README](../tool/rip-train/README.md) · [Rip training §4](rip-training.md#4-the-input-two-planes) · [Rip design §8](rip-design.md#8-measured-on-the-sample-recording) · `tool/rip-train` `ripmodel.features`
 
 ## R
 
 **rip** (also: `rip`) — The audio engine's estimate of a recording, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#r)), and stapes' verbs over it: `rip` adds its patterns to the document and sets the transport's tempo, **meter** and key; `tune` searches its parameters with `lixenwraith/genetic`, a tuned set read from the **root**'s `rip.toml`; `notes` lists its transcript or writes it as a **MIDI file**; `rip` and `fit` fit a voice to it, and `compress` writes its bars as a dictionary and a **song**, whose render ripped back is the score of the compression; `refine` closes the loop judged by **fidelity**, the steps' pitches moved and the voices fitted until a round gains nothing, each voice held within a tenth of its tonal floor, the fit's distance from the recording's notes. `render` writes what the slots hold to a WAV, `corpus` the loops a model trains on, clean or augmented, or recordings with the MIDI files they were played from, and `bench` grades the analysis and a loaded model on fresh renders. See also **stapes**, **ripmodel**, **song**. [Stapes §4](stapes.md#4-the-rips-verbs) · [Rip design](rip-design.md) · `stapes` `cmdRip`, fit.go, dictionary.go, tune.go
 
-**ripmodel** (also: RipModel, `ripmodel.bin`, rip model, front-end model) — The rip's learned front end, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#r)): `tool/rip-train` is its PyTorch twin and trainer, and the **root**'s `ripmodel.bin` the weights stapes hears with. See also **rip**, **training round**, **transformer**. [Rip design §3](rip-design.md#3-learning) · `lixenwraith/audio/ripmodel`; `tool/rip-train`
+**ripmodel** (also: RipModel, `ripmodel.bin`, rip model, front-end model) — The rip's learned front end, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#r)): `tool/rip-train` is its PyTorch twin and trainer, and the **root**'s `ripmodel.bin` the weights stapes hears with. See also **rip**, **training round**, **transformer**. [Rip design §3](rip-design.md#3-learning) · [Rip training](rip-training.md) · `lixenwraith/audio/ripmodel`; `tool/rip-train`
 
 **root** (also: `-config-dir`, `stapes.toml`) — The folder that holds stapes' own files, flat: `-config-dir`, or else `os.UserConfigDir()` plus `stapes`. `stapes.toml` is its settings, today `[audio] buffer_ms`, the mixer period, a key it has no field for refused by name; `rip.toml` the parameters `rip` listens with and `tune` writes; `ripmodel.bin` the weights `rip` hears with. The documents are not the root's but the **search path**'s. [Stapes §2](stapes.md#2-its-files) · `stapes` `ResolveFiles`, `Files`
 
@@ -59,6 +69,8 @@ an entry here that names one links there.
 **shard** (also: `SHARD`, `--shard-seed`) — One worker's run in a **training round**, from the round's start on a stream of windows its `SHARD` picks (`train.py --shard-seed`), unique to the worker and the round. [rip-train README: Training in parallel](../tool/rip-train/README.md#training-in-parallel) · `tool/rip-train` `pipeline.sh shard`
 
 **shift** (also: `shift`, `cmdShift`) — The move of every note of the tracks named, by octaves, by degrees of the transport's key carried into the octave, by semitones spelt again on the key (`PitchStep`), or by steps rotated around the pattern's length, a drum track only by step; a note past `ValidatePattern`'s step bounds refuses it whole. For a line an octave or a step off. See also **split**, **accidental**. [Stapes §1](stapes.md#1-what-it-offers) · `stapes` `cmdShift`, `shifts`
+
+**skip list** (also: `skip.txt`) — A corpus's list of loop names the trainer leaves out, one a line, such as recordings whose MIDI sits off their audio further than a steady lag explains. [Rip training §3](rip-training.md#3-the-labels-loop_nnnjson-and-corpusjson) · `tool/rip-train` `load_corpus`
 
 **solo** (also: `solo track`) — A soloed track of the pattern a slot plays sounds with the slot's other soloed tracks alone, a muted one never; set by `solo track` or the mixer's `s`, and dropped when the slot changes pattern. See also **mixer**. [Stapes §1](stapes.md#1-what-it-offers) · `stapes` `trackMutes`
 

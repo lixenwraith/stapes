@@ -206,7 +206,11 @@ offline (`song <name> <file.wav>`).
   guitar through an amp. A generated loop leaves out its drums three times
   in ten and its bass once in seven, so a line is heard bare too. Both draw
   from streams of their own, so a loop's bank patterns and key are the same
-  with and without them.
+  with and without them. The trainer changes a share of the windows as it
+  draws them: `--channel` hears them through a small speaker, a room and a
+  phone, and `--over` lays real drums under loops that have none, labelling a
+  hit only where it can be heard ([Rip training
+  §6](rip-training.md#6-what-may-change-a-windows-frames)).
 - **Harness.** `tool/rip-train/pipeline.sh` runs the corpus, the training, the
   bench and the install with every knob an environment variable, the corpus in
   `PARTS` exports at once, each keeping the loops already on disk, and a focus
@@ -217,11 +221,13 @@ offline (`song <name> <file.wav>`).
   neither a gene, kept by the augmentation when it draws voices near a
   registered one.
 - **Model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodel.Spec`: 230 inputs (229 bands and the level), width 256, eight heads of 32,
-  four layers, feed-forward 1024, a window of 64 frames either side, 3.2
-  million weights (12.8 MB), four times the first five runs' width 128 and four
-  heads; heads for the onset, the three drums, the sixty-nine pitches, voicing,
-  the five waves, the thirty-two genes, and the sixty-nine pitches struck, let
-  go, and how hard each was struck. Attention carries ALiBi biases, a
+  four layers, feed-forward 1024, a window of 64 frames either side, 3.3
+  million weights (13.2 MB), four times the first five runs' width 128 and four
+  heads, and 3.7 million (14.9 MB) with the three convolutions the rounds since
+  11a put before the input layer; heads for the onset, the three drums, the
+  sixty-nine pitches, voicing, the five waves, the thirty-two genes, and the
+  sixty-nine pitches struck, let go, and how hard each was struck. Attention
+  carries ALiBi biases, a
   slope per head on the frame distance, so the model has no positions to learn
   and generalises past the training window. A file may put convolutions over
   frames and bands before the input layer, each pooled over the bands
@@ -233,7 +239,8 @@ offline (`song <name> <file.wav>`).
   out at any level. `tool/rip-train` is its PyTorch
   twin and writes the weight file `lixenwraith/transformer` loads
   ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md));
-  the instructions are its README.
+  the instructions are its README, and [Rip training](rip-training.md) follows
+  the data byte by byte from a loop's frames to the weight file.
 - **Inference** is pure Go, float32, no CGO, the same on every host to float32
   rounding. A three-minute song is 15500 frames, 26 GFLOP a layer at the
   default width: 70 seconds on one core of a 2017 laptop's i7-7700HQ, against
@@ -746,7 +753,7 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   nine knots, and a steady floor added in power, its band mean -78 to -50 dB,
   shaped as the phone take's room in two draws of five and otherwise pink,
   brown or flat with up to 4 dB of ripple, where the corpus's own noise sits
-  40 to 65 dB under the loop (the trainer's `--channel`, to land later). 12a
+  40 to 65 dB under the loop (the trainer's `--channel`). 12a
   added PCEN as a second channel over 12b's floor (3,715,742 weights). The F1
   pooled over Für Elise, the origin and the intro as above, the melody
   register as one line, each model at its best `strike` and `strike_again`
@@ -767,7 +774,9 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   of two settings run by hand (strike 0.8, strike_again 0.8 or 0.94), a
   narrower search. The phone take is not a clean test: it shaped the training
   noise. Over the noise floor alone PCEN gained 0.024 clean and 0.040 on the
-  phone take; the floor gained 0.011 and 0.061 over neither.
+  phone take; the floor gained 0.011 and 0.061 over neither. The rounds after,
+  real drums laid over (`--over`) and their labels' audibility, are in [Rip
+  training §11](rip-training.md#11-rounds-on-record).
 
 ## 9. Decisions
 

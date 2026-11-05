@@ -160,7 +160,7 @@ var errUnusable = errors.New("unusable note")
 // renders come back with those silenced. A slot whose pattern holds a drum
 // track, or for which no instrument drawn covers the notes and plays them all,
 // keeps its engine voice.
-func (set *sampleSet) draw(slots [audio.MusicSlots]audio.PatternID, bars, bpm, root int, scale audio.ScaleID, cents float64, rng *rand.Rand) ([audio.MusicSlots]audio.PatternID, [audio.MusicSlots]*sampledLine, error) {
+func (set *sampleSet) draw(slots [audio.MusicSlots]audio.PatternID, m audio.Meter, bars, bpm, root int, scale audio.ScaleID, cents float64, rng *rand.Rand) ([audio.MusicSlots]audio.PatternID, [audio.MusicSlots]*sampledLine, error) {
 	var lines [audio.MusicSlots]*sampledLine
 	pedal := rng.Float64() < 1.0/3
 	cache := map[sampleKey][]float64{}
@@ -173,7 +173,7 @@ func (set *sampleSet) draw(slots [audio.MusicSlots]audio.PatternID, bars, bpm, r
 		if p == nil || slices.ContainsFunc(p.Tracks, func(t audio.Track) bool { return t.Instr.IsDrum() }) {
 			continue
 		}
-		notes := slotEvents(slots, k, bars, root, scale)
+		notes := slotEvents(slots, k, m, bars, root, scale)
 		pool := set.other
 		if k == audio.MusicSlots-1 {
 			pool = set.bass
@@ -187,7 +187,7 @@ func (set *sampleSet) draw(slots [audio.MusicSlots]audio.PatternID, bars, bpm, r
 			if !in.covers(notes) {
 				continue
 			}
-			l, err := set.line(in, notes, bars, bpm, cents, pedal && k != audio.MusicSlots-1, cache)
+			l, err := set.line(in, notes, m, bars, bpm, cents, pedal && k != audio.MusicSlots-1, cache)
 			if errors.Is(err, errUnusable) {
 				continue
 			}
@@ -205,10 +205,10 @@ func (set *sampleSet) draw(slots [audio.MusicSlots]audio.PatternID, bars, bpm, r
 }
 
 // slotEvents is ExpectedEvents of slot k alone
-func slotEvents(slots [audio.MusicSlots]audio.PatternID, k, bars, root int, scale audio.ScaleID) []audio.RipEvent {
+func slotEvents(slots [audio.MusicSlots]audio.PatternID, k int, m audio.Meter, bars, root int, scale audio.ScaleID) []audio.RipEvent {
 	var one [audio.MusicSlots]audio.PatternID
 	one[k] = slots[k]
-	return audio.ExpectedEvents(one, bars, root, scale, nil)
+	return audio.ExpectedEvents(one, m, bars, root, scale, nil)
 }
 
 // sampleKey is a recorded note shifted by semitones, as one loop plays it
@@ -222,10 +222,10 @@ type sampleKey struct {
 // taken out and its velocity put in. A note held past its sample's hold ends
 // there; a shorter one is cut at its note-off into the sample's release, or
 // under the pedal rings on uncut, labelled as played.
-func (set *sampleSet) line(in *sampleInstr, notes []audio.RipEvent, bars, bpm int, cents float64, pedal bool, cache map[sampleKey][]float64) (*sampledLine, error) {
+func (set *sampleSet) line(in *sampleInstr, notes []audio.RipEvent, m audio.Meter, bars, bpm int, cents float64, pedal bool, cache map[sampleKey][]float64) (*sampledLine, error) {
 	sr := float64(audio.AudioSampleRate)
 	stepSec := float64(audio.SamplesPerStep(bpm)) / sr
-	l := &sampledLine{instr: in.name, audio: make([]float64, bars*audio.SamplesPerBar(bpm))}
+	l := &sampledLine{instr: in.name, audio: make([]float64, bars*audio.SamplesPerBar(bpm, m))}
 	fade := int(sampledFade * sr)
 	for _, e := range notes {
 		pitch := in.nearest(e.MIDI)
@@ -243,7 +243,7 @@ func (set *sampleSet) line(in *sampleInstr, notes []audio.RipEvent, bars, bpm in
 		if x == nil {
 			return nil, errUnusable
 		}
-		start := float64(e.Bar*audio.StepsPerBar+e.Step) * stepSec
+		start := float64(e.Bar*m.Steps()+e.Step) * stepSec
 		hold := min(int(nsynthHold/ratio*sr), len(x))
 		cut := int(float64(e.Dur) * stepSec * sr)
 		end := start + float64(min(cut, hold))/sr

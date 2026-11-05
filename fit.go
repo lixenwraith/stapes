@@ -95,13 +95,13 @@ func cmdNotes(s *Session, a []string) error {
 		}
 		var b bytes.Buffer
 		hits := r.Hits()
-		if err := audio.WriteMIDI(&b, r.Notes, hits, r.BPM); err != nil {
+		if err := audio.WriteMIDI(&b, r.Notes, hits, r.BPM, r.Meter); err != nil {
 			return err
 		}
 		if err := os.WriteFile(s.path(a[1]), b.Bytes(), 0o644); err != nil {
 			return err
 		}
-		fmt.Fprintf(s.out, "%s: %d note(s) and %d hit(s) at %d bpm written to %s, a track each for melody, under, bass and drums\n", a[0], len(r.Notes), len(hits), r.BPM, a[1])
+		fmt.Fprintf(s.out, "%s: %d note(s) and %d hit(s) at %d bpm in %s written to %s, a track each for melody, under, bass and drums\n", a[0], len(r.Notes), len(hits), r.BPM, r.Meter, a[1])
 		return nil
 	}
 	// support is how much of the recording's salience over a note's frames is
@@ -145,8 +145,9 @@ func cmdNotes(s *Session, a []string) error {
 			}
 		}
 	}
-	fmt.Fprintf(s.out, "%s: %d note(s) at %d bpm in %s %s, tuned %+.0f cents, the first bar from %.2fs, brightness unmeasured on %d of %d melody-register note(s)\n", a[0], len(r.Notes), r.BPM, noteName(r.Root), scaleName(r.Scale), r.Tuning, r.Downbeat, unmeasured, upper)
+	fmt.Fprintf(s.out, "%s: %d note(s) at %d bpm in %s, %s %s, tuned %+.0f cents, the first bar from %.2fs, brightness unmeasured on %d of %d melody-register note(s)\n", a[0], len(r.Notes), r.BPM, r.Meter, noteName(r.Root), scaleName(r.Scale), r.Tuning, r.Downbeat, unmeasured, upper)
 	marks := [...]string{"bb", "b", "", "#", "x"}
+	beat, per := r.Meter.Beat(), r.Meter.Beats()
 	for _, n := range r.Notes {
 		line := "melody"
 		switch {
@@ -157,8 +158,8 @@ func cmdNotes(s *Session, a []string) error {
 		}
 		where, span := "before the first bar", 60/float64(max(r.BPM, 1))/audio.StepsPerBeat
 		if i := sort.SearchFloat64s(r.Beats, n.Start+1e-9) - 1; i >= 0 && i+1 < len(r.Beats) {
-			span = (r.Beats[i+1] - r.Beats[i]) / audio.StepsPerBeat
-			where = fmt.Sprintf("bar %d step %2d", i/audio.BeatsPerBar+1, audio.StepsPerBeat*(i%audio.BeatsPerBar)+int(math.Round((n.Start-r.Beats[i])/span)))
+			span = (r.Beats[i+1] - r.Beats[i]) / float64(beat)
+			where = fmt.Sprintf("bar %d step %2d", i/per+1, beat*(i%per)+int(math.Round((n.Start-r.Beats[i])/span)))
 		}
 		deg, oct, acc := audio.PitchStep(r.Root, r.Scale, n.MIDI)
 		bright := ""

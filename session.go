@@ -38,6 +38,8 @@ type Session struct {
 	// steps. The sequencer clamps and beat-quantizes its own copy; one pending
 	// change of skew does not matter for an audition length.
 	bpm int
+	// meter mirrors the transport's bar, which render plays and a rip or a song sets
+	meter audio.Meter
 	// root, scale and prog mirror the harmony `key` set, which the mixer keeps to
 	// itself: the editors name notes and place a played one on a degree by them
 	root  int

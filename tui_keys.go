@@ -145,11 +145,20 @@ func nextVoice(i audio.InstrumentType, d int) audio.InstrumentType {
 	return fam[(max(slices.Index(fam, i), 0)+d+n)%n]
 }
 
-// cycleBars walks the pattern through 1, 2 and 4 bars, refusing a length that
-// would cut a note off; s in the grid sets any length
+// cycleBars walks the pattern through 1, 2 and 4 bars of its meter, as many as a
+// pattern holds, refusing a length that would cut a note off; s in the grid sets
+// any length
 func (a *tuiApp) cycleBars() {
 	d := a.edPat()
-	next := patternBars[(slices.Index(patternBars, d.Steps/audio.StepsPerBar)+1)%len(patternBars)] * audio.StepsPerBar
+	bar := d.Signature().Steps()
+	at := slices.Index(patternBars, d.Steps/bar)
+	next := bar
+	for i := 1; i < len(patternBars); i++ {
+		if n := patternBars[(at+i)%len(patternBars)] * bar; n <= audio.MaxPatternLen {
+			next = n
+			break
+		}
+	}
 	for _, tr := range d.Track {
 		for _, e := range tr.Event {
 			if e.Pos >= next {
@@ -171,7 +180,7 @@ func (a *tuiApp) toggleRecord(d *audio.PatternDef) {
 	}
 	a.editPlay()
 	k.rec, k.take = true, k.take[:0]
-	fmt.Fprintf(a.log, "recording into %s over its %s — notes land on the sixteenth; ^R writes them in\n", d.Name, lengthWord(d.Steps))
+	fmt.Fprintf(a.log, "recording into %s over its %s — notes land on the sixteenth; ^R writes them in\n", d.Name, lengthWord(d.Steps, d.Signature()))
 }
 
 // captureNote places a played note at the pattern's step the transport is on
@@ -252,10 +261,10 @@ func keysLayout(w int) (kw, kh int) {
 	return kw, kw + 2
 }
 
-// takeLayout lays a take of bars out across w: the widest steps that keep it on
-// one row, else a step a cell and as many bars a row as fit
-func takeLayout(w, bars int) (cw, perRow, rows int) {
-	row := func(cw, n int) int { return tui.RuneLen(takeLabel) + n*(1+audio.StepsPerBar*cw) }
+// takeLayout lays a take of bars of bar steps out across w: the widest steps
+// that keep it on one row, else a step a cell and as many bars a row as fit
+func takeLayout(w, bars, bar int) (cw, perRow, rows int) {
+	row := func(cw, n int) int { return tui.RuneLen(takeLabel) + n*(1+bar*cw) }
 	for cw = 3; cw >= 1; cw-- {
 		if row(cw, bars) <= w {
 			return cw, bars, 1
@@ -274,7 +283,8 @@ const takeLabel = "take "
 // settings and a gap, the keyboard with its names, a gap and the take
 func (a *tuiApp) keysViewH(w int, d *audio.PatternDef) int {
 	_, kh := keysLayout(w - 2)
-	_, _, rows := takeLayout(w-2, barsOf(d.Steps))
+	bar := d.Signature().Steps()
+	_, _, rows := takeLayout(w-2, barsOf(d.Steps, bar), bar)
 	return 2 + 3 + kh + 1 + 1 + rows
 }
 
@@ -302,14 +312,15 @@ func (a *tuiApp) renderKeys(c tui.Region, d *audio.PatternDef) {
 	kw, kh := keysLayout(c.W)
 	x0 := max((c.W-whiteKeys*kw)/2, 0)
 	a.drawKeyboard(c.Sub(x0, 3, whiteKeys*kw, kh+1), lo, kw, kh)
-	tcw, perRow, rows := takeLayout(c.W, barsOf(d.Steps))
-	tw := tui.RuneLen(takeLabel) + perRow*(1+audio.StepsPerBar*tcw)
+	m := d.Signature()
+	tcw, perRow, rows := takeLayout(c.W, barsOf(d.Steps, m.Steps()), m.Steps())
+	tw := tui.RuneLen(takeLabel) + perRow*(1+m.Steps()*tcw)
 	ty := min(5+kh, c.H-rows)
-	a.drawTake(c.Sub(max((c.W-tw)/2, 0), ty, tw, rows), d.Steps, tcw, perRow)
+	a.drawTake(c.Sub(max((c.W-tw)/2, 0), ty, tw, rows), d.Steps, m, tcw, perRow)
 }
 
-// barsOf is the bars steps run over, the last one partly
-func barsOf(steps int) int { return (steps + audio.StepsPerBar - 1) / audio.StepsPerBar }
+// barsOf is the bars of bar steps that steps run over, the last one partly
+func barsOf(steps, bar int) int { return (steps + bar - 1) / bar }
 
 // drawKeyboard draws the keys from MIDI note lo, white keys kw wide and kh tall
 // with the black keys over their upper rows, then the Cs' names under them
@@ -387,10 +398,12 @@ func (a *tuiApp) drawKeyboard(r tui.Region, lo, kw, kh int) {
 	}
 }
 
-// drawTake shows the take bar by bar over the pattern's steps, cw cells a step and
-// perRow bars a row, a note as its degree (* for a chord) and, while recording,
-// the step the transport is at lit
-func (a *tuiApp) drawTake(r tui.Region, steps, cw, perRow int) {
+// drawTake shows the take bar by bar of meter m over the pattern's steps, cw
+// cells a step and perRow bars a row, a note as its degree (* for a chord) and,
+// while recording, the step the transport is at lit
+func (a *tuiApp) drawTake(r tui.Region, steps int, m audio.Meter, cw, perRow int) {
+	bar := m.Steps()
+	_, beat := m.Felt()
 	k := &a.keys
 	th := &a.theme
 	at := map[int][]takeNote{}
@@ -403,15 +416,15 @@ func (a *tuiApp) drawTake(r tui.Region, steps, cw, perRow int) {
 		play = step % steps
 	}
 	r.Text(0, 0, takeLabel, th.HintFg, th.Bg, terminal.AttrNone)
-	for b := range barsOf(steps) {
+	for b := range barsOf(steps, bar) {
 		y := b / perRow
-		x := tui.RuneLen(takeLabel) + b%perRow*(1+audio.StepsPerBar*cw)
+		x := tui.RuneLen(takeLabel) + b%perRow*(1+bar*cw)
 		r.Cell(x, y, '│', th.Border, th.Bg, terminal.AttrNone)
 		x++
-		for s := range min(audio.StepsPerBar, steps-b*audio.StepsPerBar) {
-			pos := b*audio.StepsPerBar + s
+		for s := range min(bar, steps-b*bar) {
+			pos := b*bar + s
 			ch, fg := '·', th.Unselected
-			if s%audio.StepsPerBeat == 0 {
+			if s%beat == 0 {
 				fg = th.HintFg
 			}
 			if ns := at[pos]; len(ns) > 0 {

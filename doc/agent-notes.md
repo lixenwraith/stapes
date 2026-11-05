@@ -73,6 +73,10 @@ proves wrong or that a document now states, and link the document instead.
   one-bar patterns change every bar. A front end that ticks sets `Session.ticked`
   and calls `conduct`; without one `song play` conducts itself until the song
   ends, with a deadline past its length in case the transport never moves.
+- A running transport holds a new tempo for the next beat and a new meter for
+  the next bar line, and `ResetMusic` drops what it holds: `playSong` stops and
+  resets before it sets the song's, or a song played over a running transport
+  kept the old tempo and meter.
 - A verb that takes seconds freezes the TUI if it runs in the event loop: the
   first rip from the files overlay read as a crash. `longVerbs` run on a
   goroutine behind a working box; while one runs the screen draws the last frame
@@ -139,6 +143,13 @@ proves wrong or that a document now states, and link the document instead.
   under `corpus_*` names replaced in place each loop, and `corpus` leaves those
   names out of the bank's pools, or the next draw would include the last loop's
   generated patterns and no two runs would draw alike.
+- `corpus ... meters` draws a loop's meter from a stream of its own, and a loop
+  in 4/4 renders as it does without `meters`, which a test compares byte for
+  byte; a loop in 3/4 or 6/8 generates every part, the bank having only 4/4.
+  The rip reads a meter other than 4/4 only over more than eight bars of beats,
+  so `bench 24 16 meters`: it read the 19 loops in 4/4 as 4/4, and the bar of
+  7 of 10 rips of the others but their label in 4 (a 6/8 tracked in quarters
+  reads 3/4, a 3/4 in dotted quarters 6/8), which is why the bench counts both.
 - `bench` grades the analysis as it is today, so a run's numbers compare only
   with the analysis benched beside them: the seventh pass moved the analysis
   from 0.47 to 0.49 on clean loops, and the fourth model run's 0.45 and 0.51

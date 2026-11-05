@@ -192,6 +192,30 @@ func cmdBPM(s *Session, a []string) error {
 	return nil
 }
 
+// cmdMeter shows or sets the bar the transport counts; render plays in it
+func cmdMeter(s *Session, a []string) error {
+	if len(a) > 0 {
+		m, err := audio.ParseMeter(a[0])
+		if err == nil {
+			err = s.setMeter(m)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(s.out, "meter %s, a bar of %d steps\n", s.meter, s.meter.Steps())
+	return nil
+}
+
+// setMeter sets the transport's bar and the session's mirror of it
+func (s *Session) setMeter(m audio.Meter) error {
+	if err := s.eng.SetMusicMeter(m); err != nil {
+		return err
+	}
+	s.meter = m
+	return nil
+}
+
 // cmdTuning shows or sets the cents the transport plays off A440: a rip sets it
 // to the recording's, a song to its own; bare, it says where it is.
 func cmdTuning(s *Session, a []string) error {
@@ -444,7 +468,8 @@ func cmdWhere(s *Session, a []string) error {
 	if running {
 		state = "running"
 	}
-	fmt.Fprintf(s.out, "bar %d step %d (%s)", bar, step, state)
+	meter := s.eng.MusicMeter()
+	fmt.Fprintf(s.out, "bar %d step %d of %s (%s)", bar, step%meter.Steps(), meter, state)
 	for i := range audio.MusicSlots {
 		fmt.Fprintf(s.out, "  slot%d=%s", i, patName(s.eng.SlotPattern(i)))
 		if m := s.silenced(i); m != "" {

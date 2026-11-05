@@ -74,6 +74,7 @@ var defaultPalette = palette{
 type engineSig struct {
 	bar        int64
 	step       int
+	meter      audio.Meter
 	running    bool
 	slots      [audio.MusicSlots]audio.PatternID
 	muted      [audio.MusicSlots]bool
@@ -526,6 +527,7 @@ func (a *tuiApp) engineSig() engineSig {
 	e := a.s.eng
 	g := engineSig{backend: e.BackendName(), silent: e.IsSilent(), musicMuted: e.IsMusicMuted()}
 	g.bar, g.step, g.running = e.Transport()
+	g.meter = e.MusicMeter()
 	for i := range g.slots {
 		g.slots[i], g.muted[i], g.tracks[i] = e.SlotPattern(i), e.IsSlotMuted(i), a.s.heldTracks(i)
 	}

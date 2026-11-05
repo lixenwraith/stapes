@@ -22,6 +22,7 @@ import struct
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
+from itertools import accumulate
 
 import numpy as np
 import torch
@@ -78,6 +79,12 @@ class Label:
         # how far past its frame an event's targets reach
         self.reach = int((np.maximum(self.end, self.t + 2) - self.t).max()) + 1 if len(ev) else 0
 
+    def hits(self, a: int, b: int):
+        """the drum events in frames a to b, as (frame, drum)"""
+        i = self.order[np.searchsorted(self.sorted, a):np.searchsorted(self.sorted, b)]
+        i = i[self.drum[i] >= 0]
+        return zip(self.t[i].tolist(), self.drum[i].tolist())
+
     def window(self, a: int, b: int) -> dict:
         """Per-frame targets for frames a to b from the events; masks say where a
         target counts. The yes-or-no ones are bytes until batch; the strikes and
@@ -131,7 +138,10 @@ def load_corpus(d: str):
     with open(os.path.join(d, "corpus.json")) as f:
         manifest = json.load(f)
     loops = []
+    skip = set(open(os.path.join(d, "skip.txt")).read().split()) if os.path.exists(os.path.join(d, "skip.txt")) else set()
     for i in range(manifest["loops"]):
+        if f"loop_{i:03d}" in skip:
+            continue
         base = os.path.join(d, f"loop_{i:03d}")
         mel = MelFile(base + ".mel")
         with open(base + ".json") as f:
@@ -140,9 +150,62 @@ def load_corpus(d: str):
     return manifest, loops
 
 
-def sample(mel, lab: Label, start: int, window: int, channels: int):
+class Channel:
+    """What a small speaker, a room and a phone do to frames, drawn per window: the
+    bands under a low corner and over a high one cut, a ripple across them, and a
+    steady noise floor added, in power. A corpus's noise sits 40 to 65 dB under the
+    loop; a phone's floor reached 7 to 15 dB under the music, which cost 8b half its recall."""
+
+    def __init__(self, path: str):
+        d = np.load(path)
+        self.white, self.room = d["white"], d["room"].astype(np.float64)
+        mel = lambda h: 2595 * np.log10(1 + h / 700)
+        points = np.linspace(mel(30), mel(11025), ripmodel.MEL_BANDS + 2)[1:-1]
+        self.points, self.hz = points, 700 * (10 ** (points / 2595) - 1)
+
+    def draw(self, n: int, rng: random.Random):
+        """the gain per band and the noise over n frames, in the energy a stored frame holds"""
+        octave = np.log2(self.hz)
+        low, high = 60 * (400 / 60) ** rng.random(), 3000 * (10000 / 3000) ** rng.random()
+        cut = -rng.random() * 24 * np.clip((np.log2(low) - octave) / 1.5, 0, 1) - rng.random() * 24 * np.clip(octave - np.log2(high), 0, 1)
+        knots = np.linspace(self.points[0], self.points[-1], 9)
+        depth = rng.random() * 6
+        ripple = np.interp(self.points, knots, [(rng.random() * 2 - 1) * depth for _ in knots])
+        shape = rng.choice(["room", "room", "pink", "brown", "flat"])
+        floor = {"room": self.room, "pink": -3 * (octave - octave.mean()), "brown": -6 * (octave - octave.mean()), "flat": np.zeros_like(octave)}[shape]
+        floor = floor + np.interp(self.points, knots, [(rng.random() * 2 - 1) * 4 for _ in knots]) + (-78 + rng.random() * 28)
+        at = rng.randrange(len(self.white) - n + 1)
+        # a stored frame is log1p of a hundred times the energy
+        return 10 ** ((cut + ripple) / 10), 100 * 10 ** (floor / 10) * self.white[at:at + n]
+
+
+# A real hit counts when its new power tops all else sounding by this, in dB, over its best ten bands
+HEARD = 0.0
+
+
+def stands_out(d: np.ndarray, rest: np.ndarray, i: int) -> bool:
+    """whether the hit at frame i of the drums d stands out of the rest sounding: what
+    it adds counts, not the ring of the hits before it, which is why rest takes that ring"""
+    ring = d[max(i - 4, 0):i - 1].mean(0) if i >= 2 else 0.0
+    ratio = np.maximum(d[i:i + 3].max(0) - ring, 1e-12) / (rest[i:i + 3].mean(0) + ring + 1e-12)
+    return np.sort(10 * np.log10(ratio))[-10:].mean() >= HEARD
+
+
+_power = {}
+
+
+def power(mel) -> float:
+    """a recording's mean energy per band and frame, read once"""
+    if mel.path not in _power:
+        _power[mel.path] = float(np.expm1(mel[:len(mel)].astype(np.float64)).mean())
+    return _power[mel.path]
+
+
+def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, rng=None, channel=None):
     """the window of `window` frames from start: its features and targets, the
-    frames past the loop's end padded with zeros and masked out"""
+    frames past the loop's end padded with zeros and masked out; over is a recording
+    of drums alone and its power against the loop's in dB, laid over the frames, its
+    hits that can be heard among the targets; channel is what a speaker and a phone do to them"""
     b = min(start + window, len(mel))
     t, pad = lab.window(start, b), window - (b - start)
 
@@ -162,7 +225,28 @@ def sample(mel, lab: Label, start: int, window: int, channels: int):
     out.update(strike=strike, release=release, velocity=velocity, heard=heard)
     out["valid"] = np.concatenate([np.ones(window - pad, np.float32), np.zeros(pad, np.float32)])
     a = max(start - WARM, 0) if channels > 1 else start
-    return ripmodel.features(take(mel[a:b]), channels)[start - a:], out
+    # uncorrelated sounds add in power, and a stored frame is log1p of a hundred times it
+    e = np.expm1(take(mel[a:b]).astype(np.float64))
+    loud = e[:len(e) - pad].mean() if pad < len(e) else 0.0
+    through = 1.0
+    if channel is not None:
+        through, noise = channel.draw(len(e), rng)
+        e = e * through + noise
+    if over is not None:
+        omel, olab, level = over
+        first, n = start - a, min(len(omel), len(e))
+        at, ofrom = rng.randrange(len(e) - n + 1), rng.randrange(len(omel) - n + 1)
+        d = np.expm1(omel[ofrom:ofrom + n].astype(np.float64)) * through * 10 ** (level / 10) * loud / max(power(omel), 1e-9)
+        rest = e[at:at + n].copy()
+        e[at:at + n] += d
+        for f, drum in olab.hits(ofrom, ofrom + n):
+            i = f - ofrom
+            w = i + at - first
+            if -2 < w < window + 1 and stands_out(d, rest, i):
+                near = slice(max(w - 1, 0), max(min(w + 2, window), 0))
+                out["onset"][near] = 1
+                out["drums"][near, drum] = 1
+    return ripmodel.features(np.log1p(e).astype(np.float32), channels)[start - a:], out
 
 
 def stack(samples):
@@ -171,12 +255,13 @@ def stack(samples):
     return torch.from_numpy(np.stack(mels)), {k: v if k == "wave" else v.float() for k, v in out.items()}
 
 
-def batch(draw, window: int, size: int, rng: random.Random, channels: int):
-    """size random windows of `window` frames from the loops draw() picks"""
+def batch(draw, window: int, size: int, rng: random.Random, channels: int, channel=None, share: float = 0.0):
+    """size random windows of `window` frames from the loops draw() picks, a share through the channel"""
     samples = []
     for _ in range(size):
-        mel, lab = draw()
-        samples.append(sample(mel, lab, rng.randrange(max(len(mel) - window, 0) + 1), window, channels))
+        mel, lab, over = draw()
+        heard = channel if channel is not None and rng.random() < share else None
+        samples.append(sample(mel, lab, rng.randrange(max(len(mel) - window, 0) + 1), window, channels, over, rng, heard))
     return stack(samples)
 
 
@@ -246,6 +331,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--corpus", required=True, help="directory stapes' corpus verb wrote")
     ap.add_argument("--mix", default="", help="another corpus and the share of windows drawn from it, dir:share, such as recordings with their MIDI files (corpus <dir> from <list>)")
+    ap.add_argument("--over", default="", help="a corpus of drums alone and the share of windows that lay it over a loop with no drums of its own, dir:share, at -12 to +6 dB of its power against the loop's: real kits under the corpus's lines")
+    ap.add_argument("--channel", default="", help="a noise bank and the share of windows heard through a small speaker, a room and a phone, file.npz:share")
     ap.add_argument("--out", required=True, help="weight file to write, the root's ripmodel.bin for stapes to hear with")
     ap.add_argument("--steps", type=int, default=2000)
     ap.add_argument("--batch", type=int, default=8)
@@ -299,6 +386,13 @@ def main() -> None:
         mixed_manifest, mixed = load_corpus(d)
         share = float(sh)
         assert mixed_manifest["mel_bands"] == ripmodel.MEL_BANDS and mixed_manifest["pitches"] == ripmodel.PITCHES
+    drums, over_share, drumless = [], 0.0, []
+    if args.over:
+        d, _, sh = args.over.rpartition(":")
+        over_manifest, drums = load_corpus(d)
+        over_share = float(sh)
+        assert over_manifest["mel_bands"] == ripmodel.MEL_BANDS
+        drumless = [(m, l) for m, l in loops if not (l.drum >= 0).any()]
     model = ripmodel.RipModel(cfg).to(args.device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     step, best_loss, best_step, best_state = 0, float("inf"), 0, None
@@ -314,6 +408,8 @@ def main() -> None:
     print(f"{sum(p.numel() for p in model.parameters())} weights, {len(loops)} loops, {sum(len(m) for m, _ in loops)} frames, {len(held)} held out in {len(val_mels)} windows")
     if mixed:
         print(f"{len(mixed)} loops of {sum(len(m) for m, _ in mixed)} frames mixed in, {share:.0%} of the windows")
+    if drums:
+        print(f"{len(drums)} recordings of {sum(len(m) for m, _ in drums)} frames laid over {len(drumless)} loops with no drums, {over_share:.0%} of the windows")
     t0 = time.time()
 
     def score() -> None:
@@ -333,15 +429,31 @@ def main() -> None:
             mark = " (best)"
         print(f"step {step} held-out {v['total']:.3f}, decoders {v['decoders']:.3f} ({parts}){mark}", flush=True)
 
+    channel, channel_share = None, 0.0
+    if args.channel:
+        f, _, sh = args.channel.rpartition(":")
+        channel, channel_share = Channel(f), float(sh)
+        print(f"{channel_share:.0%} of the windows through a speaker, a room and a phone, from {f}")
+
+    # recordings run from seconds to minutes, and each second is worth the same
+    by_mixed = list(accumulate(len(m) for m, _ in mixed))
+    by_drums = list(accumulate(len(m) for m, _ in drums))
+
     def draw():
-        return rng.choice(mixed if mixed and rng.random() < share else loops)
+        """a loop, and the drums to lay over it or None"""
+        if drums and drumless and rng.random() < over_share:
+            omel, olab = rng.choices(drums, cum_weights=by_drums)[0]
+            return (*rng.choice(drumless), (omel, olab, rng.random() * 18 - 12))
+        if mixed and rng.random() < share:
+            return (*rng.choices(mixed, cum_weights=by_mixed)[0], None)
+        return (*rng.choice(loops), None)
 
     # the next batch is built while the device works on this one; only that thread draws from rng
     pool = ThreadPoolExecutor(1)
-    ahead = pool.submit(batch, draw, args.window, args.batch, rng, cfg.channels)
+    ahead = pool.submit(batch, draw, args.window, args.batch, rng, cfg.channels, channel, channel_share)
     while step < args.steps:
         mel, t = ahead.result()
-        ahead = pool.submit(batch, draw, args.window, args.batch, rng, cfg.channels)
+        ahead = pool.submit(batch, draw, args.window, args.batch, rng, cfg.channels, channel, channel_share)
         mel, t = mel.to(args.device), {k: v.to(args.device) for k, v in t.items()}
         lr = args.lr * 0.5 * (1 + math.cos(math.pi * step / args.steps))  # cosine to zero
         for g in opt.param_groups:

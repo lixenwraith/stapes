@@ -355,7 +355,7 @@ func (s *Session) partOf(p, part string) (d *audio.PatternDef, n int, ok bool, e
 	}
 	count := len(d.Track)
 	if part == "bar" {
-		count = barsOf(d.Steps)
+		count = barsOf(d.Steps, d.Signature().Steps())
 	}
 	if n, err = strconv.Atoi(segs[2]); err != nil || n < 0 || n >= count {
 		return nil, 0, true, fmt.Errorf("%s: %q has %ss 0 to %d", p, segs[0], part, count-1)
@@ -406,16 +406,17 @@ func (s *Session) barsAt(paths []string) (d *audio.PatternDef, bars []int, ok bo
 	return d, bars, true, nil
 }
 
-// cutBars is d's bars played in the order given, every track's notes sliced at
-// the bar lines; d's last bar may be short
+// cutBars is d's bars of its meter played in the order given, every track's
+// notes sliced at the bar lines; d's last bar may be short
 func cutBars(d *audio.PatternDef, bars []int) *audio.PatternDef {
 	c := clonePatternDef(d)
 	for i := range c.Track {
 		c.Track[i].Event = nil
 	}
 	c.Steps = 0
+	bar := d.Signature().Steps()
 	for _, k := range bars {
-		lo, hi := k*audio.StepsPerBar, min((k+1)*audio.StepsPerBar, d.Steps)
+		lo, hi := k*bar, min((k+1)*bar, d.Steps)
 		for i, t := range d.Track {
 			for _, e := range t.Event {
 				if e.Pos >= lo && e.Pos < hi {

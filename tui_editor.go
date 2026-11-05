@@ -214,9 +214,11 @@ func (a *tuiApp) gridKey(ev terminal.Event, d *audio.PatternDef, r rune) {
 	case ev.Key == terminal.KeyRight || r == 'l':
 		b.step++
 	case r == 'H':
-		b.step -= audio.StepsPerBeat
+		_, beat := d.Signature().Felt()
+		b.step -= beat
 	case r == 'L':
-		b.step += audio.StepsPerBeat
+		_, beat := d.Signature().Felt()
+		b.step += beat
 	case ev.Key == terminal.KeyUp || r == 'k':
 		if b.roll {
 			b.pitch++ // up is higher in the roll
@@ -233,13 +235,13 @@ func (a *tuiApp) gridKey(ev terminal.Event, d *audio.PatternDef, r rune) {
 		if b.roll {
 			b.pitch += a.scaleLen()
 		} else {
-			b.step -= audio.StepsPerBar
+			b.step -= d.Signature().Steps()
 		}
 	case ev.Key == terminal.KeyPageDown:
 		if b.roll {
 			b.pitch -= a.scaleLen()
 		} else {
-			b.step += audio.StepsPerBar
+			b.step += d.Signature().Steps()
 		}
 	case r == 'g' || ev.Key == terminal.KeyHome:
 		b.step = 0
@@ -572,26 +574,29 @@ func (a *tuiApp) gridHint() string {
 
 // gridFit is how a pattern's steps lie across a width: cw cells a step and a
 // gap before each beat, or, when even one cell a step is too wide, a window of
-// whole bars from first
-type gridFit struct{ cw, first, count int }
+// whole bars from first; a bar and a beat are the pattern's meter's, the beat
+// the one the bar is felt in, 6/8's dotted quarter
+type gridFit struct{ cw, first, count, bar, beat int }
 
-// gridSpan is the columns n steps take at cw cells a step
-func gridSpan(n, cw int) int { return n*cw + max((n-1)/audio.StepsPerBeat, 0) }
+// gridSpan is the columns n steps take at cw cells a step, a gap every beat steps
+func gridSpan(n, cw, beat int) int { return n*cw + max((n-1)/beat, 0) }
 
-func fitGrid(steps, w, cursor, left int) gridFit {
+func fitGrid(steps, w, cursor, left int, m audio.Meter) gridFit {
+	bar := m.Steps()
+	_, beat := m.Felt()
 	for cw := 8; cw >= 1; cw-- {
-		if gridSpan(steps, cw) <= w {
-			return gridFit{cw: cw, count: steps}
+		if gridSpan(steps, cw, beat) <= w {
+			return gridFit{cw: cw, count: steps, bar: bar, beat: beat}
 		}
 	}
-	bars := max((w+1)/(gridSpan(audio.StepsPerBar, 1)+1), 1)
-	count := bars * audio.StepsPerBar
-	first := left - left%audio.StepsPerBar
+	bars := max((w+1)/(gridSpan(bar, 1, beat)+1), 1)
+	count := bars * bar
+	first := left - left%bar
 	if cursor < first || cursor >= first+count {
-		first = cursor - cursor%audio.StepsPerBar - (bars-1)*audio.StepsPerBar/2
+		first = cursor - cursor%bar - (bars-1)*bar/2
 	}
-	first = min(max(first-first%audio.StepsPerBar, 0), max(steps-count, 0))
-	return gridFit{cw: 1, first: first, count: min(count, steps-first)}
+	first = min(max(first-first%bar, 0), max(steps-count, 0))
+	return gridFit{cw: 1, first: first, count: min(count, steps-first), bar: bar, beat: beat}
 }
 
 // x is the column of a step, -1 when it lies outside the window
@@ -600,7 +605,7 @@ func (g gridFit) x(step int) int {
 		return -1
 	}
 	s := step - g.first
-	return s*g.cw + s/audio.StepsPerBeat
+	return s*g.cw + s/g.beat
 }
 
 // gridLabW is the grid's column of track names, or of the roll's pitches
@@ -650,7 +655,7 @@ func (a *tuiApp) renderEditor(r tui.Region) {
 	}
 	// A track's rows grow with its cells, to half a cell's width, on a screen tall
 	// enough that the view still takes no more than half the body
-	g := fitGrid(d.Steps, r.W-2-gridLabW, b.step, b.left)
+	g := fitGrid(d.Steps, r.W-2-gridLabW, b.step, b.left, d.Signature())
 	b.rh = 1
 	if !b.roll && len(d.Track) > 0 {
 		b.rh = min(3, max(g.cw/2, 1), max((r.H/2-6)/len(d.Track), 1))
@@ -696,7 +701,7 @@ func (a *tuiApp) renderGrid(frame tui.Region, d *audio.PatternDef, g gridFit) {
 	b, th := a.ed, &a.theme
 	b.left = g.first
 	// Wide cells leave room: the view keeps to the grid's width, centered
-	contentW := min(frame.W, max(gridLabW+gridSpan(g.count, g.cw), 64))
+	contentW := min(frame.W, max(gridLabW+gridSpan(g.count, g.cw, g.beat), 64))
 	c := frame.Sub((frame.W-contentW)/2, 0, contentW, frame.H)
 
 	mode := "grid"
@@ -732,7 +737,7 @@ func (a *tuiApp) editTitle(d *audio.PatternDef) string {
 	if d.Role != "" {
 		parts = append(parts, d.Role)
 	}
-	parts = append(parts, lengthWord(d.Steps))
+	parts = append(parts, lengthWord(d.Steps, d.Signature()))
 	if len(d.Groups) > 0 {
 		parts = append(parts, strings.Join(d.Groups, "+"))
 	}
@@ -751,15 +756,20 @@ func (a *tuiApp) editTitle(d *audio.PatternDef) string {
 	return strings.Join(parts, " · ")
 }
 
-// lengthWord is a pattern's length in bars, or in steps when not whole bars
-func lengthWord(steps int) string {
-	switch bars := steps / audio.StepsPerBar; {
-	case steps%audio.StepsPerBar != 0 || bars == 0:
+// lengthWord is a pattern's length in bars of meter m, named when not 4/4, or
+// in steps when not whole bars
+func lengthWord(steps int, m audio.Meter) string {
+	of := ""
+	if m.Doc() != "" {
+		of = " of " + m.String()
+	}
+	switch bars := steps / m.Steps(); {
+	case steps%m.Steps() != 0 || bars == 0:
 		return stepsWord(steps)
 	case bars == 1:
-		return "1 bar"
+		return "1 bar" + of
 	default:
-		return fmt.Sprintf("%d bars", bars)
+		return fmt.Sprintf("%d bars%s", bars, of)
 	}
 }
 
@@ -770,11 +780,11 @@ func (a *tuiApp) drawRuler(r tui.Region, g gridFit, play int) {
 		x := g.x(s)
 		ch, fg := ' ', th.Unselected
 		switch {
-		case s%audio.StepsPerBar == 0:
-			label := strconv.Itoa(s/audio.StepsPerBar + 1)
+		case s%g.bar == 0:
+			label := strconv.Itoa(s/g.bar + 1)
 			r.Text(x, 0, label, th.HeaderFg, th.Bg, terminal.AttrBold)
 			continue
-		case s%audio.StepsPerBeat == 0:
+		case s%g.beat == 0:
 			ch = '·'
 		}
 		if s == play {
@@ -845,7 +855,7 @@ func (a *tuiApp) drawGrid(r tui.Region, d *audio.PatternDef, g gridFit, labW, pl
 					at = append(at, e)
 				}
 			}
-			c := a.gridCell(at, held[s] > 0, instr.IsDrum(), s, g.cw)
+			c := a.gridCell(at, held[s] > 0, instr.IsDrum(), s%g.beat == 0, g.cw)
 			bg := a.cellBg(ti == b.trk && s == b.step, s, play)
 			x := labW + g.x(s)
 			pad := max(g.cw-1, 1) // a hit leaves its step's last cell as a gap
@@ -875,13 +885,14 @@ type stepCell struct {
 	fg   color.RGB
 }
 
-func (a *tuiApp) gridCell(at []audio.StepDef, held, drum bool, s, cw int) stepCell {
+// gridCell is a step's cell of a track, cw wide, its rest's dot lit on a beat
+func (a *tuiApp) gridCell(at []audio.StepDef, held, drum, beat bool, cw int) stepCell {
 	th := &a.theme
 	if len(at) == 0 {
 		switch {
 		case held && !drum:
 			return stepCell{text: strings.Repeat("─", cw), fg: th.HintFg}
-		case s%audio.StepsPerBeat == 0:
+		case beat:
 			return stepCell{text: "·", fg: th.HintFg}
 		}
 		return stepCell{text: "·", fg: th.Unselected}
@@ -958,7 +969,7 @@ func (a *tuiApp) drawRoll(r tui.Region, d *audio.PatternDef, g gridFit, labW, pl
 		r.Text(0, row, tui.Truncate(lab, labW-1), labFg, th.Bg, terminal.AttrNone)
 		for s := g.first; s < g.first+g.count; s++ {
 			ch, fg := '·', th.Unselected
-			if s%audio.StepsPerBeat != 0 {
+			if s%g.beat != 0 {
 				ch = ' '
 			}
 			for _, e := range tr.Event {
@@ -1010,7 +1021,8 @@ func (a *tuiApp) drawGridDetail(r tui.Region, d *audio.PatternDef) {
 	}
 	r.Text(0, 0, tui.Truncate(trk, r.W), th.HintFg, th.Bg, terminal.AttrNone)
 
-	cell := fmt.Sprintf("step %d/%d (%s)", b.step+1, d.Steps, transportPos(int64(b.step/audio.StepsPerBar), b.step))
+	m := d.Signature()
+	cell := fmt.Sprintf("step %d/%d (%s)", b.step+1, d.Steps, transportPos(int64(b.step/m.Steps()), b.step, m))
 	idx := a.targets(d)
 	switch {
 	case len(idx) == 0 && b.roll:

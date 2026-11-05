@@ -10,7 +10,7 @@ The audio library's own items are in [its todo](https://github.com/lixenwraith/a
 the items here change stapes, and the library with it where they name its
 files. Work that also changes vif is planned in [vif's
 todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#audio): stapes
-on Android, which vif's app is to host, and a meter for songs and patterns.
+on Android, which vif's app is to host.
 
 ## The rip
 

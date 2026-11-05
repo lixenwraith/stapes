@@ -103,6 +103,9 @@ func (s *Session) loadMIDI(file string, named []string, replace bool) error {
 		s.pats.mergeAll(pats, true)
 		s.songs.put(song, true)
 	}
+	if err := s.setMeter(song.Signature()); err != nil {
+		return err
+	}
 	s.bpm, s.root, s.scale, s.tuning = song.BPM, song.Root, song.ScaleID(), 0
 	s.eng.SetMusicBPM(s.bpm)
 	s.eng.SetHarmony(s.root, s.scale, s.prog)
@@ -121,8 +124,8 @@ func (s *Session) loadMIDI(file string, named []string, replace bool) error {
 			}
 		}
 	}
-	fmt.Fprintf(s.out, "read %s: %d note(s) and %d hit(s) in %d pattern(s); song %s plays them in %d bar(s) at %d bpm, %s; tempo and key set\n",
-		file, notes, hits, len(pats), name, len(song.Bars), song.BPM, s.keyName())
+	fmt.Fprintf(s.out, "read %s: %d note(s) and %d hit(s) in %d pattern(s); song %s plays them in %d bar(s) of %s at %d bpm, %s; tempo, meter and key set\n",
+		file, notes, hits, len(pats), name, len(song.Bars), song.Signature(), song.BPM, s.keyName())
 	for _, l := range said {
 		fmt.Fprintln(s.out, "  "+l)
 	}
@@ -237,14 +240,22 @@ func cmdRip(s *Session, a []string) error {
 		return err
 	}
 	nodrums, tempo := false, 0
+	var meter *audio.Meter
 	for {
 		n := len(a)
 		switch {
 		case n > 2 && a[n-1] == "nodrums":
 			nodrums, a = true, a[:n-1]
 			continue
-		case n > 3 && (a[n-2] == "lead" || a[n-2] == "bpm") && isMIDI(a[0]):
-			return fmt.Errorf("%s: a MIDI file's lines and tempo are its own; %s is for a recording", a[0], a[n-2])
+		case n > 3 && (a[n-2] == "lead" || a[n-2] == "bpm" || a[n-2] == "meter") && isMIDI(a[0]):
+			return fmt.Errorf("%s: a MIDI file's lines, tempo and meter are its own; %s is for a recording", a[0], a[n-2])
+		case n > 3 && a[n-2] == "meter":
+			m, err := audio.ParseMeter(a[n-1])
+			if err != nil {
+				return err
+			}
+			meter, a = &m, a[:n-2]
+			continue
 		case n > 3 && a[n-2] == "lead":
 			rule, ok := audio.ParseLeadRule(a[n-1])
 			if !ok {
@@ -262,11 +273,17 @@ func cmdRip(s *Session, a []string) error {
 		}
 		break
 	}
-	bars := audio.MaxPatternLen / audio.StepsPerBar
+	// as many bars as a pattern holds, of the meter pinned or 4/4; a rip in a
+	// longer bar cuts its patterns to fewer
+	most := audio.MaxPatternLen / audio.StepsPerBar
+	if meter != nil {
+		most = audio.MaxPatternLen / meter.Steps()
+	}
+	bars := min(audio.MaxPatternLen/audio.StepsPerBar, most)
 	if len(a) > 2 {
 		n, err := strconv.Atoi(a[2])
-		if err != nil || n < 1 || n > bars {
-			return fmt.Errorf("bars %q: want 1 to %d", a[2], bars)
+		if err != nil || n < 1 || n > most {
+			return fmt.Errorf("bars %q: want 1 to %d", a[2], most)
 		}
 		bars = n
 	}
@@ -275,7 +292,7 @@ func cmdRip(s *Session, a []string) error {
 	if isMIDI(a[0]) {
 		rp, err = s.readScore(a[0])
 	} else {
-		rp, err = s.hear(a[0], tempo)
+		rp, err = s.hear(a[0], tempo, meter)
 	}
 	if err != nil {
 		return err
@@ -315,6 +332,9 @@ func cmdRip(s *Session, a []string) error {
 	for _, d := range defs {
 		s.pats.put(d, true)
 	}
+	if err := s.setMeter(r.Meter); err != nil {
+		return err
+	}
 	s.rips[name] = rp
 	s.bpm = r.BPM
 	s.eng.SetMusicBPM(r.BPM)
@@ -338,13 +358,13 @@ func cmdRip(s *Session, a []string) error {
 	if r.Tuning <= -5 || r.Tuning >= 5 {
 		tuned = fmt.Sprintf(" tuned %+.0f cents", r.Tuning)
 	}
-	fmt.Fprintf(s.out, "ripped %s: %d bpm, %s%s, %d bar(s) %s; kicks %d snares %d hats %d, melody notes %d and %d under, bass notes %d\n",
-		a[0], r.BPM, s.keyName(), tuned, len(r.Bars), from, hits[audio.InstrKick], hits[audio.InstrSnare], hits[audio.InstrHihat], notes, under, low)
+	fmt.Fprintf(s.out, "ripped %s: %d bpm %s, %s%s, %d bar(s) %s; kicks %d snares %d hats %d, melody notes %d and %d under, bass notes %d\n",
+		a[0], r.BPM, r.Meter, s.keyName(), tuned, len(r.Bars), from, hits[audio.InstrKick], hits[audio.InstrSnare], hits[audio.InstrHihat], notes, under, low)
 	names := make([]string, 0, len(defs))
 	for _, d := range defs {
 		names = append(names, d.Name)
 	}
-	fmt.Fprintf(s.out, "%d pattern(s) added: %s; tempo and key set, slot them to hear the estimate\n", len(defs), strings.Join(names, " "))
+	fmt.Fprintf(s.out, "%d pattern(s) added: %s; tempo, meter and key set, slot them to hear the estimate\n", len(defs), strings.Join(names, " "))
 	for _, v := range voices {
 		fmt.Fprintf(s.out, "voice %s: %s, registered\n", v.Name, cmp.Or(v.Wave, "sine"))
 	}
@@ -356,8 +376,8 @@ func cmdRip(s *Session, a []string) error {
 	return nil
 }
 
-// hear rips a recording, at tempo when one is given
-func (s *Session) hear(file string, tempo int) (*ripped, error) {
+// hear rips a recording, at tempo and in meter when they are given
+func (s *Session) hear(file string, tempo int, meter *audio.Meter) (*ripped, error) {
 	f, err := os.Open(s.path(file))
 	if err != nil {
 		return nil, err
@@ -371,6 +391,7 @@ func (s *Session) hear(file string, tempo int) (*ripped, error) {
 	if tempo > 0 { // the tempo the listener knows; the bar line is still decoded
 		ripper.Grid = &audio.RipGrid{BPM: tempo, Downbeat: -1}
 	}
+	ripper.Meter = meter
 	r, err := ripper.Samples(x, rate)
 	if err != nil {
 		return nil, err
@@ -380,7 +401,7 @@ func (s *Session) hear(file string, tempo int) (*ripped, error) {
 
 // readScore reads a MIDI file as a rip with no recording behind it, each line
 // played by a copy of the shipped voice its program plays on, and says what of
-// the file the rip could not keep: a meter, tempo changes, notes out of range, parts
+// the file the rip could not keep: meter and tempo changes, notes out of range, parts
 func (s *Session) readScore(file string) (*ripped, error) {
 	data, err := os.ReadFile(s.path(file))
 	if err != nil {
@@ -398,12 +419,15 @@ func (s *Session) readScore(file string) (*ripped, error) {
 			played = append(played, ripLines[reg].word+" on the "+v.Name)
 		}
 	}
-	said := []string{fmt.Sprintf("%d note(s) and %d hit(s) in %d/%d", len(m.Notes), len(m.Hits), m.Meter[0], m.Meter[1])}
+	said := []string{fmt.Sprintf("%d note(s) and %d hit(s) in %s", len(m.Notes), len(m.Hits), m.Meter)}
 	if len(played) > 0 {
 		said[0] += ", " + strings.Join(played, ", ")
 	}
-	if m.Meter != [2]int{4, 4} {
-		said[0] += ", read in bars of four beats from its first bar line"
+	if r.Meter != m.Meter {
+		said[0] += fmt.Sprintf(", read in bars of %s at its folded tempo", r.Meter)
+	}
+	if m.Meters > 0 {
+		said = append(said, fmt.Sprintf("%d time signature change(s) after its first bar, read in %s throughout", m.Meters, r.Meter))
 	}
 	if beat := math.Round(math.Log2(m.BPM / float64(r.BPM))); beat != 0 {
 		said = append(said, fmt.Sprintf("its %.0f bpm read at %d, a beat %s", m.BPM, r.BPM, [...]string{"its sixteenth", "its eighth", "its quarter", "its half note", "its whole note"}[min(max(int(beat)+2, 0), 4)]))
@@ -422,8 +446,8 @@ func (s *Session) readScore(file string) (*ripped, error) {
 }
 
 // cmdRender writes what the slots hold, played for bars bars at the transport's
-// tempo and key with the engine's offline render, to a WAV: the estimate a rip
-// made, or any arrangement, heard without a device.
+// tempo, meter and key with the engine's offline render, to a WAV: the estimate
+// a rip made, or any arrangement, heard without a device.
 func cmdRender(s *Session, a []string) error {
 	bars := 4
 	if len(a) > 1 {
@@ -439,7 +463,7 @@ func cmdRender(s *Session, a []string) error {
 	if s.slots == [audio.MusicSlots]audio.PatternID{} {
 		return fmt.Errorf("every slot is silent; slot a pattern first")
 	}
-	buf, err := s.eng.RenderMusic(s.slots, s.bpm, bars, s.root, s.scale, s.prog, 1)
+	buf, err := s.eng.RenderMusic(s.slots, s.bpm, s.meter, bars, s.root, s.scale, s.prog, 1)
 	if err != nil {
 		return err
 	}
@@ -454,7 +478,7 @@ func cmdRender(s *Session, a []string) error {
 	if werr != nil {
 		return werr
 	}
-	fmt.Fprintf(s.out, "wrote %s: %d bar(s) at %d bpm, %s (%.1fs)\n", a[0], bars, s.bpm, s.keyName(), float64(len(buf))/audio.AudioSampleRate)
+	fmt.Fprintf(s.out, "wrote %s: %d bar(s) of %s at %d bpm, %s (%.1fs)\n", a[0], bars, s.meter, s.bpm, s.keyName(), float64(len(buf))/audio.AudioSampleRate)
 	return nil
 }
 

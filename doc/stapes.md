@@ -89,10 +89,9 @@ or a share. The verbs stay as they are, and so does every other host.
 MIDI goes through the library's one table, `midiInstruments` (library
 [§8](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#8-midi-files)): `write <pattern|song> <file.mid>`
 writes a pattern or a song (`WriteSongMIDI`, `WritePatternMIDI`), and `load` and
-`merge <file.mid> [name]` read a file as patterns and a song (`MIDIScore.Song`),
-whose bars play out of time where the file is not in 4/4 until songs carry a
-meter ([vif's todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#give-songs-and-patterns-a-meter)).
-`truth` and `corpus <dir> from` read `ReadMIDI`'s transcript. Stapes turns the
+`merge <file.mid> [name]` read a file as patterns and a song (`MIDIScore.Song`)
+in its first meter, which the transport takes as a song played does (`meter`,
+`SetMusicMeter`). `truth` and `corpus <dir> from` read `ReadMIDI`'s transcript. Stapes turns the
 phrase fill off (`SetAutoFill(false)`), and its mixer mutes slots and tracks and
 solos tracks (library
 [§6](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#6-mixer-buses-mute-and-pause)).
@@ -103,10 +102,10 @@ Over the library's rip (library
 [§9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)), stapes' verbs:
 
 - `rip` adds a rip's patterns to the document, dirty, and sets the transport's
-  tempo and key, so a slot plays the estimate at once; `rip ... bpm <n>` pins
-  the tempo alone, `rip ... lead` names the rule that picks the melody
-  (`Ripper.Lead`), and `rip <file.mid> <name>` reads a MIDI file as a rip
-  (`MIDIScore.Rip`). For each register the front end heard no voice for, `rip`
+  tempo, meter and key, so a slot plays the estimate at once; `rip ... bpm <n>`
+  pins the tempo alone, `rip ... meter <n/d>` the meter (`Ripper.Meter`),
+  `rip ... lead` names the rule that picks the melody (`Ripper.Lead`), and
+  `rip <file.mid> <name>` reads a MIDI file as a rip (`MIDIScore.Rip`). For each register the front end heard no voice for, `rip`
   searches the voice's genes and wave for the nearest (`RenderNote`,
   `MelDistance`), seeded with every registered voice; `fit` runs it again with
   more generations.
@@ -137,7 +136,9 @@ Over the library's rip (library
   fit's own distance from the recording's notes, so the score of the mix does not
   drift a voice into one that fills the mix.
 - `bench` grades the analysis and a loaded model on fresh renders, clean and
-  augmented (`corpus ... aug`). With `sampled <dir>`, both play half of a loop's
+  augmented (`corpus ... aug`), and with `meters` each meter apart, a third of
+  the loops in 3/4 or 6/8 with every part generated in it, so the bars of a loop
+  match its meter (`ExpectedRip`'s). With `sampled <dir>`, both play half of a loop's
   tonal lines on NSynth's recorded notes in place of the voices: an instrument
   whose pitches reach the line's notes within three semitones, each note shifted
   from the nearest, cut into its recording's release at the note-off, mixed

@@ -19,6 +19,7 @@ import (
 
 	"github.com/lixenwraith/audio"
 	"github.com/lixenwraith/terminal"
+	"github.com/lixenwraith/terminal/tui"
 )
 
 func newTestSession(t *testing.T, out *bytes.Buffer) *Session {
@@ -1254,6 +1255,35 @@ cp b.bar.2 b.bar.0 b.bar.2 loop
 	}
 }
 
+// TestAPatternsBarsAreItsMeters: a pattern's bars are its meter's, in what cp
+// slices and in the editor, which names them in its title, numbers them on its
+// ruler, dots the beats they are felt in and pages a bar at a time
+func TestAPatternsBarsAreItsMeters(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, "new pattern w\nset w.steps 24\nset w.meter 3/4\ntake w lead 0:60 13:62\ncp w.bar.1 second\n")
+	if got := patternSteps(s, "second"); got != "12: kick  lead 1" {
+		t.Errorf("bar 1 of three quarters is steps 12 to 23, got %q", got)
+	}
+	a := newTUIApp(s, NewLogBuffer(50))
+	a.openEditor("w", focusGrid)
+	for _, k := range []terminal.Event{{Type: terminal.EventKey, Key: terminal.KeyPageDown}, {Type: terminal.EventKey, Key: terminal.KeyRune, Rune: 'L'}} {
+		a.editorKey(k)
+	}
+	d, _ := s.pats.get("w")
+	g := fitGrid(d.Steps, 200, 0, 0, d.Signature())
+	cells := make([]terminal.Cell, 200)
+	a.drawRuler(tui.NewRegion(cells, 200, 0, 0, 200, 1), g, -1)
+	if title := a.editTitle(d); a.ed.step != 16 || !strings.Contains(title, "2 bars of 3/4") || cells[g.x(12)].Rune != '2' || cells[g.x(4)].Rune != '·' || cells[g.x(2)].Rune != ' ' {
+		t.Errorf("a bar and a beat on from 0 reached step %d, want 16; title %q; ruler at 12, 4, 2: %q %q %q",
+			a.ed.step, title, cells[g.x(12)].Rune, cells[g.x(4)].Rune, cells[g.x(2)].Rune)
+	}
+	if got := transportPos(0, 8, audio.Meter{Num: 6, Den: 8}); got != "1.2.3" {
+		t.Errorf("step 8 of 6/8 at %s, want its second dotted beat's third sixteenth, 1.2.3", got)
+	}
+}
+
 // TestMixerMutesTheCursorsSlot: space and m on the mixer mute the slot under its
 // cursor and let it sound again, through the command a script runs, which where
 // reports.
@@ -1454,6 +1484,51 @@ validate all
 	}
 }
 
+// TestRipPinsTheMeter: rip ... meter <n/d> reads a recording in bars of that
+// meter, which its patterns, its ripped line and the transport then carry; more
+// bars than a pattern of the meter holds, and a pin on a score, are refused
+func TestRipPinsTheMeter(t *testing.T) {
+	dir := t.TempDir()
+	wav := filepath.Join(dir, "loop.wav")
+	writeWAV(t, wav, thumpLoop())
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("! rip %[1]s waltz 6 meter 3/4\n! rip %[2]s score meter 3/4\nrip %[1]s waltz 5 meter 3/4\n", wav, filepath.Join(dir, "score.mid")))
+	three := audio.Meter{Num: 3, Den: 4}
+	if rp := s.rips["waltz"]; rp == nil || rp.rip.Meter != three || s.meter != three || !strings.Contains(out.String(), " bpm 3/4, ") {
+		t.Fatalf("the pinned rip, the transport at %s:\n%s", s.meter, out.String())
+	}
+	for _, name := range s.pats.order {
+		if d, _ := s.pats.get(name); d.Signature() != three || d.Steps%three.Steps() != 0 {
+			t.Errorf("%s: %d steps of %q, want whole bars of 3/4", name, d.Steps, d.Meter)
+		}
+	}
+}
+
+// TestASongRipsBackInItsMeter: the song compress makes of a rip in 3/4 is heard
+// back on its own grid in its meter, every bar line shared with the rip's,
+// where heard back in 4/4 it shares one line in three
+func TestASongRipsBackInItsMeter(t *testing.T) {
+	wav := filepath.Join(t.TempDir(), "loop.wav")
+	writeWAV(t, wav, thumpLoop())
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("rip %s waltz 5 meter 3/4\ncompress waltz 20\n", wav))
+	d, ok := s.songs.get("waltz")
+	if !ok {
+		t.Fatalf("no song from compress:\n%s", out.String())
+	}
+	score, err := s.songScore(d, s.rips["waltz"].rip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if score.Bars != 1 {
+		t.Errorf("the song rips back with %.2f of the rip's bar lines, want them all:\n%s", score.Bars, out.String())
+	}
+}
+
 // TestRipReadsAMIDIFileAsAScore: a .mid given to rip is its transcript, nothing
 // heard: patterns, the shipped voices under the rip's names and the tempo, and
 // compress, song, notes, agree and truth work from it as from a recording's
@@ -1473,7 +1548,7 @@ func TestRipReadsAMIDIFileAsAScore(t *testing.T) {
 	}
 	notes = append(notes, audio.RipNote{Start: 0, End: step, MIDI: 110, Vel: 0.5}) // over the rip's range
 	var b bytes.Buffer
-	if err := audio.WriteMIDI(&b, notes, hits, bpm); err != nil {
+	if err := audio.WriteMIDI(&b, notes, hits, bpm, audio.Meter{}); err != nil {
 		t.Fatal(err)
 	}
 	mid := filepath.Join(t.TempDir(), "score.mid")
@@ -1544,7 +1619,7 @@ func TestCompressMergesScatteredFalseHitsNotNotes(t *testing.T) {
 		}
 	}
 	var buf bytes.Buffer
-	if err := audio.WriteMIDI(&buf, notes, hits, bpm); err != nil {
+	if err := audio.WriteMIDI(&buf, notes, hits, bpm, audio.Meter{}); err != nil {
 		t.Fatal(err)
 	}
 	mid := filepath.Join(t.TempDir(), "score.mid")
@@ -1590,6 +1665,7 @@ event = [{pos = 0, vel = 1, oct = -1, dur = 6}, {pos = 8, vel = 0.7, deg = 4, oc
 [[pattern]]
 name = "waltz"
 steps = 12
+meter = "3/4"
 role = "bass"
 [[pattern.track]]
 instr = "bass"
@@ -1602,10 +1678,78 @@ scale = "minor"
 bars = [["", "hook", "", "low"], ["", "hook", "", "low"]]
 `
 
+// TestMeterSetsTheBarTheTransportCounts: meter sets the bar the transport plays
+// and render writes, bare names it, where counts in it, and a meter whose bar
+// the grid cannot hold is refused
+func TestMeterSetsTheBarTheTransportCounts(t *testing.T) {
+	wav := filepath.Join(t.TempDir(), "waltz.wav")
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("meter\nmeter 3/4\n! meter 3/5\n! meter 33/8\nbuiltin pattern\nbpm 120\nslot 0 beat_basic\nrender %s 2\n", wav))
+	waitFor(t, func() bool { return s.eng.MusicMeter() == audio.Meter{Num: 3, Den: 4} }, "the transport never took 3/4")
+	runOrFatal(t, s, &out, "where\n")
+	f, err := os.Open(wav)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, _, err := audio.ReadWAV(f)
+	f.Close()
+	if err != nil || len(x) != 2*audio.SamplesPerBar(120, audio.Meter{Num: 3, Den: 4}) {
+		t.Errorf("render of two bars of 3/4: %v, %d samples", err, len(x))
+	}
+	for _, want := range []string{"meter 4/4, a bar of 16 steps", "meter 3/4, a bar of 12 steps", "2 bar(s) of 3/4 at 120 bpm", "step 0 of 3/4"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("no %q:\n%s", want, out.String())
+		}
+	}
+}
+
+// TestASongPlaysInItsMeter: a song plays and renders in bars of its meter, the
+// transport taking it even from a run in another meter, whose next bar line the
+// stop and reset before it would otherwise drop
+func TestASongPlaysInItsMeter(t *testing.T) {
+	dir := t.TempDir()
+	doc, wav := filepath.Join(dir, "waltz.toml"), filepath.Join(dir, "waltz.wav")
+	writeFile(t, doc, `[[pattern]]
+name = "oom"
+steps = 12
+meter = "3/4"
+role = "rhythm"
+[[pattern.track]]
+instr = "kick"
+event = [{pos = 0, vel = 1}, {pos = 4, vel = 0.5}, {pos = 8, vel = 0.5}]
+[[song]]
+name = "waltz"
+bpm = 150
+meter = "3/4"
+root = 43
+scale = "minor"
+bars = [["oom", "", "", ""], ["oom", "", "", ""]]
+`)
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	s.ticked = true
+	runOrFatal(t, s, &out, fmt.Sprintf("load %s\nmusic start\nsong waltz %s\nsong waltz play\n", doc, wav))
+	waitFor(t, func() bool { return s.eng.MusicMeter() == audio.Meter{Num: 3, Den: 4} }, "the song's transport never took 3/4")
+	runOrFatal(t, s, &out, "music stop\n")
+	f, err := os.Open(wav)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, _, err := audio.ReadWAV(f)
+	f.Close()
+	if err != nil || len(x) != 2*audio.SamplesPerBar(150, audio.Meter{Num: 3, Den: 4}) || !strings.Contains(out.String(), "playing waltz: 2 bar(s) of 3/4") {
+		t.Errorf("the waltz rendered %d samples (%v), want two bars of 3/4:\n%s", len(x), err, out.String())
+	}
+}
+
 // TestWriteAndLoadSpeakMIDI: write puts a pattern or a song in a .mid, as song
 // does a song; load reads one back as patterns and a song under a name, the
-// transport on its tempo and key, and merge into the document, in place of an
-// earlier load of the name; save, render, export and a sound's load refuse one
+// transport on its tempo, meter and key, and merge into the document, in place
+// of an earlier load of the name; save, render, export and a sound's load
+// refuse one
 func TestWriteAndLoadSpeakMIDI(t *testing.T) {
 	dir := t.TempDir()
 	doc := filepath.Join(dir, "doc.toml")
@@ -1643,14 +1787,14 @@ merge pattern %[1]s/Waltz.mid back
 	}
 	// the ditty's load replaced the document; the hook's merge joined it under its
 	// file's name, the waltz's replaced the ditty's under back, and set the transport
-	if !strings.Contains(out.String(), "song back plays them in 2 bar(s) at 90 bpm, G2 minor") || s.bpm != 100 || s.root != 38 ||
+	if !strings.Contains(out.String(), "song back plays them in 2 bar(s) of 4/4 at 90 bpm, G2 minor") || s.bpm != 100 || s.root != 38 || s.meter != (audio.Meter{Num: 3, Den: 4}) ||
 		!slices.Equal(s.pats.order, []string{"back_bass_a", "hook_beat_a", "hook_melody_a"}) {
 		t.Fatalf("%d bpm, root %d, patterns %v:\n%s", s.bpm, s.root, s.pats.order, out.String())
 	}
 	if p, ok := s.pats.get("back_bass_a"); !ok || p.Steps != 12 || !s.songs.has("back") || !s.songs.has("hook") || !s.pats.isDirty("back_bass_a") {
 		t.Errorf("the waltz loaded as %+v, songs %v:\n%s", p, s.songs.order, out.String())
 	}
-	if song, _ := s.songs.get("back"); len(song.Bars) != 1 || song.Bars[0][audio.RipPartSlots[audio.RipBass]] != "back_bass_a" {
+	if song, _ := s.songs.get("back"); len(song.Bars) != 1 || song.Bars[0][audio.RipPartSlots[audio.RipBass]] != "back_bass_a" || song.Meter != "3/4" {
 		t.Errorf("the waltz's song %+v", song)
 	}
 }
@@ -1936,7 +2080,7 @@ func TestRipFitsVoicesAndCompressesToASong(t *testing.T) {
 	}
 	// two bars at 100 bpm: the shortest loop the rip takes, since every judge
 	// of the refinement renders and hears the whole song
-	buf, err := s.eng.RenderMusic(slots, 100, 2, audio.DefaultRootNote, audio.ScalePhrygian, nil, 1)
+	buf, err := s.eng.RenderMusic(slots, 100, audio.Meter{}, 2, audio.DefaultRootNote, audio.ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2288,7 +2432,7 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 		t.Fatalf("index: %v, %d bass and %d other instrument(s)", err, len(set.bass), len(set.other))
 	}
 	notes := []audio.RipEvent{{Step: 2, Dur: 2, MIDI: 62, Vel: 0.8}, {Step: 14, Dur: 2, MIDI: 58, Vel: 0.5}, {Bar: 1, Step: 10, Dur: 2, MIDI: 71, Vel: 1}}
-	line, err := set.line(set.other[0], notes, 2, 120, cents, false, map[sampleKey][]float64{})
+	line, err := set.line(set.other[0], notes, audio.Meter{}, 2, 120, cents, false, map[sampleKey][]float64{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2507,6 +2651,59 @@ func TestCorpusGeneratesPartsTheBankNeverHad(t *testing.T) {
 	runOrFatal(t, s, &out, "corpus "+t.TempDir()+" 1 1 gen aug\n")
 	if !strings.Contains(out.String(), "generated beats") {
 		t.Errorf("corpus did not say it generated:\n%s", out.String())
+	}
+}
+
+// TestACorpusOfMetersLabelsItsBars: corpus ... meters renders a share of its
+// loops in 3/4 or 6/8, every part generated in that meter and labelled in its
+// bars, and leaves each 4/4 loop as a corpus without meters has it
+func TestACorpusOfMetersLabelsItsBars(t *testing.T) {
+	dir := t.TempDir()
+	plain, metered := filepath.Join(dir, "plain"), filepath.Join(dir, "metered")
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s 5 2 nowav\ncorpus %s 5 2 nowav meters\n", plain, metered))
+	read := func(dir string, i int, ext string) []byte {
+		data, _ := os.ReadFile(filepath.Join(dir, fmt.Sprintf("loop_%03d%s", i, ext)))
+		return data
+	}
+	for i := range 4 { // the seed draws 4/4 for these, and 6/8 for the last
+		if !bytes.Equal(read(plain, i, ".json"), read(metered, i, ".json")) || !bytes.Equal(read(plain, i, ".mel"), read(metered, i, ".mel")) {
+			t.Errorf("4/4 loop %d differs with meters", i)
+		}
+	}
+	var was, l corpusLoop
+	json.Unmarshal(read(plain, 4, ".json"), &was)
+	json.Unmarshal(read(metered, 4, ".json"), &l)
+	beat, bass := audio.GetPattern(audio.PatternIDByName("corpus_beat")), audio.GetPattern(audio.PatternIDByName("corpus_bass"))
+	if l.Meter != "6/8" || l.Frames >= was.Frames || beat == nil || beat.Meter != (audio.Meter{Num: 6, Den: 8}) || bass == nil || bass.Steps != 12 || !strings.Contains(out.String(), "1 in 3/4 or 6/8") {
+		t.Fatalf("loop 4 in %q over %d frames (%d in 4/4), its beat %+v:\n%s", l.Meter, l.Frames, was.Frames, beat, out.String())
+	}
+	// the beat's downbeat kick lands on the second bar line, twelve steps in
+	at := int(12*float64(audio.SamplesPerStep(l.BPM))/audio.AudioSampleRate/audio.RipFrameSec + 0.5)
+	var kicks []int
+	drums := false
+	for _, e := range l.Events {
+		drums = drums || e.Drum >= 0
+		if e.Drum == 0 {
+			kicks = append(kicks, e.Frame)
+		}
+	}
+	if drums && !slices.Contains(kicks, at) {
+		t.Errorf("no kick at frame %d, the second bar line of 6/8: kicks at %v", at, kicks)
+	}
+}
+
+// TestBenchGradesEachMeter: bench ... meters grades each meter's loops apart,
+// with the rips that read the meter, and verbose names each loop's meter
+func TestBenchGradesEachMeter(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, "bench 1 3 meters verbose\n") // the seed's first loop is 6/8
+	if !strings.Contains(out.String(), "  in 6/8, 1 loop(s): ") || !strings.Contains(out.String(), ", its bar in ") || !regexp.MustCompile(`(?m)^loop +0 +96 bpm 6/8 `).MatchString(out.String()) {
+		t.Errorf("bench by meter:\n%s", out.String())
 	}
 }
 

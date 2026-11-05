@@ -433,7 +433,7 @@ func (a *tuiApp) renderHeader(r tui.Region) {
 		sym = "▶"
 	}
 	secs := []tui.BarSection{
-		{Value: sym + " " + transportPos(g.bar, g.step), ValueStyle: val, Priority: 5},
+		{Value: sym + " " + transportPos(g.bar, g.step, g.meter), ValueStyle: val, Priority: 5},
 		{Label: "bpm ", Value: strconv.Itoa(a.s.bpm), LabelStyle: lab, ValueStyle: val, Priority: 4},
 		{Value: a.s.keyName(), ValueStyle: val, Priority: 2},
 	}
@@ -475,10 +475,12 @@ func (a *tuiApp) renderHeader(r tui.Region) {
 		SepStyle: tui.Style{Fg: a.theme.Border}})
 }
 
-// transportPos is a playhead as bar.beat.sixteenth, counting from one
-func transportPos(bar int64, step int) string {
-	in := step % audio.StepsPerBar
-	return fmt.Sprintf("%d.%d.%d", bar+1, in/audio.StepsPerBeat+1, in%audio.StepsPerBeat+1)
+// transportPos is a playhead in bars of meter m as bar.beat.sixteenth, counting
+// from one, the beat the one the bar is felt in: 6/8's dotted quarter
+func transportPos(bar int64, step int, m audio.Meter) string {
+	in := step % m.Steps()
+	_, per := m.Felt()
+	return fmt.Sprintf("%d.%d.%d", bar+1, in/per+1, in%per+1)
 }
 
 // renderBrowse lays out the browser beside the mixer over the log, the log taking
@@ -665,7 +667,7 @@ func (a *tuiApp) renderMixer(r tui.Region) {
 		r.Sub(0, 1, r.W, r.H-2).ScrollBarStyled(r.W-1, top, content.H, len(rows),
 			tui.ScrollBarOpts{ThumbFg: border, TrackFg: border, Track: '│'})
 	}
-	tl := fitTimeline(content.W - mixLabW)
+	tl := fitTimeline(content.W-mixLabW, a.sig.meter)
 	for i, y := top, 0; i < len(rows) && y < content.H; i, y = i+1, y+1 {
 		if rows[i].trk < 0 && i > top {
 			y += spare
@@ -706,23 +708,28 @@ func mixIndex(rows []mixRow, r mixRow) int {
 // mixLabW is the mixer's instrument column
 const mixLabW = 7
 
-// timeline is a window of the sequencer's four-bar cycle: bars of cw cells a step
-type timeline struct{ bars, cw int }
+// timeline is a window of the sequencer's four-bar cycle: bars of meter m, of cw
+// cells a step, a gap between the beats the bar is felt in
+type timeline struct {
+	bars, cw int
+	m        audio.Meter
+}
 
-// fitTimeline shows the most bars that fit w, then widens their steps
-func fitTimeline(w int) timeline {
+// fitTimeline shows the most bars of meter m that fit w, then widens their steps
+func fitTimeline(w int, m audio.Meter) timeline {
+	_, per := m.Felt()
 	width := func(t timeline) int {
-		n := t.bars * audio.StepsPerBar
-		return n*t.cw + n/audio.StepsPerBeat - 1
+		n := t.bars * m.Steps()
+		return n*t.cw + n/per - 1
 	}
-	t := timeline{bars: 1, cw: 1}
+	t := timeline{bars: 1, cw: 1, m: m}
 	for _, b := range []int{4, 2} {
-		if width(timeline{b, 1}) <= w {
+		if width(timeline{b, 1, m}) <= w {
 			t.bars = b
 			break
 		}
 	}
-	for t.cw < 3 && width(timeline{t.bars, t.cw + 1}) <= w {
+	for t.cw < 3 && width(timeline{t.bars, t.cw + 1, m}) <= w {
 		t.cw++
 	}
 	return t
@@ -765,8 +772,8 @@ func (a *tuiApp) drawMixRow(r tui.Region, row mixRow, tl timeline, cursor bool) 
 				info += " · " + s
 			}
 		}
-		if bars := pat.Steps / audio.StepsPerBar; bars > 1 {
-			info += fmt.Sprintf(" · bar %d/%d", g.step%pat.Steps/audio.StepsPerBar+1, bars)
+		if bar := pat.Meter.Steps(); pat.Steps/bar > 1 {
+			info += fmt.Sprintf(" · bar %d/%d", g.step%pat.Steps/bar+1, pat.Steps/bar)
 		}
 		r.Text(tx, 0, tui.Truncate(info, r.W-tx), th.HintFg, th.Bg, terminal.AttrNone)
 		return
@@ -783,7 +790,9 @@ func (a *tuiApp) drawMixRow(r tui.Region, row mixRow, tl timeline, cursor bool) 
 		labFg = th.Selected
 	}
 	r.Text(0, 0, tui.PadRight(tui.Truncate(audio.InstrumentName(tr.Instr), mixLabW-1), mixLabW-1), labFg, labBg, terminal.AttrNone)
-	span := tl.bars * audio.StepsPerBar
+	bar := tl.m.Steps()
+	_, per := tl.m.Felt()
+	span := tl.bars * bar
 	first := g.step - g.step%span // the window holding the playhead
 	for i := range span {
 		c := first + i
@@ -805,8 +814,8 @@ func (a *tuiApp) drawMixRow(r tui.Region, row mixRow, tl timeline, cursor bool) 
 		if g.running && c == g.step {
 			bg = th.CursorBg
 		}
-		x := mixLabW + i*tl.cw + i/audio.StepsPerBeat
-		if i > 0 && i%audio.StepsPerBar == 0 {
+		x := mixLabW + i*tl.cw + i/per
+		if i > 0 && i%bar == 0 {
 			r.Cell(x-1, 0, '│', th.Border, th.Bg, terminal.AttrNone)
 		}
 		for k := range tl.cw {

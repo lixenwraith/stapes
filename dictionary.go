@@ -242,17 +242,15 @@ func refineAssignment(r *audio.Rip, part audio.RipPart, greedy []int, threshold 
 }
 
 // songScore renders a song through the engine and rips the render on the
-// song's own grid, its tempo and its downbeat at the start pinned, so the score
-// is of the hits and the notes and not of the tempo and bar-line decoders, and
-// compares that rip with want: how much of a rip survives as the song
+// song's own grid, its tempo, its downbeat at the start and its meter pinned, so
+// the score is of the hits and the notes and not of the tempo and bar-line
+// decoders, and compares that rip with want: how much of a rip survives as the song
 func (s *Session) songScore(d *audio.SongDef, want *audio.Rip) (audio.RipScore, error) {
 	buf, err := s.renderSong(d, nil)
 	if err != nil {
 		return audio.RipScore{}, err
 	}
-	rp := s.ripper()
-	rp.Grid = &audio.RipGrid{BPM: d.BPM}
-	got, err := rp.Samples(buf, audio.AudioSampleRate)
+	got, err := s.songRipper(d).Samples(buf, audio.AudioSampleRate)
 	if err != nil {
 		return audio.RipScore{}, err
 	}
@@ -306,9 +304,7 @@ func (s *Session) songJudge(d *audio.SongDef, rp *ripped) (audio.RipFidelity, er
 	if err != nil {
 		return audio.RipFidelity{}, err
 	}
-	r := s.ripper()
-	r.Grid = &audio.RipGrid{BPM: d.BPM}
-	got, err := r.Sound(buf, audio.AudioSampleRate, nil)
+	got, err := s.songRipper(d).Sound(buf, audio.AudioSampleRate, nil)
 	if err != nil {
 		return audio.RipFidelity{}, err
 	}
@@ -328,13 +324,12 @@ func (s *Session) songJudgeBars(d *audio.SongDef, rp *ripped, bars []int) (float
 	if err != nil {
 		return 0, err
 	}
-	r := s.ripper()
-	r.Grid = &audio.RipGrid{BPM: d.BPM}
+	r, per := s.songRipper(d), d.Signature().Beats()
 	var sum float64
 	n := 0
 	for _, b := range bars {
-		lo := audio.BeatsPerBar * b
-		if b < 0 || b >= len(tl) || lo+audio.BeatsPerBar+1 > len(want.Beats) {
+		lo := per * b
+		if b < 0 || b >= len(tl) || lo+per+1 > len(want.Beats) {
 			continue
 		}
 		buf, err := s.renderBars(d, tl[b:b+1], nil)
@@ -346,7 +341,7 @@ func (s *Session) songJudgeBars(d *audio.SongDef, rp *ripped, bars []int) (float
 			return 0, err
 		}
 		bar := *want
-		bar.Beats = want.Beats[lo : lo+audio.BeatsPerBar+1]
+		bar.Beats = want.Beats[lo : lo+per+1]
 		sum += audio.Fidelity(got, &bar).Total
 		n++
 	}
@@ -355,6 +350,14 @@ func (s *Session) songJudgeBars(d *audio.SongDef, rp *ripped, bars []int) (float
 		return fid.Total, err
 	}
 	return sum / float64(n), nil
+}
+
+// songRipper hears a render of a song on its own grid: its tempo from the first
+// sample, in its meter
+func (s *Session) songRipper(d *audio.SongDef) audio.Ripper {
+	r, m := s.ripper(), d.Signature()
+	r.Grid, r.Meter = &audio.RipGrid{BPM: d.BPM}, &m
+	return r
 }
 
 // soundOf is the recording as Fidelity hears it, heard once per rip
@@ -387,7 +390,7 @@ func (s *Session) renderSong(d *audio.SongDef, only []audio.InstrumentType) ([]f
 func (s *Session) renderBars(d *audio.SongDef, tl [][audio.MusicSlots]audio.PatternID, only []audio.InstrumentType) ([]float64, error) {
 	s.eng.SetTuning(d.Tuning)
 	defer s.eng.SetTuning(s.tuning)
-	return s.eng.RenderLines(tl, d.BPM, d.Root, d.ScaleID(), d.Chords, 1, only)
+	return s.eng.RenderLines(tl, d.BPM, d.Signature(), d.Root, d.ScaleID(), d.Chords, 1, only)
 }
 
 // songTimeline resolves a song's bars, applying the dirty patterns it names so
@@ -421,7 +424,7 @@ func cmdSong(s *Session, a []string) error {
 		return fmt.Errorf("%q: no such song (compress makes one; load pattern brings a file's in)", a[0])
 	}
 	if len(a) == 1 {
-		fmt.Fprintf(s.out, "%s: %d bar(s) at %d bpm, %s %s\n", d.Name, len(d.Bars), d.BPM, noteName(d.Root), d.Scale)
+		fmt.Fprintf(s.out, "%s: %d bar(s) of %s at %d bpm, %s %s\n", d.Name, len(d.Bars), d.Signature(), d.BPM, noteName(d.Root), d.Scale)
 		for i, bar := range d.Bars {
 			names := make([]string, audio.MusicSlots)
 			for slot := range names {
@@ -476,7 +479,7 @@ func cmdSong(s *Session, a []string) error {
 	if werr != nil {
 		return werr
 	}
-	fmt.Fprintf(s.out, "wrote %s: %s, %d bar(s) at %d bpm (%.1fs)\n", a[1], d.Name, len(d.Bars), d.BPM, float64(len(buf))/audio.AudioSampleRate)
+	fmt.Fprintf(s.out, "wrote %s: %s, %d bar(s) of %s at %d bpm (%.1fs)\n", a[1], d.Name, len(d.Bars), d.Signature(), d.BPM, float64(len(buf))/audio.AudioSampleRate)
 	return nil
 }
 
@@ -489,8 +492,8 @@ type songPlay struct {
 	until time.Time
 }
 
-// playSong conducts a song through the live sequencer: the tempo and key set,
-// the transport reset, the first bar's patterns placed and each next bar's
+// playSong conducts a song through the live sequencer: the transport reset, its
+// tempo, meter and key set, the first bar's patterns placed and each next bar's
 // scheduled to land on its bar line while the one before plays; the last bar
 // stops the transport. A front end that ticks drives it through conduct and
 // play returns at once; without one, play returns when the song ends.
@@ -505,6 +508,13 @@ func (s *Session) playSong(d *audio.SongDef) error {
 	if err != nil {
 		return err
 	}
+	// stopped first: a running transport holds a tempo for the next beat and a
+	// meter for the next bar line, and the reset would drop them
+	s.eng.StopMusic()
+	s.eng.ResetMusic()
+	if err := s.setMeter(d.Signature()); err != nil {
+		return err
+	}
 	s.bpm = d.BPM
 	s.eng.SetMusicBPM(d.BPM)
 	s.root, s.scale = d.Root, d.ScaleID()
@@ -512,17 +522,15 @@ func (s *Session) playSong(d *audio.SongDef) error {
 		s.prog = slices.Clone(d.Chords)
 	}
 	s.eng.SetHarmony(d.Root, d.ScaleID(), d.Chords)
-	s.tuning = d.Tuning // the song's pitch stays the transport's after, as its tempo and key do
+	s.tuning = d.Tuning // the song's pitch stays the transport's after, as its tempo, meter and key do
 	s.eng.SetTuning(d.Tuning)
-	s.eng.StopMusic()
-	s.eng.ResetMusic()
 	for slot, id := range tl[0] {
 		s.setSlot(slot, id, 0, false)
 	}
-	length := float64(len(tl)*audio.SamplesPerBar(d.BPM)) / audio.AudioSampleRate
+	length := float64(len(tl)*audio.SamplesPerBar(d.BPM, d.Signature())) / audio.AudioSampleRate
 	s.song = &songPlay{name: d.Name, bars: tl, next: 1, until: time.Now().Add(time.Duration(length*float64(time.Second)) + 3*time.Second)}
 	s.eng.StartMusic()
-	fmt.Fprintf(s.out, "playing %s: %d bar(s), %.1fs; music stop ends it\n", d.Name, len(tl), length)
+	fmt.Fprintf(s.out, "playing %s: %d bar(s) of %s, %.1fs; music stop ends it\n", d.Name, len(tl), d.Signature(), length)
 	if s.ticked {
 		return nil
 	}
@@ -779,7 +787,7 @@ func (s *Session) refineSteps(rp *ripped, d *audio.SongDef, base float64, o refi
 			originals[n] = clonePatternDef(pd)
 			slotOf[n] = slot
 			names = append(names, n)
-			local = local && pd.Steps <= audio.StepsPerBar
+			local = local && pd.Steps <= d.Signature().Steps()
 			for ti := range pd.Track {
 				if instr, _ := audio.InstrumentByName(pd.Track[ti].Instr); instr.IsDrum() {
 					continue
@@ -822,14 +830,15 @@ func (s *Session) refineSteps(rp *ripped, d *audio.SongDef, base float64, o refi
 	}
 	// proposal is the recording's strongest pitch over a step of the bar a
 	// pattern first plays in, in the register of the pattern's slot
+	m := rp.rip.Meter
 	proposal := func(pat string, pos int) (int, bool) {
-		bar := uses[pat][0] + pos/audio.StepsPerBar
-		i := audio.BeatsPerBar*bar + pos%audio.StepsPerBar/audio.StepsPerBeat
+		bar := uses[pat][0] + pos/m.Steps()
+		i := m.Beats()*bar + pos%m.Steps()/m.Beat()
 		if i < 0 || i+1 >= len(rp.rip.Beats) {
 			return 0, false
 		}
-		span := (rp.rip.Beats[i+1] - rp.rip.Beats[i]) / audio.StepsPerBeat
-		t0 := rp.rip.Beats[i] + span*float64(pos%audio.StepsPerBeat)
+		span := (rp.rip.Beats[i+1] - rp.rip.Beats[i]) / float64(m.Beat())
+		t0 := rp.rip.Beats[i] + span*float64(pos%m.Beat())
 		f0, f1 := int(t0/want.Frames.Hop), int((t0+span)/want.Frames.Hop)
 		lo, hi := audio.RipMelodyLow, audio.RipMaxMIDI
 		if slotOf[pat] == 3 {

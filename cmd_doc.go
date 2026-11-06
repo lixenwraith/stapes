@@ -360,8 +360,8 @@ func cmdRip(s *Session, a []string) error {
 	if r.Tuning <= -5 || r.Tuning >= 5 {
 		tuned = fmt.Sprintf(" tuned %+.0f cents", r.Tuning)
 	}
-	fmt.Fprintf(s.out, "ripped %s: %d bpm %s, %s%s, %d bar(s) %s; kicks %d snares %d hats %d, melody notes %d and %d under, bass notes %d\n",
-		a[0], r.BPM, r.Meter, s.keyName(), tuned, len(r.Bars), from, hits[audio.InstrKick], hits[audio.InstrSnare], hits[audio.InstrHihat], notes, under, low)
+	fmt.Fprintf(s.out, "ripped %s: %d bpm %s%s, %s%s, %d bar(s) %s; kicks %d snares %d hats %d, melody notes %d and %d under, bass notes %d\n",
+		a[0], r.BPM, r.Meter, feltWord(r.Meter, r.BPM), s.keyName(), tuned, len(r.Bars), from, hits[audio.InstrKick], hits[audio.InstrSnare], hits[audio.InstrHihat], notes, under, low)
 	names := make([]string, 0, len(defs))
 	for _, d := range defs {
 		names = append(names, d.Name)

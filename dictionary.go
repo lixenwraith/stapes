@@ -380,6 +380,9 @@ func (s *Session) songJudgeBars(d *audio.SongDef, rp *ripped, bars []int) (float
 func (s *Session) songRipper(d *audio.SongDef) audio.Ripper {
 	r, m := s.ripper(), d.Signature()
 	r.Grid, r.Meter = &audio.RipGrid{BPM: d.BPM}, &m
+	if !d.Uniform() { // the render's beats move with its bars' tempos
+		r.Grid = &audio.RipGrid{BPM: d.BPM, Beats: d.BeatSeconds()}
+	}
 	return r
 }
 
@@ -417,7 +420,11 @@ func (s *Session) renderBars(d *audio.SongDef, tl [][audio.MusicSlots]audio.Patt
 	defer s.eng.SetKit(s.kit)
 	s.eng.SetTuning(d.Tuning)
 	defer s.eng.SetTuning(s.tuning)
-	return s.eng.RenderLines(tl, d.BPM, d.Signature(), d.Root, d.ScaleID(), d.Chords, 1, only)
+	heads := d.Heads()
+	if len(tl) != len(heads) { // a range of the song's bars: the heads of those bars
+		heads = heads[len(heads)-len(tl):]
+	}
+	return s.eng.RenderBars(tl, heads, d.Root, d.ScaleID(), d.Chords, 1, only)
 }
 
 // songTimeline resolves a song's bars, applying the dirty patterns it names so
@@ -451,16 +458,21 @@ func cmdSong(s *Session, a []string) error {
 		return fmt.Errorf("%q: no such song (compress makes one; load pattern brings a file's in)", a[0])
 	}
 	if len(a) == 1 {
-		fmt.Fprintf(s.out, "%s: %d bar(s) of %s at %d bpm, %s %s\n", d.Name, len(d.Bars), d.Signature(), d.BPM, noteName(d.Root), d.Scale)
+		fmt.Fprintf(s.out, "%s: %d bar(s) of %s at %d bpm%s, %s %s\n", d.Name, len(d.Bars), d.Signature(), d.BPM, feltWord(d.Signature(), d.BPM), noteName(d.Root), d.Scale)
 		for i, bar := range d.Bars {
 			names := make([]string, audio.MusicSlots)
+			patterns := d.Patterns(i)
 			for slot := range names {
 				names[slot] = "-"
-				if slot < len(bar) && bar[slot] != "" {
-					names[slot] = bar[slot]
+				if slot < len(patterns) && patterns[slot] != "" {
+					names[slot] = patterns[slot]
 				}
 			}
-			fmt.Fprintf(s.out, "%3d: %s\n", i, strings.Join(names, "  "))
+			words := strings.Join(bar[:len(bar)-len(patterns)], " ")
+			if words != "" {
+				words += "  "
+			}
+			fmt.Fprintf(s.out, "%3d: %s%s\n", i, words, strings.Join(names, "  "))
 		}
 		return nil
 	}
@@ -514,9 +526,21 @@ func cmdSong(s *Session, a []string) error {
 type songPlay struct {
 	name  string
 	bars  [][audio.MusicSlots]audio.PatternID
+	heads []audio.BarHead
 	next  int  // the first bar not yet scheduled
+	tempo int  // the last bar whose tempo was set
 	begun bool // the transport has been seen at the song's first bar
 	until time.Time
+}
+
+// feltWord is the tempo a player reads beside the quarter tempo, when the
+// meter's beat is another note: " (eighth 147)" for a 3/8 at 73
+func feltWord(m audio.Meter, bpm int) string {
+	felt, note := m.FeltTempo(bpm)
+	if note == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (%s %d)", note, felt)
 }
 
 // playSong conducts a song through the live sequencer: the transport reset, its
@@ -558,10 +582,15 @@ func (s *Session) playSong(d *audio.SongDef) error {
 	for slot, id := range tl[0] {
 		s.setSlot(slot, id, 0, false)
 	}
-	length := float64(len(tl)*audio.SamplesPerBar(d.BPM, d.Signature())) / audio.AudioSampleRate
-	s.song = &songPlay{name: d.Name, bars: tl, next: 1, until: time.Now().Add(time.Duration(length*float64(time.Second)) + 3*time.Second)}
+	heads := d.Heads()
+	var samples int
+	for _, h := range heads {
+		samples += audio.SamplesPerBar(h.BPM, h.Meter)
+	}
+	length := float64(samples) / audio.AudioSampleRate
+	s.song = &songPlay{name: d.Name, bars: tl, heads: heads, next: 1, until: time.Now().Add(time.Duration(length*float64(time.Second)) + 3*time.Second)}
 	s.eng.StartMusic()
-	fmt.Fprintf(s.out, "playing %s: %d bar(s) of %s, %.1fs; music stop ends it\n", d.Name, len(tl), d.Signature(), length)
+	fmt.Fprintf(s.out, "playing %s: %d bar(s) of %s%s, %.1fs; music stop ends it\n", d.Name, len(tl), d.Signature(), feltWord(d.Signature(), d.BPM), length)
 	if s.ticked {
 		return nil
 	}
@@ -604,7 +633,21 @@ func (s *Session) conduct() {
 				s.setSlot(slot, id, 0, p.next == at+1)
 			}
 		}
+		// a bar's own meter is set a bar ahead, since the transport takes one at
+		// the next bar line, as it takes the slots
+		if h, prev := p.heads[p.next], p.heads[p.next-1]; h.Meter != prev.Meter {
+			s.eng.SetMusicMeter(h.Meter)
+			s.meter = h.Meter
+		}
 		p.next++
+	}
+	// a bar's own tempo is set as the bar begins, taken at its first beat
+	for p.tempo < at && p.tempo+1 < len(p.heads) {
+		p.tempo++
+		if h := p.heads[p.tempo]; h.BPM != p.heads[p.tempo-1].BPM {
+			s.eng.SetMusicBPM(h.BPM)
+			s.bpm = h.BPM
+		}
 	}
 }
 

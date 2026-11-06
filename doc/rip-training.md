@@ -571,17 +571,20 @@ round  corpus                       clean   30 cm   Pixel   Galaxy
 24b    11, MusicNet 20%, GuitarSet  0.764   0.653   0.692   0.697
 ```
 
-Audio v0.5.1 reads low notes by strikes as well, which moves the same weights, with no training:
+Audio v0.5.3 reads low notes by strikes as well and drops shadows under real notes, which moves
+the same weights with no training. The same scorer through stapes itself, on audio v0.6.0, two
+later rounds added:
 
 ```
-round  corpus                       clean   30 cm   Pixel   Galaxy
-22a    11                           0.784   0.680   0.754   0.758
-24a    14                           0.821   0.661   0.750   0.721
+round  corpus                 windows       clean   30 cm   Pixel   Galaxy
+22a    11                                   0.785   0.682   0.756   0.755
+24a    14                                   0.819   0.660   0.749   0.722
+25a    14, 11 at half                       0.819   0.681   0.767   0.752
+26a    14, 11 at half         half shuffled 0.831   0.658   0.746   0.748
 ```
 
-The gain is under E4: on rendered instruments E3 to D#4 goes from 0.61-0.77 to 0.74-0.92. Basic
-Pitch, which reads every register alike, had led there. All-note F1 on seven renders of Für Elise
-now runs 0.784 to 0.895 against its 0.802 to 0.900, ahead on four.
+Basic Pitch's best per take is 0.778, 0.606, 0.614, 0.593. Under E4 the decoder was most of the
+gap: on rendered instruments E3 to D#4 went from 0.61-0.77 to 0.74-0.92 on 24a's weights.
 
 - **Weights shared across pitches** are 22a against 19a, the same stack fed to the model of
   section 7 on 3.7M weights: 0.693, 0.604, 0.623, 0.638. The stack alone gains nothing.
@@ -590,6 +593,7 @@ now runs 0.784 to 0.895 against its 0.802 to 0.900, ahead on four.
   model of their own and that path was not kept.
 - **Real arrangements** are 24a against 22a: clean +0.033, phones -0.011 to -0.031.
 - **Real recordings** at that mix are 24b against 22a: lower nearly everywhere.
+- **Shuffled windows** are 26a against 25a: clean +0.012 and rendered instruments +0.02 to +0.04, phones -0.004 to -0.023.
 
 To repeat 12a from a checkout with the trainer's changes:
 

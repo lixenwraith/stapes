@@ -183,6 +183,11 @@ rip are in place; what remains:
    few dozen such pairs would set the weights of `Fidelity`'s three terms and
    the lead rule's default by what ears prefer rather than by hand.
 
+9. A rip's voice from what was heard: the voice heads give nearly the mean of their training
+   genes on real recordings, and the wave head a saw through a phone, so a rip plays each register
+   on a modal bank at those genes, its fade set from its notes. The smallest close: a head trained
+   on the instrument alone, or a fit on a few genes against the recording's own fade and brightness.
+
 ## Files and banks
 
 ### Search more than one folder

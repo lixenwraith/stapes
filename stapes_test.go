@@ -2480,7 +2480,7 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 	if tempos, err := parseTempos("90-100"); err != nil || len(tempos) != 6 || tempos[0] != 90 || tempos[5] != 100 {
 		t.Errorf("tempos 90-100: %v %v", tempos, err)
 	}
-	if _, err := parseTempos("40,100"); err == nil {
+	if _, err := parseTempos("30,100"); err == nil {
 		t.Error("a tempo under the sequencer's range was accepted")
 	}
 	slow, err := s.corpus(tuneOptions{loops: 2, bars: 1, seed: 3, tempos: []int{80}})

@@ -12,10 +12,9 @@ the reasoning and the history of the rounds.
 Where each part stands:
 
 - **In released code:** `MelFrames`, the first and second input planes, the heads,
-  weight file version 3, `corpus`, `corpus <dir> from`, `corpus ... sampled`, `--mix`,
+  weight file versions 3 and 4, `corpus`, `corpus <dir> from`, `corpus ... sampled`, `--mix`,
   `--channel`, `--over` with its heard-hit rule, draws by length, `skip.txt`,
-  `make_noise.py`, `corpus ... midi`, `--pitchnet`, `--shuffle`, `--extra`.
-- **In the trainer alone:** `--pitchnet`'s model, which writes a `.pt` until Go reads it.
+  `make_noise.py`, `corpus ... midi`, `--pitchnet` and its `ripnotes.bin`, `--shuffle`, `--extra`.
 - **In no repository yet:** the phone take's scripts, which play, align and cut a
   recording of a known file.
 
@@ -365,7 +364,7 @@ offset    size  head       read as
 A file may lack the last 3 heads and still load.
 
 `--pitchnet` builds another model on the same heads: convolutions only, the same weights at
-every pitch, 169,862 weights in all.
+every pitch, 169,862 weights in all. Its file is `ripnotes.bin` (§9).
 
 ```
 input          B x T x 460              the two planes
@@ -464,9 +463,20 @@ offset  bytes         field
 The checksum catches damage, not tampering. A file only ever holds numbers, and `Load`
 checks its shape against its tensors.
 
+`--pitchnet` writes version 4, whose `kind` word after the version, 1, makes the model
+transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
+scalars, then the heads, the per-pitch ones first: pitch, strike, release and velocity,
+then onset, drums, voicing, wave and voice. The tensors are `reduce`, `wide`, `cells`,
+`near.0`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
+`nn.Conv1d` or `nn.Linear` holds it. In the stapes root the file is `ripnotes.bin`.
+Beside `ripmodel.bin` it gives pitch, voicing, strike, release and velocity, and the model
+keeps onset, drums, wave and voice. Alone it is unused. `average.py --out ripnotes.bin
+a.pt` turns a `.pt` of either model into its file.
+
 ## 10. Reading the model back
 
-`ripmodel.Hear` runs `Forward` over all of a recording's frames, takes the sigmoid of
+`ripmodel.Hear` runs `Forward` over all of a recording's frames, and a notes model's over
+their harmonic stack, built in Go as §4 builds it, takes the sigmoid of
 each head and fills `RipFrames`, the same fields the analysis fills. Loop 000 through
 12a, with a sure strike on frame 0 where the labels say kick, hihat, G3 and C3:
 

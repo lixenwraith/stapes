@@ -2,6 +2,10 @@
 --init into the next round's start and a weight file (README, Training in parallel):
 
     python3 average.py --pt round1.pt --out round1.bin shard0.pt shard1.pt shard2.pt
+
+One file is its own mean, so a .pt alone becomes its weight file:
+
+    python3 average.py --out ripnotes.bin pitchnet.pt
 """
 from __future__ import annotations
 
@@ -30,7 +34,7 @@ def mean(states: list, cut: int) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("files", nargs="+", help="the round's checkpoints, each train.py's --checkpoint")
-    ap.add_argument("--pt", required=True, help="the mean as a .pt, the next round's --init")
+    ap.add_argument("--pt", default="", help="the mean as a .pt, the next round's --init; none, only the weight file")
     ap.add_argument("--out", required=True, help="the mean as the weight file lixenwraith/transformer loads, as train.py's --out")
     ap.add_argument("--trim", type=float, default=0.0, help="share of the files whose highest and lowest values of each weight are dropped before the mean, under a half")
     args = ap.parse_args()
@@ -49,12 +53,13 @@ def main() -> None:
             raise SystemExit(f"{f}: {diff[0]} is {got.get(diff[0])}, {args.files[0]}'s {want.get(diff[0])}; a round's files share one shape")
 
     cut = int(args.trim * len(cks))
-    model = ripmodel.RipModel(ripmodel.Config(**cks[0]["cfg"]))
+    model = ripmodel.build(ripmodel.Config(**cks[0]["cfg"]))
     model.load_state_dict(mean([ck["model"] for ck in cks], cut))
-    torch.save({"model": model.state_dict(), "cfg": cks[0]["cfg"]}, args.pt)
+    if args.pt:
+        torch.save({"model": model.state_dict(), "cfg": cks[0]["cfg"]}, args.pt)
     model.eval()
     ripmodel.export(model, args.out)
-    print(f"averaged {len(cks)} files, {cut} dropped at each end of each weight; wrote {args.pt} and {args.out}")
+    print(f"averaged {len(cks)} files, {cut} dropped at each end of each weight; wrote {' and '.join(f for f in (args.pt, args.out) if f)}")
 
 
 if __name__ == "__main__":

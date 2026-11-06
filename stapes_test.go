@@ -18,8 +18,10 @@ import (
 	"time"
 
 	"github.com/lixenwraith/audio"
+	"github.com/lixenwraith/audio/ripmodel"
 	"github.com/lixenwraith/terminal"
 	"github.com/lixenwraith/terminal/tui"
+	"github.com/lixenwraith/transformer"
 )
 
 func newTestSession(t *testing.T, out *bytes.Buffer) *Session {
@@ -848,7 +850,7 @@ func writeFile(t *testing.T, file, data string) {
 }
 
 // TestTheRootHoldsSettingsAndTheRip: the stapes root, the user's or -config-dir's
-// alone, holds stapes.toml, rip.toml and ripmodel.bin, flat; nothing of vif's root
+// alone, holds stapes.toml, rip.toml, ripmodel.bin and ripnotes.bin, flat; nothing of vif's root
 // is read, and a key stapes.toml cannot hold is refused by name.
 func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 	base := t.TempDir()
@@ -857,19 +859,74 @@ func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 	writeFile(t, filepath.Join(user, settingsFile), "[audio]\nbuffer_ms = 20\n")
 	writeFile(t, filepath.Join(user, ripFile), "[rip]\n")
 	writeFile(t, filepath.Join(user, modelFile), "weights")
+	writeFile(t, filepath.Join(user, notesFile), "weights")
 	writeFile(t, filepath.Join(base, "vif", "vif.toml"), "[audio]\nbuffer_ms = 30\n")
 	writeFile(t, filepath.Join(base, vifAudio, ripFile), "[rip]\n")
 	f, err := ResolveFiles("", "", "")
-	if err != nil || f.buffer != 20*time.Millisecond || f.rip != filepath.Join(user, ripFile) || f.model != filepath.Join(user, modelFile) {
-		t.Fatalf("the user's root gave %+v, %v; want its buffer, rip.toml and ripmodel.bin", f, err)
+	if err != nil || f.buffer != 20*time.Millisecond || f.rip != filepath.Join(user, ripFile) || f.model != filepath.Join(user, modelFile) || f.notes != filepath.Join(user, notesFile) {
+		t.Fatalf("the user's root gave %+v, %v; want its buffer, rip.toml, ripmodel.bin and ripnotes.bin", f, err)
 	}
 	dir := t.TempDir()
-	if f, err = ResolveFiles(dir, "", ""); err != nil || f.buffer != 0 || f.rip != "" || f.model != "" || f.ripTarget != filepath.Join(dir, ripFile) {
+	if f, err = ResolveFiles(dir, "", ""); err != nil || f.buffer != 0 || f.rip != "" || f.model != "" || f.notes != "" || f.ripTarget != filepath.Join(dir, ripFile) {
 		t.Fatalf("-config-dir gave %+v, %v; want that root alone", f, err)
 	}
 	writeFile(t, filepath.Join(dir, settingsFile), "[paths]\nroot = \"elsewhere\"\n")
 	if _, err = ResolveFiles(dir, "", ""); err == nil || !strings.Contains(err.Error(), `unknown key "paths"`) {
 		t.Fatalf("a key stapes.toml cannot hold gave %v; want it refused by name", err)
+	}
+}
+
+// TestTheNotesModelLoadsBesideTheModel: ripnotes.bin beside ripmodel.bin gives
+// rip its notes, and the session and stat name both files; alone, it is named
+// and the analysis listens.
+func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := t.TempDir()
+	save := func(name string, cfg transformer.Config) {
+		m, err := transformer.NewRandom(cfg, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var b bytes.Buffer
+		if err := m.Save(&b); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(dir, name), b.String())
+	}
+	open := func() (*Session, *bytes.Buffer) {
+		files, err := ResolveFiles(dir, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		s, err := NewSession(Options{Backend: "null", Out: &out, Files: files})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s, &out
+	}
+	notes := ripmodel.NotesSpec()
+	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
+	save(notesFile, notes)
+	s, out := open()
+	if s.frontEnd != nil || !strings.Contains(out.String(), "no "+modelFile+" beside it") {
+		t.Errorf("a notes model alone loaded %v: %s", s.frontEnd != nil, out)
+	}
+	teardown(t, s)
+
+	model := ripmodel.Spec()
+	model.Dim, model.Heads, model.Layers, model.FFN = 8, 2, 1, 8
+	save(modelFile, model)
+	s, out = open()
+	defer teardown(t, s)
+	named := filepath.Join(dir, notesFile) + " ("
+	if s.frontEnd == nil || s.frontEnd.Notes == nil || !strings.Contains(out.String(), named) {
+		t.Fatalf("a model and a notes model gave notes %v: %s", s.frontEnd != nil && s.frontEnd.Notes != nil, out)
+	}
+	out.Reset()
+	runOrFatal(t, s, out, "stat\n")
+	if !strings.Contains(out.String(), named) {
+		t.Errorf("stat names no notes model: %s", out)
 	}
 }
 

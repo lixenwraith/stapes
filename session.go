@@ -84,6 +84,7 @@ const (
 	settingsFile = "stapes.toml"
 	ripFile      = "rip.toml"
 	modelFile    = "ripmodel.bin"
+	notesFile    = "ripnotes.bin" // a notes model beside the model, which then gives the notes
 	musicFile    = "music.toml"
 	soundsFile   = "sounds.toml"
 	// vifAudio is the search path's default under os.UserConfigDir: vif's audio
@@ -98,6 +99,7 @@ type Files struct {
 	music, sounds             string // "" = the bank
 	rip                       string // "" = the built-in parameters
 	model                     string // "" = no model: the analysis listens
+	notes                     string // "" = no notes model: the model gives the notes
 	musicTarget, soundsTarget string // "" = no search path
 	ripTarget                 string // "" = no root
 	buffer                    time.Duration
@@ -139,6 +141,7 @@ func ResolveFiles(dir, music, sounds string) (Files, error) {
 		return f, nil
 	}
 	f.rip, f.model, f.ripTarget = regular(filepath.Join(root, ripFile)), regular(filepath.Join(root, modelFile)), filepath.Join(root, ripFile)
+	f.notes = regular(filepath.Join(root, notesFile))
 	file := filepath.Join(root, settingsFile)
 	data, err := os.ReadFile(file)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -270,11 +273,13 @@ func NewSession(o Options) (*Session, error) {
 		}
 	}
 	if f := files.model; f != "" {
-		if err := s.loadModel(f); err != nil {
+		if err := s.loadModel(f, files.notes); err != nil {
 			fmt.Fprintf(out, "rip model %s: %v (the analysis listens)\n", f, err)
 		} else {
-			fmt.Fprintf(out, "rip model %s (%d weights)\n", f, s.frontEnd.Model.Parameters())
+			fmt.Fprintf(out, "rip model %s\n", s.ear())
 		}
+	} else if files.notes != "" {
+		fmt.Fprintf(out, "rip notes %s: no %s beside it (the analysis listens)\n", files.notes, modelFile)
 	}
 	// A failed Start latches silent mode but the engine stays valid, and
 	// rendering is engine-independent: edit, validate and export all work
@@ -324,19 +329,38 @@ func (s *Session) Close() {
 	}
 }
 
-// loadModel makes a weight file the front end rip hears with
-func (s *Session) loadModel(file string) error {
+// loadModel makes a weight file, and a notes model's when notes is not "", the
+// front end rip hears with
+func (s *Session) loadModel(file, notes string) error {
 	f, err := os.Open(file)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	fe, err := ripmodel.Load(f)
+	var n io.Reader // nil, not a nil *os.File, when there is no notes model
+	if notes != "" {
+		nf, err := os.Open(notes)
+		if err != nil {
+			return err
+		}
+		defer nf.Close()
+		n = nf
+	}
+	fe, err := ripmodel.Load(f, n)
 	if err != nil {
 		return err
 	}
 	s.frontEnd = fe
 	return nil
+}
+
+// ear names the weight files the front end loaded and their weights
+func (s *Session) ear() string {
+	e := fmt.Sprintf("%s (%d weights)", s.files.model, s.frontEnd.Model.Parameters())
+	if n := s.frontEnd.Notes; n != nil {
+		e += fmt.Sprintf(", notes %s (%d weights)", s.files.notes, n.Parameters())
+	}
+	return e
 }
 
 // ripper is what rip listens with: the parameters, and the model when one loaded

@@ -183,11 +183,6 @@ rip are in place; what remains:
    few dozen such pairs would set the weights of `Fidelity`'s three terms and
    the lead rule's default by what ears prefer rather than by hand.
 
-9. The notes model in Go: `train.py --pitchnet` writes a `.pt` only PyTorch reads, so its
-   rounds are scored through dumped output. The smallest close: an export, its forward pass
-   and harmonic stack in Go, and a second file beside `ripmodel.bin` that gives the note
-   heads while `ripmodel.bin` keeps drums and voices.
-
 ## Files and banks
 
 ### Search more than one folder

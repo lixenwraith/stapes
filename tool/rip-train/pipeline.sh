@@ -33,6 +33,7 @@ EVERY=${EVERY:-1000}
 OUT=${OUT:-$CORPUS/ripmodel.bin}       # the weight file
 CHECKPOINT=${CHECKPOINT:-$CORPUS/ripmodel.pt}
 ROOT=${ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/stapes}   # the stapes root rip hears with
+NOTES=${NOTES:-}                     # a notes model's weight file, a --pitchnet run's OUT, bench and install put beside OUT as ripnotes.bin; empty for none
 BENCH_LOOPS=${BENCH_LOOPS:-12}
 BENCH_BARS=${BENCH_BARS:-4}
 INIT=${INIT:-}                       # shard: the .pt the round starts from, the last merge's
@@ -99,13 +100,14 @@ bench() {
 	local root
 	root=$(mktemp -d)
 	cp "$OUT" "$root/ripmodel.bin"
+	if [ -n "$NOTES" ]; then cp "$NOTES" "$root/ripnotes.bin"; fi
 	if [ -f "$ROOT/rip.toml" ]; then cp "$ROOT/rip.toml" "$root/rip.toml"; fi
 	local slab="$root/bench.slab"
 	{
 		[ -n "$FOCUS" ] && printf 'run %s\n' "$(realpath "$FOCUS")"
 		printf 'bench %s %s\n' "$BENCH_LOOPS" "$BENCH_BARS"
 	} > "$slab"
-	echo "== bench: the analysis and $OUT on $BENCH_LOOPS fresh loops, clean and augmented"
+	echo "== bench: the analysis and $OUT${NOTES:+ with the notes of $NOTES} on $BENCH_LOOPS fresh loops, clean and augmented"
 	stapes -config-dir "$root" -s "$slab"
 	rm -rf "$root"
 }
@@ -114,6 +116,12 @@ install() {
 	mkdir -p "$ROOT"
 	cp "$OUT" "$ROOT/ripmodel.bin"
 	echo "== installed $OUT as $ROOT/ripmodel.bin; stapes' rip hears with it, remove the file to hear with the analysis"
+	if [ -n "$NOTES" ]; then
+		cp "$NOTES" "$ROOT/ripnotes.bin"
+		echo "== installed $NOTES as $ROOT/ripnotes.bin; it gives the notes, remove the file to take them from the model"
+	elif [ -f "$ROOT/ripnotes.bin" ]; then
+		echo "== $ROOT/ripnotes.bin still gives the notes; remove it to take them from the model"
+	fi
 }
 
 case "$stage" in

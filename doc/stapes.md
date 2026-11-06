@@ -46,7 +46,9 @@ The root is `-config-dir`, or else `os.UserConfigDir()` plus `stapes`
   and where `tune` writes;
 - `ripmodel.bin`, the rip's learned front end: what `rip` hears with when it is
   there, the built-in analysis when it is not
-  ([rip-train](../tool/rip-train/README.md)).
+  ([rip-train](../tool/rip-train/README.md));
+- `ripnotes.bin`, the notes model: beside `ripmodel.bin` it gives the notes, the
+  pitches and their strikes, releases and velocities, and alone it is unused.
 
 The documents, `music.toml` and `sounds.toml`, are found along a search path,
 whose one folder is vif's audio folder, `os.UserConfigDir()` plus `vif/audio`:
@@ -117,8 +119,8 @@ Over the library's rip (library
   correct in a sequencer. `corpus <dir> from` labels a file's other drum strikes
   (`MIDIScore.Struck`) as onsets alone.
 - `rip` listens with the root's `rip.toml` when one is there, and hears with
-  the root's `ripmodel.bin`, which `tool/rip-train` trains on loops stapes
-  exports (`corpus`); `render` writes what the slots hold to a WAV through
+  the root's `ripmodel.bin`, and the notes from its `ripnotes.bin` when that is
+  there, which `tool/rip-train` trains on loops stapes exports (`corpus`); `render` writes what the slots hold to a WAV through
   `RenderMusic`, so an estimate is heard without a device.
 - `tune` searches the rip's parameters over loops rendered from the registered
   patterns across tempos and keys with `lixenwraith/genetic`'s generational

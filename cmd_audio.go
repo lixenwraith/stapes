@@ -203,7 +203,7 @@ func cmdMeter(s *Session, a []string) error {
 			return err
 		}
 	}
-	fmt.Fprintf(s.out, "meter %s, a bar of %d steps\n", s.meter, s.meter.Steps())
+	fmt.Fprintf(s.out, "meter %s, a bar of %d steps%s\n", s.meter, s.meter.Steps(), feltWord(s.meter, s.bpm))
 	return nil
 }
 

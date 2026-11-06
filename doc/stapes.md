@@ -93,7 +93,8 @@ MIDI goes through the library's one table, `midiInstruments` (library
 writes a pattern or a song (`WriteSongMIDI`, `WritePatternMIDI`), and `load` and
 `merge <file.mid> [name]` read a file as patterns and a song (`MIDIScore.Song`)
 in its first meter, which the transport takes as a song played does (`meter`,
-`SetMusicMeter`). `truth` and `corpus <dir> from` read `ReadMIDI`'s transcript. Stapes turns the
+`SetMusicMeter`), a bar of another meter or tempo naming it at its head
+(`"2/8"`, `"72bpm"`), which `song` lists and `song play` sets at the bar line. `truth` and `corpus <dir> from` read `ReadMIDI`'s transcript. Stapes turns the
 phrase fill off (`SetAutoFill(false)`), and its mixer mutes slots and tracks and
 solos tracks (library
 [§6](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#6-mixer-buses-mute-and-pause)).
@@ -104,7 +105,9 @@ Over the library's rip (library
 [§9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)), stapes' verbs:
 
 - `rip` adds a rip's patterns to the document, dirty, and sets the transport's
-  tempo, meter and key, so a slot plays the estimate at once; `rip ... bpm <n>`
+  tempo, meter and key, so a slot plays the estimate at once, and says the
+  tempo a player reads where the meter's beat is not the quarter (a 3/8 at 73
+  is eighth 146, `Meter.FeltTempo`); `rip ... bpm <n>`
   pins the tempo alone, `rip ... meter <n/d>` the meter (`Ripper.Meter`),
   `rip ... lead` names the rule that picks the melody (`Ripper.Lead`), and
   `rip <file.mid> <name>` reads a MIDI file as a rip (`MIDIScore.Rip`). For each register the front end heard no voice for, `rip`

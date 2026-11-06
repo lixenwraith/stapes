@@ -35,6 +35,26 @@ FRAME_SEC = 256 / 22050
 PCEN_TIME, PCEN_GAIN, PCEN_BIAS, PCEN_POWER, PCEN_EPS = 0.4, 0.98, 2.0, 0.5, 1e-6
 
 
+# Harmonic input: both planes on a log-frequency axis of 36 bins an octave, read from the
+# mel bands, one channel per harmonic with each pitch's harmonic at the pitch's own bin
+HARMONICS = (0.5, 1, 2, 3, 4, 5, 6, 7)
+STACK_BINS, STACK_ROOT_MIDI, STACK_CHANNELS = 213, 27, 16
+STACK_SHIFTS = tuple(round(36 * math.log2(h)) for h in HARMONICS)
+STACK_INPUTS = STACK_BINS + 1
+
+
+def _stack_axis():
+    """each long-axis bin's lower mel band, the upper band's weight, and whether a band covers it"""
+    mel = lambda f: 2595 * np.log10(1 + f / 700)
+    hz = lambda m: 700 * (10 ** (m / 2595) - 1)
+    centers = np.log(hz(mel(30.0) + (mel(11025.0) - mel(30.0)) * np.arange(1, MEL_BANDS + 1) / (MEL_BANDS + 1)))
+    low = STACK_SHIFTS[0]
+    n = STACK_BINS + STACK_SHIFTS[-1] - low
+    f = np.log(440.0) + np.log(2.0) * ((STACK_ROOT_MIDI + (np.arange(n) + low) / 3 - 69) / 12)
+    b = np.clip(np.searchsorted(centers, f, side="right") - 1, 0, MEL_BANDS - 2)
+    return b, (f - centers[b]) / (centers[b + 1] - centers[b]), (f >= centers[0]) & (f < centers[-1])
+
+
 def features(mel: np.ndarray, channels: int = 1) -> np.ndarray:
     """The model's input from log-mel frames as the corpus stores them, log1p(100 e):
     each band's energy in dB over FLOOR less the frame's mean, and the mean itself,
@@ -47,10 +67,11 @@ def features(mel: np.ndarray, channels: int = 1) -> np.ndarray:
     out = [(db - level) / 80, (level + 80) / 80]
     if channels == 2:
         smooth = 1 - math.exp(-FRAME_SEC / PCEN_TIME)
-        avg, a = np.empty_like(e), e[0]
-        for t, row in enumerate(e):
-            a = (1 - smooth) * a + smooth * row
-            avg[t] = a
+        # a[t] = (1 - s) a[t-1] + s e[t] from a[0] = e[0], as one running sum over growing weights
+        grow = (1 - smooth) ** -np.arange(len(e), dtype=np.float64)
+        run = e * grow[:, None]
+        run[0] = e[0] / smooth
+        avg = smooth * np.cumsum(run, axis=0) / grow[:, None]
         p = (e / (PCEN_EPS + avg) ** PCEN_GAIN + PCEN_BIAS) ** PCEN_POWER - PCEN_BIAS ** PCEN_POWER
         out += [p, p.mean(axis=-1, keepdims=True)]
     return np.concatenate(out, axis=-1).astype(np.float32)
@@ -208,6 +229,59 @@ def tensors(model: RipModel):
                 out.append((p + name + ".bias", sd[p + name + ".bias"]))
         out += [(pt + n, sd[pt + n]) for n in ("ln.weight", "ln.bias", "out.weight", "out.bias")]
     return out
+
+
+class PitchNet(nn.Module):
+    """Convolutions only: the same weights at every pitch, each pitch's heads read from its own
+    neighbourhood on the harmonic stack, the frame's heads from what the frequencies pool to."""
+
+    def __init__(self, cfg: Config):
+        super().__init__()
+        self.cfg = cfg
+        b, w, ok = _stack_axis()
+        self.register_buffer("axis_band", torch.from_numpy(b), persistent=False)
+        self.register_buffer("axis_weight", torch.from_numpy(w).float(), persistent=False)
+        self.register_buffer("axis_ok", torch.from_numpy(ok).float(), persistent=False)
+        self.reduce = nn.Conv2d(STACK_CHANNELS, 8, 1)
+        self.wide = nn.Conv2d(8, 16, (3, 39), padding=(1, 19))  # thirteen semitones
+        self.cells = nn.Conv2d(16, 32, (7, 3), stride=(1, 3), padding=(3, 0))  # to one cell a semitone
+        self.near = nn.Conv2d(32, 32, (7, 3), padding=(3, 1))
+        self.notes = nn.Conv2d(32, 4, 1)  # pitch, strike, release, velocity
+        self.frame1 = nn.Conv1d(16 * 16 + 2, 64, 5, padding=2)
+        self.frame2 = nn.Conv1d(64, 64, 9, padding=8, dilation=2)
+        sizes = dict(cfg.outputs)
+        self.frame = nn.Linear(64, sum(sizes[k] for k in ("onset", "drums", "voicing", "wave", "voice")))
+
+    def stack(self, x: torch.Tensor) -> torch.Tensor:
+        """B T 2*(MEL_BANDS+1) -> B T STACK_CHANNELS*STACK_INPUTS: each plane by harmonic, each channel ending in the plane's scalar"""
+        chans, w = [], self.axis_weight
+        for plane in x.chunk(2, -1):
+            bands, scalar = plane[..., :MEL_BANDS], plane[..., MEL_BANDS:]
+            long = (bands[..., self.axis_band] * (1 - w) + bands[..., self.axis_band + 1] * w) * self.axis_ok
+            for sh in STACK_SHIFTS:
+                at = sh - STACK_SHIFTS[0]
+                chans += [long[..., at:at + STACK_BINS], scalar]
+        return torch.cat(chans, -1)
+
+    def forward(self, mel: torch.Tensor) -> torch.Tensor:
+        B, T = mel.shape[:2]
+        x = self.stack(mel).view(B, T, STACK_CHANNELS, STACK_INPUTS).transpose(1, 2)  # B C T F
+        level, pcen = x[:, 0, :, STACK_BINS], x[:, 8, :, STACK_BINS]
+        x = F.gelu(self.reduce(x[..., :STACK_BINS]))
+        w = F.gelu(self.wide(x))
+        c = F.gelu(self.cells(F.pad(w, (1, 0))))  # cell j is centred on bin 3j, STACK_ROOT_MIDI + j
+        c = F.gelu(self.near(c) + c)
+        n = self.notes(c)[..., 1:PITCHES + 1]  # B 4 T pitches
+        f = F.adaptive_avg_pool2d(w, (T, 16)).transpose(2, 3).flatten(1, 2)  # B 16*16 T
+        f = torch.cat([f, level[:, None], pcen[:, None]], 1)
+        f = F.gelu(self.frame1(f))
+        f = self.frame(F.gelu(self.frame2(f) + f).transpose(1, 2))  # B T frame heads
+        sizes = dict(self.cfg.outputs)
+        at, part = 0, {}
+        for k in ("onset", "drums", "voicing", "wave", "voice"):
+            part[k], at = f[..., at:at + sizes[k]], at + sizes[k]
+        part.update(pitch=n[:, 0], strike=n[:, 1], release=n[:, 2], velocity=n[:, 3])
+        return torch.cat([part[k] for k, _ in self.cfg.outputs], -1)
 
 
 def export(model: RipModel, path: str) -> None:

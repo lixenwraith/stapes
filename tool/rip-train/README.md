@@ -367,6 +367,10 @@ distance, attention banded to the window, and the output layer's slices as the
 heads, in `ripmodel.HEADS` order. `export` writes the tensors by the names and in
 the order `lixenwraith/transformer` reads them, with an FNV-1a 64 trailer the
 loader checks ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)).
+`--pitchnet` builds the convolutions-only model of [Rip training](../../doc/rip-training.md)
+§7 and writes a `.pt`, as Go doesn't read that model yet. `--shuffle <share>` and
+`--extra <dir>:<share>,...` are `train.py` flags with no `pipeline.sh` setting.
+
 It writes the file's version 3, the channels after the inputs, which needs
 transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio
 refuses it, of one channel or two.

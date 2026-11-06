@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -41,6 +42,7 @@ type tuneOptions struct {
 	part, parts                    int            // an export renders the loops i%parts == part; all when parts is 0
 	skip                           func(int) bool // the loops drawn but not rendered
 	samples                        *sampleSet     // recorded notes some tonal slots play on; none when nil
+	midis                          []string       // arrangements most loops play bars of, in place of drawn patterns
 }
 
 // tuneLoop is one rendered loop, what made it, the rip a perfect listener makes
@@ -168,6 +170,14 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 				slots[3] = audio.PatternSilence
 			}
 		}
+		if len(o.midis) > 0 {
+			mrng := rand.New(rand.NewPCG(o.seed^0x6d696469, uint64(i)+1))
+			if mrng.Float64() < 0.75 {
+				if got, ok := s.midiLoop(o, mrng); ok {
+					slots, bpm, root, scale, meter = got.slots, got.bpm, got.root, got.scale, got.meter
+				}
+			}
+		}
 		arng := rand.New(rand.NewPCG(o.seed^0xa5a5a5a5, uint64(i)+1))
 		voices, restore := s.loopVoices(slots, o.aug, arng)
 		cents := 0.0
@@ -203,6 +213,91 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 		}
 	}
 	return nil
+}
+
+// midiPlay is a stretch of an arrangement as a loop's parts
+type midiPlay struct {
+	slots [audio.MusicSlots]audio.PatternID
+	bpm   int
+	root  int
+	scale audio.ScaleID
+	meter audio.Meter
+}
+
+// midiLoop is a random stretch of a random file's beat, melody, second line and
+// bass, moved up to half an octave so the file's key says nothing; a file that can't
+// be read or holds no such stretch passes the draw to another.
+func (s *Session) midiLoop(o tuneOptions, rng *rand.Rand) (midiPlay, bool) {
+	for try := 0; try < 8; try++ {
+		f, err := os.Open(o.midis[rng.IntN(len(o.midis))])
+		if err != nil {
+			continue
+		}
+		score, err := audio.ReadMIDI(f)
+		f.Close()
+		if err != nil {
+			continue
+		}
+		r, _ := score.Rip()
+		meter, known := r.Meter, r.Meter.Steps() == 16
+		if known {
+			meter = audio.Meter{}
+		} else if _, known = beatsByMeter[meter]; !known {
+			continue
+		}
+		if len(r.Bars) < o.bars {
+			continue
+		}
+		lo, sounding := 0, false
+		for pick := 0; pick < 8 && !sounding; pick++ {
+			lo = rng.IntN(len(r.Bars) - o.bars + 1)
+			for b := lo; b < lo+o.bars && !sounding; b++ {
+				sounding = len(r.Bars[b].Melody)+len(r.Bars[b].Under) > 0
+			}
+		}
+		if !sounding {
+			continue
+		}
+		define := func(p *audio.Pattern) audio.PatternID {
+			p.ID = audio.PatternIDByName(p.Name)
+			id, err := s.eng.DefinePattern(p)
+			if err != nil {
+				return audio.PatternSilence
+			}
+			return id
+		}
+		var play midiPlay
+		for slot := range play.slots {
+			play.slots[slot] = audio.PatternSilence
+		}
+		for _, part := range []audio.RipPart{audio.RipBeat, audio.RipMelody, audio.RipBass} {
+			d := r.Pattern("corpus_midi_"+audio.RipPartNames[part], "corpus", part, lo, lo+o.bars)
+			if d == nil {
+				continue
+			}
+			p, err := d.Pattern()
+			if err != nil {
+				continue
+			}
+			if part == audio.RipMelody && len(p.Tracks) > 1 {
+				tonal := audio.TonalInstruments()
+				under := *p
+				under.Name, under.Tracks = "corpus_midi_under", slices.Clone(p.Tracks[1:])
+				for t := range under.Tracks {
+					under.Tracks[t].Instr = tonal[rng.IntN(len(tonal))]
+					if under.Tracks[t].Instr == audio.InstrBass {
+						under.Tracks[t].Instr = audio.InstrLead
+					}
+				}
+				p.Tracks = p.Tracks[:1]
+				play.slots[2] = define(&under)
+			}
+			play.slots[audio.RipPartSlots[part]] = define(p)
+		}
+		play.bpm, play.root, play.scale, play.meter = r.BPM, r.Root+rng.IntN(12)-6, r.Scale, meter
+		return play, true
+	}
+	return midiPlay{}, false
 }
 
 // beatPlaces is where genBeat strikes in a meter's bar: the kicks always played,
@@ -619,6 +714,17 @@ func cmdCorpus(s *Session, a []string) error {
 			o.nowav = true
 		case a[n-1] == "codec":
 			o.codec = true
+		case n > 2 && a[n-2] == "midi":
+			err := filepath.WalkDir(s.path(a[n-1]), func(path string, d fs.DirEntry, err error) error {
+				if err == nil && !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".mid") {
+					o.midis = append(o.midis, path)
+				}
+				return err
+			})
+			if err != nil {
+				return err
+			}
+			a = a[:n-1]
 		case n > 2 && a[n-2] == "sampled":
 			set, err := loadSampleSet(s.path(a[n-1]))
 			if err != nil {

@@ -14,7 +14,8 @@ Where each part stands:
 - **In released code:** `MelFrames`, the first and second input planes, the heads,
   weight file version 3, `corpus`, `corpus <dir> from`, `corpus ... sampled`, `--mix`,
   `--channel`, `--over` with its heard-hit rule, draws by length, `skip.txt`,
-  `make_noise.py`.
+  `make_noise.py`, `corpus ... midi`, `--pitchnet`, `--shuffle`, `--extra`.
+- **In the trainer alone:** `--pitchnet`'s model, which writes a `.pt` until Go reads it.
 - **In no repository yet:** the phone take's scripts, which play, align and cut a
   recording of a known file.
 
@@ -129,6 +130,10 @@ needed (`loop_39999`). The corpora in use:
 - **Corpus 12:** the same with `sampled <dir>`, so the same seeds draw the same notes.
   Each tonal line plays on NSynth's recorded notes with a chance of a half, 44% of all
   notes, each shifted at most 3 semitones and cut at its note-off by a 60 ms fade.
+- **Corpus 14:** `corpus <dir> 20000 4 aug gen nowav codec midi <dir>`. Three quarters of
+  the loops play a random 4-bar stretch of a random file from Lakh's clean MIDI set: its
+  beat, melody, second line and bass, moved up to half an octave, the second line on a
+  random tonal instrument.
 - **E-GMD:** `corpus <dir> from <list.csv> split train codec`. 5,691 real recordings
   of 43 kits, 55.6 hours, 17.2 million frames, 15 GB. Each loop is one recording, from
   2 seconds to 10 minutes, with its hits from the MIDI file. Its keys are mapped by
@@ -219,6 +224,12 @@ Over corpus frames, plane 2 averages 0.16, its 99.9th percentile is 2.4, and its
 value is about 4, close enough to plane 1's scale to need no rescaling. A model with one
 channel reads plane 1 alone, 230 values.
 
+`--pitchnet` reads both planes through a harmonic stack it computes itself. A plane's bands
+are read on a log-frequency axis of 36 bins an octave, by interpolation. Each plane then
+gives 8 channels, one per harmonic of 0.5, 1 and 2 to 7, each shifted by -36, 0, 36, 57, 72,
+84, 93 or 101 bins, so a pitch's harmonics line up at its own bin. That's 213 bins from MIDI
+27 in 16 channels, each channel ending in its plane's scalar.
+
 ## 5. The targets
 
 `Label.window(a, b)` builds what each head should say for frames a to b. A note's pitch
@@ -300,6 +311,12 @@ of the loop's own level, had drums a median 13.4 dB under the loop against Billi
 -0.3 dB, labelled whether heard or not, and it reported drums on bass notes.
 
 **`--mix dir:share`** draws a share of the windows from another corpus as it stands.
+`--extra dir:share,...` does the same for any number of corpora.
+
+**`--shuffle share`** splices a share of the windows from chunks of a second, each two clips
+from random places summed, the second at -6 to +6 dB of the first's power. Notes keep their
+labels, a drum hit counts where it stands out of the other clip, and wave and voice go
+unasked.
 
 Draws from both are by length, since E-GMD's recordings run from 2 seconds to 10
 minutes: 521 of its first batch's 819 are shorter than a window but hold only 4.8% of
@@ -346,6 +363,21 @@ offset    size  head       read as
 ```
 
 A file may lack the last 3 heads and still load.
+
+`--pitchnet` builds another model on the same heads: convolutions only, the same weights at
+every pitch, 169,862 weights in all.
+
+```
+input          B x T x 460              the two planes
+stack          B x 16 x T x 214         the harmonic stack of section 4
+reduce         B x 8 x T x 213          1x1, GELU, the scalars set aside
+wide           B x 16 x T x 213         3x39, thirteen semitones, GELU
+cells          B x 32 x T x 71          7x3, stride 3 over features, one cell a semitone, GELU
+near           B x 32 x T x 71          7x3 with a residual, GELU
+notes          B x 4 x T x 69           1x1: pitch, strike, release, velocity
+frame          B x T x 39               wide pooled to 16 regions plus the scalars, a 1D conv of 5
+                                        and one of 9 dilated by 2, linear: the other heads
+```
 
 ## 8. A training step
 
@@ -516,6 +548,26 @@ drum loops on random kits, mixes darkened to 800 Hz, and 267 loops from the phon
   0.567 and 0.593. Its lead is Für Elise alone, 0.828 against 12a's 0.721, and it trained
   on real piano. Its own decoder on 12a's heads scores 0.619 clean against ours at 0.704,
   so that gap is the model's.
+
+`--pitchnet` rounds run 20,000 steps at rate 1e-3 with the channel, `--over` and `--mix` of
+16b, decoded at strike 0.7, strike_again 0.9, release 0.9 and voicing 0.6. Their frame heads
+stay weak, 22a's kicks falling to 0 of 36 from the Pixel at bar 0.5, so these rounds are about
+notes.
+
+```
+round  corpus                       clean   30 cm   Pixel   Galaxy
+22a    11                           0.774   0.681   0.755   0.754
+24a    14                           0.807   0.661   0.744   0.723
+24b    11, MusicNet 20%, GuitarSet  0.764   0.653   0.692   0.697
+```
+
+- **Weights shared across pitches** are 22a against 19a, the same stack fed to the model of
+  section 7 on 3.7M weights: 0.693, 0.604, 0.623, 0.638. The stack alone gains nothing.
+- **Attention beside them** lost: both paths in one model of 3.4M weights scored 0.751, 0.678,
+  0.721, 0.735, below 22a on every take and on seven rendered instruments, so notes get a
+  model of their own and that path was not kept.
+- **Real arrangements** are 24a against 22a: clean +0.033, phones -0.011 to -0.031.
+- **Real recordings** at that mix are 24b against 22a: lower nearly everywhere.
 
 To repeat 12a from a checkout with the trainer's changes:
 

@@ -85,7 +85,7 @@ class Label:
         i = i[self.drum[i] >= 0]
         return zip(self.t[i].tolist(), self.drum[i].tolist())
 
-    def window(self, a: int, b: int) -> dict:
+    def window(self, a: int, b: int, with_drums: bool = True) -> dict:
         """Per-frame targets for frames a to b from the events; masks say where a
         target counts. The yes-or-no ones are bytes until batch; the strikes and
         releases are lists of (frame, pitch) from a, each strike's velocity beside
@@ -108,7 +108,7 @@ class Label:
         lo, hi = np.searchsorted(self.sorted, a - self.reach), np.searchsorted(self.sorted, b + 1, "right")
         for i in np.sort(self.order[lo:hi]):  # in the label's order, which the voice a frame reports keeps
             t = int(self.t[i])
-            if t < 0 or t >= frames:
+            if t < 0 or t >= frames or (self.drum[i] >= 0 and not with_drums):
                 continue
             onset[span(max(t - 1, 0), min(t + 2, frames))] = 1
             if self.drum[i] >= 0:
@@ -201,13 +201,10 @@ def power(mel) -> float:
     return _power[mel.path]
 
 
-def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, rng=None, channel=None):
-    """the window of `window` frames from start: its features and targets, the
-    frames past the loop's end padded with zeros and masked out; over is a recording
-    of drums alone and its power against the loop's in dB, laid over the frames, its
-    hits that can be heard among the targets; channel is what a speaker and a phone do to them"""
+def targets(mel, lab: Label, start: int, window: int, with_drums: bool = True) -> dict:
+    """the targets of the window of `window` frames from start, the frames past the loop's end masked out"""
     b = min(start + window, len(mel))
-    t, pad = lab.window(start, b), window - (b - start)
+    t, pad = lab.window(start, b, with_drums), window - (b - start)
 
     def take(a, fill=0):
         return np.concatenate([a, np.full((pad,) + a.shape[1:], fill, a.dtype)]) if pad else a
@@ -224,6 +221,61 @@ def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, r
         release[max(f - 1, 0):max(min(f + 2, window), 0), p] = 1
     out.update(strike=strike, release=release, velocity=velocity, heard=heard)
     out["valid"] = np.concatenate([np.ones(window - pad, np.float32), np.zeros(pad, np.float32)])
+    return out
+
+
+# Shuffled windows: chunks of a second, each two clips summed, spliced into a window
+CHUNK = 86
+
+
+def clip(mel, rng):
+    """a chunk's energy from a random place in a recording, zeros past its end, and where it starts"""
+    start = rng.randrange(max(len(mel) - CHUNK, 0) + 1)
+    e = np.expm1(mel[start:start + CHUNK].astype(np.float64))
+    return (np.concatenate([e, np.zeros((CHUNK - len(e), e.shape[1]))]) if len(e) < CHUNK else e), start
+
+
+def shuffled(pick, window: int, channels: int, rng, channel=None):
+    """a window of summed chunks: notes keep their labels, a drum hit counts where it
+    stands out of the other clip, and what the frame's voice is goes unasked"""
+    total = window + WARM if channels > 1 else window
+    through, noise = channel.draw(total, rng) if channel is not None else (1.0, np.zeros((total, ripmodel.MEL_BANDS)))
+    es, outs = [], []
+    for at in range(0, total, CHUNK):
+        (ma, la), (mb, lb) = pick(), pick()
+        ea, sa = clip(ma, rng)
+        eb, sb = clip(mb, rng)
+        eb = eb * 10 ** ((rng.random() * 12 - 6) / 10) * power(ma) / max(power(mb), 1e-9)
+        ta, tb = targets(ma, la, sa, CHUNK, False), targets(mb, lb, sb, CHUNK, False)
+        out = {k: np.maximum(ta[k], tb[k]) for k in ("onset", "drums", "pitch", "voicing", "strike", "release", "velocity", "heard", "valid")}
+        out.update(wave=np.full(CHUNK, -1, np.int64), voice=np.zeros_like(ta["voice"]), voiced=np.zeros_like(ta["voiced"]))
+        hiss = noise[at:at + CHUNK]
+        hiss = np.concatenate([hiss, np.zeros((CHUNK - len(hiss), hiss.shape[1]))]) if len(hiss) < CHUNK else hiss
+        for d, rest, lab, s in ((ea * through, eb * through + hiss, la, sa), (eb * through, ea * through + hiss, lb, sb)):
+            for f, drum in lab.hits(s, s + CHUNK):
+                if stands_out(d, rest, f - s):
+                    near = slice(max(f - s - 1, 0), min(f - s + 2, CHUNK))
+                    out["onset"][near] = 1
+                    out["drums"][near, drum] = 1
+        es.append((ea + eb) * through + hiss)
+        outs.append(out)
+    e = np.concatenate(es)[:total]
+    first = total - window
+    out = {k: np.concatenate([o[k] for o in outs])[first:total] for k in outs[0]}
+    return ripmodel.features(np.log1p(e).astype(np.float32), channels)[first:], out
+
+
+def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, rng=None, channel=None):
+    """the window of `window` frames from start: its features and targets, the
+    frames past the loop's end padded with zeros and masked out; over is a recording
+    of drums alone and its power against the loop's in dB, laid over the frames, its
+    hits that can be heard among the targets; channel is what a speaker and a phone do to them"""
+    out = targets(mel, lab, start, window)
+    b = min(start + window, len(mel))
+    pad = window - (b - start)
+
+    def take(a, fill=0):
+        return np.concatenate([a, np.full((pad,) + a.shape[1:], fill, a.dtype)]) if pad else a
     a = max(start - WARM, 0) if channels > 1 else start
     # uncorrelated sounds add in power, and a stored frame is log1p of a hundred times it
     e = np.expm1(take(mel[a:b]).astype(np.float64))
@@ -255,12 +307,15 @@ def stack(samples):
     return torch.from_numpy(np.stack(mels)), {k: v if k == "wave" else v.float() for k, v in out.items()}
 
 
-def batch(draw, window: int, size: int, rng: random.Random, channels: int, channel=None, share: float = 0.0):
-    """size random windows of `window` frames from the loops draw() picks, a share through the channel"""
+def batch(draw, window: int, size: int, rng: random.Random, channels: int, channel=None, share: float = 0.0, pick=None, shuffle: float = 0.0):
+    """size random windows of `window` frames from the loops draw() picks, a share through the channel, a share shuffled"""
     samples = []
     for _ in range(size):
-        mel, lab, over = draw()
         heard = channel if channel is not None and rng.random() < share else None
+        if pick is not None and rng.random() < shuffle:
+            samples.append(shuffled(pick, window, channels, rng, heard))
+            continue
+        mel, lab, over = draw()
         samples.append(sample(mel, lab, rng.randrange(max(len(mel) - window, 0) + 1), window, channels, over, rng, heard))
     return stack(samples)
 
@@ -346,6 +401,9 @@ def main() -> None:
     ap.add_argument("--convs", default="", help="convolutions before the input layer, channels x frames x features / pool each, comma-separated: 16x3x3/1,16x3x3/2,32x3x3/2")
     ap.add_argument("--attention-window", type=int, default=64, help="frames attended either side")
     ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
+    ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
+    ap.add_argument("--extra", default="", help="more corpora and the share of windows drawn from each, dir:share, comma-separated")
+    ap.add_argument("--pitchnet", action="store_true", help="convolutions only over the harmonic stack, the same weights at every pitch; its .pt holds them until Go reads the model")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--shard-seed", type=int, default=0, help="offsets the stream the windows are drawn from, so a round's workers see different loops; the starting weights stay --seed's")
     ap.add_argument("--checkpoint", default="", help="write a .pt every --every steps, and resume from it when present")
@@ -363,7 +421,9 @@ def main() -> None:
     towers = [tuple(int(v) for v in t.split(":")) for t in args.towers.split(",") if t]
     if any(len(t) != 2 for t in towers) or towers and sum(h for _, h in towers) != len(ripmodel.HEADS):
         raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodel.HEADS)}")
-    cfg = ripmodel.Config(channels=2 if args.pcen else 1, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers)
+    heard = dict(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS) if args.pitchnet else dict(channels=2 if args.pcen else 1)
+    cfg = ripmodel.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers)
+    planes = min(cfg.channels, 2)  # what the data loader makes; the model stacks them
     resume = bool(args.checkpoint) and os.path.exists(args.checkpoint)
     start = args.checkpoint if resume else args.init
     ck = torch.load(start, map_location=args.device) if start else None
@@ -377,7 +437,7 @@ def main() -> None:
     holdout = args.holdout if args.holdout >= 0 else (len(loops) // 10 if len(loops) >= 5 else 0)
     held = loops[len(loops) - holdout:] if holdout else []
     loops = loops[:len(loops) - holdout] if holdout else loops
-    val_mels, val_tgs = validation(held, args.window, cfg.channels) if held else ([], [])
+    val_mels, val_tgs = validation(held, args.window, planes) if held else ([], [])
     assert manifest["mel_bands"] == ripmodel.MEL_BANDS and manifest["pitches"] == ripmodel.PITCHES
     assert manifest["voice_genes"] == ripmodel.VOICE_GENES and len(manifest["waves"]) == ripmodel.WAVES
     mixed, share = [], 0.0
@@ -393,7 +453,7 @@ def main() -> None:
         over_share = float(sh)
         assert over_manifest["mel_bands"] == ripmodel.MEL_BANDS
         drumless = [(m, l) for m, l in loops if not (l.drum >= 0).any()]
-    model = ripmodel.RipModel(cfg).to(args.device)
+    model = (ripmodel.PitchNet if args.pitchnet else ripmodel.RipModel)(cfg).to(args.device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     step, best_loss, best_step, best_state = 0, float("inf"), 0, None
     if resume:
@@ -439,8 +499,18 @@ def main() -> None:
     by_mixed = list(accumulate(len(m) for m, _ in mixed))
     by_drums = list(accumulate(len(m) for m, _ in drums))
 
+    extras = []
+    for item in filter(None, args.extra.split(",")):
+        d, _, sh = item.rpartition(":")
+        _, loops_x = load_corpus(d)
+        extras.append((float(sh), loops_x, list(accumulate(len(m) for m, _ in loops_x))))
+        print(f"{len(loops_x)} loops of {sum(len(m) for m, _ in loops_x)} frames from {d}, {float(sh):.0%} of the windows")
+
     def draw():
         """a loop, and the drums to lay over it or None"""
+        for sh, xs, by in extras:
+            if rng.random() < sh:
+                return (*rng.choices(xs, cum_weights=by)[0], None)
         if drums and drumless and rng.random() < over_share:
             omel, olab = rng.choices(drums, cum_weights=by_drums)[0]
             return (*rng.choice(drumless), (omel, olab, rng.random() * 18 - 12))
@@ -448,12 +518,18 @@ def main() -> None:
             return (*rng.choices(mixed, cum_weights=by_mixed)[0], None)
         return (*rng.choice(loops), None)
 
+    def pick():
+        """a recording for a shuffled window's chunk: a loop, or drums alone by length"""
+        if drums and rng.random() < 0.3:
+            return rng.choices(drums, cum_weights=by_drums)[0]
+        return rng.choice(loops)
+
     # the next batch is built while the device works on this one; only that thread draws from rng
     pool = ThreadPoolExecutor(1)
-    ahead = pool.submit(batch, draw, args.window, args.batch, rng, cfg.channels, channel, channel_share)
+    ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle)
     while step < args.steps:
         mel, t = ahead.result()
-        ahead = pool.submit(batch, draw, args.window, args.batch, rng, cfg.channels, channel, channel_share)
+        ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle)
         mel, t = mel.to(args.device), {k: v.to(args.device) for k, v in t.items()}
         lr = args.lr * 0.5 * (1 + math.cos(math.pi * step / args.steps))  # cosine to zero
         for g in opt.param_groups:
@@ -479,7 +555,10 @@ def main() -> None:
         model.load_state_dict(best_state)
         print(f"best held-out decoders' loss {best_loss:.3f} at step {best_step}; exporting that")
     model.eval()
-    ripmodel.export(model.cpu(), args.out)
+    if args.pitchnet:
+        torch.save({"model": model.state_dict(), "cfg": asdict(cfg)}, args.out)
+    else:
+        ripmodel.export(model.cpu(), args.out)
     print(f"wrote {args.out}")
 
 

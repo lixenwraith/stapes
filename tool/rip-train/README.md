@@ -34,7 +34,8 @@ about.
    a recording; a recording is judged by ear, with `rip`, `notes` and `song score`.
 4. **Data.** The weight file goes to the stapes root as `ripmodel.bin`, beside
    `rip.toml`; `rip` hears with it when it is there and with the analysis when
-   it is not.
+   it is not. A notes model's, `--pitchnet`'s, goes beside it as `ripnotes.bin`
+   and gives the notes.
 
 ## Setup
 
@@ -94,6 +95,7 @@ tool/rip-train/pipeline.sh install
 | `HOLDOUT`, `EVERY` | 200, 1000 | loops held out, and how often they are scored and a checkpoint written |
 | `OUT`, `CHECKPOINT` | `$CORPUS/ripmodel.bin`, `$CORPUS/ripmodel.pt` | the weight file, and the checkpoint a stopped run resumes from |
 | `ROOT` | `~/.config/stapes` | the stapes root, under `$XDG_CONFIG_HOME` when that is set: `install` copies the weights into it as `ripmodel.bin`, and `bench` hears with its `rip.toml` |
+| `NOTES` | empty | a notes model's weight file, a `--pitchnet` run's `OUT`, which `bench` and `install` put beside `OUT` as `ripnotes.bin` |
 | `BENCH_LOOPS`, `BENCH_BARS` | 12, 4 | the fresh loops `bench` grades on |
 | `INIT`, `SHARD` | none, 0 | `shard`: the `.pt` the round starts from, and the worker's stream of windows; it writes `$CORPUS/shard$SHARD.pt` and `.bin` |
 | `MERGE_FILES`, `TRIM` | none, 0 | `merge`: the round's shard checkpoints, blank-separated or a glob, and the share of them dropped at each end of each weight before the mean |
@@ -368,12 +370,15 @@ heads, in `ripmodel.HEADS` order. `export` writes the tensors by the names and i
 the order `lixenwraith/transformer` reads them, with an FNV-1a 64 trailer the
 loader checks ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)).
 `--pitchnet` builds the convolutions-only model of [Rip training](../../doc/rip-training.md)
-§7 and writes a `.pt`, as Go doesn't read that model yet. `--shuffle <share>` and
+§7, and `--out` gets its weight file, `ripnotes.bin` in the stapes root, beside the
+`ripmodel.bin` it gives the notes for. `average.py --out ripnotes.bin a.pt` turns one `.pt`
+of either model into its file. `--shuffle <share>` and
 `--extra <dir>:<share>,...` are `train.py` flags with no `pipeline.sh` setting.
 
 It writes the file's version 3, the channels after the inputs, which needs
 transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio
-refuses it, of one channel or two.
+refuses it, of one channel or two. `--pitchnet`'s file is version 4, a cell net,
+which needs transformer v0.4.0 (audio v0.5.0).
 A change to either side is a change to both: check a random model's outputs on
 a corpus loop from the two before trusting a trained file, as the module's
 [agent notes](https://github.com/lixenwraith/transformer/blob/main/doc/agent-notes.md)

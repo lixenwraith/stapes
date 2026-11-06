@@ -284,22 +284,68 @@ class PitchNet(nn.Module):
         return torch.cat([part[k] for k, _ in self.cfg.outputs], -1)
 
 
-def export(model: RipModel, path: str) -> None:
+# PitchNet's file: version 4 names the model's kind, 1 a cell net, whose heads
+# are the per-pitch ones in the notes convolution's order, then the frame's
+CELLS_VERSION, CELLS_KIND = 4, 1
+CELL_HEADS = ("pitch", "strike", "release", "velocity")
+FRAME_HEADS = ("onset", "drums", "voicing", "wave", "voice")
+
+
+def build(cfg: Config) -> nn.Module:
+    """the model a checkpoint's shape is: PitchNet when it reads the harmonic stack"""
+    return (PitchNet if cfg.inputs == STACK_INPUTS else RipModel)(cfg)
+
+
+def _nears(model: PitchNet) -> list:
+    """the convolutions over the cells in turn, one module or a list of them"""
+    return list(model.near) if isinstance(model.near, nn.ModuleList) else [model.near]
+
+
+def _cells_header(model: PitchNet) -> bytes:
+    """a cell net's sizes, in lixenwraith/transformer's Cells order, from the layers themselves"""
+    wide, cells, nears, frame1, frame2 = model.wide, model.cells, _nears(model), model.frame1, model.frame2
+    (wt, wf), (ct, cf), (nt, nf), ft, at = wide.kernel_size, cells.kernel_size, nears[0].kernel_size, frame1.kernel_size[0], frame2.kernel_size[0]
+    dil, stride = frame2.dilation[0], cells.stride[1]
+    # the Go side centres every kernel and starts cell j at bin stride*j, as forward pads
+    assert wide.padding == (wt // 2, wf // 2) and cells.padding == (ct // 2, 0) and cf // 2 == 1 and cells.stride[0] == 1
+    assert all(n.kernel_size == (nt, nf) and n.padding == (nt // 2, nf // 2) for n in nears)
+    assert frame1.padding == (ft // 2,) and frame2.padding == (dil * (at // 2),)
+    sizes = dict(model.cfg.outputs)
+    assert all(sizes[k] == PITCHES for k in CELL_HEADS) and model.notes.out_channels == len(CELL_HEADS)
+    scalars = (STACK_BINS, 8 * STACK_INPUTS + STACK_BINS)  # the level, the PCEN mean: channel 0's and 8's last
+    regions = (frame1.in_channels - len(scalars)) // wide.out_channels
+    assert regions * wide.out_channels + len(scalars) == frame1.in_channels
+    v = (STACK_BINS, model.reduce.out_channels, wide.out_channels, wt, wf, cells.out_channels, ct, cf, stride, len(nears), nt, nf,
+         1, PITCHES, len(CELL_HEADS), regions, frame1.out_channels, ft, at, dil, len(scalars), *scalars)
+    return struct.pack(f"<{len(v)}I", *v)
+
+
+def export(model: nn.Module, path: str) -> None:
+    """the weight file: version 3 for RipModel, 4 for PitchNet"""
     cfg = model.cfg
     body = bytearray(MAGIC)
-    body += struct.pack("<I", VERSION)
-    body += struct.pack("<7I", cfg.inputs, cfg.channels, cfg.dim, cfg.heads, cfg.layers, cfg.ffn, cfg.window)
-    body += struct.pack("<I", len(cfg.convs))
-    for c in cfg.convs:
-        body += struct.pack("<4I", *c)
-    body += struct.pack("<I", len(cfg.towers))
-    for t in cfg.towers:
-        body += struct.pack("<2I", *t)
-    body += struct.pack("<I", len(cfg.outputs))
-    for name, size in cfg.outputs:
+    if isinstance(model, PitchNet):
+        body += struct.pack("<4I", CELLS_VERSION, CELLS_KIND, cfg.inputs, cfg.channels) + _cells_header(model)
+        sizes = dict(cfg.outputs)
+        heads = [(k, sizes[k]) for k in CELL_HEADS + FRAME_HEADS]
+        layers = [("reduce", model.reduce), ("wide", model.wide), ("cells", model.cells)]
+        layers += [(f"near.{i}", n) for i, n in enumerate(_nears(model))]
+        layers += [("cellout", model.notes), ("frame1", model.frame1), ("frame2", model.frame2), ("frameout", model.frame)]
+        ts = [(f"{name}.{p}", getattr(m, p)) for name, m in layers for p in ("weight", "bias")]
+    else:
+        body += struct.pack("<I", VERSION)
+        body += struct.pack("<7I", cfg.inputs, cfg.channels, cfg.dim, cfg.heads, cfg.layers, cfg.ffn, cfg.window)
+        body += struct.pack("<I", len(cfg.convs))
+        for c in cfg.convs:
+            body += struct.pack("<4I", *c)
+        body += struct.pack("<I", len(cfg.towers))
+        for t in cfg.towers:
+            body += struct.pack("<2I", *t)
+        heads, ts = cfg.outputs, tensors(model)
+    body += struct.pack("<I", len(heads))
+    for name, size in heads:
         b = name.encode()
         body += struct.pack("<H", len(b)) + b + struct.pack("<I", size)
-    ts = tensors(model)
     body += struct.pack("<I", len(ts))
     for name, t in ts:
         b = name.encode()

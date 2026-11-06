@@ -501,7 +501,7 @@ func cmdStat(s *Session, a []string) error {
 	}
 	ear := "the analysis"
 	if s.frontEnd != nil {
-		ear = fmt.Sprintf("model %s (%d weights)", s.files.model, s.frontEnd.Model.Parameters())
+		ear = "model " + s.ear()
 	}
 	fmt.Fprintf(s.out, "rip hears with %s; params %s\n", ear, cmp.Or(s.ripSrc, "built-in"))
 	fmt.Fprintf(s.out, "sounds %d (dirty %v)  voices %d (dirty %v)  patterns %d (dirty %v)\n",

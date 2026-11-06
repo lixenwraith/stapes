@@ -2,6 +2,7 @@
 export the weights lixenwraith/transformer loads:
 
     python3 train.py --corpus corpus/ --out ripmodel.bin --steps 2000
+    python3 train.py --corpus corpus/ --out ripnotes.bin --pitchnet ...   # the notes model
 
 Each loop's log-mel frames (loop_NNN.mel) are the input; its events
 (loop_NNN.json) become per-frame targets: an onset within a frame of any event,
@@ -403,7 +404,7 @@ def main() -> None:
     ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
     ap.add_argument("--extra", default="", help="more corpora and the share of windows drawn from each, dir:share, comma-separated")
-    ap.add_argument("--pitchnet", action="store_true", help="convolutions only over the harmonic stack, the same weights at every pitch; its .pt holds them until Go reads the model")
+    ap.add_argument("--pitchnet", action="store_true", help="the notes model: convolutions only over the harmonic stack, the same weights at every pitch; --out is then ripnotes.bin, which stapes reads beside ripmodel.bin")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--shard-seed", type=int, default=0, help="offsets the stream the windows are drawn from, so a round's workers see different loops; the starting weights stay --seed's")
     ap.add_argument("--checkpoint", default="", help="write a .pt every --every steps, and resume from it when present")
@@ -555,10 +556,7 @@ def main() -> None:
         model.load_state_dict(best_state)
         print(f"best held-out decoders' loss {best_loss:.3f} at step {best_step}; exporting that")
     model.eval()
-    if args.pitchnet:
-        torch.save({"model": model.state_dict(), "cfg": asdict(cfg)}, args.out)
-    else:
-        ripmodel.export(model.cpu(), args.out)
+    ripmodel.export(model.cpu(), args.out)
     print(f"wrote {args.out}")
 
 

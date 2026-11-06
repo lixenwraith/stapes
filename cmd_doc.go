@@ -106,10 +106,11 @@ func (s *Session) loadMIDI(file string, named []string, replace bool) error {
 	if err := s.setMeter(song.Signature()); err != nil {
 		return err
 	}
-	s.bpm, s.root, s.scale, s.tuning = song.BPM, song.Root, song.ScaleID(), 0
+	s.bpm, s.root, s.scale, s.tuning, s.kit = song.BPM, song.Root, song.ScaleID(), 0, nil
 	s.eng.SetMusicBPM(s.bpm)
 	s.eng.SetHarmony(s.root, s.scale, s.prog)
 	s.eng.SetTuning(0)
+	s.eng.SetKit(nil)
 	notes, hits := 0, 0
 	for _, bar := range song.Bars {
 		for _, n := range bar {
@@ -302,6 +303,7 @@ func cmdRip(s *Session, a []string) error {
 		for b := range r.Bars {
 			r.Bars[b].Drums = [audio.InstrClap][]audio.Step{}
 		}
+		r.Tone = [audio.InstrClap]audio.RipTone{} // no drums to match
 	}
 	if len(r.Patterns(name, bars)) == 0 {
 		return fmt.Errorf("%s: nothing heard to write", a[0])

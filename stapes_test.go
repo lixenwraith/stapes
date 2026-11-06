@@ -1642,6 +1642,51 @@ func TestCompressMergesScatteredFalseHitsNotNotes(t *testing.T) {
 	}
 }
 
+// TestCompressPlaysTheRecordingsDrums: compress registers each drum the rip read
+// matched to the recording's, the song names them in its kit and plays on them,
+// and the sounds and the song saved load into a fresh session that plays the same
+func TestCompressPlaysTheRecordingsDrums(t *testing.T) {
+	dir := t.TempDir()
+	doc, wav, sounds, music := filepath.Join(dir, "kit.toml"), filepath.Join(dir, "beat.wav"), filepath.Join(dir, "sounds.toml"), filepath.Join(dir, "music.toml")
+	writeFile(t, doc, `[[pattern]]
+name = "backbeat"
+steps = 16
+role = "rhythm"
+[[pattern.track]]
+instr = "kick"
+event = [{pos = 0, vel = 1}, {pos = 8, vel = 1}]
+[[pattern.track]]
+instr = "snare"
+event = [{pos = 4, vel = 0.9}, {pos = 12, vel = 0.9}]
+[[pattern.track]]
+instr = "hihat"
+event = [{pos = 0, vel = 0.6}, {pos = 2, vel = 0.6}, {pos = 4, vel = 0.6}, {pos = 6, vel = 0.6}, {pos = 8, vel = 0.6}, {pos = 10, vel = 0.6}, {pos = 12, vel = 0.6}, {pos = 14, vel = 0.6}]
+`)
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	s.ticked = true
+	runOrFatal(t, s, &out, fmt.Sprintf("load %s\nbpm 120\nslot 0 backbeat\nrender %s 8\nrip %s beat\ncompress beat\nsong beat play\nmusic stop\nsave sound %s\nsave pattern %s\n", doc, wav, wav, sounds, music))
+	want := map[string]string{"kick": "beat_kick", "snare": "beat_snare", "hihat": "beat_hihat"}
+	d, _ := s.songs.get("beat")
+	if d == nil || !reflect.DeepEqual(d.Kit, want) || !reflect.DeepEqual(s.kit, want) {
+		t.Fatalf("the song's kit %v, the transport's %v:\n%s", d, s.kit, out.String())
+	}
+	for _, n := range want {
+		if m, ok := s.sounds.get(n); !ok || audio.SoundDefByName(n) == nil || m.Chain[len(m.Chain)-1].Kind != "eq" {
+			t.Errorf("%s: not registered with its eq", n)
+		}
+	}
+	teardown(t, s)
+	out.Reset()
+	s = newTestSession(t, &out)
+	defer teardown(t, s)
+	s.ticked = true
+	runOrFatal(t, s, &out, fmt.Sprintf("load sound %s\nload pattern %s\napply all\nsong beat %s\nsong beat play\nmusic stop\n", sounds, music, wav))
+	if !reflect.DeepEqual(s.kit, want) {
+		t.Errorf("the saved song plays the kit %v:\n%s", s.kit, out.String())
+	}
+}
+
 // midiDoc is a pattern document of a song of a pluck over a bass, a bar of
 // 3/4 in the bass's own pattern
 const midiDoc = `

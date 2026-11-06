@@ -124,12 +124,16 @@ Over the library's rip (library
   patterns across tempos and keys with `lixenwraith/genetic`'s generational
   engine, the current set seeding the pool, and writes a set that beats it
   ([todo](todo.md#tune-the-rip) for what the corpus still lacks).
-- `compress` runs the grouping (`Rip.Cluster`) at each part's threshold
-  (`compressPercent`), refines the assignment with `lixenwraith/genetic` under a
-  term for the patterns in use, rips the song's render back on the song's own
-  grid (`Ripper.Grid`) and scores it against the rip; `song` shows, renders or
-  conducts a song through the live sequencer, or renders one line of it alone,
-  the instruments named after the file.
+- `compress` gives a first bar that starts partway the beat of the bar most
+  like it (`Rip.MendPickup`), runs the grouping (`Rip.Cluster`) at each part's
+  threshold (`compressPercent`), refines the assignment with
+  `lixenwraith/genetic` under a term for the patterns in use, registers the
+  drums matched to the recording's (`Rip.Kit`, `<name>_kick` ...) that the song's
+  `kit` names, rips the song's render back on the song's own grid
+  (`Ripper.Grid`) and scores it against the rip; `song` shows, renders or
+  conducts a song through the live sequencer on its kit (`SetKit`), the
+  transport keeping a played song's, or renders one line of it alone, the
+  instruments named after the file.
 - `refine` closes the loop: the voices fitted again and the tonal steps'
   velocities and lengths searched with `Fidelity` as the fitness, a step kept
   only when it rises, each voice held within a tenth of its tonal floor, the

@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -63,6 +64,7 @@ func cmdCompress(s *Session, a []string) error {
 // compress of the name made. The song's render is ripped back against the rip,
 // so what the compression lost is a score.
 func (s *Session) compress(name string, r *audio.Rip, threshold [audio.RipParts]float64, o compressOptions) error {
+	r = r.MendPickup(threshold[audio.RipBeat])
 	var assign [audio.RipParts][]int
 	parts := 0
 	for part := range audio.RipParts {
@@ -96,6 +98,12 @@ func (s *Session) compress(name string, r *audio.Rip, threshold [audio.RipParts]
 			return fmt.Errorf("%q: already exists and is not a pattern", p.Name)
 		}
 	}
+	kit := r.Kit(name)
+	for _, d := range kit {
+		if s.has(d.Name) && !s.sounds.has(d.Name) {
+			return fmt.Errorf("%q: already exists and is not a sound", d.Name)
+		}
+	}
 	// an earlier dictionary of the name goes, so another threshold leaves no strays
 	fresh := map[string]bool{}
 	for _, p := range pats {
@@ -109,9 +117,24 @@ func (s *Session) compress(name string, r *audio.Rip, threshold [audio.RipParts]
 	for _, p := range pats {
 		s.pats.put(p, true)
 	}
+	// the matched drums register at once, as the song names them; unsaved till a save
+	for _, d := range kit {
+		if _, err := s.eng.DefineSound(d.Clone()); err != nil {
+			return fmt.Errorf("sound %q: %w", d.Name, err)
+		}
+		s.sounds.put(d, true)
+		s.sounds.clearDirty(d.Name)
+	}
 	s.songs.put(song, true)
 	fmt.Fprintf(s.out, "%s: %d bar(s) of %d part(s) in %d pattern(s); song %s plays them at %d bpm, %s %s\n",
 		name, len(r.Bars), parts, len(pats), song.Name, song.BPM, noteName(song.Root), song.Scale)
+	if len(kit) > 0 {
+		names := make([]string, len(kit))
+		for i, d := range kit {
+			names[i] = d.Name
+		}
+		fmt.Fprintf(s.out, "its drums are matched to the recording's: %s\n", strings.Join(names, ", "))
+	}
 	score, err := s.songScore(song, r)
 	if err != nil {
 		return err
@@ -385,9 +408,13 @@ func (s *Session) renderSong(d *audio.SongDef, only []audio.InstrumentType) ([]f
 	return s.renderBars(d, tl, only)
 }
 
-// renderBars renders bars of a song's timeline at the song's tuning, the
-// transport's put back after
+// renderBars renders bars of a song's timeline at the song's tuning and on its
+// kit, the transport's put back after
 func (s *Session) renderBars(d *audio.SongDef, tl [][audio.MusicSlots]audio.PatternID, only []audio.InstrumentType) ([]float64, error) {
+	if err := s.eng.SetKit(d.Kit); err != nil {
+		return nil, err
+	}
+	defer s.eng.SetKit(s.kit)
 	s.eng.SetTuning(d.Tuning)
 	defer s.eng.SetTuning(s.tuning)
 	return s.eng.RenderLines(tl, d.BPM, d.Signature(), d.Root, d.ScaleID(), d.Chords, 1, only)
@@ -508,6 +535,10 @@ func (s *Session) playSong(d *audio.SongDef) error {
 	if err != nil {
 		return err
 	}
+	if err := s.eng.SetKit(d.Kit); err != nil {
+		return err
+	}
+	s.kit = maps.Clone(d.Kit)
 	// stopped first: a running transport holds a tempo for the next beat and a
 	// meter for the next bar line, and the reset would drop them
 	s.eng.StopMusic()

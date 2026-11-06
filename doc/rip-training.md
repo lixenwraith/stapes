@@ -571,6 +571,18 @@ round  corpus                       clean   30 cm   Pixel   Galaxy
 24b    11, MusicNet 20%, GuitarSet  0.764   0.653   0.692   0.697
 ```
 
+Audio v0.5.1 reads low notes by strikes as well, which moves the same weights, with no training:
+
+```
+round  corpus                       clean   30 cm   Pixel   Galaxy
+22a    11                           0.784   0.680   0.754   0.758
+24a    14                           0.821   0.661   0.750   0.721
+```
+
+The gain is under E4: on rendered instruments E3 to D#4 goes from 0.61-0.77 to 0.74-0.92. Basic
+Pitch, which reads every register alike, had led there. All-note F1 on seven renders of Für Elise
+now runs 0.784 to 0.895 against its 0.802 to 0.900, ahead on four.
+
 - **Weights shared across pitches** are 22a against 19a, the same stack fed to the model of
   section 7 on 3.7M weights: 0.693, 0.604, 0.623, 0.638. The stack alone gains nothing.
 - **Attention beside them** lost: both paths in one model of 3.4M weights scored 0.751, 0.678,

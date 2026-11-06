@@ -1,5 +1,9 @@
 github.com/lixenwraith/audio v0.3.1 h1:Cq/ohuIupnVT2pfII9ypgdMkYsUwOnTfByPO+SsyF0w=
 github.com/lixenwraith/audio v0.3.1/go.mod h1:GhsJVOCcD2Umnrg6ZdGrJULPPJgDqwHyLXDIiUrxI0w=
+github.com/lixenwraith/audio v0.3.2-0.20261106004033-aaf2a0b831e5 h1:/E5+p2dKVkFxA5H1KPKD99JsN1nI/OGyEMVkhd9m6OM=
+github.com/lixenwraith/audio v0.3.2-0.20261106004033-aaf2a0b831e5/go.mod h1:GhsJVOCcD2Umnrg6ZdGrJULPPJgDqwHyLXDIiUrxI0w=
+github.com/lixenwraith/audio v0.3.2-0.20261106010004-588f2d8b5559 h1:ggVPWukay9F/TQVZrZQBa+uoR4phFdA1DuEiLqgLjj0=
+github.com/lixenwraith/audio v0.3.2-0.20261106010004-588f2d8b5559/go.mod h1:GhsJVOCcD2Umnrg6ZdGrJULPPJgDqwHyLXDIiUrxI0w=
 github.com/lixenwraith/color v0.1.5 h1:GRT4PBb9R04ahXW7SGlsfDttqew8E2lgt9GGujL0jEo=
 github.com/lixenwraith/color v0.1.5/go.mod h1:L/I3Vxp6pqslAIzWyZGgKCm2lyStHCA4vKaUoMUm7bU=
 github.com/lixenwraith/genetic v0.1.0 h1:Qbm9UKIHk7J/9YyrJYn6tssvAHlzwgglQlYmJYuMJtI=

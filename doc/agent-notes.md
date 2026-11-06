@@ -83,6 +83,11 @@ proves wrong or that a document now states, and link the document instead.
   and the log's tail only, so nothing reads the session the goroutine owns, and
   `LogBuffer` takes a lock because both sides write and read it. A test of such
   a verb ticks (`KeyNone`) until `busy` clears.
+- A song's `kit` names sounds `SetKit` finds in the registry: `load sound`
+  leaves a document's sounds unregistered until `apply`, so a song loaded that
+  way and played before refuses its kit; the root's sounds file registers at
+  start. The engine keeps one drum's takes for offline renders, so a render on
+  a kit other than the transport's renders both kits' takes again.
 
 ## The rip and its truths
 

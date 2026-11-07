@@ -94,7 +94,14 @@ flowchart LR
    rows' own reference; a reached note the bass line does not continue, its
    nearest other bass note more than an octave away, is not the bass's, and a
    note both registers hear goes to the line it continues, the one whose
-   nearest other note is nearer in pitch, the bass when they tie. `RipParams`
+   nearest other note is nearer in pitch, the bass when they tie. The notes
+   are then held to the recording (the library's accounting, [library
+   §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)):
+   each note's harmonics read off the frames and fitted together, one
+   template a pitch and one activation a note, so a note whose sound the
+   others account for goes and a strike the rules dropped comes back where
+   the kept notes leave its sound unexplained, by a score set on graded
+   recordings. `RipParams`
    holds their thresholds as data a search tunes (`tune`).
 4. **Voices.** Each note carries the genes the front end heard it played with
    (`VoiceDef.Genes`, thirty-two parameters in [0, 1] on perceptual scales, and a

@@ -317,6 +317,9 @@ from random places summed, the second at -6 to +6 dB of the first's power. Notes
 labels, a drum hit counts where it stands out of the other clip, and wave and voice go
 unasked.
 
+**`--sung dir:share`** draws that share of the chunks from a corpus of solo singing. 27a, at a
+quarter with half the windows shuffled, took held-out sung notes from 0.54 to 0.63.
+
 Draws from both are by length, since E-GMD's recordings run from 2 seconds to 10
 minutes: 521 of its first batch's 819 are shorter than a window but hold only 4.8% of
 its audio. Drawn by recording, they would be 64% of the windows.
@@ -364,7 +367,9 @@ offset    size  head       read as
 A file may lack the last 3 heads and still load.
 
 `--pitchnet` builds another model on the same heads: convolutions only, the same weights at
-every pitch, 169,862 weights in all. Its file is `ripnotes.bin` (§9).
+every pitch, 169,862 weights in all. Its file is `ripnotes.bin` (§9). `--dilations 3,9,27` adds
+a residual 3x3 over the cells for each, its frames that far apart: each note head then hears
+half a second either way instead of 80 ms, 197,606 weights, about 1.5 times the compute.
 
 ```
 input          B x T x 460              the two planes
@@ -373,6 +378,7 @@ reduce         B x 8 x T x 213          1x1, GELU, the scalars set aside
 wide           B x 16 x T x 213         3x39, thirteen semitones, GELU
 cells          B x 32 x T x 71          7x3, stride 3 over features, one cell a semitone, GELU
 near           B x 32 x T x 71          7x3 with a residual, GELU
+long           B x 32 x T x 71          3x3 dilated in time, one each of --dilations, with a residual, GELU
 notes          B x 4 x T x 69           1x1: pitch, strike, release, velocity
 frame          B x T x 39               wide pooled to 16 regions plus the scalars, a 1D conv of 5
                                         and one of 9 dilated by 2, linear: the other heads
@@ -463,11 +469,11 @@ offset  bytes         field
 The checksum catches damage, not tampering. A file only ever holds numbers, and `Load`
 checks its shape against its tensors.
 
-`--pitchnet` writes version 4, whose `kind` word after the version, 1, makes the model
+`--pitchnet` writes version 5, whose `kind` word after the version, 1, makes the model
 transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
-scalars, then the heads, the per-pitch ones first: pitch, strike, release and velocity,
-then onset, drums, voicing, wave and voice. The tensors are `reduce`, `wide`, `cells`,
-`near.0`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
+scalars, then the long convolutions' spacings, then the heads, the per-pitch ones first: pitch,
+strike, release and velocity, then onset, drums, voicing, wave and voice. The tensors are
+`reduce`, `wide`, `cells`, `near.0`, `long.{i}`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
 `nn.Conv1d` or `nn.Linear` holds it. In the stapes root the file is `ripnotes.bin`.
 Beside `ripmodel.bin` it gives pitch, voicing, strike, release and velocity, and the model
 keeps onset, drums, wave and voice. Alone it is unused. `average.py --out ripnotes.bin
@@ -583,6 +589,19 @@ round  corpus                 windows       clean   30 cm   Pixel   Galaxy
 26a    14, 11 at half         half shuffled 0.831   0.658   0.746   0.748
 ```
 
+Through the accounting of audio v0.8.0 and the timed match, on sets chosen to stop fitting four songs; each trained on 25a's mix, with what the column names:
+
+```
+                        25a     29b, +-0.5 s    27a, singing, shuffled
+Fur Elise renders       0.895   0.904           0.913
+Fur Elise clean         0.826   0.824           0.820
+Fur Elise Pixel         0.698   0.724           0.699
+GuitarSet strummed      0.531   0.544           0.549
+GuitarSet solo          0.779   0.812           0.787
+MusicNet                0.583   0.595           0.593
+vocadito, sung          0.539   0.616           0.634
+```
+
 Basic Pitch's best per take is 0.778, 0.606, 0.614, 0.593. Under E4 the decoder was most of the
 gap: on rendered instruments E3 to D#4 went from 0.61-0.77 to 0.74-0.92 on 24a's weights.
 
@@ -609,9 +628,10 @@ CORPUS=<corpus 11> PCEN=1 CHANNEL=<noise.npz>:0.5 OVER=<e-gmd corpus>:0.25 MIX=<
 
 ## 12. The scores
 
-- **`truth <name> <file>`** aligns a rip's notes with the given ones by the longest
-  common subsequence of pitches in time order, at the transposition within an octave
-  that matches most. F1 counts notes, not timing. For a rhythm given with no pitches, as
+- **`truth <name> <file>`** finds a time map from the longest common subsequence of
+  pitches in time order, at the transposition within an octave that matches most, and
+  counts a note right when one of its pitch starts within 0.1 s of its place on that map
+  (audio's `MatchNotes`). For a rhythm given with no pitches, as
   One More Bite's is, it matches onsets on a fitted time map. Against a MIDI file it also
   counts hits per drum, within half a step, under a fitted stretch and offset.
 - **`bench`** renders fresh loops and grades each against what was played: a note

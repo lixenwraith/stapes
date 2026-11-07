@@ -402,6 +402,8 @@ def main() -> None:
     ap.add_argument("--convs", default="", help="convolutions before the input layer, channels x frames x features / pool each, comma-separated: 16x3x3/1,16x3x3/2,32x3x3/2")
     ap.add_argument("--attention-window", type=int, default=64, help="frames attended either side")
     ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
+    ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
+    ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
     ap.add_argument("--extra", default="", help="more corpora and the share of windows drawn from each, dir:share, comma-separated")
     ap.add_argument("--pitchnet", action="store_true", help="the notes model: convolutions only over the harmonic stack, the same weights at every pitch; --out is then ripnotes.bin, which stapes reads beside ripmodel.bin")
@@ -423,13 +425,14 @@ def main() -> None:
     if any(len(t) != 2 for t in towers) or towers and sum(h for _, h in towers) != len(ripmodel.HEADS):
         raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodel.HEADS)}")
     heard = dict(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS) if args.pitchnet else dict(channels=2 if args.pcen else 1)
-    cfg = ripmodel.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers)
+    cfg = ripmodel.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,
+                          dilations=tuple(int(d) for d in filter(None, args.dilations.split(","))))
     planes = min(cfg.channels, 2)  # what the data loader makes; the model stacks them
     resume = bool(args.checkpoint) and os.path.exists(args.checkpoint)
     start = args.checkpoint if resume else args.init
     ck = torch.load(start, map_location=args.device) if start else None
     if ck is not None and "cfg" in ck:
-        ck["cfg"] = {"channels": 1, **ck["cfg"]}  # a checkpoint from before channels has one
+        ck["cfg"] = {"channels": 1, "dilations": (), **ck["cfg"]}  # a checkpoint from before those has one and none
     # refused before the corpus loads: load_state_dict names only a tensor's size,
     # and takes another head count or window without a word
     if ck is not None and ck.get("cfg") != asdict(cfg):
@@ -519,8 +522,17 @@ def main() -> None:
             return (*rng.choices(mixed, cum_weights=by_mixed)[0], None)
         return (*rng.choice(loops), None)
 
+    sung, sung_share, by_sung = [], 0.0, []
+    if args.sung:
+        d, _, sh = args.sung.rpartition(":")
+        _, sung = load_corpus(d)
+        sung_share, by_sung = float(sh), list(accumulate(len(m) for m, _ in sung))
+        print(f"{len(sung)} sung recordings of {sum(len(m) for m, _ in sung)} frames from {d}, {sung_share:.0%} of the chunks")
+
     def pick():
-        """a recording for a shuffled window's chunk: a loop, or drums alone by length"""
+        """a recording for a shuffled window's chunk: singing, a loop, or drums alone by length"""
+        if sung and rng.random() < sung_share:
+            return rng.choices(sung, cum_weights=by_sung)[0]
         if drums and rng.random() < 0.3:
             return rng.choices(drums, cum_weights=by_drums)[0]
         return rng.choice(loops)

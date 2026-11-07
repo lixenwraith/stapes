@@ -856,9 +856,10 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   witnesses.** The numbers so far grade the mix, not the melody; what the
   user hears as the lead has no number. `truth` scores a rip against notes
   given in the `notes` verb's own text, which a listener corrects by hand, by
-  the longest common subsequence of each line's pitches in time order under
-  the transposition that matches most, so a tempo that drifts or a phrase
-  played freer, a live take against a studio one, does not break the match;
+  a time map from the longest common subsequence of the pitches in time order
+  under the transposition that matches most, a note right within 0.1 s of its
+  place, so a tempo that drifts or a phrase played freer, a live take against
+  a studio one, does not break the match and a note far off does not count;
   `agree` holds two rips of one piece to each other the same way where no
   score is to hand, by line and with the melody register as one, since the
   two may part its lines differently.

@@ -93,6 +93,8 @@ class Config:
     # the next heads; none is one stack of `layers` computing all of them
     towers: list = field(default_factory=list)
     outputs: list = field(default_factory=lambda: list(HEADS))
+    # the frames apart of each convolution over the cells after the near ones, PitchNet's alone
+    dilations: tuple = ()
 
     @property
     def features(self) -> int:
@@ -246,6 +248,7 @@ class PitchNet(nn.Module):
         self.wide = nn.Conv2d(8, 16, (3, 39), padding=(1, 19))  # thirteen semitones
         self.cells = nn.Conv2d(16, 32, (7, 3), stride=(1, 3), padding=(3, 0))  # to one cell a semitone
         self.near = nn.Conv2d(32, 32, (7, 3), padding=(3, 1))
+        self.long = nn.ModuleList(nn.Conv2d(32, 32, 3, padding=(d, 1), dilation=(d, 1)) for d in cfg.dilations)
         self.notes = nn.Conv2d(32, 4, 1)  # pitch, strike, release, velocity
         self.frame1 = nn.Conv1d(16 * 16 + 2, 64, 5, padding=2)
         self.frame2 = nn.Conv1d(64, 64, 9, padding=8, dilation=2)
@@ -271,6 +274,8 @@ class PitchNet(nn.Module):
         w = F.gelu(self.wide(x))
         c = F.gelu(self.cells(F.pad(w, (1, 0))))  # cell j is centred on bin 3j, STACK_ROOT_MIDI + j
         c = F.gelu(self.near(c) + c)
+        for layer in self.long:
+            c = F.gelu(layer(c) + c)
         n = self.notes(c)[..., 1:PITCHES + 1]  # B 4 T pitches
         f = F.adaptive_avg_pool2d(w, (T, 16)).transpose(2, 3).flatten(1, 2)  # B 16*16 T
         f = torch.cat([f, level[:, None], pcen[:, None]], 1)
@@ -284,9 +289,9 @@ class PitchNet(nn.Module):
         return torch.cat([part[k] for k, _ in self.cfg.outputs], -1)
 
 
-# PitchNet's file: version 4 names the model's kind, 1 a cell net, whose heads
+# PitchNet's file: version 5 names the model's kind, 1 a cell net, whose heads
 # are the per-pitch ones in the notes convolution's order, then the frame's
-CELLS_VERSION, CELLS_KIND = 4, 1
+CELLS_VERSION, CELLS_KIND = 5, 1
 CELL_HEADS = ("pitch", "strike", "release", "velocity")
 FRAME_HEADS = ("onset", "drums", "voicing", "wave", "voice")
 
@@ -316,12 +321,13 @@ def _cells_header(model: PitchNet) -> bytes:
     regions = (frame1.in_channels - len(scalars)) // wide.out_channels
     assert regions * wide.out_channels + len(scalars) == frame1.in_channels
     v = (STACK_BINS, model.reduce.out_channels, wide.out_channels, wt, wf, cells.out_channels, ct, cf, stride, len(nears), nt, nf,
-         1, PITCHES, len(CELL_HEADS), regions, frame1.out_channels, ft, at, dil, len(scalars), *scalars)
+         1, PITCHES, len(CELL_HEADS), regions, frame1.out_channels, ft, at, dil, len(scalars), *scalars,
+         len(model.long), *(layer.dilation[0] for layer in model.long))
     return struct.pack(f"<{len(v)}I", *v)
 
 
 def export(model: nn.Module, path: str) -> None:
-    """the weight file: version 3 for RipModel, 4 for PitchNet"""
+    """the weight file: version 3 for RipModel, 5 for PitchNet"""
     cfg = model.cfg
     body = bytearray(MAGIC)
     if isinstance(model, PitchNet):
@@ -330,6 +336,7 @@ def export(model: nn.Module, path: str) -> None:
         heads = [(k, sizes[k]) for k in CELL_HEADS + FRAME_HEADS]
         layers = [("reduce", model.reduce), ("wide", model.wide), ("cells", model.cells)]
         layers += [(f"near.{i}", n) for i, n in enumerate(_nears(model))]
+        layers += [(f"long.{i}", n) for i, n in enumerate(model.long)]
         layers += [("cellout", model.notes), ("frame1", model.frame1), ("frame2", model.frame2), ("frameout", model.frame)]
         ts = [(f"{name}.{p}", getattr(m, p)) for name, m in layers for p in ("weight", "bias")]
     else:

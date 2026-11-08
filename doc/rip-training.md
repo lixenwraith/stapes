@@ -133,6 +133,11 @@ needed (`loop_39999`). The corpora in use:
   the loops play a random 4-bar stretch of a random file from Lakh's clean MIDI set: its
   beat, melody, second line and bass, moved up to half an octave, the second line on a
   random tonal instrument.
+- **Corpus 15:** `corpus <dir> 20000 4 aug gen nowav codec dense seed 151 midi <dir>`.
+  Corpus 14's recipe playing every part of the file: the parts past its melody,
+  second line and bass spread by octave over up to three tracks on instruments of
+  their own, each up to 24 dB under the file's level, so a soft inner line sounds
+  under a ring. Corpus 16 is the same at `seed 161`.
 - **E-GMD:** `corpus <dir> from <list.csv> split train codec`. 5,691 real recordings
   of 43 kits, 55.6 hours, 17.2 million frames, 15 GB. Each loop is one recording, from
   2 seconds to 10 minutes, with its hits from the MIDI file. Its keys are mapped by

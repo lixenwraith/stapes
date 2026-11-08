@@ -337,6 +337,12 @@ to 18% either way and a slow sine of up to 12 frames, the features interpolated 
 targets taken nearest, so no steady grid or pulse is there to learn, as a pianist's isn't.
 It came in with corpus 15 (31a, at 0.3), so its share of that round's gain is unmeasured.
 
+**`--strike-weight w`** is a strike's weight against a frame without one, 20 by default:
+at 4 (28a) the head's outputs fell so far that no pair of bars matched 25a on the real
+path. **`--again-weight a`** weighs a strike of a pitch still sounding a times more, the
+miss under most of what the rip loses (strummed guitar's 2133 of 3764 misses); 31a and
+since take 3, unmeasured alone for the same reason as the bend.
+
 Draws from both are by length, since E-GMD's recordings run from 2 seconds to 10
 minutes: 521 of its first batch's 819 are shorter than a window but hold only 4.8% of
 its audio. Drawn by recording, they would be 64% of the windows.

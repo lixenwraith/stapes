@@ -392,6 +392,10 @@ def evaluate(model: ripmodel.RipModel, mels, tgs, device: str) -> dict:
     return {k: v / max(len(mels), 1) for k, v in sums.items()}
 
 
+STRIKE_POS = 20.0  # a strike's weight against the frames without one
+STRIKE_AGAIN = 1.0  # and a strike of a pitch still sounding, the most missed of all, by this much more
+
+
 def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
     y = model(mel)
     cfg = model.cfg
@@ -399,14 +403,14 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
     def bce(name, target, pos_weight):
         logits = y[..., cfg.slice(name)]
         target = target if target.dim() == 3 else target[..., None]
-        l = F.binary_cross_entropy_with_logits(logits, target, pos_weight=torch.tensor(pos_weight), reduction="none")
+        l = F.binary_cross_entropy_with_logits(logits, target, pos_weight=torch.as_tensor(pos_weight, device=logits.device), reduction="none")
         return (l.mean(-1) * valid).sum() / valid.sum().clamp(min=1)
     out = {
         "onset": bce("onset", t["onset"], 8.0),
         "drums": bce("drums", t["drums"], 8.0),
         "pitch": bce("pitch", t["pitch"], 12.0),
         "voicing": bce("voicing", t["voicing"], 2.0),
-        "strike": bce("strike", t["strike"], 20.0),
+        "strike": bce("strike", t["strike"], STRIKE_POS * (1 + (STRIKE_AGAIN - 1) * F.pad(t["pitch"][:, :-3], (0, 0, 3, 0)))),
         "release": bce("release", t["release"], 20.0),
     }
     heard = t["heard"] * valid[..., None]
@@ -449,6 +453,8 @@ def main() -> None:
     ap.add_argument("--convs", default="", help="convolutions before the input layer, channels x frames x features / pool each, comma-separated: 16x3x3/1,16x3x3/2,32x3x3/2")
     ap.add_argument("--attention-window", type=int, default=64, help="frames attended either side")
     ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
+    ap.add_argument("--strike-weight", type=float, default=20.0, help="a strike's weight in its head's loss against a frame without one")
+    ap.add_argument("--again-weight", type=float, default=1.0, help="how much more a strike of a pitch still sounding weighs than another")
     ap.add_argument("--bend", type=float, default=0.0, help="the share of windows read along a tempo that sways, so no grid or steady pulse is there to learn")
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
@@ -464,8 +470,8 @@ def main() -> None:
     ap.add_argument("--holdout", type=int, default=-1, help="loops held out of training and scored every --every steps; the step that scores best is what --out gets (default a tenth, none under five loops)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
-    global RING
-    RING = args.ring
+    global RING, STRIKE_POS, STRIKE_AGAIN
+    RING, STRIKE_POS, STRIKE_AGAIN = args.ring, args.strike_weight, args.again_weight
 
     torch.manual_seed(args.seed)
     rng = random.Random(args.seed + (args.shard_seed << 32))  # a stream per seed and shard; shard 0 is the seed's own

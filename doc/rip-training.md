@@ -332,6 +332,11 @@ attack's rise, its harmonics absent and nothing labelled, as a guitar's air cavi
 against 31a and every real set up but the renders; a first try at 70 to 400 Hz and up to 0 dB
 (30a) cut them further and cost every other set.
 
+**`--bend share`** reads that share of the plain windows along a tempo that sways: a rate up
+to 18% either way and a slow sine of up to 12 frames, the features interpolated and the
+targets taken nearest, so no steady grid or pulse is there to learn, as a pianist's isn't.
+It came in with corpus 15 (31a, at 0.3), so its share of that round's gain is unmeasured.
+
 Draws from both are by length, since E-GMD's recordings run from 2 seconds to 10
 minutes: 521 of its first batch's 819 are shorter than a window but hold only 4.8% of
 its audio. Drawn by recording, they would be 64% of the windows.

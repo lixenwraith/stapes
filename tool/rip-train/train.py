@@ -328,14 +328,32 @@ def ringing(e, rng):
         e[:, k + d] += w * out
 
 
+# Bent windows: a tempo read along a slow curve, so no grid or steady pulse is there to learn
+BEND_RATE, BEND_SWAY = 0.18, 12  # the window's tempo up to this share either way, swaying this many frames
+
+
+def bent(mel, lab, window: int, channels: int, over, rng, heard):
+    """a window read along a curve over the frames of a longer or shorter one: the features interpolated, the targets nearest"""
+    rate = math.exp(rng.uniform(-BEND_RATE, BEND_RATE))
+    sway, period, phase = rng.uniform(0, BEND_SWAY), rng.uniform(150, 500), rng.uniform(0, 2 * math.pi)
+    n = int(window * rate + 2 * BEND_SWAY) + 2
+    x, out = sample(mel, lab, rng.randrange(max(len(mel) - n, 0) + 1), n, channels, over, rng, heard)
+    t = np.arange(window)
+    g = np.clip(t * rate + BEND_SWAY + sway * np.sin(2 * math.pi * t / period + phase), 0, n - 1.001)
+    lo = g.astype(np.int64)
+    f = (g - lo)[:, None].astype(np.float32)
+    near = np.rint(g).astype(np.int64)
+    return x[lo] * (1 - f) + x[lo + 1] * f, {k: v[near] for k, v in out.items()}
+
+
 def stack(samples):
     mels, tgs = zip(*samples)
     out = {k: torch.from_numpy(np.stack([t[k] for t in tgs])) for k in tgs[0]}
     return torch.from_numpy(np.stack(mels)), {k: v if k == "wave" else v.float() for k, v in out.items()}
 
 
-def batch(draw, window: int, size: int, rng: random.Random, channels: int, channel=None, share: float = 0.0, pick=None, shuffle: float = 0.0):
-    """size random windows of `window` frames from the loops draw() picks, a share through the channel, a share shuffled"""
+def batch(draw, window: int, size: int, rng: random.Random, channels: int, channel=None, share: float = 0.0, pick=None, shuffle: float = 0.0, bend: float = 0.0):
+    """size random windows of `window` frames from the loops draw() picks, a share through the channel, a share shuffled, a share of the rest bent"""
     samples = []
     for _ in range(size):
         heard = channel if channel is not None and rng.random() < share else None
@@ -343,6 +361,9 @@ def batch(draw, window: int, size: int, rng: random.Random, channels: int, chann
             samples.append(shuffled(pick, window, channels, rng, heard))
             continue
         mel, lab, over = draw()
+        if rng.random() < bend:
+            samples.append(bent(mel, lab, window, channels, over, rng, heard))
+            continue
         samples.append(sample(mel, lab, rng.randrange(max(len(mel) - window, 0) + 1), window, channels, over, rng, heard))
     return stack(samples)
 
@@ -428,6 +449,7 @@ def main() -> None:
     ap.add_argument("--convs", default="", help="convolutions before the input layer, channels x frames x features / pool each, comma-separated: 16x3x3/1,16x3x3/2,32x3x3/2")
     ap.add_argument("--attention-window", type=int, default=64, help="frames attended either side")
     ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
+    ap.add_argument("--bend", type=float, default=0.0, help="the share of windows read along a tempo that sways, so no grid or steady pulse is there to learn")
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
@@ -568,10 +590,10 @@ def main() -> None:
 
     # the next batch is built while the device works on this one; only that thread draws from rng
     pool = ThreadPoolExecutor(1)
-    ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle)
+    ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle, args.bend)
     while step < args.steps:
         mel, t = ahead.result()
-        ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle)
+        ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle, args.bend)
         mel, t = mel.to(args.device), {k: v.to(args.device) for k, v in t.items()}
         lr = args.lr * 0.5 * (1 + math.cos(math.pi * step / args.steps))  # cosine to zero
         for g in opt.param_groups:

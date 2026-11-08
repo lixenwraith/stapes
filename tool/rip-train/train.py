@@ -261,6 +261,8 @@ def shuffled(pick, window: int, channels: int, rng, channel=None):
         es.append((ea + eb) * through + hiss)
         outs.append(out)
     e = np.concatenate(es)[:total]
+    if rng.random() < RING:
+        ringing(e, rng)
     first = total - window
     out = {k: np.concatenate([o[k] for o in outs])[first:total] for k in outs[0]}
     return ripmodel.features(np.log1p(e).astype(np.float32), channels)[first:], out
@@ -280,6 +282,8 @@ def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, r
     a = max(start - WARM, 0) if channels > 1 else start
     # uncorrelated sounds add in power, and a stored frame is log1p of a hundred times it
     e = np.expm1(take(mel[a:b]).astype(np.float64))
+    if rng is not None and rng.random() < RING:
+        ringing(e, rng)
     loud = e[:len(e) - pad].mean() if pad < len(e) else 0.0
     through = 1.0
     if channel is not None:
@@ -300,6 +304,28 @@ def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, r
                 out["onset"][near] = 1
                 out["drums"][near, drum] = 1
     return ripmodel.features(np.log1p(e).astype(np.float32), channels)[start - a:], out
+
+
+# A body's ring: what a guitar's air cavity or a room's mode adds at every attack, at one pitch whatever the note, its own harmonics absent. No note is labelled
+RING = 0.0  # the share of windows that have one
+RING_HZ, RING_TAU, RING_DB = (70.0, 160.0), (0.05, 0.3), (-25.0, -8.0)  # its pitch, decay in seconds, and level against the attack's rise in energy
+
+
+def ringing(e, rng):
+    """adds a ring to frames of energy, in place: three bands, a window's main lobe"""
+    mel = lambda f: 2595 * math.log10(1 + f / 700)
+    hz = math.exp(rng.uniform(math.log(RING_HZ[0]), math.log(RING_HZ[1])))
+    k = int(round((mel(hz) - mel(30.0)) / (mel(11025.0) - mel(30.0)) * (ripmodel.MEL_BANDS + 1))) - 1
+    total = e.sum(1)
+    kick = np.maximum(np.diff(total, prepend=total[0]), 0)
+    keep, y = math.exp(-(256 / 22050) / rng.uniform(*RING_TAU)), 0.0
+    out = np.empty(len(e))
+    for t, v in enumerate(kick):
+        y = v + keep * y
+        out[t] = y
+    out *= 10 ** (rng.uniform(*RING_DB) / 10)
+    for d, w in ((-1, 0.35), (0, 1.0), (1, 0.35)):
+        e[:, k + d] += w * out
 
 
 def stack(samples):
@@ -402,6 +428,7 @@ def main() -> None:
     ap.add_argument("--convs", default="", help="convolutions before the input layer, channels x frames x features / pool each, comma-separated: 16x3x3/1,16x3x3/2,32x3x3/2")
     ap.add_argument("--attention-window", type=int, default=64, help="frames attended either side")
     ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
+    ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
@@ -415,6 +442,8 @@ def main() -> None:
     ap.add_argument("--holdout", type=int, default=-1, help="loops held out of training and scored every --every steps; the step that scores best is what --out gets (default a tenth, none under five loops)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
+    global RING
+    RING = args.ring
 
     torch.manual_seed(args.seed)
     rng = random.Random(args.seed + (args.shard_seed << 32))  # a stream per seed and shard; shard 0 is the seed's own

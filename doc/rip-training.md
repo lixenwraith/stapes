@@ -325,6 +325,13 @@ unasked.
 **`--sung dir:share`** draws that share of the chunks from a corpus of solo singing. 27a, at a
 quarter with half the windows shuffled, took held-out sung notes from 0.54 to 0.63.
 
+**`--ring share`** adds to that share of the windows a body's or a room's ring at every attack:
+one pitch whatever the note, 70 to 160 Hz, decaying in 0.05 to 0.3 s, 25 to 8 dB under the
+attack's rise, its harmonics absent and nothing labelled, as a guitar's air cavity rings near
+104 Hz on every pluck. 32a, at a quarter, took GuitarSet's solo low extras from 424 to 362
+against 31a and every real set up but the renders; a first try at 70 to 400 Hz and up to 0 dB
+(30a) cut them further and cost every other set.
+
 Draws from both are by length, since E-GMD's recordings run from 2 seconds to 10
 minutes: 521 of its first batch's 819 are shorter than a window but hold only 4.8% of
 its audio. Drawn by recording, they would be 64% of the windows.

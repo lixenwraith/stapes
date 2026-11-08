@@ -43,6 +43,7 @@ type tuneOptions struct {
 	skip                           func(int) bool // the loops drawn but not rendered
 	samples                        *sampleSet     // recorded notes some tonal slots play on; none when nil
 	midis                          []string       // arrangements most loops play bars of, in place of drawn patterns
+	dense                          bool           // those arrangements play every part, the inner ones softer, on instruments of their own
 }
 
 // tuneLoop is one rendered loop, what made it, the rip a perfect listener makes
@@ -224,6 +225,26 @@ type midiPlay struct {
 	meter audio.Meter
 }
 
+// inner spreads an arrangement's inner notes over up to three tracks by octave,
+// each up to 24 dB under the file's own level, so a soft line sounds under a ring
+func inner(tracks []audio.Track, rng *rand.Rand) []audio.Track {
+	n := 1 + rng.IntN(3)
+	out := make([]audio.Track, n)
+	gain := make([]float64, n)
+	for t := range out {
+		out[t] = audio.Track{Humanize: tracks[0].Humanize}
+		gain[t] = math.Pow(10, -24*rng.Float64()/20)
+	}
+	for _, tr := range tracks {
+		for _, ev := range tr.Events {
+			t := ((ev.Oct % n) + n) % n
+			ev.Vel = max(ev.Vel*gain[t], 0.08)
+			out[t].Events = append(out[t].Events, ev)
+		}
+	}
+	return slices.DeleteFunc(out, func(t audio.Track) bool { return len(t.Events) == 0 })
+}
+
 // midiLoop is a random stretch of a random file's beat, melody, second line and
 // bass, moved up to half an octave so the file's key says nothing; a file that can't
 // be read or holds no such stretch passes the draw to another.
@@ -237,6 +258,10 @@ func (s *Session) midiLoop(o tuneOptions, rng *rand.Rand) (midiPlay, bool) {
 		f.Close()
 		if err != nil {
 			continue
+		}
+		if o.dense {
+			score.Notes = append(score.Notes, score.Further...)
+			slices.SortStableFunc(score.Notes, func(a, b audio.RipNote) int { return cmp.Compare(a.Start, b.Start) })
 		}
 		r, _ := score.Rip()
 		meter, known := r.Meter, r.Meter.Steps() == 16
@@ -283,6 +308,9 @@ func (s *Session) midiLoop(o tuneOptions, rng *rand.Rand) (midiPlay, bool) {
 				tonal := audio.TonalInstruments()
 				under := *p
 				under.Name, under.Tracks = "corpus_midi_under", slices.Clone(p.Tracks[1:])
+				if o.dense {
+					under.Tracks = inner(under.Tracks, rng)
+				}
 				for t := range under.Tracks {
 					under.Tracks[t].Instr = tonal[rng.IntN(len(tonal))]
 					if under.Tracks[t].Instr == audio.InstrBass {
@@ -714,6 +742,15 @@ func cmdCorpus(s *Session, a []string) error {
 			o.nowav = true
 		case a[n-1] == "codec":
 			o.codec = true
+		case a[n-1] == "dense":
+			o.dense = true
+		case n > 2 && a[n-2] == "seed":
+			v, err := strconv.ParseUint(a[n-1], 10, 64)
+			if err != nil {
+				return fmt.Errorf("seed %q: want a number", a[n-1])
+			}
+			o.seed = v
+			a = a[:n-1]
 		case n > 2 && a[n-2] == "midi":
 			err := filepath.WalkDir(s.path(a[n-1]), func(path string, d fs.DirEntry, err error) error {
 				if err == nil && !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".mid") {

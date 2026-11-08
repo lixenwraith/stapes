@@ -133,6 +133,11 @@ needed (`loop_39999`). The corpora in use:
   the loops play a random 4-bar stretch of a random file from Lakh's clean MIDI set: its
   beat, melody, second line and bass, moved up to half an octave, the second line on a
   random tonal instrument.
+- **Corpus 15:** `corpus <dir> 20000 4 aug gen nowav codec dense seed 151 midi <dir>`.
+  Corpus 14's recipe playing every part of the file: the parts past its melody,
+  second line and bass spread by octave over up to three tracks on instruments of
+  their own, each up to 24 dB under the file's level, so a soft inner line sounds
+  under a ring. Corpus 16 is the same at `seed 161`.
 - **E-GMD:** `corpus <dir> from <list.csv> split train codec`. 5,691 real recordings
   of 43 kits, 55.6 hours, 17.2 million frames, 15 GB. Each loop is one recording, from
   2 seconds to 10 minutes, with its hits from the MIDI file. Its keys are mapped by
@@ -319,6 +324,24 @@ unasked.
 
 **`--sung dir:share`** draws that share of the chunks from a corpus of solo singing. 27a, at a
 quarter with half the windows shuffled, took held-out sung notes from 0.54 to 0.63.
+
+**`--ring share`** adds to that share of the windows a body's or a room's ring at every attack:
+one pitch whatever the note, 70 to 160 Hz, decaying in 0.05 to 0.3 s, 25 to 8 dB under the
+attack's rise, its harmonics absent and nothing labelled, as a guitar's air cavity rings near
+104 Hz on every pluck. 32a, at a quarter, took GuitarSet's solo low extras from 424 to 362
+against 31a and every real set up but the renders; a first try at 70 to 400 Hz and up to 0 dB
+(30a) cut them further and cost every other set.
+
+**`--bend share`** reads that share of the plain windows along a tempo that sways: a rate up
+to 18% either way and a slow sine of up to 12 frames, the features interpolated and the
+targets taken nearest, so no steady grid or pulse is there to learn, as a pianist's isn't.
+It came in with corpus 15 (31a, at 0.3), so its share of that round's gain is unmeasured.
+
+**`--strike-weight w`** is a strike's weight against a frame without one, 20 by default:
+at 4 (28a) the head's outputs fell so far that no pair of bars matched 25a on the real
+path. **`--again-weight a`** weighs a strike of a pitch still sounding a times more, the
+miss under most of what the rip loses (strummed guitar's 2133 of 3764 misses); 31a and
+since take 3, unmeasured alone for the same reason as the bend.
 
 Draws from both are by length, since E-GMD's recordings run from 2 seconds to 10
 minutes: 521 of its first batch's 819 are shorter than a window but hold only 4.8% of

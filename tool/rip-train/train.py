@@ -261,6 +261,8 @@ def shuffled(pick, window: int, channels: int, rng, channel=None):
         es.append((ea + eb) * through + hiss)
         outs.append(out)
     e = np.concatenate(es)[:total]
+    if rng.random() < RING:
+        ringing(e, rng)
     first = total - window
     out = {k: np.concatenate([o[k] for o in outs])[first:total] for k in outs[0]}
     return ripmodel.features(np.log1p(e).astype(np.float32), channels)[first:], out
@@ -280,6 +282,8 @@ def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, r
     a = max(start - WARM, 0) if channels > 1 else start
     # uncorrelated sounds add in power, and a stored frame is log1p of a hundred times it
     e = np.expm1(take(mel[a:b]).astype(np.float64))
+    if rng is not None and rng.random() < RING:
+        ringing(e, rng)
     loud = e[:len(e) - pad].mean() if pad < len(e) else 0.0
     through = 1.0
     if channel is not None:
@@ -302,14 +306,54 @@ def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, r
     return ripmodel.features(np.log1p(e).astype(np.float32), channels)[start - a:], out
 
 
+# A body's ring: what a guitar's air cavity or a room's mode adds at every attack, at one pitch whatever the note, its own harmonics absent. No note is labelled
+RING = 0.0  # the share of windows that have one
+RING_HZ, RING_TAU, RING_DB = (70.0, 160.0), (0.05, 0.3), (-25.0, -8.0)  # its pitch, decay in seconds, and level against the attack's rise in energy
+
+
+def ringing(e, rng):
+    """adds a ring to frames of energy, in place: three bands, a window's main lobe"""
+    mel = lambda f: 2595 * math.log10(1 + f / 700)
+    hz = math.exp(rng.uniform(math.log(RING_HZ[0]), math.log(RING_HZ[1])))
+    k = int(round((mel(hz) - mel(30.0)) / (mel(11025.0) - mel(30.0)) * (ripmodel.MEL_BANDS + 1))) - 1
+    total = e.sum(1)
+    kick = np.maximum(np.diff(total, prepend=total[0]), 0)
+    keep, y = math.exp(-(256 / 22050) / rng.uniform(*RING_TAU)), 0.0
+    out = np.empty(len(e))
+    for t, v in enumerate(kick):
+        y = v + keep * y
+        out[t] = y
+    out *= 10 ** (rng.uniform(*RING_DB) / 10)
+    for d, w in ((-1, 0.35), (0, 1.0), (1, 0.35)):
+        e[:, k + d] += w * out
+
+
+# Bent windows: a tempo read along a slow curve, so no grid or steady pulse is there to learn
+BEND_RATE, BEND_SWAY = 0.18, 12  # the window's tempo up to this share either way, swaying this many frames
+
+
+def bent(mel, lab, window: int, channels: int, over, rng, heard):
+    """a window read along a curve over the frames of a longer or shorter one: the features interpolated, the targets nearest"""
+    rate = math.exp(rng.uniform(-BEND_RATE, BEND_RATE))
+    sway, period, phase = rng.uniform(0, BEND_SWAY), rng.uniform(150, 500), rng.uniform(0, 2 * math.pi)
+    n = int(window * rate + 2 * BEND_SWAY) + 2
+    x, out = sample(mel, lab, rng.randrange(max(len(mel) - n, 0) + 1), n, channels, over, rng, heard)
+    t = np.arange(window)
+    g = np.clip(t * rate + BEND_SWAY + sway * np.sin(2 * math.pi * t / period + phase), 0, n - 1.001)
+    lo = g.astype(np.int64)
+    f = (g - lo)[:, None].astype(np.float32)
+    near = np.rint(g).astype(np.int64)
+    return x[lo] * (1 - f) + x[lo + 1] * f, {k: v[near] for k, v in out.items()}
+
+
 def stack(samples):
     mels, tgs = zip(*samples)
     out = {k: torch.from_numpy(np.stack([t[k] for t in tgs])) for k in tgs[0]}
     return torch.from_numpy(np.stack(mels)), {k: v if k == "wave" else v.float() for k, v in out.items()}
 
 
-def batch(draw, window: int, size: int, rng: random.Random, channels: int, channel=None, share: float = 0.0, pick=None, shuffle: float = 0.0):
-    """size random windows of `window` frames from the loops draw() picks, a share through the channel, a share shuffled"""
+def batch(draw, window: int, size: int, rng: random.Random, channels: int, channel=None, share: float = 0.0, pick=None, shuffle: float = 0.0, bend: float = 0.0):
+    """size random windows of `window` frames from the loops draw() picks, a share through the channel, a share shuffled, a share of the rest bent"""
     samples = []
     for _ in range(size):
         heard = channel if channel is not None and rng.random() < share else None
@@ -317,6 +361,9 @@ def batch(draw, window: int, size: int, rng: random.Random, channels: int, chann
             samples.append(shuffled(pick, window, channels, rng, heard))
             continue
         mel, lab, over = draw()
+        if rng.random() < bend:
+            samples.append(bent(mel, lab, window, channels, over, rng, heard))
+            continue
         samples.append(sample(mel, lab, rng.randrange(max(len(mel) - window, 0) + 1), window, channels, over, rng, heard))
     return stack(samples)
 
@@ -345,6 +392,10 @@ def evaluate(model: ripmodel.RipModel, mels, tgs, device: str) -> dict:
     return {k: v / max(len(mels), 1) for k, v in sums.items()}
 
 
+STRIKE_POS = 20.0  # a strike's weight against the frames without one
+STRIKE_AGAIN = 1.0  # and a strike of a pitch still sounding, the most missed of all, by this much more
+
+
 def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
     y = model(mel)
     cfg = model.cfg
@@ -352,14 +403,14 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
     def bce(name, target, pos_weight):
         logits = y[..., cfg.slice(name)]
         target = target if target.dim() == 3 else target[..., None]
-        l = F.binary_cross_entropy_with_logits(logits, target, pos_weight=torch.tensor(pos_weight), reduction="none")
+        l = F.binary_cross_entropy_with_logits(logits, target, pos_weight=torch.as_tensor(pos_weight, device=logits.device), reduction="none")
         return (l.mean(-1) * valid).sum() / valid.sum().clamp(min=1)
     out = {
         "onset": bce("onset", t["onset"], 8.0),
         "drums": bce("drums", t["drums"], 8.0),
         "pitch": bce("pitch", t["pitch"], 12.0),
         "voicing": bce("voicing", t["voicing"], 2.0),
-        "strike": bce("strike", t["strike"], 20.0),
+        "strike": bce("strike", t["strike"], STRIKE_POS * (1 + (STRIKE_AGAIN - 1) * F.pad(t["pitch"][:, :-3], (0, 0, 3, 0)))),
         "release": bce("release", t["release"], 20.0),
     }
     heard = t["heard"] * valid[..., None]
@@ -402,6 +453,10 @@ def main() -> None:
     ap.add_argument("--convs", default="", help="convolutions before the input layer, channels x frames x features / pool each, comma-separated: 16x3x3/1,16x3x3/2,32x3x3/2")
     ap.add_argument("--attention-window", type=int, default=64, help="frames attended either side")
     ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
+    ap.add_argument("--strike-weight", type=float, default=20.0, help="a strike's weight in its head's loss against a frame without one")
+    ap.add_argument("--again-weight", type=float, default=1.0, help="how much more a strike of a pitch still sounding weighs than another")
+    ap.add_argument("--bend", type=float, default=0.0, help="the share of windows read along a tempo that sways, so no grid or steady pulse is there to learn")
+    ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
@@ -415,6 +470,8 @@ def main() -> None:
     ap.add_argument("--holdout", type=int, default=-1, help="loops held out of training and scored every --every steps; the step that scores best is what --out gets (default a tenth, none under five loops)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
+    global RING, STRIKE_POS, STRIKE_AGAIN
+    RING, STRIKE_POS, STRIKE_AGAIN = args.ring, args.strike_weight, args.again_weight
 
     torch.manual_seed(args.seed)
     rng = random.Random(args.seed + (args.shard_seed << 32))  # a stream per seed and shard; shard 0 is the seed's own
@@ -539,10 +596,10 @@ def main() -> None:
 
     # the next batch is built while the device works on this one; only that thread draws from rng
     pool = ThreadPoolExecutor(1)
-    ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle)
+    ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle, args.bend)
     while step < args.steps:
         mel, t = ahead.result()
-        ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle)
+        ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle, args.bend)
         mel, t = mel.to(args.device), {k: v.to(args.device) for k, v in t.items()}
         lr = args.lr * 0.5 * (1 + math.cos(math.pi * step / args.steps))  # cosine to zero
         for g in opt.param_groups:

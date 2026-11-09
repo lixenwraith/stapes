@@ -105,7 +105,11 @@ An event's fields:
   registered voice's within that reach, else unknown, as is every voice `aug` drives.
   NSynth's notes take their instrument's family (keyboard piano, brass, flute and reed
   winds, mallet and organ unknown), every hit and strike the drums', and a `from`
-  recording's notes its list's `family` column.
+  recording's notes its list's `family` column. Where that cell is empty or absent,
+  each note takes its MIDI program's (`programFamilies` in `tune.go`: 0-15 piano,
+  16-23 and 80-103 synth, 24-31 and 104-108 guitar, 32-39 bass, 40-46, 48-51 and 110
+  strings, 52-54 voice, 56-79, 109 and 111 winds, 47, 55 and 112-127 unknown), and a
+  note whose file set no program none.
 - `voice`: the 32 genes of the voice that played it, absent when unknown.
 
 The four kinds of event in use, each from a real file:

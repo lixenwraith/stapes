@@ -95,6 +95,7 @@ class Config:
     outputs: list = field(default_factory=lambda: list(HEADS))
     # the frames apart of each convolution over the cells after the near ones, PitchNet's alone
     dilations: tuple = ()
+    cell: int = 32  # PitchNet's channels at each cell, its width
 
     @property
     def features(self) -> int:
@@ -246,10 +247,10 @@ class PitchNet(nn.Module):
         self.register_buffer("axis_ok", torch.from_numpy(ok).float(), persistent=False)
         self.reduce = nn.Conv2d(STACK_CHANNELS, 8, 1)
         self.wide = nn.Conv2d(8, 16, (3, 39), padding=(1, 19))  # thirteen semitones
-        self.cells = nn.Conv2d(16, 32, (7, 3), stride=(1, 3), padding=(3, 0))  # to one cell a semitone
-        self.near = nn.Conv2d(32, 32, (7, 3), padding=(3, 1))
-        self.long = nn.ModuleList(nn.Conv2d(32, 32, 3, padding=(d, 1), dilation=(d, 1)) for d in cfg.dilations)
-        self.notes = nn.Conv2d(32, 4, 1)  # pitch, strike, release, velocity
+        self.cells = nn.Conv2d(16, cfg.cell, (7, 3), stride=(1, 3), padding=(3, 0))  # to one cell a semitone
+        self.near = nn.Conv2d(cfg.cell, cfg.cell, (7, 3), padding=(3, 1))
+        self.long = nn.ModuleList(nn.Conv2d(cfg.cell, cfg.cell, 3, padding=(d, 1), dilation=(d, 1)) for d in cfg.dilations)
+        self.notes = nn.Conv2d(cfg.cell, 4, 1)  # pitch, strike, release, velocity
         self.frame1 = nn.Conv1d(16 * 16 + 2, 64, 5, padding=2)
         self.frame2 = nn.Conv1d(64, 64, 9, padding=8, dilation=2)
         sizes = dict(cfg.outputs)

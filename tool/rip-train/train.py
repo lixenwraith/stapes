@@ -172,6 +172,9 @@ class Channel:
         knots = np.linspace(self.points[0], self.points[-1], 9)
         depth = rng.random() * 6
         ripple = np.interp(self.points, knots, [(rng.random() * 2 - 1) * depth for _ in knots])
+        if rng.random() < DIP:  # a room's or a phone's dip under the melody: 6 to 20 dB, 0.5 to 1.5 octaves, centred 100 to 500 Hz
+            centre, half, deep = np.log2(100) + rng.random() * np.log2(5), 0.25 + rng.random() * 0.5, 6 + rng.random() * 14
+            ripple = ripple - deep * 0.5 * (1 + np.cos(np.pi * np.clip((octave - centre) / half, -1, 1)))
         shape = rng.choice(["room", "room", "pink", "brown", "flat"])
         floor = {"room": self.room, "pink": -3 * (octave - octave.mean()), "brown": -6 * (octave - octave.mean()), "flat": np.zeros_like(octave)}[shape]
         floor = floor + np.interp(self.points, knots, [(rng.random() * 2 - 1) * 4 for _ in knots]) + (-78 + rng.random() * 28)
@@ -393,6 +396,7 @@ def evaluate(model: ripmodel.RipModel, mels, tgs, device: str) -> dict:
 
 
 STRIKE_POS = 20.0  # a strike's weight against the frames without one
+DIP = 0.0  # the share of the channel's windows given a dip under the melody, as phones across a room measured 15 dB at 160-320 Hz
 STRIKE_AGAIN = 1.0  # and a strike of a pitch still sounding, the most missed of all, by this much more
 
 
@@ -458,6 +462,8 @@ def main() -> None:
     ap.add_argument("--bend", type=float, default=0.0, help="the share of windows read along a tempo that sways, so no grid or steady pulse is there to learn")
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
+    ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
+    ap.add_argument("--dip", type=float, default=0.0, help="the share of the channel's windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room hears")
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
     ap.add_argument("--extra", default="", help="more corpora and the share of windows drawn from each, dir:share, comma-separated")
@@ -470,8 +476,8 @@ def main() -> None:
     ap.add_argument("--holdout", type=int, default=-1, help="loops held out of training and scored every --every steps; the step that scores best is what --out gets (default a tenth, none under five loops)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
-    global RING, STRIKE_POS, STRIKE_AGAIN
-    RING, STRIKE_POS, STRIKE_AGAIN = args.ring, args.strike_weight, args.again_weight
+    global RING, STRIKE_POS, STRIKE_AGAIN, DIP
+    RING, STRIKE_POS, STRIKE_AGAIN, DIP = args.ring, args.strike_weight, args.again_weight, args.dip
 
     torch.manual_seed(args.seed)
     rng = random.Random(args.seed + (args.shard_seed << 32))  # a stream per seed and shard; shard 0 is the seed's own
@@ -483,13 +489,13 @@ def main() -> None:
         raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodel.HEADS)}")
     heard = dict(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS) if args.pitchnet else dict(channels=2 if args.pcen else 1)
     cfg = ripmodel.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,
-                          dilations=tuple(int(d) for d in filter(None, args.dilations.split(","))))
+                          dilations=tuple(int(d) for d in filter(None, args.dilations.split(","))), cell=args.cell)
     planes = min(cfg.channels, 2)  # what the data loader makes; the model stacks them
     resume = bool(args.checkpoint) and os.path.exists(args.checkpoint)
     start = args.checkpoint if resume else args.init
     ck = torch.load(start, map_location=args.device) if start else None
     if ck is not None and "cfg" in ck:
-        ck["cfg"] = {"channels": 1, "dilations": (), **ck["cfg"]}  # a checkpoint from before those has one and none
+        ck["cfg"] = {**asdict(ripmodel.Config()), **ck["cfg"]}  # a setting newer than the checkpoint takes the default it was built with
     # refused before the corpus loads: load_state_dict names only a tensor's size,
     # and takes another head count or window without a word
     if ck is not None and ck.get("cfg") != asdict(cfg):

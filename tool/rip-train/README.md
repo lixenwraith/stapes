@@ -373,7 +373,11 @@ loader checks ([format](https://github.com/lixenwraith/transformer/blob/main/doc
 §7, and `--out` gets its weight file, `ripnotes.bin` in the stapes root, beside the
 `ripmodel.bin` it gives the notes for. `average.py --out ripnotes.bin a.pt` turns one `.pt`
 of either model into its file. `--shuffle <share>` and
-`--extra <dir>:<share>,...` are `train.py` flags with no `pipeline.sh` setting.
+`--extra <dir>:<share>,...` are `train.py` flags with no `pipeline.sh` setting,
+as are `--cell <n>`, the notes model's width (its channels at each cell, 32,
+which its weight file carries), and `--dip <share>`, the share of the channel's
+windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room
+hears. A checkpoint from before a setting existed loads with that setting's default.
 
 It writes the file's version 3, the channels after the inputs, which needs
 transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio

@@ -421,7 +421,8 @@ func (s *Session) readScore(file string) (*ripped, error) {
 			played = append(played, ripLines[reg].word+" on the "+v.Name)
 		}
 	}
-	said := []string{fmt.Sprintf("%d note(s) and %d hit(s) in %s", len(m.Notes), len(m.Hits), m.Meter)}
+	lines := len(slices.DeleteFunc(slices.Clone(m.Notes), func(n audio.RipNote) bool { return n.Further }))
+	said := []string{fmt.Sprintf("%d note(s) and %d hit(s) in %s", lines, len(m.Hits), m.Meter)}
 	if len(played) > 0 {
 		said[0] += ", " + strings.Join(played, ", ")
 	}

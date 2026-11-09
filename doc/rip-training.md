@@ -109,7 +109,9 @@ An event's fields:
   each note takes its MIDI program's (`programFamilies` in `tune.go`: 0-15 piano,
   16-23 and 80-103 synth, 24-31 and 104-108 guitar, 32-39 bass, 40-46, 48-51 and 110
   strings, 52-54 voice, 56-79, 109 and 111 winds, 47, 55 and 112-127 unknown), and a
-  note whose file set no program none.
+  note whose file set no program none. A `from` loop holds every part's notes, the
+  parts past the score's melody, under and bass too (`RipNote.Further`), so all five
+  parts of a quintet sound in its labels.
 - `voice`: the 32 genes of the voice that played it, absent when unknown.
 
 The four kinds of event in use, each from a real file:

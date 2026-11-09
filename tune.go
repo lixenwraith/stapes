@@ -292,9 +292,12 @@ func (s *Session) midiLoop(o tuneOptions, rng *rand.Rand) (midiPlay, bool) {
 		if err != nil {
 			continue
 		}
-		if o.dense {
-			score.Notes = append(score.Notes, score.Further...)
-			slices.SortStableFunc(score.Notes, func(a, b audio.RipNote) int { return cmp.Compare(a.Start, b.Start) })
+		if o.dense { // the further parts play as the under line, spread by octave (inner)
+			for i := range score.Notes {
+				if n := &score.Notes[i]; n.Further {
+					n.Further, n.Bass, n.Second = false, false, true
+				}
+			}
 		}
 		r, _ := score.Rip()
 		meter, known := r.Meter, r.Meter.Steps() == 16
@@ -1846,11 +1849,14 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (noteCount, er
 // those heard
 type noteCount struct{ hits, given, heard int }
 
-// countNotes matches a rip's notes to a truth's as truth does, every note once:
-// the melody register's hits as one line or as its two lines apart, whichever is
-// more, and the bass's
+// countNotes matches a rip's notes to a truth's as truth does, every note once
 func countNotes(heard, given []audio.RipNote) noteCount {
-	ag := audio.MatchNotes(heard, given)
+	return agreed(audio.MatchNotes(heard, given))
+}
+
+// agreed counts an agreement's notes, every note once: the melody register's
+// hits as one line or as its two lines apart, whichever is more, and the bass's
+func agreed(ag audio.Agreement) noteCount {
 	reg, bass := ag.Register, ag.Lines[2]
 	return noteCount{max(reg.Matched, ag.Lines[0].Matched+ag.Lines[1].Matched) + bass.Matched, reg.B + bass.B, reg.A + bass.A}
 }

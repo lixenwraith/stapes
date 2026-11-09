@@ -73,6 +73,10 @@ func cmdTruth(s *Session, a []string) error {
 		ag := audio.MatchNotes(rp.rip.Notes, truth)
 		fmt.Fprintf(s.out, "%s against %d note(s) given, transposed %+d: the rip's seconds = %.3f × the given %+.2f\n", a[0], len(truth), ag.Shift, ag.Stretch, ag.Offset)
 		reportAgreement(s.out, ag, a[0], "given", "heard as given")
+		if slices.ContainsFunc(truth, func(n audio.RipNote) bool { return n.Further }) {
+			c := agreed(ag)
+			fmt.Fprintf(s.out, "every part %s %d, given %d, %d heard as given, F1 %.2f: the parts past the lines in the melody register as one line, or the bass under E3\n", a[0], c.heard, c.given, c.hits, c.f1())
+		}
 		reportLevels(s.out, rp, ag, truth)
 		at = ag.At
 	}
@@ -201,7 +205,7 @@ func reportLevels(w io.Writer, rp *ripped, ag audio.Agreement, given []audio.Rip
 		fmt.Fprintf(w, "; alone %d/%d, under others %d/%d\n", alone[0], alone[1], under[0], under[1])
 	}
 	row("melody", func(n audio.RipNote) bool { return !n.Bass && !n.Second }, ag.Lines[0].OnlyB)
-	row("under", func(n audio.RipNote) bool { return n.Second }, ag.Lines[1].OnlyB)
+	row("under", func(n audio.RipNote) bool { return n.Second && !n.Further }, ag.Lines[1].OnlyB)
 	row("bass", func(n audio.RipNote) bool { return n.Bass }, ag.Lines[2].OnlyB)
 	row("register", func(n audio.RipNote) bool { return !n.Bass }, ag.Register.OnlyB)
 }
@@ -225,7 +229,7 @@ func reportAgreement(w io.Writer, ag audio.Agreement, nameA, nameB, both string)
 		}
 		fmt.Fprintln(w)
 	}
-	if r, apart := ag.Register, ag.Lines[0].Matched+ag.Lines[1].Matched; r.Matched > apart {
+	if r, apart := ag.Register, ag.Lines[0].Matched+ag.Lines[1].Matched; r.Matched > apart && r.B == ag.Lines[0].B+ag.Lines[1].B {
 		fmt.Fprintf(w, "melody register as one line: %d %s, %d more than the lines apart, so the two part the lines differently\n", r.Matched, both, r.Matched-apart)
 	}
 	for i, l := range ag.Lines {

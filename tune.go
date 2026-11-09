@@ -70,12 +70,43 @@ var tuneMeters = []audio.Meter{{Num: 3, Den: 4}, {Num: 6, Den: 8}}
 
 func cmdTune(s *Session, a []string) error {
 	o := tuneOptions{loops: 12, bars: 4, generations: 8, pool: 16, seed: 1}
-	if len(a) > 0 {
-		n, err := strconv.Atoi(a[0])
+	generations := func(w string) error {
+		n, err := strconv.Atoi(w)
 		if err != nil || n < 1 || n > 200 {
-			return fmt.Errorf("generations %q: want 1 to 200", a[0])
+			return fmt.Errorf("generations %q: want 1 to 200", w)
 		}
 		o.generations = n
+		return nil
+	}
+	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list>")
+	if i := slices.Index(a, "truth"); i >= 0 {
+		if i != len(a)-2 || i > 2 {
+			return usage
+		}
+		if i > 0 {
+			n, err := strconv.Atoi(a[0])
+			if err != nil || n < 2 || n > 256 {
+				return fmt.Errorf("pool %q: want 2 to 256", a[0])
+			}
+			o.pool = n
+		}
+		if i > 1 {
+			if err := generations(a[1]); err != nil {
+				return err
+			}
+		}
+		if s.frontEnd == nil {
+			return fmt.Errorf("tune truth tunes the model's decoders, and no %s is loaded", modelFile)
+		}
+		return s.tuneTruth(o, s.path(a[i+1]), "", s.frontEnd)
+	}
+	if len(a) > 2 {
+		return usage
+	}
+	if len(a) > 0 {
+		if err := generations(a[0]); err != nil {
+			return err
+		}
 	}
 	file := ""
 	if len(a) > 1 {
@@ -1438,16 +1469,21 @@ func generatedParts(slots [audio.MusicSlots]audio.PatternID) string {
 	return strings.Join(parts, "+")
 }
 
-// tune searches the rip's parameters: the current ones seed a pool the rest of
-// which is drawn across the ranges, each candidate scored by how its rip of every
-// loop compares with the loop's expected rip, and the best, when it beats the
-// current, is written and listened with from then on.
+// tune searches the rip's parameters over the loops the corpus renders, each
+// candidate scored by how its rip of every loop, through the package's own
+// analysis, compares with the loop's expected rip
 func (s *Session) tune(o tuneOptions, file string) error {
 	loops, err := s.corpus(o)
 	if err != nil {
 		return err
 	}
-	eval := func(genes []float64) float64 {
+	ranges := audio.RipGeneRanges()
+	bounds := make([]genetic.ParameterBounds, len(ranges))
+	for i, r := range ranges {
+		bounds[i] = genetic.ParameterBounds{Min: r[0], Max: r[1]}
+	}
+	over := fmt.Sprintf("%d loop(s) of %d bar(s)", len(loops), o.bars)
+	best, base, err := s.search(o, over, bounds, s.rip.Genes(), func(genes []float64) float64 {
 		p := audio.RipParamsFromGenes(genes)
 		var sum float64
 		for _, l := range loops {
@@ -1456,51 +1492,57 @@ func (s *Session) tune(o tuneOptions, file string) error {
 			}
 		}
 		return sum / float64(len(loops))
+	})
+	if err != nil {
+		return err
 	}
-	ranges := audio.RipGeneRanges()
-	bounds := make([]genetic.ParameterBounds, len(ranges))
-	for i, r := range ranges {
-		bounds[i] = genetic.ParameterBounds{Min: r[0], Max: r[1]}
-	}
-	start := s.rip.Genes()
+	return s.keepRip(file, audio.RipParamsFromGenes(best.Data), best.Score, base)
+}
+
+// search runs the generational engine over genes within bounds, start seeding the
+// pool and the rest drawn across the ranges, candidates scored in parallel and a
+// genome once; it says the start's score and each generation's best and mean, and
+// returns the best and the start's score
+func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterBounds, start []float64, eval func([]float64) float64) (genetic.Candidate[[]float64, float64], float64, error) {
+	eval = genetic.Memoize(func(g []float64) string { return fmt.Sprint(g) }, eval)
 	base := eval(start)
-	fmt.Fprintf(s.out, "tuning over %d loop(s) of %d bar(s): the current parameters score %.3f\n", len(loops), o.bars, base)
-	seeded := false
-	init := func(rng *rand.Rand) []float64 {
-		g := make([]float64, len(bounds))
-		if !seeded {
-			seeded = true
-			copy(g, start)
-			return g
-		}
-		for i, b := range bounds {
-			g[i] = b.Min + rng.Float64()*(b.Max-b.Min)
-		}
-		return g
-	}
+	fmt.Fprintf(s.out, "tuning over %s: the current parameters score %.3f\n", over, base)
 	cfg := genetic.DefaultConfig()
 	cfg.PoolSize, cfg.EliteCount, cfg.MaxIterations = o.pool, max(o.pool/8, 1), o.generations
 	cfg.Parallelism, cfg.Seed = runtime.NumCPU(), o.seed
 	cfg.PerturbationRate, cfg.PerturbationStrength = 0.25, 0.15
-	e := genetic.NewEngine[[]float64, float64](eval, init,
-		&genetic.TournamentSelector[[]float64, float64]{TournamentSize: 3},
+	e := genetic.NewEngine[[]float64, float64](eval, func(rng *rand.Rand) []float64 {
+		g := make([]float64, len(bounds))
+		for i, b := range bounds {
+			g[i] = b.Min + rng.Float64()*(b.Max-b.Min)
+		}
+		return g
+	}, &genetic.TournamentSelector[[]float64, float64]{TournamentSize: 3},
 		&genetic.UniformCombiner[[]float64, float64, float64]{MixProbability: 0.5},
 		&genetic.BoundedPerturbator{Bounds: bounds, Boundary: genetic.BoundaryReflect}, cfg)
-	e.SetTerminator(func(p *genetic.Pool[[]float64, float64], iter int) bool {
-		fmt.Fprintf(s.out, "generation %d: best %.3f mean %.3f\n", iter, p.Stats.BestScore, p.Stats.AverageScore)
+	e.SetSeeds([][]float64{slices.Clone(start)})
+	say := func(p *genetic.Pool[[]float64, float64], gen int) bool {
+		fmt.Fprintf(s.out, "generation %d: best %.3f mean %.3f\n", gen, p.Stats.BestScore, p.Stats.AverageScore)
 		return false
-	})
+	}
+	e.SetTerminator(say)
 	pool, err := e.Run(context.Background())
 	if err != nil {
-		return err
+		return genetic.Candidate[[]float64, float64]{}, 0, err
 	}
-	best := pool.Members[0]
-	if best.Score <= base {
+	say(pool, pool.Generation) // the engine's loop ends before the last one's turn
+	return pool.Members[0], base, nil
+}
+
+// keepRip writes p and listens with it from now on when its score beats the
+// current parameters' base
+func (s *Session) keepRip(file string, p audio.RipParams, score, base float64) error {
+	if score <= base {
 		fmt.Fprintf(s.out, "nothing beat the current parameters (%.3f); they stay\n", base)
 		return nil
 	}
-	p := audio.RipParamsFromGenes(best.Data)
-	if file, err = saveFile(file, s.ripSrc, s.files.ripTarget); err != nil {
+	file, err := saveFile(file, s.ripSrc, s.files.ripTarget)
+	if err != nil {
 		return err
 	}
 	data, err := audio.MarshalRipParams(p)
@@ -1511,6 +1553,200 @@ func (s *Session) tune(o tuneOptions, file string) error {
 		return err
 	}
 	s.rip, s.ripSrc = p, file
-	fmt.Fprintf(s.out, "wrote %s: score %.3f, was %.3f; rip listens with it from now on\n", file, best.Score, base)
+	fmt.Fprintf(s.out, "wrote %s: score %.3f, was %.3f; rip listens with it from now on\n", file, score, base)
 	return nil
 }
+
+// modelGenes are the parameters a front end's strikes are decoded by, the bass
+// line's own path among them, which tune truth searches; second_voice and cross
+// part two lines of salience, which such a front end's register never reaches
+var modelGenes = []func(*audio.RipParams) *float64{
+	func(p *audio.RipParams) *float64 { return &p.Strike },
+	func(p *audio.RipParams) *float64 { return &p.StrikeLow },
+	func(p *audio.RipParams) *float64 { return &p.StrikeHold },
+	func(p *audio.RipParams) *float64 { return &p.StrikeGap },
+	func(p *audio.RipParams) *float64 { return &p.StrikeAgain },
+	func(p *audio.RipParams) *float64 { return &p.Release },
+	func(p *audio.RipParams) *float64 { return &p.Voicing },
+	func(p *audio.RipParams) *float64 { return &p.MinNote },
+	func(p *audio.RipParams) *float64 { return &p.Jump },
+	func(p *audio.RipParams) *float64 { return &p.Switch },
+	func(p *audio.RipParams) *float64 { return &p.Retrigger },
+}
+
+// geneOf is where a parameter stands in Genes' order, which names none
+func geneOf(at func(*audio.RipParams) *float64) int {
+	var p audio.RipParams
+	*at(&p) = 1
+	return slices.Index(p.Genes(), 1)
+}
+
+// tuneTruth searches modelGenes against the recordings a list names with their
+// truths, each heard once through fe and every candidate scored by the pooled note
+// F1, the other parameters held at the session's; it says each recording's F1
+// before and after
+func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontEnd) error {
+	takes, err := readTruthList(list, fe)
+	if err != nil {
+		return err
+	}
+	cur, ranges := s.rip, audio.RipGeneRanges()
+	bounds, start := make([]genetic.ParameterBounds, len(modelGenes)), make([]float64, len(modelGenes))
+	for k, at := range modelGenes {
+		r := ranges[geneOf(at)]
+		bounds[k], start[k] = genetic.ParameterBounds{Min: r[0], Max: r[1]}, *at(&cur)
+	}
+	params := func(genes []float64) audio.RipParams {
+		p := cur
+		for k, at := range modelGenes {
+			*at(&p) = genes[k]
+		}
+		return p
+	}
+	// the current parameters' rips hear every recording and read every transcript
+	before, given := make([]noteCount, len(takes)), 0
+	for i, t := range takes {
+		if before[i], err = t.count(cur, s.lead); err != nil {
+			return err
+		}
+		if before[i].given == 0 {
+			return fmt.Errorf("%s: no notes given", t.truthFile)
+		}
+		t.given, given = before[i].given, given+before[i].given
+	}
+	over := fmt.Sprintf("%d recording(s) against %d note(s) given", len(takes), given)
+	best, base, err := s.search(o, over, bounds, start, func(genes []float64) float64 {
+		p := params(genes)
+		var sum noteCount
+		for _, t := range takes {
+			c, _ := t.count(p, s.lead) // a rip that fails hears none of the notes
+			sum = sum.plus(c)
+		}
+		return sum.f1()
+	})
+	if err != nil {
+		return err
+	}
+	kept := cur
+	if best.Score > base {
+		kept = params(best.Data)
+	}
+	for i, t := range takes {
+		after, _ := t.count(kept, s.lead)
+		fmt.Fprintf(s.out, "%s: F1 %.3f before, %.3f after\n", t.wav, before[i].f1(), after.f1())
+	}
+	return s.keepRip(file, params(best.Data), best.Score, base)
+}
+
+// heardOnce hears one recording once: valid while the front end it wraps ignores
+// the parameters, as the model does, so a search over the decoders pays them alone
+type heardOnce struct {
+	fe   audio.RipFrontEnd
+	once sync.Once
+	f    *audio.RipFrames
+	err  error
+}
+
+func (h *heardOnce) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFrames, error) {
+	h.once.Do(func() { h.f, h.err = h.fe.Hear(x, rate, p) })
+	return h.f, h.err
+}
+
+// truthTake is a recording a truth list names, kept at the rate the rip reads it
+// at, so no candidate resamples it, and its truth: a MIDI file's notes, or a
+// transcript read against each rip as truth reads it
+type truthTake struct {
+	wav, truthFile string
+	x              []float64
+	ear            *heardOnce
+	truth          func(*audio.Rip) ([]audio.RipNote, error)
+	given          int // the notes the truth gives, all missed by a rip that fails
+}
+
+// readTruthList reads a line "wav<TAB>truth" a recording, a relative path from
+// the list's own folder
+func readTruthList(list string, fe audio.RipFrontEnd) ([]*truthTake, error) {
+	data, err := os.ReadFile(list)
+	if err != nil {
+		return nil, err
+	}
+	at := func(p string) string {
+		if filepath.IsAbs(p) {
+			return p
+		}
+		return filepath.Join(filepath.Dir(list), p)
+	}
+	var takes []*truthTake
+	for i, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		wav, truth, ok := strings.Cut(line, "\t")
+		wav, truth = strings.TrimSpace(wav), strings.TrimSpace(truth)
+		if !ok || wav == "" || truth == "" || strings.Contains(truth, "\t") {
+			return nil, fmt.Errorf("%s line %d: want wav<TAB>truth", list, i+1)
+		}
+		f, err := os.Open(at(wav))
+		if err != nil {
+			return nil, err
+		}
+		x, rate, err := audio.ReadWAV(f)
+		f.Close()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", wav, err)
+		}
+		given, err := os.ReadFile(at(truth))
+		if err != nil {
+			return nil, err
+		}
+		t := &truthTake{wav: wav, truthFile: truth, x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: fe}}
+		if isMIDI(truth) {
+			score, err := audio.ReadMIDI(bytes.NewReader(given))
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", truth, err)
+			}
+			t.truth = func(*audio.Rip) ([]audio.RipNote, error) { return score.Notes, nil }
+		} else {
+			text := string(given)
+			t.truth = func(r *audio.Rip) ([]audio.RipNote, error) { return transcript(text, r) }
+		}
+		takes = append(takes, t)
+	}
+	if len(takes) == 0 {
+		return nil, fmt.Errorf("%s: no recordings listed", list)
+	}
+	return takes, nil
+}
+
+// count rips the take under p and counts its notes against its truth's
+func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (noteCount, error) {
+	r, err := audio.Ripper{Params: p, FrontEnd: t.ear, Lead: lead}.Samples(t.x, audio.RipRate)
+	if err != nil {
+		return noteCount{given: t.given}, fmt.Errorf("%s: %w", t.wav, err)
+	}
+	given, err := t.truth(r)
+	if err != nil {
+		return noteCount{given: t.given}, fmt.Errorf("%s: %w", t.truthFile, err)
+	}
+	return countNotes(r.Notes, given), nil
+}
+
+// noteCount is a rip's notes against a truth's: those that hit, those given and
+// those heard
+type noteCount struct{ hits, given, heard int }
+
+// countNotes matches a rip's notes to a truth's as truth does, every note once:
+// the melody register's hits as one line or as its two lines apart, whichever is
+// more, and the bass's
+func countNotes(heard, given []audio.RipNote) noteCount {
+	ag := audio.MatchNotes(heard, given)
+	reg, bass := ag.Register, ag.Lines[2]
+	return noteCount{max(reg.Matched, ag.Lines[0].Matched+ag.Lines[1].Matched) + bass.Matched, reg.B + bass.B, reg.A + bass.A}
+}
+
+func (c noteCount) plus(o noteCount) noteCount {
+	return noteCount{c.hits + o.hits, c.given + o.given, c.heard + o.heard}
+}
+
+// f1 is twice the hits over the notes given and heard
+func (c noteCount) f1() float64 { return 2 * float64(c.hits) / float64(max(c.given+c.heard, 1)) }

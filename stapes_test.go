@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1996,6 +1997,114 @@ func TestTuneSearchesTheRipParameters(t *testing.T) {
 ! tune 0
 ! tune 1 2 3
 `)
+}
+
+// hearCount counts what a front end hears
+type hearCount struct {
+	audio.RipFrontEnd
+	n atomic.Int32
+}
+
+func (h *hearCount) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFrames, error) {
+	h.n.Add(1)
+	return h.RipFrontEnd.Hear(x, rate, p)
+}
+
+// TestTuneTruthSearchesTheModelsThresholds: tune truth refuses with no model
+// loaded; with one, it hears each recording its list names once, searches the
+// thresholds the model's decoders read, the rest held, by the note F1 against
+// each recording's truth, says each recording's F1 before and after, and writes
+// parameters that score at least the start's.
+func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	dir := t.TempDir()
+	list := filepath.Join(dir, "truths.txt")
+	runOrFatal(t, s, &out, fmt.Sprintf(`
+! tune truth %s
+! tune 4 truth
+! tune 4 2 2 truth %s
+! tune 1 truth %s
+`, list, list, list))
+	if !strings.Contains(out.String(), "no "+modelFile+" is loaded") {
+		t.Errorf("no refusal for want of a model:\n%s", out.String())
+	}
+	// a loop the registered patterns render, its notes a MIDI truth
+	const bars = 2
+	loops, err := s.corpus(tuneOptions{loops: 1, bars: bars, seed: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := loops[0]
+	step := float64(audio.SamplesPerStep(l.bpm)) / audio.AudioSampleRate
+	var notes []audio.RipNote
+	for _, e := range audio.ExpectedEvents(l.slots, l.meter, bars, l.root, l.scale, nil) {
+		if !e.Instr.IsDrum() {
+			start := float64(e.Bar*l.meter.Steps()+e.Step) * step
+			notes = append(notes, audio.RipNote{Start: start, End: start + float64(e.Dur)*step, MIDI: e.MIDI, Vel: e.Vel, Bass: e.MIDI < audio.RipBassTop})
+		}
+	}
+	var mid bytes.Buffer
+	if err := audio.WriteMIDI(&mid, notes, nil, l.bpm, l.meter); err != nil {
+		t.Fatal(err)
+	}
+	writeWAV(t, filepath.Join(dir, "loop.wav"), l.audio)
+	writeFile(t, filepath.Join(dir, "loop.mid"), mid.String())
+	writeFile(t, list, "loop.wav\tloop.mid\n")
+	// a model too small to hear well, from a start too sure to take its strikes
+	cfg := ripmodel.Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+	m, err := transformer.NewRandom(cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fe, err := ripmodel.New(m, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ear := &hearCount{RipFrontEnd: fe}
+	s.rip.Strike, s.rip.StrikeLow = 0.99, 0.99
+	start, file := s.rip, filepath.Join(dir, "rip.toml")
+	if err := s.tuneTruth(tuneOptions{generations: 1, pool: 4, seed: 1}, list, file, ear); err != nil {
+		t.Fatalf("tune truth: %v\n%s", err, out.String())
+	}
+	if n := ear.n.Load(); n != 1 {
+		t.Errorf("the recording heard %d times, want once", n)
+	}
+	if !strings.Contains(out.String(), "generation 1: best") || !strings.Contains(out.String(), "loop.wav: F1 ") {
+		t.Errorf("no last generation, or no F1 before and after:\n%s", out.String())
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("nothing written over a start that takes no strike:\n%s", out.String())
+	}
+	p, err := audio.LoadRipParams(data)
+	if err != nil || p != s.rip {
+		t.Fatalf("wrote %+v (%v); the session listens with %+v", p, err, s.rip)
+	}
+	held := start
+	for _, at := range modelGenes {
+		*at(&held) = *at(&p)
+	}
+	if p != held {
+		t.Errorf("a parameter the model's decoders do not read moved: %+v, from %+v", p, start)
+	}
+	takes, err := readTruthList(list, fe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	was, err := takes[0].count(start, s.lead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now, err := takes[0].count(p, s.lead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if now.f1() < was.f1() {
+		t.Errorf("the written parameters score %.3f, the start %.3f:\n%s", now.f1(), was.f1(), out.String())
+	}
 }
 
 // TestRenderAndCorpusWriteWhatTheEngineHears: render writes the slots' music to a

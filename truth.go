@@ -61,18 +61,7 @@ func cmdTruth(s *Session, a []string) error {
 		reportBars(s.out, a[0], rp.rip, beats, downbeats)
 		return nil
 	default:
-		// a rhythm tapped out without a start begins where the rip's melody
-		// register first sounds
-		origin := math.Inf(1)
-		for _, n := range rp.rip.Notes {
-			if !n.Bass {
-				origin = math.Min(origin, n.Start)
-			}
-		}
-		if math.IsInf(origin, 1) {
-			origin = 0
-		}
-		truth, err = audio.ParseTranscript(string(data), rp.rip.BPM, origin)
+		truth, err = transcript(string(data), rp.rip)
 	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", a[1], err)
@@ -98,6 +87,21 @@ func cmdTruth(s *Session, a []string) error {
 		reportBars(s.out, a[0], rp.rip, beats, downbeats)
 	}
 	return nil
+}
+
+// transcript reads notes given as text against a rip: at its tempo, and a rhythm
+// tapped out without a start from where its melody register first sounds
+func transcript(text string, r *audio.Rip) ([]audio.RipNote, error) {
+	origin := math.Inf(1)
+	for _, n := range r.Notes {
+		if !n.Bass {
+			origin = math.Min(origin, n.Start)
+		}
+	}
+	if math.IsInf(origin, 1) {
+		origin = 0
+	}
+	return audio.ParseTranscript(text, r.BPM, origin)
 }
 
 // reportBars prints the rip's bar lines scored against the beats and downbeats

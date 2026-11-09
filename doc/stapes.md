@@ -132,7 +132,13 @@ Over the library's rip (library
 - `tune` searches the rip's parameters over loops rendered from the registered
   patterns across tempos and keys with `lixenwraith/genetic`'s generational
   engine, the current set seeding the pool, and writes a set that beats it
-  ([todo](todo.md#tune-the-rip) for what the corpus still lacks).
+  ([todo](todo.md#tune-the-rip) for what the corpus still lacks). `tune ...
+  truth <list>` searches instead the thresholds the loaded model's decoders
+  read (`modelGenes`), the rest held, against real recordings, a line
+  `wav<TAB>truth` each, by the note F1 pooled over them as `truth` matches
+  (`MatchNotes`, every note once); the model's `Hear` ignores `RipParams`, so
+  each recording is heard once (`heardOnce`) and a candidate pays the decoders
+  alone.
 - `compress` gives a first bar that starts partway the beat of the bar most
   like it (`Rip.MendPickup`), runs the grouping (`Rip.Cluster`) at each part's
   threshold (`compressPercent`), refines the assignment with

@@ -93,6 +93,7 @@ tool/rip-train/pipeline.sh install
 | `CHANNEL` | empty | a noise bank and the share of windows heard through a small speaker, a room and a phone, `file.npz:share`, `train.py`'s `--channel`; `make_noise.py` builds the bank ([Phones](#turning-a-run-toward-your-music)) |
 | `PCEN` | empty | `pcen`: a second input channel, each band's PCEN and their mean, `train.py`'s `--pcen`; a `CHECKPOINT` or `INIT` of the other channel count is refused |
 | `HOLDOUT`, `EVERY` | 200, 1000 | loops held out, and how often they are scored and a checkpoint written |
+| `VALIDATE` | empty | a corpus of recordings, `corpus <dir> from`'s, cut into fixed windows and scored every `EVERY` steps beside the held-out loops: its best decoders' loss picks the step `OUT` gets, the held-out loss printed beside it, `train.py`'s `--validate`; empty for the held-out loops' pick |
 | `OUT`, `CHECKPOINT` | `$CORPUS/ripmodel.bin`, `$CORPUS/ripmodel.pt` | the weight file, and the checkpoint a stopped run resumes from |
 | `ROOT` | `~/.config/stapes` | the stapes root, under `$XDG_CONFIG_HOME` when that is set: `install` copies the weights into it as `ripmodel.bin`, and `bench` hears with its `rip.toml` |
 | `NOTES` | empty | a notes model's weight file, a `--pitchnet` run's `OUT`, which `bench` and `install` put beside `OUT` as `ripnotes.bin` |
@@ -125,6 +126,8 @@ cores with anything else the machine does.
 - The training lines name each head's loss; the line that matters is the
   held-out one every `EVERY` steps: `step N held-out X, decoders Y (onset ...
   drums ... pitch ... voicing ...)`, with `(best)` on the step `OUT` will get.
+  With `VALIDATE` a `validation` line of the same form follows it and picks
+  instead: its `(best)` is the step `OUT` gets, the held-out line's its own.
   A training loss that keeps falling after the held-out loss turns is the
   model learning the corpus by heart; more loops, not more steps, is the cure.
 - `bench` prints four lines: the analysis and the model, on clean and on

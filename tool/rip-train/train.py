@@ -472,8 +472,9 @@ def main() -> None:
     ap.add_argument("--shard-seed", type=int, default=0, help="offsets the stream the windows are drawn from, so a round's workers see different loops; the starting weights stay --seed's")
     ap.add_argument("--checkpoint", default="", help="write a .pt every --every steps, and resume from it when present")
     ap.add_argument("--init", default="", help="start from this .pt's model weights, without its optimizer state or step: a training round's common start; a --checkpoint present wins")
-    ap.add_argument("--every", type=int, default=200, help="steps between checkpoints and held-out scores")
+    ap.add_argument("--every", type=int, default=200, help="steps between checkpoints and the held-out and validation scores")
     ap.add_argument("--holdout", type=int, default=-1, help="loops held out of training and scored every --every steps; the step that scores best is what --out gets (default a tenth, none under five loops)")
+    ap.add_argument("--validate", default="", help="a corpus of recordings (corpus <dir> from <list>) cut into fixed windows and scored every --every steps; the step that scores best on it is what --out gets, in place of the held-out loops' best")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
     global RING, STRIKE_POS, STRIKE_AGAIN, DIP
@@ -507,6 +508,13 @@ def main() -> None:
     val_mels, val_tgs = validation(held, args.window, planes) if held else ([], [])
     assert manifest["mel_bands"] == ripmodel.MEL_BANDS and manifest["pitches"] == ripmodel.PITCHES
     assert manifest["voice_genes"] == ripmodel.VOICE_GENES and len(manifest["waves"]) == ripmodel.WAVES
+    recorded, check_mels, check_tgs = [], [], []
+    if args.validate:
+        check_manifest, recorded = load_corpus(args.validate)
+        assert check_manifest["mel_bands"] == ripmodel.MEL_BANDS and check_manifest["pitches"] == ripmodel.PITCHES
+        if not recorded:
+            raise SystemExit(f"--validate {args.validate}: no recordings to score")
+        check_mels, check_tgs = validation(recorded, args.window, planes)
     mixed, share = [], 0.0
     if args.mix:
         d, _, sh = args.mix.rpartition(":")
@@ -523,38 +531,54 @@ def main() -> None:
     model = (ripmodel.PitchNet if args.pitchnet else ripmodel.RipModel)(cfg).to(args.device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     step, best_loss, best_step, best_state = 0, float("inf"), 0, None
+    validated = (float("inf"), 0, None, None)  # the best validation loss, its step, its weights and the held-out loss there
     if resume:
         model.load_state_dict(ck["model"])
         opt.load_state_dict(ck["opt"])
         step = ck["step"]
         best_loss, best_step, best_state = ck.get("best", (best_loss, best_step, best_state))
+        validated = ck.get("validated", validated)
         print(f"resumed at step {step}")
     elif ck is not None:
         model.load_state_dict(ck["model"])
         print(f"started from {args.init}")
     print(f"{sum(p.numel() for p in model.parameters())} weights, {len(loops)} loops, {sum(len(m) for m, _ in loops)} frames, {len(held)} held out in {len(val_mels)} windows")
+    if recorded:
+        print(f"{len(recorded)} recordings of {sum(len(m) for m, _ in recorded)} frames to validate on in {len(check_mels)} windows, from {args.validate}")
     if mixed:
         print(f"{len(mixed)} loops of {sum(len(m) for m, _ in mixed)} frames mixed in, {share:.0%} of the windows")
     if drums:
         print(f"{len(drums)} recordings of {sum(len(m) for m, _ in drums)} frames laid over {len(drumless)} loops with no drums, {over_share:.0%} of the windows")
     t0 = time.time()
 
-    def score() -> None:
-        nonlocal best_loss, best_step, best_state
-        if not val_mels:
-            return
-        v = evaluate(model, val_mels, val_tgs, args.device)
+    def scored(name: str, mels, tgs):
+        """the decoders' loss over fixed windows, and the line that reports it"""
+        v = evaluate(model, mels, tgs, args.device)
         # the decoders read the onset, drum, pitch, voicing, strike and release
         # heads; the wave, voice and velocity heads say how a note is played and
         # memorize the corpus's, so they do not pick the step exported
         v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"]
         parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders"))
-        mark = ""
-        if v["decoders"] < best_loss:
-            best_loss, best_step = v["decoders"], step
-            best_state = {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}
-            mark = " (best)"
-        print(f"step {step} held-out {v['total']:.3f}, decoders {v['decoders']:.3f} ({parts}){mark}", flush=True)
+        return v["decoders"], f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f} ({parts})"
+
+    def weights() -> dict:
+        return {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}
+
+    def score() -> None:
+        nonlocal best_loss, best_step, best_state, validated
+        held_loss = None
+        if val_mels:
+            held_loss, line = scored("held-out", val_mels, val_tgs)
+            if held_loss < best_loss:
+                best_loss, best_step, best_state = held_loss, step, weights()
+                line += " (best)"
+            print(line, flush=True)
+        if check_mels:
+            loss, line = scored("validation", check_mels, check_tgs)
+            if loss < validated[0]:
+                validated = (loss, step, weights(), held_loss)
+                line += " (best)"
+            print(line, flush=True)
 
     channel, channel_share = None, 0.0
     if args.channel:
@@ -623,11 +647,15 @@ def main() -> None:
             score()
             if args.checkpoint:
                 # the shape rides along for average.py and the check above, the heads and
-                # the window showing in no tensor; the best step, so a resumed run, or one
-                # run again once done, still exports it
+                # the window showing in no tensor; the best held-out and validation steps,
+                # so a resumed run, or one run again once done, still exports its pick
                 torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "step": step, "cfg": asdict(cfg),
-                            "best": (best_loss, best_step, best_state)}, args.checkpoint)
-    if best_state is not None:
+                            "best": (best_loss, best_step, best_state), "validated": validated}, args.checkpoint)
+    if args.validate and validated[2] is not None:
+        model.load_state_dict(validated[2])
+        beside = f", held-out {validated[3]:.3f} there" if validated[3] is not None else ""
+        print(f"best validation decoders' loss {validated[0]:.3f} at step {validated[1]}{beside}; exporting that")
+    elif best_state is not None:
         model.load_state_dict(best_state)
         print(f"best held-out decoders' loss {best_loss:.3f} at step {best_step}; exporting that")
     model.eval()

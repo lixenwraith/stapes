@@ -425,10 +425,12 @@ decoders = onset + drums + pitch + 0.5 voicing + strike + release
 ```
 
 The last 400 loops are held out and scored every 1,000 steps, and the step with the best
-`decoders` score is what gets written. The wave, voice and velocity heads don't choose
-it, because they memorize the corpus. A positive weight w shifts a head's scale: it
-scores a posterior p as wp / (wp + 1 - p), which is part of why thresholds belong to the
-weights (§10).
+`decoders` score is what gets written, unless `--validate` names a corpus of recordings
+(`corpus <dir> from`): cut into windows the same way and scored beside them, its best
+`decoders` step is written, the held-out score printed beside it. The wave, voice and
+velocity heads don't choose it, because they memorize the corpus. A positive weight w
+shifts a head's scale: it scores a posterior p as wp / (wp + 1 - p), which is part of
+why thresholds belong to the weights (§10).
 
 Round 12a's log, first and last, on a GTX 1060:
 
@@ -444,7 +446,8 @@ against a fifth by chance, and it only ever learned synth voices. So on a real i
 its guess means little, which is why a rip can play a piano on a saw.
 
 The checkpoint, a PyTorch `.pt`, holds `model`, `opt`, `step`, `cfg` (the shape, which a
-resumed run must match) and `best` (the best score, its step and its weights).
+resumed run must match), `best` (the best held-out score, its step and its weights) and
+`validated` (the best validation score, its step, its weights and the held-out score there).
 
 ## 9. The weight file
 

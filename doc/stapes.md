@@ -117,10 +117,14 @@ Over the library's rip (library
 - `agree` compares two rips of one piece (`MatchNotes`); `truth` scores a rip
   against notes given as text or a tapped rhythm (`ParseTranscript`) or a MIDI
   file (`truth <name> <file.mid>`), counting the notes heard by level as well
-  (`NoteLevels`); `notes` lists a transcript, each note's brightness with the
-  unmeasured counted, and `notes <name> <file.mid>` writes one (`WriteMIDI`) to
-  correct in a sequencer. `corpus <dir> from` labels a file's other drum strikes
-  (`MIDIScore.Struck`) as onsets alone.
+  (`NoteLevels`), and prints a `bars` row for a MIDI file's bars, placed as its
+  notes matched (`MIDIScore.Beats`), or a JAMS file's beats, a truth of beats
+  alone (`truth <name> <file.jams>`, `ReadJAMSBeats`): the rip's bar lines
+  against the downbeats and beats given (`MatchBars`); `notes` lists a
+  transcript, each note's brightness with the unmeasured counted, and `notes
+  <name> <file.mid>` writes one (`WriteMIDI`) to correct in a sequencer.
+  `corpus <dir> from` labels a file's other drum strikes (`MIDIScore.Struck`)
+  as onsets alone.
 - `rip` listens with the root's `rip.toml` when one is there, and hears with
   the root's `ripmodel.bin`, and the notes from its `ripnotes.bin` when that is
   there, which `tool/rip-train` trains on loops stapes exports (`corpus`); `render` writes what the slots hold to a WAV through

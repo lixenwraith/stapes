@@ -34,7 +34,8 @@ func cmdAgree(s *Session, a []string) error {
 // cmdTruth scores a rip's transcript against one given as text in the notes
 // verb's own form, corrected by hand or written out, or as a MIDI file, whose
 // drum channel scores the drums: how many of the notes and hits given the rip
-// heard, and how many it heard that were not given
+// heard, and how many it heard that were not given; a MIDI file's bars and a
+// JAMS file's beats, a truth of beats alone, score the rip's bar lines
 func cmdTruth(s *Session, a []string) error {
 	rp, ok := s.rips[a[0]]
 	if !ok {
@@ -46,12 +47,20 @@ func cmdTruth(s *Session, a []string) error {
 	}
 	var truth []audio.RipNote
 	var hits []audio.RipHit
-	if isMIDI(a[1]) {
-		var m *audio.MIDIScore
-		if m, err = audio.ReadMIDI(bytes.NewReader(data)); err == nil {
-			truth, hits = m.Notes, m.Hits
+	var score *audio.MIDIScore
+	switch {
+	case isMIDI(a[1]):
+		if score, err = audio.ReadMIDI(bytes.NewReader(data)); err == nil {
+			truth, hits = score.Notes, score.Hits
 		}
-	} else {
+	case strings.EqualFold(filepath.Ext(a[1]), ".jams"):
+		beats, downbeats, err := audio.ReadJAMSBeats(bytes.NewReader(data))
+		if err != nil {
+			return fmt.Errorf("%s: %w", a[1], err)
+		}
+		reportBars(s.out, a[0], rp.rip, beats, downbeats)
+		return nil
+	default:
 		// a rhythm tapped out without a start begins where the rip's melody
 		// register first sounds
 		origin := math.Inf(1)
@@ -68,21 +77,44 @@ func cmdTruth(s *Session, a []string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", a[1], err)
 	}
+	// a score's bars are placed on the recording as its notes matched, or with
+	// none as its hits did
+	var at func(float64) float64
 	if len(truth) > 0 {
 		ag := audio.MatchNotes(rp.rip.Notes, truth)
 		fmt.Fprintf(s.out, "%s against %d note(s) given, transposed %+d: the rip's seconds = %.3f × the given %+.2f\n", a[0], len(truth), ag.Shift, ag.Stretch, ag.Offset)
 		reportAgreement(s.out, ag, a[0], "given", "heard as given")
 		reportLevels(s.out, rp, ag, truth)
+		at = ag.At
 	}
 	if len(hits) > 0 {
-		reportHits(s.out, a[0], rp.rip, hits)
+		hg := reportHits(s.out, a[0], rp.rip, hits)
+		if at == nil {
+			at = func(sec float64) float64 { return hg.Stretch*sec + hg.Offset }
+		}
+	}
+	if score != nil {
+		beats, downbeats := score.Beats(at)
+		reportBars(s.out, a[0], rp.rip, beats, downbeats)
 	}
 	return nil
 }
 
+// reportBars prints the rip's bar lines scored against the beats and downbeats
+// given (MatchBars)
+func reportBars(w io.Writer, name string, r *audio.Rip, beats, downbeats []float64) {
+	b := audio.MatchBars(r, beats, downbeats)
+	same := "the same length"
+	if !b.Same {
+		same = "not the same length, so no downbeat counts"
+	}
+	fmt.Fprintf(w, "bars   %s's bar %.2f of the given's, %s: %.2f of %d downbeat(s) given on a bar line, phase %+.2f bar, %.2f of %d beat(s) given on a beat\n",
+		name, b.Ratio, same, b.Downbeats, len(downbeats), b.Phase, b.Beats, len(beats))
+}
+
 // reportHits prints each drum's count of a rip's hits against the hits given,
 // matched within half a step, and the hits only one side has
-func reportHits(w io.Writer, name string, r *audio.Rip, given []audio.RipHit) {
+func reportHits(w io.Writer, name string, r *audio.Rip, given []audio.RipHit) audio.HitsAgreement {
 	hg := audio.MatchHits(r.Hits(), given, 30/float64(r.BPM)/audio.StepsPerBeat)
 	fmt.Fprintf(w, "%s against %d hit(s) given: the rip's seconds = %.3f × the given %+.2f\n", name, len(given), hg.Stretch, hg.Offset)
 	brief := func(hits []audio.RipHit) string {
@@ -105,6 +137,7 @@ func reportHits(w io.Writer, name string, r *audio.Rip, given []audio.RipHit) {
 			fmt.Fprintf(w, "  %s only given: %s\n", audio.InstrumentName(audio.InstrumentType(d)), brief(l.OnlyB))
 		}
 	}
+	return hg
 }
 
 // levelBands part the notes given by how far, in dB, the recording plays each

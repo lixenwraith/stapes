@@ -1589,7 +1589,8 @@ func TestASongRipsBackInItsMeter(t *testing.T) {
 // TestRipReadsAMIDIFileAsAScore: a .mid given to rip is its transcript, nothing
 // heard: patterns, the shipped voices under the rip's names and the tempo, and
 // compress, song, notes, agree and truth work from it as from a recording's
-// rip, while what hears a recording refuses a score, which has none.
+// rip, its bars on the file's and on a JAMS file's of its beats, while what
+// hears a recording refuses a score, which has none.
 func TestRipReadsAMIDIFileAsAScore(t *testing.T) {
 	const bpm = 100
 	step := 60.0 / bpm / audio.StepsPerBeat
@@ -1610,6 +1611,12 @@ func TestRipReadsAMIDIFileAsAScore(t *testing.T) {
 	}
 	mid := filepath.Join(t.TempDir(), "score.mid")
 	os.WriteFile(mid, b.Bytes(), 0o644)
+	var beats []string
+	for i := range 2 * audio.BeatsPerBar {
+		beats = append(beats, fmt.Sprintf(`{"time": %g, "value": {"position": %d}}`, float64(i*audio.StepsPerBeat)*step, i%audio.BeatsPerBar+1))
+	}
+	jams := filepath.Join(filepath.Dir(mid), "score.jams")
+	os.WriteFile(jams, []byte(`{"annotations": [{"namespace": "beat_position", "data": [`+strings.Join(beats, ", ")+`]}]}`), 0o644)
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
@@ -1623,8 +1630,9 @@ song score
 ! song score score
 agree score score
 truth score %s
+truth score %s
 validate all
-`, mid, mid, mid))
+`, mid, mid, mid, jams))
 	rp := s.rips["score"]
 	if rp == nil || rp.x != nil || s.bpm != bpm || !strings.Contains(out.String(), "1 note(s) outside E1 to C7 dropped") {
 		t.Fatalf("the score as a rip at %d bpm:\n%s", s.bpm, out.String())
@@ -1641,6 +1649,9 @@ validate all
 	if n := len(rp.rip.Notes); n != len(notes)-1 || !strings.Contains(out.String(), fmt.Sprintf("against %d note(s) given, transposed +0", n+1)) ||
 		strings.Count(out.String(), "only given 0") != 2 || !strings.Contains(out.String(), "melody only given: D8@0.00\n") {
 		t.Errorf("the score did not agree with its file:\n%s", out.String())
+	}
+	if bars := "bars   score's bar 1.00 of the given's, the same length: 1.00 of 2 downbeat(s) given on a bar line, phase +0.00 bar, 1.00 of 8 beat(s) given on a beat\n"; strings.Count(out.String(), bars) != 2 {
+		t.Errorf("the score's bars against its file's and its beats', want %q twice:\n%s", bars, out.String())
 	}
 }
 

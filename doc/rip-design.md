@@ -332,19 +332,70 @@ and the checkpoint earn their keep.
    out, MIDI files, and two rips of one piece as witnesses; and the model at
    four times the size, its sixth run passing the engine's loops and losing
    the recordings.
-2. Next: the lead's eight missing and seven cut notes on the origin, chased
-   with the rhythm truth and a transcript corrected by hand, note by note; a
-   default lead rule, or the brightness as one more thing a line keeps, once
-   enough recordings with truths say which; the pedal, a third line or the
-   chord a line rings under, which two lines cannot hold; the decoder's and
-   the parting's constants tuned against truths rather than rendered loops
-   (`tune` taking `truth` files as its score); real recordings with their
-   notes in the corpus, since the sixth run's held-out line was flat while
-   the recordings' truths favoured the analysis, and the model's next run on
-   them, measured by `bench` and by the truths and shipped only when it beats
-   the analysis on both.
-3. Then: tuned parameters and weights shipped as data, and the rip on Android
-   under the mobile budget.
+2. Next, after the audit of 9 November (its measurements are in the audit
+   doc and its tools under vif's `tmp/audit`):
+   - **Scores first.** A bar-phase row in the wide test, a rip's bar lines
+     against a score's bars or a beat annotation's downbeats (GuitarSet's
+     `beat_position`), since the note scorer's time map never sees a bar line
+     and the bar phase decides every pattern a song is compressed into; a real
+     validation corpus (GuitarSet's and MusicNet's training players, the phone
+     loops, no test clip) that picks the trainer's exported step in place of
+     the rendered loops' held-out loss, which stopped predicting recordings at
+     round 32; and `tune` hearing through the model with each recording's
+     frames cached, scored by the timed match on that corpus, run after every
+     round to write the `rip.toml` that ships beside the weights. A round
+     changes one thing against a paired control and is judged on the metric it
+     targets, never on the wide mean alone.
+   - **The instrument model.** The frame model's job is timbre, not notes and
+     not a smaller drum detector: per frame a family (piano, guitar, voice,
+     bass, strings, winds, synth, drums, and unknown), the genes, the drums and
+     the onset, read from the raw planes, where a kick's falling thump differs
+     from a bass note's harmonics as it does not in the harmonic stack (the
+     notes model's drum heads hear Billie Jean's bass as kicks). Families come
+     into the corpus from the engine's voices, NSynth's families, E-GMD's kit
+     and the real recordings' labels; unknown is a class of its own, trained on
+     sounds of no family (voices of random genes far from any bank voice,
+     driven and effected variants, the kit's toms and crashes), with its bar
+     on the posterior set on a family held out of a calibration run, so an
+     instrument the corpus never heard, a generated or effected sound, reads
+     as unknown rather than as its nearest neighbour. The head seeds the voice fit with the family's bank
+     voices, gates the decoders (legato and bends for a voice, a slow attack
+     for a pad), names each line's instrument in the song, and gives the drums,
+     calibrated on E-GMD by a line per head folded into the output rows. That,
+     not a note transcriber, is what the rip is for: a recording that ends in
+     voices the engine plays, at the game's tempo.
+   - **Glides.** A cents head on the notes model, each pitch's offset within
+     its cell per frame, labelled from the renderer's own frequency; notes
+     merged across cells where the offset runs continuously; and a step's
+     `bend`, the semitones its pitch reaches by its end, linear in pitch from
+     `bend_at`, a share of its length, in the pattern document, played by the
+     voices and written as MIDI pitch bend. A sung line or a synth lead then
+     keeps one note where the cells gave three.
+   - **The phone's bass.** The strike head is the limit, not the decoder's
+     bar: letting the accounting judge the strikes between `Strike` and
+     `StrikeLow` recovered nothing from the Pixel. Next the channel's dip in
+     training (34d), the accounting's logistics refitted with phone bass in
+     their graded set, and the bass's own long-window plane if the head stays
+     unsure.
+   - **Lines on pop.** On the epic set's first bars a high melody and a
+     mid-register accompaniment interleave through both decoded lines, so the
+     melody voice plays the accompaniment's notes among its own, and the lead
+     rule cannot part them (`lead high` reads as `lead busy` there): two lines
+     cannot hold three voices. The third line, or a line per family once the
+     instrument model names one, is the close, judged on that set.
+   - **A live rip.** A stream of sample blocks in, the PCEN state carried, the
+     model over a window with half a second of look-ahead, the decoders over
+     the last bars with the earlier ones frozen, bars out two behind the sound,
+     and a full pass over the whole recording at the end when the listener asks.
+     The budget is a few seconds behind the music live, and a better song once
+     the whole has been heard.
+   Dropped by measurement: padding or mirroring a recording's edges (the
+   strike head at a loop's first frame scores as mid-song; silence before it
+   and the mirror both cost); more width (34a); soups of rounds; and rounds of
+   one recipe plus one augmentation judged by the mean, which the per-set
+   noise of a single run swallows.
+3. Then: the rip on Android under the mobile budget, and the weights shipped as
+   data with the `rip.toml` `tune` wrote for them.
 
 ## 8. Measured on the sample recording
 

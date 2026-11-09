@@ -120,7 +120,9 @@ front-end seam. What remains, in the design's order:
    quarter tone would still cross rows. A pitch prior that holds a semitone
    wobble (a higher cost for a one-semitone move than per semitone of a leap,
    or the salience smoothed across the neighbours before the path), measured
-   on a rendered vibrato voice, which the voices have now.
+   on a rendered vibrato voice, which the voices have now; or a cents head on
+   the notes model and a step's `bend`, so a glide is one note
+   ([Rip design §7](rip-design.md#7-plan)).
 6. The decoder's and the parting's constants tuned against truths: `tune`
    searches `RipParams` over rendered loops whose truth is the render's; with
    `truth` files (rhythms, corrected transcripts, MIDI) on real recordings,
@@ -130,7 +132,14 @@ front-end seam. What remains, in the design's order:
    hand. On the origin the rhythm truth has the lead at 17 of 25 notes, 8
    missed, 10 extra and 7 cut in two, the half notes among them: the cut half
    notes are the first thing to chase, note by note, with the `truth` listing
-   of which were cut.
+   of which were cut. The model path's thresholds (`strike`, `strike_low`,
+   `strike_again`, `release`, `voicing`) were swept by hand per weight file;
+   `tune` hearing through the model with each recording's frames cached and
+   the timed match on a real validation list as its score is the smallest
+   close ([Rip design §7](rip-design.md#7-plan)). A bar-phase score belongs
+   beside it: the note scorer's time map never sees a bar line, and the rip's
+   lines fall within an eighth of a bar of GuitarSet's downbeats on 72% of
+   them after audio v0.8.9, 63% before.
 7. The pedal: a piano arpeggio under pedal rings three or four notes at once,
    and the analysis's two lines hold two; the second line's eighths read as
    held notes (30 of 58 heard, 11 spanning two). A model's strikes start every
@@ -142,6 +151,38 @@ front-end seam. What remains, in the design's order:
    voices for every line of both recordings. A plucked voice (`string`) with
    a doubled, beating course, and the fit's samples cleared of the other
    lines (item 4 of the loop below), measured by the floor the fit reaches.
+
+### The instrument model
+
+- Priority: P1
+- Affected files: `tune.go` (`corpus`), `tool/rip-train`, `lixenwraith/audio`
+  (`ripmodel`, `rip.go`)
+
+The frame model's job after the audit is timbre ([Rip design
+§7](rip-design.md#7-plan)): per frame a family with an unknown class, the genes,
+the drums and the onset from the raw planes. What remains: `corpus` writing
+each note's family (the engine's voices by a table, NSynth's families, E-GMD's
+kit, the real recordings' labels) into the labels and the manifest; the
+trainer's family head with unknown as a class of its own, its bar set on a
+family held out of a calibration run; Go reading
+the family into `RipFrames` for the voice fit's seeds, the decoders' rules and
+the song's instruments; and one round, judged on E-GMD's kits, Billie Jean's
+kicks clean and from the Pixel, and the family's accuracy on NSynth's held-out
+instruments with its unknown rate on an instrument held out whole.
+
+### A live rip
+
+- Priority: P2
+- Affected files: `lixenwraith/audio` (`rip.go`, `ripmodel`), the root package,
+  vif's Android app
+
+A rip that follows the music as it plays ([Rip design §7](rip-design.md#7-plan)):
+blocks of samples in, the PCEN state carried across them, the model over a
+window with half a second of look-ahead, the decoders over the last bars with
+the earlier ones frozen, bars out two behind the sound, and the whole recording
+ripped again at the end when the listener asks. The smallest close: a `RipStream`
+in the library that yields bars, measured against the offline rip of the same
+recording for the bars it froze.
 
 ### Close the rip's loop
 

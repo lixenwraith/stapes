@@ -186,9 +186,15 @@ proves wrong or that a document now states, and link the document instead.
   loops from the tree's code too, so rounds whose `aug` or `gen` differ bench on
   different loops: bench one round's weights through the other's stapes.
 - A model's decoder thresholds belong to its weights: a new head's scale moves
-  them, so sweep `strike`, `strike_again` and `release` before judging a round
-  (10a read 0.530 pooled at 8b's, 0.650 at its own), and pin them in the root's
+  them, so tune them (`tune ... truth <list>`) before judging a round (10a read
+  0.530 pooled at 8b's, 0.650 at its own), and pin them in the root's
   `rip.toml` beside the weights. Compare rounds on one tree's bench loops.
+- With strikes the melody register never reaches the pair decoder, so
+  `second_voice` and `cross` move no note on the model path, while the bass
+  line's own path reads `jump`, `switch` and `retrigger`: `modelGenes` is what
+  audio v0.9.0's decoders read; check it against a new decoder. A candidate of
+  `tune ... truth` pays the decoders alone, and the accounting stage
+  (`RipFrames.account`) was 90% of them in a profile.
 - A round that gains on the bench may still lose on the recordings (10a over 8b):
   the bench's loops are the corpus's own kind. Judge by the recordings.
 - Towers (`transformer.Tower`, `TOWERS=` in `tool/rip-train`) are in no shipped

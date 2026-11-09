@@ -134,12 +134,15 @@ front-end seam. What remains, in the design's order:
    notes are the first thing to chase, note by note, with the `truth` listing
    of which were cut. The model path's thresholds (`strike`, `strike_low`,
    `strike_again`, `release`, `voicing`) were swept by hand per weight file;
-   `tune` hearing through the model with each recording's frames cached and
-   the timed match on a real validation list as its score is the smallest
+   `tune ... truth <list>` searches them through the model, each recording
+   heard once, by the pooled note F1: run after every round on a real
+   validation list, which is still to gather, it is the smallest
    close ([Rip design §7](rip-design.md#7-plan)). A bar-phase score belongs
    beside it: the note scorer's time map never sees a bar line, and the rip's
    lines fall within an eighth of a bar of GuitarSet's downbeats on 72% of
-   them after audio v0.8.9, 63% before.
+   them after audio v0.8.9, 63% before. When `tune ... truth` scores the bars
+   too (`MatchBars`), the tempo and beat genes (`tempo_prior`, `tempo_width`,
+   `tightness`) join `modelGenes`, which stays a list, not a rule.
 7. The pedal: a piano arpeggio under pedal rings three or four notes at once,
    and the analysis's two lines hold two; the second line's eighths read as
    held notes (30 of 58 heard, 11 spanning two). A model's strikes start every

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -2213,34 +2214,35 @@ corpus %[2]s 5 1 aug gen nowav part 1/2
 
 // TestACorpusFromTakesABatchAfterItsLoops: a batch joining a corpus of
 // recordings numbers its loops after those on disk, which stay as they are, so
-// no recording repeats or is lost; a MIDI file of toms alone is skipped, and a
-// tom beside a kick is an onset of no drum and no pitch.
+// no recording repeats or is lost; a MIDI file of toms alone is skipped, a tom
+// beside a kick is an onset of no drum and no pitch, and the list's family
+// labels a recording's notes, every strike the drums'.
 func TestACorpusFromTakesABatchAfterItsLoops(t *testing.T) {
 	dir := t.TempDir()
 	corpus, list := filepath.Join(dir, "corpus"), filepath.Join(dir, "list.csv")
-	drums := func(keys ...byte) []byte { // a type-0 file of the keys on the drum channel, one at each beat
+	notes := func(on byte, keys ...byte) []byte { // a type-0 file of the keys, one at each beat, on's channel
 		var ev []byte
 		for _, k := range keys {
-			ev = append(ev, 0x00, 0x99, k, 100, 0x83, 0x60, 0x89, k, 0)
+			ev = append(ev, 0x00, on, k, 100, 0x83, 0x60, on-0x10, k, 0)
 		}
 		ev = append(ev, 0x00, 0xFF, 0x2F, 0)
 		head := []byte{'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xE0, 'M', 'T', 'r', 'k', 0, 0, 0, byte(len(ev))}
 		return append(head, ev...)
 	}
-	add := func(name string, keys ...byte) {
+	add := func(name string, on byte, keys ...byte) {
 		f, err := os.Create(filepath.Join(dir, name+".wav"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		audio.WriteWAV(f, make([]float64, 3*audio.AudioSampleRate))
 		f.Close()
-		if err := os.WriteFile(filepath.Join(dir, name+".mid"), drums(keys...), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name+".mid"), notes(on, keys...), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	csv := "audio_filename,midi_filename\n"
+	csv := "audio_filename,midi_filename,family\n"
 	for _, name := range []string{"a", "b", "c", "d"} {
-		csv += name + ".wav," + name + ".mid\n"
+		csv += name + ".wav," + name + ".mid,guitar\n"
 	}
 	if err := os.WriteFile(list, []byte(csv), 0o644); err != nil {
 		t.Fatal(err)
@@ -2248,15 +2250,15 @@ func TestACorpusFromTakesABatchAfterItsLoops(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	add("a", 36, 48)
-	add("c", 43, 45)
+	add("a", 0x99, 36, 48)
+	add("c", 0x99, 43, 45)
 	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s\n", corpus, list))
 	if !strings.Contains(out.String(), "skipped 1") {
 		t.Errorf("the toms alone were not skipped:\n%s", out.String())
 	}
 	first, _ := os.ReadFile(filepath.Join(corpus, "loop_000.json"))
-	add("b", 38)
-	add("d", 42)
+	add("b", 0x99, 38)
+	add("d", 0x90, 64)
 	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s\n", corpus, list))
 	var m corpusManifest
 	data, _ := os.ReadFile(filepath.Join(corpus, "corpus.json"))
@@ -2271,8 +2273,11 @@ func TestACorpusFromTakesABatchAfterItsLoops(t *testing.T) {
 			t.Fatal(err)
 		}
 		sources = append(sources, l.Source)
-		if l.Source == "a.wav" && (len(l.Events) != 2 || l.Events[1].Drum != -1 || l.Events[1].MIDI != 0) {
-			t.Errorf("a's kick and tom read %+v, want the tom an onset of drum -1, midi 0", l.Events)
+		if l.Source == "a.wav" && (len(l.Events) != 2 || l.Events[1].Drum != -1 || l.Events[1].MIDI != 0 || l.Events[0].Family != familyIndex("drums") || l.Events[1].Family != familyIndex("drums")) {
+			t.Errorf("a's kick and tom read %+v, want the tom an onset of drum -1, midi 0, both the drums'", l.Events)
+		}
+		if l.Source == "d.wav" && (len(l.Events) != 1 || l.Events[0].MIDI != 64 || l.Events[0].Family != familyIndex("guitar")) {
+			t.Errorf("d's note reads %+v, want E4 the guitar's", l.Events)
 		}
 		if i == 0 && !bytes.Equal(data, first) {
 			t.Error("the loop on disk was written again")
@@ -2544,8 +2549,9 @@ func TestFilesOverlayLoadsRipsAndSavesHere(t *testing.T) {
 
 // TestCorpusAugmentsAndLabelsTheVoices: an augmented corpus plays each loop's
 // tonal tracks through voices of random genes near the registered ones and
-// labels the events with those genes, the registered voices are as they were
-// afterwards, and the audio is not the clean render.
+// labels the events with those genes and the family each sounds as, a voice it
+// drives unknown, the registered voices are as they were afterwards, and the
+// audio is not the clean render.
 func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
@@ -2583,6 +2589,29 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 	if changed == 0 || differs != len(aug) {
 		t.Errorf("%d voice(s) changed, %d of %d loop(s) differ from the clean render", changed, differs, len(aug))
 	}
+	// a registered voice sounds as its name's family, and one driven past the
+	// drive its genes reach, 4, as unknown
+	for name, f := range clean[0].families {
+		if want, ok := voiceFamilies[name]; ok && f != familyIndex(want) {
+			t.Errorf("the registered %s labelled family %d, want %s", name, f, want)
+		}
+	}
+	driven := 0
+	for k := range 40 {
+		voices, families, restore := s.loopVoices(clean[0].slots, true, rand.New(rand.NewPCG(uint64(k), 1)))
+		restore()
+		for name, v := range voices {
+			if v.Drive > 4 {
+				driven++
+				if families[name] != familyIndex("unknown") {
+					t.Errorf("%s driven to %.1f labelled family %d, want unknown", name, v.Drive, families[name])
+				}
+			}
+		}
+	}
+	if len(clean[0].families) == 0 || driven == 0 {
+		t.Errorf("%d voice(s) labelled, %d driven in 40 loops", len(clean[0].families), driven)
+	}
 	// an augmented loop sounds off A440 by up to a quarter tone, a clean one at it
 	tuned := 0
 	for i := range aug {
@@ -2613,15 +2642,55 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), "\"voice\":[") || !strings.Contains(string(data), "\"tuning\":") {
 		t.Errorf("the labels carry no voice genes or tuning: %v\n%s", err, data)
 	}
+	var lab corpusLoop
+	if err := json.Unmarshal(data, &lab); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range lab.Events {
+		if e.Drum >= 0 && e.Family != familyIndex("drums") || e.Voice != nil && e.Family < 0 {
+			t.Errorf("drum %d, midi %d labelled family %d", e.Drum, e.MIDI, e.Family)
+		}
+	}
 	if !strings.Contains(out.String(), "random genes") {
 		t.Errorf("corpus did not say it augmented:\n%s", out.String())
 	}
 }
 
+// TestAVoiceSoundsAsTheFamilyOfARegisteredVoiceNearIt: a registered voice and one
+// redrawn within reach of it are its name's family, a voice of another name near
+// one is that one's, and one on another wave or just past the reach is unknown
+func TestAVoiceSoundsAsTheFamilyOfARegisteredVoiceNearIt(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	known := familyVoices()
+	piano, lead := audio.VoiceDefByName("piano"), audio.VoiceDefByName("lead")
+	near, past := piano.Genes(), piano.Genes()
+	for i := range near {
+		near[i] = min(near[i]+0.2, 1)  // 0.19 from the piano, inside the reach
+		past[i] = min(past[i]+0.25, 1) // 0.24 from the piano and 0.35 from the bass, past it
+	}
+	for _, c := range []struct {
+		name string
+		v    *audio.VoiceDef
+		want string
+	}{
+		{"piano", piano, "piano"}, {"pluck", audio.VoiceDefByName("pluck"), "guitar"}, {"lead", lead, "synth"},
+		{"piano", audio.VoiceFromGenes("modal", near), "piano"},
+		{"organ", lead, "synth"},
+		{"piano", audio.VoiceFromGenes("saw", piano.Genes()), "unknown"},
+		{"piano", audio.VoiceFromGenes("modal", past), "unknown"},
+	} {
+		if got := voiceFamily(known, c.name, c.v); got != familyIndex(c.want) {
+			t.Errorf("%s on %q: family %d, want %s", c.name, c.v.Wave, got, c.want)
+		}
+	}
+}
+
 // TestSampledLinesPlayAsLabelled: a line on recorded notes sounds at each note's
 // labelled pitch after the shift and the loop's tuning, from its labelled frame,
-// every sampled note's label carries no wave and no voice, and an instrument
-// with a silent note is passed over for the engine's voice
+// every sampled note's label carries no wave and no voice but its NSynth family's,
+// and an instrument with a silent note is passed over for the engine's voice
 func TestSampledLinesPlayAsLabelled(t *testing.T) {
 	dir, quiet := t.TempDir(), t.TempDir()
 	const cents = 30
@@ -2705,8 +2774,11 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, e := range lab.Events {
-			if e.Drum == -1 && (e.Wave != -1 || e.Voice != nil) {
-				t.Errorf("loop %d: sampled midi %d labelled wave %d, voice %v", i, e.MIDI, e.Wave, e.Voice)
+			if e.Drum == -1 && (e.Wave != -1 || e.Voice != nil || e.Family != familyIndex("bass") && e.Family != familyIndex("synth")) {
+				t.Errorf("loop %d: sampled midi %d labelled wave %d, voice %v, family %d", i, e.MIDI, e.Wave, e.Voice, e.Family)
+			}
+			if e.Drum >= 0 && e.Family != familyIndex("drums") {
+				t.Errorf("loop %d: a hit labelled family %d", i, e.Family)
 			}
 		}
 	}

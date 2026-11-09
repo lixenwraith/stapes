@@ -30,6 +30,8 @@ an entry here that names one links there.
 
 ## F
 
+**family** (also: `families`, `voiceFamilies`, `familyReach`, `nsynthFamilies`, `--family-holdout`, family head) — What plays a note or a hit, one of the audio library's nine ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#f)): `corpus` labels each event's as an index into its manifest's `families`, an engine voice's by its name in `voiceFamilies` while its genes stay within `familyReach` (0.2 RMS) of the registered voice on its wave, else the nearest registered voice's within that reach, else unknown, as is a voice `aug` drives; NSynth's notes by their instrument's family (`nsynthFamilies`), every hit and strike the drums', and a `corpus <dir> from` recording's notes by its list's `family` column. The trainer's family head learns the highest event sounding's, and `train.py --family-holdout <family>` leaves every loop that sounds one out of a run, so a calibration run can set unknown's bar. See also **instrument model**. [Rip training §3, §5 and §8](rip-training.md#3-the-labels-loop_nnnjson-and-corpusjson) · `stapes` `voiceFamily`, `nsynthFamilies`; `tool/rip-train` `train.py`'s `FAMILY_HOLDOUT`
+
 **fidelity** (also: `Fidelity`, `songJudge`) — How much a render sounds like the recording it stands for, the audio library's grade ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#f)): `refine` judges the voices and the steps by it, the rip-back reported beside it, and `song <name> score` prints both. [Stapes §4](stapes.md#4-the-rips-verbs) · [Rip design §2](rip-design.md#2-stages) · `stapes` `songJudge`
 
 ## L
@@ -56,7 +58,7 @@ an entry here that names one links there.
 
 **bend** (also: glide, cents head) — A step's `bend`, the semitones its pitch reaches by its end from `bend_at`, a share of its length; the notes model's cents head labels it, [Rip design §7](rip-design.md#7-plan).
 
-**instrument model** (also: family head, unknown) — The frame model's role after the audit: per frame a family with an unknown class, the genes, the drums and the onset from the raw planes, [Rip design §7](rip-design.md#7-plan); [todo](todo.md#the-instrument-model).
+**instrument model** (also: family head, unknown) — The frame model's role after the audit: per frame a family with an unknown class, the genes, the drums and the onset from the raw planes, [Rip design §7](rip-design.md#7-plan); [todo](todo.md#the-instrument-model). The corpus labels each event's **family** and the trainer's family head learns it ([Rip training §5](rip-training.md#5-the-targets)); no decoder reads it yet.
 
 **PitchNet** (also: harmonic stack, `--pitchnet`, notes model, `ripnotes.bin`) — The rip's convolutions-only model, the same weights at every pitch, over both input planes stacked by harmonic, [Rip training §4 and §7](rip-training.md#7-the-model); `ripmodel.py`'s `PitchNet`. Its weight file, the **root**'s `ripnotes.bin`, gives the notes beside `ripmodel.bin`, [Rip training §9](rip-training.md#9-the-weight-file); audio's `ripmodel.NotesSpec`.
 

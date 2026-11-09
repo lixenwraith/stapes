@@ -44,8 +44,16 @@ type sampleNote struct {
 // sampleInstr is one recorded instrument, its notes by pitch, the layers in order
 type sampleInstr struct {
 	name    string
+	family  int // its index in audio.RipFamilies, by nsynthFamilies
 	pitches []int
 	notes   map[int][]sampleNote
+}
+
+// nsynthFamilies is the family each of NSynth's instrument families plays as: a
+// mallet and an organ are of none of the others
+var nsynthFamilies = map[string]string{
+	"bass": "bass", "brass": "winds", "flute": "winds", "guitar": "guitar", "keyboard": "piano", "mallet": "unknown",
+	"organ": "unknown", "reed": "winds", "string": "strings", "synth_lead": "synth", "vocal": "voice",
 }
 
 // sampleSet indexes a directory of NSynth notes, named
@@ -57,13 +65,14 @@ type sampleSet struct {
 	share       float64
 }
 
-// sampledLine is a tonal slot a loop plays on recorded notes: the instrument,
-// each note's end as it sounds, in seconds, in the order ExpectedEvents gives
-// the slot's notes, and the line's render until it is mixed
+// sampledLine is a tonal slot a loop plays on recorded notes: the instrument and
+// its family, each note's end as it sounds, in seconds, in the order
+// ExpectedEvents gives the slot's notes, and the line's render until it is mixed
 type sampledLine struct {
-	instr string
-	ends  []float64
-	audio []float64
+	instr  string
+	family int
+	ends   []float64
+	audio  []float64
 }
 
 func loadSampleSet(dir string) (*sampleSet, error) {
@@ -90,7 +99,7 @@ func loadSampleSet(dir string) (*sampleSet, error) {
 		}
 		in := byName[name]
 		if in == nil {
-			in = &sampleInstr{name: name, notes: map[int][]sampleNote{}}
+			in = &sampleInstr{name: name, family: familyIndex(nsynthFamilies[family]), notes: map[int][]sampleNote{}}
 			byName[name] = in
 			if family == "bass" {
 				set.bass = append(set.bass, in)
@@ -225,7 +234,7 @@ type sampleKey struct {
 func (set *sampleSet) line(in *sampleInstr, notes []audio.RipEvent, m audio.Meter, bars, bpm int, cents float64, pedal bool, cache map[sampleKey][]float64) (*sampledLine, error) {
 	sr := float64(audio.AudioSampleRate)
 	stepSec := float64(audio.SamplesPerStep(bpm)) / sr
-	l := &sampledLine{instr: in.name, audio: make([]float64, bars*audio.SamplesPerBar(bpm, m))}
+	l := &sampledLine{instr: in.name, family: in.family, audio: make([]float64, bars*audio.SamplesPerBar(bpm, m))}
 	fade := int(sampledFade * sr)
 	for _, e := range notes {
 		pitch := in.nearest(e.MIDI)

@@ -22,9 +22,10 @@ PITCHES = 69
 DRUMS = 3
 WAVES = 5
 VOICE_GENES = 32
+FAMILIES = ("piano", "guitar", "voice", "bass", "strings", "winds", "synth", "drums", "unknown")  # RipFamilies, in its order
 
 HEADS = [("onset", 1), ("drums", DRUMS), ("pitch", PITCHES), ("voicing", 1), ("wave", WAVES), ("voice", VOICE_GENES), ("strike", PITCHES),
-         ("release", PITCHES), ("velocity", PITCHES)]
+         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES))]
 
 
 # the energy 80 dB under a full-scale sine's, where the model's logarithm floors
@@ -295,6 +296,8 @@ class PitchNet(nn.Module):
 CELLS_VERSION, CELLS_KIND = 5, 1
 CELL_HEADS = ("pitch", "strike", "release", "velocity")
 FRAME_HEADS = ("onset", "drums", "voicing", "wave", "voice")
+# PitchNet's heads in HEADS order: what plays a note is the frame model's to hear
+PITCHNET_HEADS = [h for h in HEADS if h[0] in CELL_HEADS + FRAME_HEADS]
 
 
 def build(cfg: Config) -> nn.Module:

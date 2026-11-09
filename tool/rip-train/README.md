@@ -21,9 +21,9 @@ about.
    in its session and labels every event in them exactly, because the engine
    played them: the frames a model hears (`loop_NNN.mel`), the events
    (`loop_NNN.json`: frame, end, drum or MIDI note, the wave and genes of the
-   voice), and `corpus.json` naming the layout. Nothing is hand-labelled; the
-   synthesizer is the ground truth, and the augmentation is what keeps the
-   model from learning the synthesizer.
+   voice, the family it sounds as), and `corpus.json` naming the layout.
+   Nothing is hand-labelled; the synthesizer is the ground truth, and the
+   augmentation is what keeps the model from learning the synthesizer.
 2. **A model.** `train.py` trains `ripmodel.Spec` on random windows of the loops,
    holds some loops out, scores them every so often and exports the step whose
    onset, drum, pitch and voicing heads score best on them, the heads the rip's
@@ -82,7 +82,7 @@ tool/rip-train/pipeline.sh install
 | `GEN` | `gen` | beats, melodies, bass lines and accompaniments the bank never had, three loops in five per part: a broken chord in eighths or sixteenths in the free slot, and in half the loops a melody of longer notes over it; a third of the generated melodies and accompaniments half 6 to 18 dB softer; three generated loops in ten without their drums and one in seven without its bass; empty for the bank alone |
 | `WAV` | `nowav` | frames and labels only; empty keeps each loop's WAV too (300 MB per 200 loops) |
 | `CODEC` | empty | `codec`: a third of the loops through Opus, MP3 or AAC at 64 to 192 kbps and back, by ffmpeg, which the export then needs |
-| `SAMPLED` | empty | a directory of NSynth notes (`family_source_NNN-pitch-velocity.wav`, a partial set too): each tonal line plays on one of its instruments in half the loops, labelled with no voice; empty for the engine's voices alone |
+| `SAMPLED` | empty | a directory of NSynth notes (`family_source_NNN-pitch-velocity.wav`, a partial set too): each tonal line plays on one of its instruments in half the loops, labelled with no voice and by its instrument's family; empty for the engine's voices alone |
 | `TEMPOS` | the default spread | `80-120` for six tempos over a range, `96,128,160` for a list; the sequencer's range is 80 to 200 |
 | `FOCUS` | none | a stapes script run before the corpus renders: the voices and patterns the loops draw from, see below |
 | `STEPS`, `BATCH` | 20000, 8 | training steps and windows a step |
@@ -289,12 +289,15 @@ To write your own:
 - **Real recordings.** One with the MIDI file it was played from is a loop of
   its own: `corpus <dir> from <list.csv> [split <name>] [hours <h>] [codec]`
   reads a CSV with `audio_filename` and `midi_filename` columns (and `split`
-  and `duration`, as E-GMD's metadata has them), and `train.py --mix
-  <dir>:<share>` draws that share of the windows from it, labelled by the
-  MIDI's notes, velocities and hits, a tom's or a cymbal's an onset of no drum,
-  the voices unknown, and `--over <dir>:<share>` lays a corpus of drums alone
-  over loops with no drums in that share of the windows, a hit labelled only
-  where it stands out of the rest. Both draw a recording by its length, so a minutes-long one
+  and `duration`, as E-GMD's metadata has them, and `family`, the family a
+  recording's notes are played by: GuitarSet's guitar, a singer's voice,
+  MusicNet's by its instrument labels, empty for a mix of families), and
+  `train.py --mix <dir>:<share>` draws that share of the windows from it,
+  labelled by the MIDI's notes, velocities and hits, a tom's or a cymbal's an
+  onset of no drum, every hit the drums', the voices unknown, and `--over
+  <dir>:<share>` lays a corpus of drums alone over loops with no drums in that
+  share of the windows, a hit labelled only where it stands out of the rest.
+  Both draw a recording by its length, so a minutes-long one
   counts for its minutes, and a corpus's `skip.txt`, a loop's name
   (`loop_123`) a line, lists those the trainer leaves out, such as recordings
   whose MIDI sits off their audio. A batch run into the same directory joins
@@ -349,7 +352,7 @@ itself (`ripmodel.features`, derived from the stored frames), width 256, eight
 heads, four layers, feed-forward 1024, a
 window of 64 frames either side, 3.3 million weights. `--convs
 16x3x3/1,32x3x3/2` puts convolutions before the input layer, each its
-channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:7`
+channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:8`
 splits the layers into towers over the shared input layer, each its layers and
 the run of heads it computes in `ripmodel.HEADS` order: the onset and the drums
 on two layers, the rest on four. `--pcen` gives the model a second channel of
@@ -361,8 +364,9 @@ of its time constants), so a window starts as settled as it would in a rip.
 The losses: onsets, drums, pitches and each pitch's strikes and releases (within a frame of a
 note's start and end) as weighted binary cross-entropy, voicing likewise, the
 wave as cross-entropy and the voice genes as squared error over frames a note
-sounds in, and each strike's velocity as squared error where the corpus gives
-one.
+sounds in, each strike's velocity as squared error where the corpus gives one,
+and the family of the highest note or hit sounding as cross-entropy where the
+corpus gives one, at half weight and outside the score that picks the step.
 
 ## Parity
 
@@ -380,7 +384,12 @@ of either model into its file. `--shuffle <share>` and
 as are `--cell <n>`, the notes model's width (its channels at each cell, 32,
 which its weight file carries), and `--dip <share>`, the share of the channel's
 windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room
-hears. A checkpoint from before a setting existed loads with that setting's default.
+hears. `--family-holdout <family>` leaves every loop that sounds a family out of
+the run, trained on and scored by neither, so a calibration run can set unknown's
+bar on how the model hears an instrument it never heard. A checkpoint from before
+a setting existed loads with that setting's default, and `--init` takes one of the
+frame model from before the family head: every weight carries over and the head's
+rows start fresh, though resuming one is refused.
 
 It writes the file's version 3, the channels after the inputs, which needs
 transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio

@@ -163,15 +163,15 @@ front-end seam. What remains, in the design's order:
 
 The frame model's job after the audit is timbre ([Rip design
 §7](rip-design.md#7-plan)): per frame a family with an unknown class, the genes,
-the drums and the onset from the raw planes. What remains: `corpus` writing
-each note's family (the engine's voices by a table, NSynth's families, E-GMD's
-kit, the real recordings' labels) into the labels and the manifest; the
-trainer's family head with unknown as a class of its own, its bar set on a
-family held out of a calibration run; Go reading
-the family into `RipFrames` for the voice fit's seeds, the decoders' rules and
-the song's instruments; and one round, judged on E-GMD's kits, Billie Jean's
-kicks clean and from the Pixel, and the family's accuracy on NSynth's held-out
-instruments with its unknown rate on an instrument held out whole.
+the drums and the onset from the raw planes. `corpus` labels each event's family,
+the trainer has the family head and `RipFrames.Family` reads it ([Rip training
+§3 and §5](rip-training.md#3-the-labels-loop_nnnjson-and-corpusjson)). What
+remains: the corpora on disk exported again, all written before `family`;
+unknown's bar, set by a calibration run with a family held out
+(`--family-holdout`); the family read by the voice fit's seeds, the decoders'
+rules and the song's instruments; and one round, judged on E-GMD's kits, Billie
+Jean's kicks clean and from the Pixel, and the family's accuracy on NSynth's
+held-out instruments with its unknown rate on an instrument held out whole.
 
 ### A live rip
 

@@ -24,8 +24,8 @@ Where each part stands:
 2. Each training step draws 8 windows of 512 frames, 5.9 s each (§7).
 3. A window's frames may be changed in place, as §6 lists, then become two input
    planes (§4).
-4. A window's events become per-frame targets for the 9 heads (§5).
-5. The model turns frames into 318 numbers a frame, and the losses train it (§7, §8).
+4. A window's events become per-frame targets for the 10 heads (§5).
+5. The model turns frames into 327 numbers a frame, and the losses train it (§7, §8).
 6. The best step is written as a weight file (§9).
 7. At a rip, Go computes the same planes, runs the file and hands the heads to the
    decoders (§10).
@@ -74,10 +74,11 @@ a semitone, and it must lean on upper partials there.
 
 ## 3. The labels: `loop_NNN.json` and `corpus.json`
 
-A label is UTF-8 JSON with no whitespace. The start of corpus 11's `loop_000.json`:
+A label is UTF-8 JSON with no whitespace. The start of corpus 11's `loop_000.json`,
+as `corpus` writes it now:
 
 ```
-{"bpm":96,"root":36,"scale":1,"bars":4,"frames":862,"tuning":49.64392715869181,"events":[{"frame":0,"end":0,"drum":0,"midi":0,"vel":0.9871591431922611,"wave":-1},{"frame":108,"end":108,"drum":0,...
+{"bpm":96,"root":36,"scale":1,"bars":4,"frames":862,"tuning":49.64392715869181,"events":[{"frame":0,"end":0,"drum":0,"midi":0,"vel":0.9871591431922611,"wave":-1,"family":7},{"frame":108,"end":108,"drum":0,...
 ```
 
 The loop's fields:
@@ -97,26 +98,42 @@ An event's fields:
 - `midi`: the pitch, 0 for a drum.
 - `vel`: how hard it was struck, 0 to 1.
 - `wave`: an index into the manifest's `waves`, -1 when unknown or for a drum.
+- `family`: an index into the manifest's `families`, what plays it, -1 when unlabelled.
+  An engine voice's is its name's (`voiceFamilies` in `tune.go`: the bank's piano and
+  bass, the pluck a guitar, the pad and the lead synth, the focus voices) while it stays
+  on its wave within 0.2 RMS of the registered voice's genes, else the nearest
+  registered voice's within that reach, else unknown, as is every voice `aug` drives.
+  NSynth's notes take their instrument's family (keyboard piano, brass, flute and reed
+  winds, mallet and organ unknown), every hit and strike the drums', and a `from`
+  recording's notes its list's `family` column.
 - `voice`: the 32 genes of the voice that played it, absent when unknown.
 
 The four kinds of event in use, each from a real file:
 
 ```
-a drum hit          {"frame":0,"end":0,"drum":0,"midi":0,"vel":0.987,"wave":-1}
-a note on a voice   {"frame":0,"end":40,"drum":-1,"midi":55,"vel":0.662,"wave":1,"voice":[0.5,0.417,0,0.157,...]}
+a drum hit          {"frame":0,"end":0,"drum":0,"midi":0,"vel":0.987,"wave":-1,"family":7}
+a note on a voice   {"frame":0,"end":40,"drum":-1,"midi":55,"vel":0.662,"wave":1,"family":8,"voice":[0.5,0.417,0,0.157,...]}
 a recorded note     {"frame":0,"end":40,"drum":-1,"midi":55,"vel":0.662,"wave":-1}
 a strike, no line   {"frame":23,"end":23,"drum":-1,"midi":0,"vel":0.787,"wave":-1}
 ```
 
 A recorded note is one of NSynth's, so its voice is unknown. The last is a tom or a
 crash from E-GMD: `drum` -1 with `midi` 0 means something struck that no drum head or
-pitch owns. Loop 000 holds 110 events in 33 KB: 12 kicks, 12 snares, 28 hats, 58 notes.
+pitch owns. Loop 000 holds 110 events in 34 KB: 12 kicks, 12 snares, 28 hats, 58 notes.
+Its notes are unknown's: `aug` drove its lead. The last two lines are corpus 12's and
+E-GMD's, written before `family`, as every corpus below was: a loop of them labels no
+family until it is exported again, its label removed first since `corpus` keeps a
+labelled loop. The same seeds render the same frames, byte for byte over 24 loops of
+`corpus <dir> 24 4 aug gen` compared, and of those loops' frames 40% are synth's, 29%
+unknown's, 17% guitar's, 8% piano's, 4% bass's, 0.1% the drums', a hit sounding alone,
+and 1% have no event sounding.
 
 `corpus.json` names the layout for the whole folder:
 
 ```
 {"version":1,"loops":40000,"rate":22050,"hop":256,"mel_bands":229,"min_midi":28,
- "pitches":69,"drums":["kick","snare","hihat"],"waves":["sine","saw","square","string","modal"],"voice_genes":32}
+ "pitches":69,"drums":["kick","snare","hihat"],"waves":["sine","saw","square","string","modal"],
+ "families":["piano","guitar","voice","bass","strings","winds","synth","drums","unknown"],"voice_genes":32}
 ```
 
 `loops` counts the files `loop_000` onward; the number grows past three digits as
@@ -248,6 +265,9 @@ index is `midi - 28`, and one outside 0 to 68 sets no pitch.
 - `velocity[p]`: the note's `vel` on its strike frames, scored only there.
 - `wave`, `voice`: those of the highest note sounding with a known voice, scored only
   on frames that have one.
+- `family`: that of the highest event sounding, a hit or a strike at midi 0 on its own
+  frame, scored only on frames where it is labelled: a hit never stands in for an
+  unlabelled note over it.
 
 Frames 0 to 7 of loop 000, from its kick and hat at 0, its G3 (55) and its C3 (48):
 
@@ -262,6 +282,7 @@ voicing  1 1 1 1 1 1 1 1
 strike   (frame 0, pitch 27, vel 0.662), (frame 0, pitch 20, vel 0.485), each on frames 0 and 1
 release  (frame 40, pitch 27), (frame 27, pitch 20)
 wave     1 on every frame: saw, from the highest note, G3
+family   8 on every frame: unknown, from the highest note, G3
 ```
 
 A window running past a loop's end is padded with zero frames, which a `valid` mask
@@ -319,8 +340,8 @@ of the loop's own level, had drums a median 13.4 dB under the loop against Billi
 
 **`--shuffle share`** splices a share of the windows from chunks of a second, each two clips
 from random places summed, the second at -6 to +6 dB of the first's power. Notes keep their
-labels, a drum hit counts where it stands out of the other clip, and wave and voice go
-unasked.
+labels, a drum hit counts where it stands out of the other clip, and wave, voice and
+family go unasked.
 
 **`--sung dir:share`** draws that share of the chunks from a corpus of solo singing. 27a, at a
 quarter with half the windows shuffled, took held-out sung notes from 0.54 to 0.63.
@@ -361,18 +382,19 @@ conv 2         B x 32 x 512 x 57             3x3, GELU, max over 2 features
 flatten        B x 512 x 1824                the last odd feature dropped by the pool
 input layer    B x 512 x 256
 4 blocks       B x 512 x 256                 pre-norm attention and feed-forward 1024
-norm, output   B x 512 x 318                 raw scores
+norm, output   B x 512 x 327                 raw scores
 ```
 
 Attention has 8 heads and looks 64 frames (0.74 s) either side, in every block. There
 are no position embeddings: each head subtracts a slope of `2^(-8(h+1)/8)` per frame of
 distance from its scores (ALiBi), so a window of any length works.
 
-The 3,715,742 weights: 304 + 2,320 + 4,640 in the convolutions, 467,200 in the input
-layer, 789,760 in each block, 512 in the final norm, 81,726 in the output layer. A
-one-channel model has 144 fewer, all in `convs.0.weight`.
+The 3,718,055 weights: 304 + 2,320 + 4,640 in the convolutions, 467,200 in the input
+layer, 789,760 in each block, 512 in the final norm, 84,039 in the output layer, 2,313
+of them the family head's, which 12a's file lacks. A one-channel model has 144 fewer, all
+in `convs.0.weight`.
 
-The 318 outputs, in the order the file lists the heads:
+The 327 outputs, in the order the file lists the heads:
 
 ```
 offset    size  head       read as
@@ -385,14 +407,16 @@ offset    size  head       read as
 111..179   69   strike     sigmoid
 180..248   69   release    sigmoid
 249..317   69   velocity   sigmoid
+318..326    9   family     softmax: piano, guitar, voice, bass, strings, winds, synth, drums, unknown
 ```
 
-A file may lack the last 3 heads and still load.
+A file may lack the last 4 heads and still load: one without `family` hears no family.
 
-`--pitchnet` builds another model on the same heads: convolutions only, the same weights at
-every pitch, 169,862 weights in all. Its file is `ripnotes.bin` (§9). `--dilations 3,9,27` adds
-a residual 3x3 over the cells for each, its frames that far apart: each note head then hears
-half a second either way instead of 80 ms, 197,606 weights, about 1.5 times the compute.
+`--pitchnet` builds another model on the same heads but `family`, the frame model's to hear:
+convolutions only, the same weights at every pitch, 169,862 weights in all. Its file is
+`ripnotes.bin` (§9). `--dilations 3,9,27` adds a residual 3x3 over the cells for each, its
+frames that far apart: each note head then hears half a second either way instead of 80 ms,
+197,606 weights, about 1.5 times the compute.
 
 ```
 input          B x T x 460              the two planes
@@ -419,18 +443,20 @@ onset, drums, pitch, voicing, strike, release: binary cross-entropy with a weigh
 velocity: squared error, on strike frames with a known velocity
 wave:     cross-entropy, on frames with a known voice
 voice:    squared error, on frames with a known voice
+family:   cross-entropy, on frames with a known family, the frame model's alone
 
 total    = onset + drums + pitch + 0.5 voicing + strike + release + 2 velocity + 0.5 wave + 2 voice
+           + 0.5 family
 decoders = onset + drums + pitch + 0.5 voicing + strike + release
 ```
 
 The last 400 loops are held out and scored every 1,000 steps, and the step with the best
 `decoders` score is what gets written, unless `--validate` names a corpus of recordings
 (`corpus <dir> from`): cut into windows the same way and scored beside them, its best
-`decoders` step is written, the held-out score printed beside it. The wave, voice and
-velocity heads don't choose it, because they memorize the corpus. A positive weight w
-shifts a head's scale: it scores a posterior p as wp / (wp + 1 - p), which is part of
-why thresholds belong to the weights (§10).
+`decoders` step is written, the held-out score printed beside it. The wave, voice,
+velocity and family heads don't choose it, because they memorize the corpus. A positive
+weight w shifts a head's scale: it scores a posterior p as wp / (wp + 1 - p), which is
+part of why thresholds belong to the weights (§10).
 
 Round 12a's log, first and last, on a GTX 1060:
 
@@ -439,6 +465,13 @@ Round 12a's log, first and last, on a GTX 1060:
 step 20 loss 4.631 (onset 1.578 drums 0.748 pitch 0.752 voicing 0.041 strike 0.372 release 0.361 velocity 0.038 wave 1.213 voice 0.059) 5s
 step 40000 loss 1.107 (onset 0.064 drums 0.017 pitch 0.327 voicing 0.029 strike 0.083 release 0.092 velocity 0.023 wave 0.778 voice 0.038) 16557s
 step 40000 held-out 1.651, decoders 0.965 (onset 0.284 drums 0.035 pitch 0.393 voicing 0.059 strike 0.102 release 0.121 velocity 0.027 wave 1.079 voice 0.047) (best)
+```
+
+A model with the family head prints its loss last, as 20 steps on a CPU did over the 4
+loops of `corpus <dir> 4 4 aug gen`, a model of the defaults without `--pcen`:
+
+```
+step 20 loss 4.817 (onset 1.521 drums 0.923 pitch 0.716 voicing 0.060 strike 0.530 release 0.513 velocity 0.026 wave 0.374 voice 0.077 family 0.380) 20s
 ```
 
 The wave head's held-out 1.079 means about a third of its belief on the right wave,

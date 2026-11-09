@@ -30,6 +30,7 @@ CHANNEL=${CHANNEL:-}                 # a noise bank and the share of windows hea
 PCEN=${PCEN:-}                       # pcen: a second input channel, each band's PCEN; empty for none
 HOLDOUT=${HOLDOUT:-200}              # loops held out, scored every EVERY steps
 EVERY=${EVERY:-1000}
+VALIDATE=${VALIDATE:-}               # a corpus of recordings (corpus <dir> from) whose best step OUT gets; empty for the held-out loops'
 OUT=${OUT:-$CORPUS/ripmodel.bin}       # the weight file
 CHECKPOINT=${CHECKPOINT:-$CORPUS/ripmodel.pt}
 ROOT=${ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/stapes}   # the stapes root rip hears with
@@ -75,9 +76,9 @@ corpus() {
 }
 
 train() {
-	echo "== train: $STEPS steps of batch $BATCH on $CORPUS, $HOLDOUT loops held out, width $DIM, $HEADS heads, $LAYERS layers, feed-forward $FFN"
+	echo "== train: $STEPS steps of batch $BATCH on $CORPUS, $HOLDOUT loops held out${VALIDATE:+, the step picked on $VALIDATE}, width $DIM, $HEADS heads, $LAYERS layers, feed-forward $FFN"
 	(cd "$here" && "$PYTHON" train.py --corpus "$(realpath "$CORPUS")" --out "$(realpath -m "$OUT")" --steps "$STEPS" --batch "$BATCH" --every "$EVERY" --holdout "$HOLDOUT" --checkpoint "$(realpath -m "$CHECKPOINT")" \
-		--dim "$DIM" --heads "$HEADS" --layers "$LAYERS" --ffn "$FFN" --convs "$CONVS" --towers "$TOWERS" ${MIX:+--mix "$MIX"} ${OVER:+--over "$OVER"} ${CHANNEL:+--channel "$CHANNEL"} ${PCEN:+--pcen} "$@")
+		--dim "$DIM" --heads "$HEADS" --layers "$LAYERS" --ffn "$FFN" --convs "$CONVS" --towers "$TOWERS" ${MIX:+--mix "$MIX"} ${OVER:+--over "$OVER"} ${CHANNEL:+--channel "$CHANNEL"} ${PCEN:+--pcen} ${VALIDATE:+--validate "$(realpath "$VALIDATE")"} "$@")
 }
 
 # A shard's files are named by SHARD, so a round never resumes an earlier one's checkpoint.

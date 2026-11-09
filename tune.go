@@ -615,6 +615,42 @@ var voiceFamilies = map[string]string{
 	"vocal": "voice", "choir": "voice", "nylon": "guitar", "steel": "guitar", "plucked_bass": "bass",
 }
 
+// programFamilies is the family each General MIDI program plays as, a row a run
+// of programs up to the next row's first: a `corpus from` note's when its list
+// gives the recording none
+var programFamilies = []struct {
+	from   int
+	family string
+}{
+	{0, "piano"},     // pianos, chromatic percussion
+	{16, "synth"},    // organs
+	{24, "guitar"},   // guitars
+	{32, "bass"},     // basses
+	{40, "strings"},  // violin to harp
+	{47, "unknown"},  // timpani
+	{48, "strings"},  // string ensembles, synth strings
+	{52, "voice"},    // choir, voice, synth voice
+	{55, "unknown"},  // orchestra hit
+	{56, "winds"},    // brass, reeds, pipes
+	{80, "synth"},    // synth leads, pads, effects
+	{104, "guitar"},  // sitar, banjo, shamisen, koto, kalimba
+	{109, "winds"},   // bagpipe
+	{110, "strings"}, // fiddle
+	{111, "winds"},   // shanai
+	{112, "unknown"}, // percussive, sound effects
+}
+
+// programFamily is the family a note of a program plays as, -1 for a note whose
+// file set no program (audio.RipNote.Program -1)
+func programFamily(program int) int {
+	for _, r := range slices.Backward(programFamilies) {
+		if program >= r.from {
+			return familyIndex(r.family)
+		}
+	}
+	return -1
+}
+
 // familyReach is the RMS distance of genes within which a voice sounds as a
 // registered one of its wave: a redraw lands 0.12 from its own, 0.16 at the 95th
 // percentile, and the bank's two voices of a wave lie 0.19 and 0.22 apart
@@ -1076,8 +1112,9 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 
 // corpusRecording writes a recording's frames, through a codec when coder is
 // set, and its score as one loop, the frames it holds returned: its notes played
-// by family, its hits and other strikes by the drums, a strike of no line (a tom,
-// a crash) an onset, drum -1 and midi 0.
+// by family, or each by its program's (programFamily) when family is -1, its hits
+// and other strikes by the drums, a strike of no line (a tom, a crash) an onset,
+// drum -1 and midi 0.
 func corpusRecording(base, wav, source string, family int, score *audio.MIDIScore, coder *rand.Rand) (int, error) {
 	f, err := os.Open(wav)
 	if err != nil {
@@ -1100,7 +1137,11 @@ func corpusRecording(base, wav, source string, family int, score *audio.MIDIScor
 	frame := func(sec float64) int { return int(sec/audio.RipFrameSec + 0.5) }
 	lab := corpusLoop{Frames: len(mel), Source: source}
 	for _, n := range score.Notes {
-		lab.Events = append(lab.Events, corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: n.Vel, Wave: -1, Family: family})
+		f := family
+		if f < 0 {
+			f = programFamily(n.Program)
+		}
+		lab.Events = append(lab.Events, corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: n.Vel, Wave: -1, Family: f})
 	}
 	for _, h := range append(slices.Clip(score.Hits), score.Struck...) {
 		lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: h.Vel, Wave: -1, Family: familyIndex("drums")})

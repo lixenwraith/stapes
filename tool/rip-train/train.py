@@ -523,9 +523,14 @@ def main() -> None:
     ck = torch.load(start, map_location=args.device) if start else None
     if ck is not None and "cfg" in ck:
         ck["cfg"] = {**asdict(ripmodel.Config()), **ck["cfg"]}  # a setting newer than the checkpoint takes the default it was built with
+    # a start from a model of the heads before the last added, such as the family:
+    # its weights carry over, the new heads' rows of the output layer start fresh
+    had = [tuple(h) for h in ck["cfg"]["outputs"]] if ck is not None and not resume and "cfg" in ck else []
+    grown = 0 < len(had) < len(cfg.outputs) and had == list(cfg.outputs)[:len(had)] and \
+        {k: v for k, v in ck["cfg"].items() if k != "outputs"} == {k: v for k, v in asdict(cfg).items() if k != "outputs"}
     # refused before the corpus loads: load_state_dict names only a tensor's size,
     # and takes another head count or window without a word
-    if ck is not None and ck.get("cfg") != asdict(cfg):
+    if ck is not None and ck.get("cfg") != asdict(cfg) and not grown:
         raise SystemExit(f"{start} holds a model of {shape(ck.get('cfg'))}, and this run builds {shape(asdict(cfg))}: pass its shape, or another file")
     manifest, loops = load_corpus(args.corpus)
     holdout = args.holdout if args.holdout >= 0 else (len(loops) // 10 if len(loops) >= 5 else 0)
@@ -565,6 +570,17 @@ def main() -> None:
         best_loss, best_step, best_state = ck.get("best", (best_loss, best_step, best_state))
         validated = ck.get("validated", validated)
         print(f"resumed at step {step}")
+    elif grown:
+        state = model.state_dict()
+        for k, v in ck["model"].items():
+            if state[k].shape == v.shape:
+                state[k] = v
+            elif v.dim() and state[k].shape[1:] == v.shape[1:] and len(state[k]) > len(v):
+                state[k][:len(v)] = v  # the output layer: the rows of the heads it had
+            else:
+                raise SystemExit(f"{start}: {k} is {tuple(v.shape)}, this run's {tuple(state[k].shape)}")
+        model.load_state_dict(state)
+        print(f"started from {args.init}, its heads but {', '.join(h for h, _ in cfg.outputs[len(had):])}, which start fresh")
     elif ck is not None:
         model.load_state_dict(ck["model"])
         print(f"started from {args.init}")

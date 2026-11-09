@@ -168,12 +168,10 @@ the trainer has the family head and `RipFrames.Family` reads it ([Rip training
 §3 and §5](rip-training.md#3-the-labels-loop_nnnjson-and-corpusjson)). What
 remains: the corpora on disk exported again, all written before `family`;
 unknown's bar, set by a calibration run with a family held out
-(`--family-holdout`); a start from a checkpoint of the frame model without the
-head, which `--init` refuses as another shape; the family read by the voice fit's
-seeds, the decoders' rules and the song's instruments; and one round, judged on
-E-GMD's kits, Billie Jean's kicks clean and from the Pixel, and the family's
-accuracy on NSynth's held-out instruments with its unknown rate on an instrument
-held out whole.
+(`--family-holdout`); the family read by the voice fit's seeds, the decoders'
+rules and the song's instruments; and one round, judged on E-GMD's kits, Billie
+Jean's kicks clean and from the Pixel, and the family's accuracy on NSynth's
+held-out instruments with its unknown rate on an instrument held out whole.
 
 ### A live rip
 

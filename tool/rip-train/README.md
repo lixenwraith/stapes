@@ -387,8 +387,9 @@ windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a roo
 hears. `--family-holdout <family>` leaves every loop that sounds a family out of
 the run, trained on and scored by neither, so a calibration run can set unknown's
 bar on how the model hears an instrument it never heard. A checkpoint from before
-a setting existed loads with that setting's default; one of the frame model from
-before the family head is of another shape, refused as `--init` or to resume.
+a setting existed loads with that setting's default, and `--init` takes one of the
+frame model from before the family head: every weight carries over and the head's
+rows start fresh, though resuming one is refused.
 
 It writes the file's version 3, the channels after the inputs, which needs
 transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio

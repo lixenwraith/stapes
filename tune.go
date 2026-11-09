@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -49,16 +50,17 @@ type tuneOptions struct {
 // tuneLoop is one rendered loop, what made it, the rip a perfect listener makes
 // of it, and the voices its tonal tracks were played with
 type tuneLoop struct {
-	audio   []float64
-	want    *audio.Rip
-	slots   [audio.MusicSlots]audio.PatternID
-	bpm     int
-	meter   audio.Meter
-	root    int
-	scale   audio.ScaleID
-	voices  map[string]*audio.VoiceDef
-	tuning  float64                        // cents off A440 the loop was rendered at
-	sampled [audio.MusicSlots]*sampledLine // the slots played on recorded notes, nil for the engine's voice
+	audio    []float64
+	want     *audio.Rip
+	slots    [audio.MusicSlots]audio.PatternID
+	bpm      int
+	meter    audio.Meter
+	root     int
+	scale    audio.ScaleID
+	voices   map[string]*audio.VoiceDef
+	families map[string]int                 // each voice's family, an index into audio.RipFamilies
+	tuning   float64                        // cents off A440 the loop was rendered at
+	sampled  [audio.MusicSlots]*sampledLine // the slots played on recorded notes, nil for the engine's voice
 }
 
 // tempos spread the corpus over the sequencer's range
@@ -211,7 +213,7 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 			}
 		}
 		arng := rand.New(rand.NewPCG(o.seed^0xa5a5a5a5, uint64(i)+1))
-		voices, restore := s.loopVoices(slots, o.aug, arng)
+		voices, families, restore := s.loopVoices(slots, o.aug, arng)
 		cents := 0.0
 		if o.aug {
 			cents = arng.Float64()*100 - 50 // a recording's pitch standard, within a quarter tone of A440
@@ -240,7 +242,7 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 			buf = degrade(buf, arng)
 		}
 		want := audio.ExpectedRip(slots, bpm, meter, o.bars, root, scale, nil)
-		if err := visit(i, tuneLoop{audio: buf, want: want, slots: slots, bpm: bpm, meter: meter, root: root, scale: scale, voices: voices, tuning: cents, sampled: sampled}); err != nil {
+		if err := visit(i, tuneLoop{audio: buf, want: want, slots: slots, bpm: bpm, meter: meter, root: root, scale: scale, voices: voices, families: families, tuning: cents, sampled: sampled}); err != nil {
 			return err
 		}
 	}
@@ -540,12 +542,12 @@ func genBass(rng *rand.Rand, degrees int, m audio.Meter) *audio.Pattern {
 }
 
 // loopVoices is the voice each tonal instrument the slotted patterns name plays
-// with: the registered one, or under aug one of random genes near it, a third of
-// the time on another wave, and in a third of the loops every release but the
-// bass's three to ten times as long, as under a piano's pedal; registered for the
-// render and put back by restore, so a corpus hears voices beyond the shipped ones
-func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, rng *rand.Rand) (map[string]*audio.VoiceDef, func()) {
-	voices := map[string]*audio.VoiceDef{}
+// with and the family it sounds as: the registered one, or under aug one of random
+// genes near it, a third of the time on another wave, and in a third of the loops
+// every release but the bass's three to ten times as long, as under a piano's
+// pedal; registered for the render and put back by restore
+func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, rng *rand.Rand) (map[string]*audio.VoiceDef, map[string]int, func()) {
+	voices, families, known := map[string]*audio.VoiceDef{}, map[string]int{}, familyVoices()
 	var originals []*audio.VoiceDef
 	pedal := 1.0 // the labels stay the notes as played, however long they ring
 	if aug && rng.Float64() < 1.0/3 {
@@ -565,8 +567,8 @@ func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, 
 			if v == nil || voices[name] != nil {
 				continue
 			}
+			voices[name], families[name] = v, voiceFamily(known, name, v)
 			if !aug {
-				voices[name] = v
 				continue
 			}
 			genes := v.Genes()
@@ -578,8 +580,11 @@ func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, 
 				wave = audio.VoiceWaves[rng.IntN(len(audio.VoiceWaves))]
 			}
 			r := audio.VoiceFromGenes(wave, genes)
+			// measured before the pedal: its long release is the player's, not the instrument's
+			family := voiceFamily(known, name, r)
 			if rng.Float64() < 0.15 { // distorted, as a guitar through an amp
 				r.Drive, r.Level = 2+rng.Float64()*14, r.Level*0.6
+				family = familyIndex("unknown")
 			}
 			if tr.Instr != audio.InstrBass {
 				r.Release = min(r.Release*pedal, 3)
@@ -587,22 +592,74 @@ func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, 
 			r.VibratoHz, r.VibratoCents, r.VibratoDelay, r.Vowel = v.VibratoHz, v.VibratoCents, v.VibratoDelay, v.Vowel // not genes; kept from the registered voice
 			r.Name = name
 			if audio.ValidateVoice(r) != nil {
-				voices[name] = v
 				continue
 			}
 			if _, err := s.eng.DefineVoice(r); err != nil {
-				voices[name] = v
 				continue
 			}
 			originals = append(originals, v)
-			voices[name] = r
+			voices[name], families[name] = r, family
 		}
 	}
-	return voices, func() {
+	return voices, families, func() {
 		for _, v := range originals {
 			s.eng.DefineVoice(v)
 		}
 	}
+}
+
+// voiceFamilies is the family each of the engine's voices plays as, by name: the
+// bank's and those tool/rip-train/focus adds
+var voiceFamilies = map[string]string{
+	"piano": "piano", "bass": "bass", "pluck": "guitar", "pad": "synth", "lead": "synth",
+	"vocal": "voice", "choir": "voice", "nylon": "guitar", "steel": "guitar", "plucked_bass": "bass",
+}
+
+// familyReach is the RMS distance of genes within which a voice sounds as a
+// registered one of its wave: a redraw lands 0.12 from its own, 0.16 at the 95th
+// percentile, and the bank's two voices of a wave lie 0.19 and 0.22 apart
+const familyReach = 0.2
+
+// familyIndex is a family's index in audio.RipFamilies, -1 for a name of none
+func familyIndex(name string) int { return slices.Index(audio.RipFamilies[:], name) }
+
+// familyVoices is the registered voices voiceFamilies names, read before a loop
+// redraws any under its name
+func familyVoices() map[string]*audio.VoiceDef {
+	known := map[string]*audio.VoiceDef{}
+	for name := range voiceFamilies {
+		if v := audio.VoiceDefByName(name); v != nil {
+			known[name] = v
+		}
+	}
+	return known
+}
+
+// voiceFamily is the family a voice played under name sounds as: name's while it
+// stays within familyReach of the registered voice of that name on its wave, else
+// that of the nearest registered voice within reach on its wave, else unknown
+func voiceFamily(known map[string]*audio.VoiceDef, name string, v *audio.VoiceDef) int {
+	genes := v.Genes()
+	far := func(r *audio.VoiceDef) float64 {
+		if cmp.Or(r.Wave, "sine") != cmp.Or(v.Wave, "sine") {
+			return math.Inf(1)
+		}
+		var d float64
+		for i, g := range r.Genes() {
+			d += (g - genes[i]) * (g - genes[i])
+		}
+		return math.Sqrt(d / float64(len(genes)))
+	}
+	if r := known[name]; r != nil && far(r) <= familyReach {
+		return familyIndex(voiceFamilies[name])
+	}
+	best, near := "unknown", familyReach
+	for _, n := range slices.Sorted(maps.Keys(known)) {
+		if d := far(known[n]); d <= near {
+			best, near = voiceFamilies[n], d
+		}
+	}
+	return familyIndex(best)
 }
 
 // degrade puts a room and a mix between a render and the frames a model hears,
@@ -719,13 +776,14 @@ func compress(x []float64, ratio, under, sr float64) {
 // corpusEvent is one labelled event of an exported loop, in frames of the rip's
 // grid: a drum's hit, or a note with the wave and voice genes it was played with
 type corpusEvent struct {
-	Frame int       `json:"frame"`
-	End   int       `json:"end"`
-	Drum  int       `json:"drum"` // kick 0, snare 1, hihat 2; -1 for a note
-	MIDI  int       `json:"midi"`
-	Vel   float64   `json:"vel"`
-	Wave  int       `json:"wave"` // index into the waves of the manifest; -1 unknown
-	Voice []float64 `json:"voice,omitempty"`
+	Frame  int       `json:"frame"`
+	End    int       `json:"end"`
+	Drum   int       `json:"drum"` // kick 0, snare 1, hihat 2; -1 for a note
+	MIDI   int       `json:"midi"`
+	Vel    float64   `json:"vel"`
+	Wave   int       `json:"wave"`   // index into the waves of the manifest; -1 unknown
+	Family int       `json:"family"` // index into the families of the manifest; -1 unlabelled
+	Voice  []float64 `json:"voice,omitempty"`
 }
 
 // corpusLoop is an exported loop's label file
@@ -752,6 +810,7 @@ type corpusManifest struct {
 	Pitches    int      `json:"pitches"`
 	Drums      []string `json:"drums"`
 	Waves      []string `json:"waves"`
+	Families   []string `json:"families"`
 	VoiceGenes int      `json:"voice_genes"`
 }
 
@@ -840,10 +899,9 @@ func cmdCorpus(s *Session, a []string) error {
 
 // corpusFrom writes a corpus of recordings and the MIDI files they were played
 // from, one loop each, listed by a CSV with audio_filename and midi_filename
-// columns (split and duration when present, as E-GMD's metadata has them): the
-// frames as heard, the notes as the MIDI plays them, the voices unknown. A loop
-// on disk is kept and known by its source, so a run again goes on where it
-// stopped and a new batch takes the numbers free after the loops there.
+// columns, and split, duration and family when present: the frames as heard, the
+// notes as the MIDI plays them, the voices unknown. A loop on disk is kept, known
+// by its source, so a run again goes on where it stopped and a batch after it.
 func (s *Session) corpusFrom(dir, list string, a []string) error {
 	split, hours, codec := "", math.Inf(1), false
 	for len(a) > 0 {
@@ -887,6 +945,15 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	rows, at := rows[1:], func(name string) string { return filepath.Join(filepath.Dir(list), name) }
 	if c, ok := col["split"]; ok && split != "" {
 		rows = slices.DeleteFunc(rows, func(r []string) bool { return r[c] != split })
+	}
+	family := func([]string) int { return -1 }
+	if c, ok := col["family"]; ok {
+		for _, r := range rows {
+			if r[c] != "" && familyIndex(r[c]) < 0 {
+				return fmt.Errorf("%s: family %q: want one of %s, or none", list, r[c], strings.Join(audio.RipFamilies[:], ", "))
+			}
+		}
+		family = func(r []string) int { return familyIndex(r[c]) }
 	}
 	// a share of a large set may be all that is on disk
 	listed := len(rows)
@@ -974,7 +1041,7 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 				if codec {
 					coder = rand.New(rand.NewPCG(0xc0dec, uint64(j.at)+1))
 				}
-				n, err := corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], j.score, coder)
+				n, err := corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), j.score, coder)
 				mu.Lock()
 				frames += n
 				first = cmp.Or(first, err)
@@ -991,7 +1058,7 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		return first
 	}
 	m := corpusManifest{Version: 1, Loops: loops, Rate: audio.RipRate, Hop: audio.RipHop, MelBands: audio.RipMelBands,
-		MinMIDI: audio.RipMinMIDI, Pitches: audio.RipPitches, Drums: []string{"kick", "snare", "hihat"}, Waves: audio.VoiceWaves[:], VoiceGenes: audio.VoiceGeneCount}
+		MinMIDI: audio.RipMinMIDI, Pitches: audio.RipPitches, Drums: []string{"kick", "snare", "hihat"}, Waves: audio.VoiceWaves[:], Families: audio.RipFamilies[:], VoiceGenes: audio.VoiceGeneCount}
 	if err := writeJSON(filepath.Join(dir, "corpus.json"), m); err != nil {
 		return err
 	}
@@ -1008,9 +1075,10 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 }
 
 // corpusRecording writes a recording's frames, through a codec when coder is
-// set, and its score's notes, hits and other strikes as one loop, the frames it
-// holds returned: a strike of no line (a tom, a crash) is an onset, drum -1 and midi 0.
-func corpusRecording(base, wav, source string, score *audio.MIDIScore, coder *rand.Rand) (int, error) {
+// set, and its score as one loop, the frames it holds returned: its notes played
+// by family, its hits and other strikes by the drums, a strike of no line (a tom,
+// a crash) an onset, drum -1 and midi 0.
+func corpusRecording(base, wav, source string, family int, score *audio.MIDIScore, coder *rand.Rand) (int, error) {
 	f, err := os.Open(wav)
 	if err != nil {
 		return 0, err
@@ -1032,10 +1100,10 @@ func corpusRecording(base, wav, source string, score *audio.MIDIScore, coder *ra
 	frame := func(sec float64) int { return int(sec/audio.RipFrameSec + 0.5) }
 	lab := corpusLoop{Frames: len(mel), Source: source}
 	for _, n := range score.Notes {
-		lab.Events = append(lab.Events, corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: n.Vel, Wave: -1})
+		lab.Events = append(lab.Events, corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: n.Vel, Wave: -1, Family: family})
 	}
 	for _, h := range append(slices.Clip(score.Hits), score.Struck...) {
-		lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: h.Vel, Wave: -1})
+		lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: h.Vel, Wave: -1, Family: familyIndex("drums")})
 	}
 	lab.Events = slices.DeleteFunc(lab.Events, func(e corpusEvent) bool { return e.Frame >= len(mel) })
 	return len(mel), writeJSON(base+".json", lab)
@@ -1133,20 +1201,22 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 		stepSec := float64(audio.SamplesPerStep(l.bpm)) / audio.AudioSampleRate
 		for _, e := range loopEvents(l.slots, l.meter, o.bars, l.root, l.scale) {
 			start := float64(e.Bar*l.meter.Steps()+e.Step) * stepSec
-			ev := corpusEvent{Frame: int(start/audio.RipFrameSec + 0.5), Drum: -1, Vel: e.Vel, Wave: -1}
+			ev := corpusEvent{Frame: int(start/audio.RipFrameSec + 0.5), Drum: -1, Vel: e.Vel, Wave: -1, Family: -1}
 			if e.Instr.IsDrum() {
 				if e.Instr >= audio.InstrClap {
 					continue
 				}
-				ev.Drum, ev.End = int(e.Instr), ev.Frame
+				ev.Drum, ev.End, ev.Family = int(e.Instr), ev.Frame, familyIndex("drums")
 			} else {
 				ev.MIDI = e.MIDI
 				ev.End = int((start+float64(e.Dur)*stepSec)/audio.RipFrameSec + 0.5)
+				name := audio.InstrumentName(e.Instr)
 				if line := l.sampled[e.slot]; line != nil {
 					ev.End = int(line.ends[e.n]/audio.RipFrameSec + 0.5) // where the recording let it go
-				} else if v := l.voices[audio.InstrumentName(e.Instr)]; v != nil {
+					ev.Family = line.family
+				} else if v := l.voices[name]; v != nil {
 					ev.Wave = max(slices.Index(audio.VoiceWaves[:], cmp.Or(v.Wave, "sine")), 0)
-					ev.Voice = v.Genes()
+					ev.Voice, ev.Family = v.Genes(), l.families[name]
 				}
 			}
 			if ev.Frame < len(mel) {
@@ -1160,7 +1230,7 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	}
 	if o.parts == 0 {
 		m := corpusManifest{Version: 1, Loops: o.loops, Rate: audio.RipRate, Hop: audio.RipHop, MelBands: audio.RipMelBands,
-			MinMIDI: audio.RipMinMIDI, Pitches: audio.RipPitches, Drums: []string{"kick", "snare", "hihat"}, Waves: audio.VoiceWaves[:], VoiceGenes: audio.VoiceGeneCount}
+			MinMIDI: audio.RipMinMIDI, Pitches: audio.RipPitches, Drums: []string{"kick", "snare", "hihat"}, Waves: audio.VoiceWaves[:], Families: audio.RipFamilies[:], VoiceGenes: audio.VoiceGeneCount}
 		if err := writeJSON(filepath.Join(dir, "corpus.json"), m); err != nil {
 			return err
 		}

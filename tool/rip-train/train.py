@@ -7,10 +7,10 @@ export the weights lixenwraith/transformer loads:
 Each loop's log-mel frames (loop_NNN.mel) are the input; its events
 (loop_NNN.json) become per-frame targets: an onset within a frame of any event,
 each drum's hits, the pitches sounding, whether any sounds, the wave and voice
-genes of the highest note sounding, each pitch within a frame of its strikes and
-of its releases, and how hard each was struck. Training crops random windows of
-frames and builds their targets a window at a time, so memory holds the events
-rather than a row per frame.
+genes of the highest note sounding, the family playing it, each pitch within a
+frame of its strikes and of its releases, and how hard each was struck. Training
+crops random windows of frames and builds their targets a window at a time, so
+memory holds the events rather than a row per frame.
 """
 from __future__ import annotations
 
@@ -67,6 +67,7 @@ class Label:
         self.midi = np.array([e["midi"] for e in ev], np.int16)
         self.vel = np.array([e.get("vel", -1) for e in ev], np.float32)
         self.wave = np.array([e.get("wave", -1) if e.get("voice") else -1 for e in ev], np.int8)
+        self.family = np.array([e.get("family", -1) for e in ev], np.int8)
         voices, index = [], {}  # a loop's notes share a few voices
         self.voice = np.full(len(ev), -1, np.int32)
         for i, e in enumerate(ev):
@@ -100,6 +101,8 @@ class Label:
         voice = np.zeros((w, m["voice_genes"]), np.float32)
         top = np.full(w, -1, np.int64)  # the highest midi sounding, whose voice the frame reports
         who = np.full(w, -1, np.int64)  # the event that is
+        high = np.full(w, -1, np.int64)  # the same over every event, a hit at midi 0 on its frame, whose family the frame reports
+        whose = np.full(w, -1, np.int64)
         strikes, releases, vels = [], [], []
 
         def span(x, y):  # frames x to y of the loop, in the window
@@ -112,11 +115,14 @@ class Label:
             if t < 0 or t >= frames or (self.drum[i] >= 0 and not with_drums):
                 continue
             onset[span(max(t - 1, 0), min(t + 2, frames))] = 1
+            p, midi = int(self.midi[i]) - min_midi, int(self.midi[i])
+            end = min(max(int(self.end[i]), t + 1), frames)
+            seg = span(t, end)
+            up = midi > high[seg]
+            high[seg][up], whose[seg][up] = midi, i
             if self.drum[i] >= 0:
                 drums[span(max(t - 1, 0), min(t + 2, frames)), self.drum[i]] = 1
                 continue
-            p, midi = int(self.midi[i]) - min_midi, int(self.midi[i])
-            end = min(max(int(self.end[i]), t + 1), frames)
             if 0 <= p < pitches:
                 pitch[span(t, end), p] = 1
                 strikes.append((t - a, p))
@@ -124,21 +130,28 @@ class Label:
                 if self.end[i] < frames:
                     releases.append((int(self.end[i]) - a, p))
             if self.wave[i] >= 0:
-                seg = span(t, end)
                 up = midi > top[seg]
                 top[seg][up], who[seg][up] = midi, i
         heard = who >= 0
         wave[heard], voice[heard] = self.wave[who[heard]], self.voices[self.voice[who[heard]]]
+        family = np.full(w, -1, np.int64)
+        family[whose >= 0] = self.family[whose[whose >= 0]]
         return {"onset": onset, "drums": drums, "pitch": pitch, "voicing": (pitch.sum(1) > 0).astype(np.uint8),
-                "wave": wave, "voice": voice, "voiced": (top >= 0).astype(np.uint8),
+                "wave": wave, "voice": voice, "voiced": (top >= 0).astype(np.uint8), "family": family,
                 "strikes": np.array(strikes, np.int32).reshape(-1, 2), "vels": np.array(vels, np.float32),
                 "releases": np.array(releases, np.int32).reshape(-1, 2)}
+
+
+# a family's index in ripmodel.FAMILIES whose loops the run leaves out, so a calibration run never hears it
+FAMILY_HOLDOUT = None
 
 
 def load_corpus(d: str):
     with open(os.path.join(d, "corpus.json")) as f:
         manifest = json.load(f)
-    loops = []
+    if manifest.get("families", list(ripmodel.FAMILIES)) != list(ripmodel.FAMILIES):
+        raise SystemExit(f"{d}: families {manifest['families']}, the model's {list(ripmodel.FAMILIES)}")
+    loops, unheard = [], 0
     skip = set(open(os.path.join(d, "skip.txt")).read().split()) if os.path.exists(os.path.join(d, "skip.txt")) else set()
     for i in range(manifest["loops"]):
         if f"loop_{i:03d}" in skip:
@@ -147,7 +160,13 @@ def load_corpus(d: str):
         mel = MelFile(base + ".mel")
         with open(base + ".json") as f:
             label = json.load(f)
-        loops.append((mel, Label(label, len(mel), manifest)))
+        lab = Label(label, len(mel), manifest)
+        if FAMILY_HOLDOUT is not None and (lab.family == FAMILY_HOLDOUT).any():
+            unheard += 1
+            continue
+        loops.append((mel, lab))
+    if unheard:
+        print(f"{unheard} loops of {d} sound {ripmodel.FAMILIES[FAMILY_HOLDOUT]}, held out of the run")
     return manifest, loops
 
 
@@ -213,7 +232,7 @@ def targets(mel, lab: Label, start: int, window: int, with_drums: bool = True) -
     def take(a, fill=0):
         return np.concatenate([a, np.full((pad,) + a.shape[1:], fill, a.dtype)]) if pad else a
     out = {k: take(t[k]) for k in ("onset", "drums", "pitch", "voicing", "voice", "voiced")}
-    out["wave"] = take(t["wave"], -1)
+    out["wave"], out["family"] = take(t["wave"], -1), take(t["family"], -1)
     shape = (window, t["pitch"].shape[1])
     strike, release, velocity, heard = np.zeros(shape, np.uint8), np.zeros(shape, np.uint8), np.zeros(shape, np.float32), np.zeros(shape, np.uint8)
     for (f, p), v in zip(t["strikes"], t["vels"]):
@@ -241,7 +260,7 @@ def clip(mel, rng):
 
 def shuffled(pick, window: int, channels: int, rng, channel=None):
     """a window of summed chunks: notes keep their labels, a drum hit counts where it
-    stands out of the other clip, and what the frame's voice is goes unasked"""
+    stands out of the other clip, and what the frame's voice and family are goes unasked"""
     total = window + WARM if channels > 1 else window
     through, noise = channel.draw(total, rng) if channel is not None else (1.0, np.zeros((total, ripmodel.MEL_BANDS)))
     es, outs = [], []
@@ -252,7 +271,7 @@ def shuffled(pick, window: int, channels: int, rng, channel=None):
         eb = eb * 10 ** ((rng.random() * 12 - 6) / 10) * power(ma) / max(power(mb), 1e-9)
         ta, tb = targets(ma, la, sa, CHUNK, False), targets(mb, lb, sb, CHUNK, False)
         out = {k: np.maximum(ta[k], tb[k]) for k in ("onset", "drums", "pitch", "voicing", "strike", "release", "velocity", "heard", "valid")}
-        out.update(wave=np.full(CHUNK, -1, np.int64), voice=np.zeros_like(ta["voice"]), voiced=np.zeros_like(ta["voiced"]))
+        out.update(wave=np.full(CHUNK, -1, np.int64), family=np.full(CHUNK, -1, np.int64), voice=np.zeros_like(ta["voice"]), voiced=np.zeros_like(ta["voiced"]))
         hiss = noise[at:at + CHUNK]
         hiss = np.concatenate([hiss, np.zeros((CHUNK - len(hiss), hiss.shape[1]))]) if len(hiss) < CHUNK else hiss
         for d, rest, lab, s in ((ea * through, eb * through + hiss, la, sa), (eb * through, ea * through + hiss, lb, sb)):
@@ -352,7 +371,7 @@ def bent(mel, lab, window: int, channels: int, over, rng, heard):
 def stack(samples):
     mels, tgs = zip(*samples)
     out = {k: torch.from_numpy(np.stack([t[k] for t in tgs])) for k in tgs[0]}
-    return torch.from_numpy(np.stack(mels)), {k: v if k == "wave" else v.float() for k, v in out.items()}
+    return torch.from_numpy(np.stack(mels)), {k: v if k in ("wave", "family") else v.float() for k, v in out.items()}
 
 
 def batch(draw, window: int, size: int, rng: random.Random, channels: int, channel=None, share: float = 0.0, pick=None, shuffle: float = 0.0, bend: float = 0.0):
@@ -428,14 +447,19 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
     out["wave"] = (ce * voiced).sum() / n
     voice = torch.sigmoid(y[..., cfg.slice("voice")])
     out["voice"] = ((voice - t["voice"]) ** 2).mean(-1).mul(voiced).sum() / n
+    if "family" in dict(cfg.outputs):  # the frame model's alone
+        asked = (t["family"] >= 0) * valid
+        logits = y[..., cfg.slice("family")].reshape(-1, len(ripmodel.FAMILIES))
+        ce = F.cross_entropy(logits, t["family"].reshape(-1).clamp(min=0), reduction="none").reshape(asked.shape)
+        out["family"] = (ce * asked).sum() / asked.sum().clamp(min=1)
     out["total"] = (out["onset"] + out["drums"] + out["pitch"] + 0.5 * out["voicing"] + out["strike"] + out["release"]
-                    + 2.0 * out["velocity"] + 0.5 * out["wave"] + 2.0 * out["voice"])
+                    + 2.0 * out["velocity"] + 0.5 * out["wave"] + 2.0 * out["voice"] + 0.5 * out.get("family", 0.0))
     return out
 
 
 def shape(cfg) -> str:
-    """a model's sizes for a message; the output heads are ripmodel's, never a flag's"""
-    return ", ".join(f"{k} {v}" for k, v in cfg.items() if k != "outputs") if cfg else "an unrecorded shape"
+    """a model's sizes and heads for a message; the heads are ripmodel's, never a flag's"""
+    return ", ".join(f"{k} {v}" if k != "outputs" else "outputs " + "+".join(h for h, _ in v) for k, v in cfg.items()) if cfg else "an unrecorded shape"
 
 
 def main() -> None:
@@ -453,7 +477,7 @@ def main() -> None:
     ap.add_argument("--layers", type=int, default=4)
     ap.add_argument("--heads", type=int, default=8)
     ap.add_argument("--ffn", type=int, default=1024)
-    ap.add_argument("--towers", default="", help="stacks of their own after the shared input, layers:heads each in the heads' order, comma-separated: 2:2,4:7 gives onset and drums two layers and the rest four")
+    ap.add_argument("--towers", default="", help="stacks of their own after the shared input, layers:heads each in the heads' order, comma-separated: 2:2,4:8 gives onset and drums two layers and the rest four")
     ap.add_argument("--convs", default="", help="convolutions before the input layer, channels x frames x features / pool each, comma-separated: 16x3x3/1,16x3x3/2,32x3x3/2")
     ap.add_argument("--attention-window", type=int, default=64, help="frames attended either side")
     ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
@@ -468,6 +492,7 @@ def main() -> None:
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
     ap.add_argument("--extra", default="", help="more corpora and the share of windows drawn from each, dir:share, comma-separated")
     ap.add_argument("--pitchnet", action="store_true", help="the notes model: convolutions only over the harmonic stack, the same weights at every pitch; --out is then ripnotes.bin, which stapes reads beside ripmodel.bin")
+    ap.add_argument("--family-holdout", choices=ripmodel.FAMILIES, help="a family left out of the run: every loop that sounds it is neither trained on nor scored, so a calibration run sets unknown's bar on how the model hears an instrument it never heard")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--shard-seed", type=int, default=0, help="offsets the stream the windows are drawn from, so a round's workers see different loops; the starting weights stay --seed's")
     ap.add_argument("--checkpoint", default="", help="write a .pt every --every steps, and resume from it when present")
@@ -477,8 +502,9 @@ def main() -> None:
     ap.add_argument("--validate", default="", help="a corpus of recordings (corpus <dir> from <list>) cut into fixed windows and scored every --every steps; the step that scores best on it is what --out gets, in place of the held-out loops' best")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
-    global RING, STRIKE_POS, STRIKE_AGAIN, DIP
+    global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT
     RING, STRIKE_POS, STRIKE_AGAIN, DIP = args.ring, args.strike_weight, args.again_weight, args.dip
+    FAMILY_HOLDOUT = ripmodel.FAMILIES.index(args.family_holdout) if args.family_holdout else None
 
     torch.manual_seed(args.seed)
     rng = random.Random(args.seed + (args.shard_seed << 32))  # a stream per seed and shard; shard 0 is the seed's own
@@ -488,7 +514,7 @@ def main() -> None:
     towers = [tuple(int(v) for v in t.split(":")) for t in args.towers.split(",") if t]
     if any(len(t) != 2 for t in towers) or towers and sum(h for _, h in towers) != len(ripmodel.HEADS):
         raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodel.HEADS)}")
-    heard = dict(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS) if args.pitchnet else dict(channels=2 if args.pcen else 1)
+    heard = dict(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS, outputs=ripmodel.PITCHNET_HEADS) if args.pitchnet else dict(channels=2 if args.pcen else 1)
     cfg = ripmodel.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,
                           dilations=tuple(int(d) for d in filter(None, args.dilations.split(","))), cell=args.cell)
     planes = min(cfg.channels, 2)  # what the data loader makes; the model stacks them
@@ -555,8 +581,8 @@ def main() -> None:
         """the decoders' loss over fixed windows, and the line that reports it"""
         v = evaluate(model, mels, tgs, args.device)
         # the decoders read the onset, drum, pitch, voicing, strike and release
-        # heads; the wave, voice and velocity heads say how a note is played and
-        # memorize the corpus's, so they do not pick the step exported
+        # heads; the wave, voice, velocity and family heads say how a note is
+        # played and by what, and memorize the corpus's, so they do not pick the step
         v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"]
         parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders"))
         return v["decoders"], f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f} ({parts})"

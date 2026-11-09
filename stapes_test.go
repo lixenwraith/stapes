@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -2548,8 +2549,9 @@ func TestFilesOverlayLoadsRipsAndSavesHere(t *testing.T) {
 
 // TestCorpusAugmentsAndLabelsTheVoices: an augmented corpus plays each loop's
 // tonal tracks through voices of random genes near the registered ones and
-// labels the events with those genes, the registered voices are as they were
-// afterwards, and the audio is not the clean render.
+// labels the events with those genes and the family each sounds as, a voice it
+// drives unknown, the registered voices are as they were afterwards, and the
+// audio is not the clean render.
 func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
@@ -2587,6 +2589,29 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 	if changed == 0 || differs != len(aug) {
 		t.Errorf("%d voice(s) changed, %d of %d loop(s) differ from the clean render", changed, differs, len(aug))
 	}
+	// a registered voice sounds as its name's family, and one driven past the
+	// drive its genes reach, 4, as unknown
+	for name, f := range clean[0].families {
+		if want, ok := voiceFamilies[name]; ok && f != familyIndex(want) {
+			t.Errorf("the registered %s labelled family %d, want %s", name, f, want)
+		}
+	}
+	driven := 0
+	for k := range 40 {
+		voices, families, restore := s.loopVoices(clean[0].slots, true, rand.New(rand.NewPCG(uint64(k), 1)))
+		restore()
+		for name, v := range voices {
+			if v.Drive > 4 {
+				driven++
+				if families[name] != familyIndex("unknown") {
+					t.Errorf("%s driven to %.1f labelled family %d, want unknown", name, v.Drive, families[name])
+				}
+			}
+		}
+	}
+	if len(clean[0].families) == 0 || driven == 0 {
+		t.Errorf("%d voice(s) labelled, %d driven in 40 loops", len(clean[0].families), driven)
+	}
 	// an augmented loop sounds off A440 by up to a quarter tone, a clean one at it
 	tuned := 0
 	for i := range aug {
@@ -2617,24 +2642,33 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), "\"voice\":[") || !strings.Contains(string(data), "\"tuning\":") {
 		t.Errorf("the labels carry no voice genes or tuning: %v\n%s", err, data)
 	}
+	var lab corpusLoop
+	if err := json.Unmarshal(data, &lab); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range lab.Events {
+		if e.Drum >= 0 && e.Family != familyIndex("drums") || e.Voice != nil && e.Family < 0 {
+			t.Errorf("drum %d, midi %d labelled family %d", e.Drum, e.MIDI, e.Family)
+		}
+	}
 	if !strings.Contains(out.String(), "random genes") {
 		t.Errorf("corpus did not say it augmented:\n%s", out.String())
 	}
 }
 
 // TestAVoiceSoundsAsTheFamilyOfARegisteredVoiceNearIt: a registered voice and one
-// redrawn near it are its name's family, a voice of another name near one is that
-// one's, and one on a wave of none near it or far from all of them is unknown
+// redrawn within reach of it are its name's family, a voice of another name near
+// one is that one's, and one on another wave or just past the reach is unknown
 func TestAVoiceSoundsAsTheFamilyOfARegisteredVoiceNearIt(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
 	known := familyVoices()
 	piano, lead := audio.VoiceDefByName("piano"), audio.VoiceDefByName("lead")
-	near, far := piano.Genes(), piano.Genes()
+	near, past := piano.Genes(), piano.Genes()
 	for i := range near {
-		near[i] = min(near[i]+0.15, 1)  // 0.15 a gene, past a redraw's median
-		far[i] = math.Round(1 - far[i]) // half a gene or more from the piano, so 0.28 from the bass
+		near[i] = min(near[i]+0.2, 1)  // 0.19 from the piano, inside the reach
+		past[i] = min(past[i]+0.25, 1) // 0.24 from the piano and 0.35 from the bass, past it
 	}
 	for _, c := range []struct {
 		name string
@@ -2645,7 +2679,7 @@ func TestAVoiceSoundsAsTheFamilyOfARegisteredVoiceNearIt(t *testing.T) {
 		{"piano", audio.VoiceFromGenes("modal", near), "piano"},
 		{"organ", lead, "synth"},
 		{"piano", audio.VoiceFromGenes("saw", piano.Genes()), "unknown"},
-		{"piano", audio.VoiceFromGenes("modal", far), "unknown"},
+		{"piano", audio.VoiceFromGenes("modal", past), "unknown"},
 	} {
 		if got := voiceFamily(known, c.name, c.v); got != familyIndex(c.want) {
 			t.Errorf("%s on %q: family %d, want %s", c.name, c.v.Wave, got, c.want)

@@ -117,8 +117,11 @@ Over the library's rip (library
 - `agree` compares two rips of one piece (`MatchNotes`); `truth` scores a rip
   against notes given as text or a tapped rhythm (`ParseTranscript`) or a MIDI
   file (`truth <name> <file.mid>`), counting the notes heard by level as well
-  (`NoteLevels`), and prints a `bars` row for a MIDI file's bars, placed as its
-  notes matched (`MIDIScore.Beats`), or a JAMS file's beats, a truth of beats
+  (`NoteLevels`); a MIDI file's parts past its melody, under and bass count in
+  the melody register as one line, or the bass under E3, and an `every part` row
+  gives the F1 over all its notes, as `tune ... truth` pools them. It prints a
+  `bars` row for a MIDI file's bars, placed as its notes matched
+  (`MIDIScore.Beats`), or a JAMS file's beats, a truth of beats
   alone (`truth <name> <file.jams>`, `ReadJAMSBeats`): the rip's bar lines
   against the downbeats and beats given (`MatchBars`); `notes` lists a
   transcript, each note's brightness with the unmeasured counted, and `notes

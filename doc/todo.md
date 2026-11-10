@@ -144,7 +144,13 @@ front-end seam. What remains, in the design's order:
    lines fall within an eighth of a bar of GuitarSet's downbeats on 72% of
    them after audio v0.8.9, 63% before. When `tune ... truth` scores the bars
    too (`MatchBars`), the tempo and beat genes (`tempo_prior`, `tempo_width`,
-   `tightness`) join `modelGenes`, which stays a list, not a rule.
+   `tightness`) join `modelGenes`, which stays a list, not a rule. Its first
+   run through 32a gained solo guitar .06 and lost .02 to .04 on the renders,
+   the clean take, the phones and MusicNet, as its list is guitar alone and
+   its score counts within lines, where a guitar's truth has no bass line:
+   before it writes a `rip.toml` it wants a count by pitch and onset, a list
+   with a condition a kind, a guard on every set's loss, and the frames it
+   heard kept between runs (six CPU-hours for sixty recordings without).
 7. The pedal: a piano arpeggio under pedal rings three or four notes at once,
    and the analysis's two lines hold two; the second line's eighths read as
    held notes (30 of 58 heard, 11 spanning two). A model's strikes start every
@@ -174,6 +180,11 @@ unknown's bar, set by a calibration run with a family held out
 rules and the song's instruments; and one round, judged on E-GMD's kits, Billie
 Jean's kicks clean and from the Pixel, and the family's accuracy on NSynth's
 held-out instruments with its unknown rate on an instrument held out whole.
+Before the round: `unknown` is the largest class the corpora label (a third of
+corpus 17's frames, every engine voice far from the bank), the head names the
+highest note's family alone (bass on 2.6% of frames, so never a lower line),
+voice, strings and winds are 2 to 7% of frames under an unweighted loss, and no
+corpus is rendered from NSynth's held-out instruments to judge it on.
 
 ### A live rip
 
@@ -185,7 +196,11 @@ of samples in, each bar frozen once two follow it from the sixth bar on, `Final`
 the whole rip at the end). What remains is a host: a verb that drives the stream
 over a file in blocks and reports how its frozen bars differ from the offline
 rip of the same recording, the measurement the Android app's microphone mode
-(vif's todo) is then judged by ([Rip design §7](rip-design.md#7-plan)).
+(vif's todo) is then judged by ([Rip design §7](rip-design.md#7-plan)). Measured
+by a scratch tool through 12a and 32a on twelve recordings: the stream has 95
+in a hundred of the offline rip's notes and its bar grid on three recordings,
+tempo, meter and phase being held from the first six bars, at three times the
+offline cost.
 
 ### Close the rip's loop
 

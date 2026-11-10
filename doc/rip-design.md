@@ -50,8 +50,14 @@ flowchart LR
    strength of any onset, of each drum's, each pitch's salience, each register's
    chroma, and, from a model, the wave and voice genes the note under each frame
    is played with and how surely each pitch is struck there. Two front ends fill it: `analysis`, the package's signal
-   processing, and `ripmodel`, a transformer over the mel frames whose heads are
-   those fields. The seam is the frames, so the decoders never know which heard.
+   processing, and `ripmodel`: a transformer over the mel frames for the onsets,
+   the drums, the wave and voice genes and, since audio v0.11.0, the family
+   playing the highest note (`RipFrames.Family`, nine families with unknown,
+   which no decoder reads yet), and beside it the notes model, a cell net over
+   the harmonic stack (`NotesSpec`, the trainer's PitchNet) that gives the
+   pitch, voicing, strike, release and velocity heads when the root holds
+   `ripnotes.bin`. The seam is the frames, so the decoders never know which
+   heard.
 3. **Decoders** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). Classical, shared, cheap and explainable: tempo by
    autocorrelation under a prior, beats by dynamic programming, the bar line by
    the kick, the snare on two and four, the key's root in the bass and the
@@ -190,6 +196,11 @@ offline (`song <name> <file.wav>`).
   hand-checked notes held out for validation, so neither a model nor a tuned set
   learns the synthesizer. The generative lead is left out: the sequencer writes
   its notes bar by bar as it plays, so no label read off the pattern holds them.
+  Every event carries the family it sounds as (`families` in the manifest):
+  the engine's voices by one table, a voice redrawn far from every bank voice
+  unknown, NSynth's instruments by name (`sampled`), and a recording's notes
+  by its list's `family` cell or, without one, each note's MIDI program, every
+  part of the file included (`corpus <dir> from`).
 - **Augmentation.** `corpus ... aug` puts a room and a mix behind each loop,
   drawn per loop: a gain and a swell of up to 6 dB, for half the loops a
   one-pole low-pass at 4 to 11 kHz, two equaliser bands within 6 dB from 80 Hz
@@ -228,7 +239,13 @@ offline (`song <name> <file.wav>`).
   several machines, shards from one start averaged into the next (`shard`,
   `merge`); `tool/rip-train/README.md` is the guide. A voice carries a vibrato and a vowel's formants for the vocal focus,
   neither a gene, kept by the augmentation when it draws voices near a
-  registered one.
+  registered one. The step exported is the best by `--validate`, a corpus of
+  recordings none of the tests hold (`~/ripcorpus-val`: GuitarSet's player 04
+  and 19 MusicNet pieces), since the rendered loops' held-out loss stopped
+  predicting recordings at round 32; `--family-holdout` leaves a family out
+  for the run that sets unknown's bar; and `tune ... truth <list>` searches
+  the decoders' thresholds against real recordings' truths through the loaded
+  model, each heard once, writing the `rip.toml` that ships beside the weights.
 - **Model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodel.Spec`: 230 inputs (229 bands and the level), width 256, eight heads of 32,
   four layers, feed-forward 1024, a window of 64 frames either side, 3.3
   million weights (13.2 MB), four times the first five runs' width 128 and four
@@ -263,8 +280,11 @@ offline (`song <name> <file.wav>`).
   analysis, the features, the truth (`ExpectedRip`, `ExpectedEvents`) and the
   score (`CompareRips`), the offline renders (`RenderMusic`, `RenderTimeline`,
   `RenderNote`), the distances (`MelDistance`, `BarDistance`), the mechanical
-  clustering (`Cluster`) and the song (`SongDef`). Imports only `toml`. The
-  searches stay out of it, so it stands alone, a module of its own.
+  clustering (`Cluster`), the song (`SongDef`), a step's glide (`bend`), the
+  bar phase against a score's or an annotation's downbeats (`MatchBars`,
+  `ReadJAMSBeats`), `ReadMIDI` with every part's notes and programs, and the
+  rip that follows a recording as it plays (`RipStream`). Imports only `toml`.
+  The searches stay out of it, so it stands alone, a module of its own.
 - `lixenwraith/audio/ripmodel`: the learned front end, `Spec` and `Hear`.
   Imports `audio` and `transformer`.
 - `lixenwraith/transformer`: inference over frames and the weight file, a
@@ -273,8 +293,10 @@ offline (`song <name> <file.wav>`).
   over bar-to-pattern assignments, with seeds, a schedule, a checkpoint, a
   cache and a categorical operator for them. Standard library only.
 - `lixenwraith/stapes`, this module: the verbs that drive it all (`rip`, `fit`,
-  `compress`, `song`, `render`, `corpus`, `tune`), the documents the results
-  land in, and the files overlay (`^O`) that loads, rips and saves them.
+  `compress`, `song`, `render`, `corpus`, `tune`, `truth` with its bars and
+  every-part rows), the documents the results land in, and the files overlay
+  (`^O`) that loads, rips and saves them. The live rip's host is vif's Android
+  app, which takes `RipStream` from the library (vif's todo).
 - `tool/rip-train`: the trainer, Python, beside the Go module.
 
 ## 5. Budgets and determinism
@@ -332,69 +354,68 @@ and the checkpoint earn their keep.
    out, MIDI files, and two rips of one piece as witnesses; and the model at
    four times the size, its sixth run passing the engine's loops and losing
    the recordings.
-2. Next, after the audit of 9 November (its measurements are in the audit
-   doc and its tools under vif's `tmp/audit`):
-   - **Scores first.** A bar-phase row in the wide test, a rip's bar lines
-     against a score's bars or a beat annotation's downbeats (GuitarSet's
-     `beat_position`), since the note scorer's time map never sees a bar line
-     and the bar phase decides every pattern a song is compressed into; a real
-     validation corpus (GuitarSet's and MusicNet's training players, the phone
-     loops, no test clip) that picks the trainer's exported step in place of
-     the rendered loops' held-out loss, which stopped predicting recordings at
-     round 32; and `tune` hearing through the model with each recording's
-     frames cached, scored by the timed match on that corpus, run after every
-     round to write the `rip.toml` that ships beside the weights. A round
-     changes one thing against a paired control and is judged on the metric it
-     targets, never on the wide mean alone.
+2. Landed from the audit of 9 November (its measurements are in the audit
+   doc, its tools under vif's `tmp/audit`): the bar line's cue that counts the
+   silence before a recording (audio v0.8.9, GuitarSet's downbeats within an
+   eighth of a bar 63% to 72%); the bar phase scored against a score's or a
+   JAMS annotation's downbeats (`MatchBars`, `truth`'s bars row); a step's
+   `bend`, played by every voice and written and read as MIDI pitch bend; the
+   family of every corpus event and the frame model's family head with
+   `--family-holdout`; every part of a recording's MIDI in its labels and its
+   truth, each note with its program; `--validate` and the validation corpus;
+   `tune ... truth`; and `RipStream`, bars frozen two behind the sound from the
+   sixth bar on, `Final` the whole rip afterwards.
+3. Next, in order, each judged as the audit asks, one change against a paired
+   control on the metric it targets, never on the wide mean alone:
    - **The instrument model.** The frame model's job is timbre, not notes and
-     not a smaller drum detector: per frame a family (piano, guitar, voice,
-     bass, strings, winds, synth, drums, and unknown), the genes, the drums and
+     not a smaller drum detector: per frame a family, the genes, the drums and
      the onset, read from the raw planes, where a kick's falling thump differs
      from a bass note's harmonics as it does not in the harmonic stack (the
-     notes model's drum heads hear Billie Jean's bass as kicks). Families come
-     into the corpus from the engine's voices, NSynth's families, E-GMD's kit
-     and the real recordings' labels; unknown is a class of its own, trained on
-     sounds of no family (voices of random genes far from any bank voice,
-     driven and effected variants, the kit's toms and crashes), with its bar
-     on the posterior set on a family held out of a calibration run, so an
-     instrument the corpus never heard, a generated or effected sound, reads
-     as unknown rather than as its nearest neighbour. The head seeds the voice fit with the family's bank
-     voices, gates the decoders (legato and bends for a voice, a slow attack
-     for a pad), names each line's instrument in the song, and gives the drums,
-     calibrated on E-GMD by a line per head folded into the output rows. That,
-     not a note transcriber, is what the rip is for: a recording that ends in
-     voices the engine plays, at the game's tempo.
-   - **Glides.** A cents head on the notes model, each pitch's offset within
-     its cell per frame, labelled from the renderer's own frequency; notes
-     merged across cells where the offset runs continuously; and a step's
-     `bend`, the semitones its pitch reaches by its end, linear in pitch from
-     `bend_at`, a share of its length, in the pattern document, played by the
-     voices and written as MIDI pitch bend. A sung line or a synth lead then
-     keeps one note where the cells gave three.
+     notes model's drum heads hear Billie Jean's bass as kicks). The corpus
+     and the head exist; the round comes next, from 12a's weights on corpus 11
+     with families and corpus 17 (corpus 15's recipe with NSynth's instruments
+     playing half the lines), then a `--family-holdout` run that sets unknown's
+     bar on the posterior and a Platt line per drum head folded into the output
+     rows. Go then reads the family: the voice fit seeded with the family's
+     bank voices, the decoders gated (legato and bends for a voice, a slow
+     attack for a pad), each line's instrument named in the song. That, not a
+     note transcriber, is what the rip is for: a recording that ends in voices
+     the engine plays, at the game's tempo.
+   - **Glides on the notes model.** A cents head, each pitch's offset within
+     its cell per frame, labelled from the renderer's own frequency, and notes
+     merged across cells where the offset runs continuously into one note with
+     a `bend`. A sung line or a synth lead then keeps one note where the cells
+     gave three.
    - **The phone's bass.** The strike head is the limit, not the decoder's
      bar: letting the accounting judge the strikes between `Strike` and
-     `StrikeLow` recovered nothing from the Pixel. Next the channel's dip in
-     training (34d), the accounting's logistics refitted with phone bass in
-     their graded set, and the bass's own long-window plane if the head stays
-     unsure.
+     `StrikeLow` recovered nothing from the Pixel. 34d's dip took its Billie
+     Jean bass from 3 to 7 of 138; next the accounting's logistics refitted
+     with phone bass in their graded set, and the bass's own long-window plane
+     if the head stays unsure.
    - **Lines on pop.** On the epic set's first bars a high melody and a
      mid-register accompaniment interleave through both decoded lines, so the
      melody voice plays the accompaniment's notes among its own, and the lead
      rule cannot part them (`lead high` reads as `lead busy` there): two lines
      cannot hold three voices. The third line, or a line per family once the
      instrument model names one, is the close, judged on that set.
-   - **A live rip.** A stream of sample blocks in, the PCEN state carried, the
-     model over a window with half a second of look-ahead, the decoders over
-     the last bars with the earlier ones frozen, bars out two behind the sound,
-     and a full pass over the whole recording at the end when the listener asks.
-     The budget is a few seconds behind the music live, and a better song once
-     the whole has been heard.
+   - **The live rip in the hands.** `RipStream` is the library's; a verb that
+     drives it over a file in stapes, then vif's Android app over the
+     microphone, a few seconds behind the music and `Final` once the whole has
+     been heard, measured against the offline rip of the same recording.
+   - **The wide test.** Its MusicNet truth and training labels held three of
+     an ensemble's parts until audio v0.13.0; the truths are rebuilt with every
+     part and the past runs re-scored, and the bars row joins the table.
+   How a round is judged from here: the wide table with its bars row, the
+   validation loss beside the held-out loss, the family's accuracy on NSynth's
+   held-out instruments with its unknown rate on a family held out whole,
+   Billie Jean's bass from the Pixel (right of 138) and the phone takes' low
+   rows, and `bench` on the rendered loops.
    Dropped by measurement: padding or mirroring a recording's edges (the
    strike head at a loop's first frame scores as mid-song; silence before it
    and the mirror both cost); more width (34a); soups of rounds; and rounds of
    one recipe plus one augmentation judged by the mean, which the per-set
    noise of a single run swallows.
-3. Then: the rip on Android under the mobile budget, and the weights shipped as
+4. Then: the rip on Android under the mobile budget, and the weights shipped as
    data with the `rip.toml` `tune` wrote for them.
 
 ## 8. Measured on the sample recording

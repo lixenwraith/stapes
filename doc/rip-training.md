@@ -14,9 +14,13 @@ Where each part stands:
 - **In released code:** `MelFrames`, the first and second input planes, the heads,
   weight file versions 3 and 4, `corpus`, `corpus <dir> from`, `corpus ... sampled`, `--mix`,
   `--channel`, `--over` with its heard-hit rule, draws by length, `skip.txt`,
-  `make_noise.py`, `corpus ... midi`, `--pitchnet` and its `ripnotes.bin`, `--shuffle`, `--extra`.
+  `make_noise.py`, `corpus ... midi`, `--pitchnet` and its `ripnotes.bin`, `--shuffle`, `--extra`,
+  `--cell`, `--dip`, `--ring`, `--bend`, `--dilations`, `--sung`, each event's family (`families`,
+  the list's `family` cell, each note's program, every part of a file), the family head and
+  `--family-holdout`, `--validate`, and `tune ... truth`.
 - **In no repository yet:** the phone take's scripts, which play, align and cut a
-  recording of a known file.
+  recording of a known file, and the wide test's harness (vif's `tmp/round32`: `cmpn.sh`,
+  `table.py`, the timed scorer) with the validation corpus's build (`tmp/audit/valbuild.py`).
 
 ## 1. The path
 

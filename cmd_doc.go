@@ -232,7 +232,7 @@ func cmdExport(s *Session, a []string) error {
 
 // cmdRip reads a recording into the pattern document as a beat, a melody and a
 // bass pattern a window of bars, dirty, and sets the transport's tempo and key to
-// what it heard, fitting a voice to a register the front end heard none for. A
+// what it heard, fitting each line's voice from the one the front end heard. A
 // MIDI file is a rip already, its lines on the shipped voices its programs play
 // on. The rip is kept under its name for fit, compress and song.
 func cmdRip(s *Session, a []string) error {
@@ -320,7 +320,7 @@ func cmdRip(s *Session, a []string) error {
 		}
 	}
 	if rp.x != nil {
-		s.fitVoices(rp, s.fit, false)
+		s.fitVoices(rp, s.fit)
 	}
 	defs, voices := r.Patterns(name, bars), r.Voices(name)
 	// The voices register at once, so the patterns naming them play; the patterns

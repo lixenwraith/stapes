@@ -144,13 +144,13 @@ proves wrong or that a document now states, and link the document instead.
 - A truth on the recording's own clock (GuitarSet's) needs no time map, and
   the matcher's, fitted from its in-line pairs, costs it: strummed guitar by
   pitch and onset reads .72 through the map and .79 without.
-- With a model loaded `rip` fits no voice: every line arrives with one, modal at
-  the heads' mean genes, and `fitVoices` fits only a line that lacks one. By the
-  fit's own distance that voice was farther than the nearest bank voice in 32
-  of 37 lines (ten of NSynth's held-out instruments and five recordings) and
-  2.3 times as far as `fit` came; type `fit <name>` before judging how a rip
-  sounds. The distance favours a sparse, dark voice (it fitted modal to 32 of
-  the 37, a singer and a reed among them), so its choice of wave wants ears.
+- The voice a model hears for a line is the fit's first seed, no more: modal at
+  the heads' mean genes, it stood farther by the fit's own distance than the
+  nearest bank voice in 32 of 37 lines (ten of NSynth's held-out instruments
+  and five recordings) and 2.3 times as far as the fit, and on the six
+  recordings Lixen heard the fit was the nearer every time, so `rip` fits every
+  line. The distance favours a sparse, dark voice (modal for 32 of the 37, a
+  singer and a reed among them): a change to it wants ears again.
 - A miss is rarely a note the model never heard: on strummed guitar 78% of the
   notes the rip misses have a strike over `strike` at their pitch within four
   frames. No bar or rule returns them at a fair price, though: `strike_again`

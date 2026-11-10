@@ -382,9 +382,9 @@ and the checkpoint earn their keep.
    - A line is a voice heard, as many as the recording holds and for as long
      as each plays, never a register or a count assumed; and a voice is genes
      the engine plays, with a family's name only where one is sure.
-   - What is decided of a part of a song, its tempo, meter and key, the
-     judge's level, its voices, holds within that part and is never carried
-     across a boundary into a part it has nothing to do with.
+   - What is decided of a part of a song, its tempo, meter and key, its
+     voices, holds within that part and is never carried across a boundary
+     into a part it has nothing to do with.
    Code alone, a thread each, in parallel:
    - **Notes by pitch and onset, and the search under a guard.** `Agreement`
      counts every note as one line and matches a truth on the recording's own
@@ -421,18 +421,24 @@ and the checkpoint earn their keep.
      stops: first inside the three lines a rip holds today, then the rip, the
      song and the game with as many as were heard. Pop's interleaved lines, a
      solo cello filed on two and a guitar's notes on a bass line wait on it.
-   - **The judge.** 78 in a hundred of the notes missed on strummed guitar
-     have a strike over the bar, and no bar or rule returns them at a fair
-     price. The accounting judges every strike over a half, a ringing pitch
-     included, its evidence weighed against the part of the song it is in,
-     its logistics fitted on the renders, GuitarSet's training players, the
-     takes and snapped MusicNet, and accepted only where each condition left
-     out of the fit scores within its spread of the fit that had it. A
-     recording adapts here and nowhere else: the refit measures first whether
-     a second pass earns its place, the evidence read against the recording's
-     own sure notes, live the reading carried over the bars behind. A small
-     learned stage takes the same seat if that evidence cannot part them. The
-     decoder then says what it kept and dropped, the live view's last read.
+   - **The judge.** Nearly a quarter of the truth's notes are strikes over a
+     half that the decoder drops; a right verdict on each of them and on each
+     reported note would score .96 by pitch and onset where the rip scores
+     .74 (427 recordings of five collections, none of them met by 32a). The
+     accounting's evidence does not reach that: its logistics fitted again on
+     those recordings, every strike over a half judged, score .739 on the
+     mean of conditions against .744. A small network on the heads around a
+     strike, beside that evidence, takes guitar from .73 to .84 with the
+     player left out of its fit, and on a collection it never met is level to
+     +.05, bar singing (.02 to .04 down) and a bass line under drums, which
+     it keeps only when its fit is the engine's own mixes. So the judge is a
+     trained stage whose reach is its fit's breadth: fitted on every
+     truth-backed collection and the engine's mixes, reading the note's voice
+     once notes carry one, refitted with the notes model whose heads it
+     reads, and installed only when no collection left out of the fit scores
+     under the installed rip by more than its spread. A recording is judged in
+     one pass. The decoder then says what it kept and dropped, the live
+     view's last read.
    - **Sections.** A recording is read in parts, a boundary where tempo,
      density, level or harmony change by more than they vary inside a part;
      tempo, meter, phase and key are decided a part at a time, in the stream
@@ -459,11 +465,16 @@ and the checkpoint earn their keep.
    recipe plus one augmentation judged by the mean; a step picked by the
    validation loss, most of which is a head Go never reads; a `rip.toml`
    tuned on one instrument; `strike_again` or `strike_low` moved by hand for
-   a set, each measured to trade one set for another; and a recording's
+   a set, each measured to trade one set for another; a recording's
    thresholds searched against `Fidelity`, which puts no price on a wrong
    note (a third of a right one's worth to it) and so ranks a recording's
    decodes at chance against their truth: 54 in a hundred of the pairs .02
-   apart in F1, over 91 recordings under eleven threshold sets.
+   apart in F1, over 91 recordings under eleven threshold sets; the
+   accounting's logistics refitted on more recordings; and a second pass
+   over a recording, its evidence read against its own notes, its fit bent
+   to its sure verdicts or its bar set by its own odds, each within .006 of
+   the single pass on the mean of conditions and trading one family for
+   another.
 5. Then: the weights shipped as data with the `rip.toml` they were judged
    under.
 

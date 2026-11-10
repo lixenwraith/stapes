@@ -173,6 +173,21 @@ proves wrong or that a document now states, and link the document instead.
 - Two renders compared by `Fidelity` are rendered under the same names, each
   in a fresh session: a sound's noise is seeded by its name, and one decode
   rendered under two names scored up to .004 apart.
+- **A judge's fit is read with a collection left out, never a recording.** A
+  small network on the heads around a strike took guitar from .73 to .84
+  with the player left out and to .79 with GuitarSet left out; singing lost
+  .02 to .04 unmet. The accounting's logistics refitted on 427 recordings
+  gained nothing, and no second pass over a recording did. The frame model's
+  drum onsets and the note's length added to the network's input moved no
+  collection by .015 (`vif/tmp/audit2/README.md`, the judge's tools).
+- Billie Jean's truth is its bass line alone, so its F1 counts every chord
+  the rip hears as wrong: read it by bass notes right (111 of 138 clean). A
+  judge fitted on recordings, which hold no drums, kept 49 to 76 of them;
+  fitted on the engine's mixes alone, 102.
+- 32a trained on no pitched recording but VocalSet (its log names corpora 15,
+  14 and 11, VocalSet and E-GMD): GuitarSet, MusicNet, vocadito and the takes
+  are unmet by it. A round that trains on one of them takes it out of every
+  held-out reading, a judge's fit included.
 
 ## Corpus and bench
 

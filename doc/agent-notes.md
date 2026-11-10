@@ -188,6 +188,15 @@ proves wrong or that a document now states, and link the document instead.
   14 and 11, VocalSet and E-GMD): GuitarSet, MusicNet, vocadito and the takes
   are unmet by it. A round that trains on one of them takes it out of every
   held-out reading, a judge's fit included.
+- **A full track only measures.** Billie Jean, the pop set and the piano
+  takes are never in a corpus or a fit's list: no licence covers training on
+  them (AGENTS, Data). The audit's scratch fits of a judge held Billie Jean's
+  rows whenever another collection was left out; nothing from them is kept.
+- Singing is the last to come: little truth, many kinds of voice. Report it
+  beside every reading and hold no stage back on it.
+- Lixen's order of work: fix what is already known to help, train a little,
+  then measure with focus. Do not measure further ahead of a round to pin
+  every open piece first.
 
 ## Corpus and bench
 

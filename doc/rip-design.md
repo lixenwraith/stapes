@@ -370,7 +370,7 @@ and the checkpoint earn their keep.
    learned): `--validate` picks a notes model's step by its strikes' F1 at the
    decoder's bars; `rip` fits every line's voice, the voice a model heard its
    first seed; and `corpus` takes every word its usage names.
-4. Next, from that audit and Lixen's answers to it. Four rules hold for all of
+4. Next, from that audit and Lixen's answers to it. Five rules hold for all of
    it:
    - A number that picks anything counts a note right by its pitch and onset,
      whatever line holds it. Within lines strummed guitar read .58 for .79 and
@@ -385,6 +385,10 @@ and the checkpoint earn their keep.
    - What is decided of a part of a song, its tempo, meter and key, its
      voices, holds within that part and is never carried across a boundary
      into a part it has nothing to do with.
+   - Nothing is trained or fitted on a full track. A commercial song such as
+     Billie Jean measures the rip on real-world music and no more, since no
+     licence covers training on it; a corpus or a fit takes licensed
+     collections, renders and the engine's own mixes.
    Code alone, a thread each, in parallel:
    - **Notes by pitch and onset, and the search under a guard.** `Agreement`
      counts every note as one line and matches a truth on the recording's own
@@ -432,13 +436,14 @@ and the checkpoint earn their keep.
      player left out of its fit, and on a collection it never met is level to
      +.05, bar singing (.02 to .04 down) and a bass line under drums, which
      it keeps only when its fit is the engine's own mixes. So the judge is a
-     trained stage whose reach is its fit's breadth: fitted on every
-     truth-backed collection and the engine's mixes, reading the note's voice
-     once notes carry one, refitted with the notes model whose heads it
-     reads, and installed only when no collection left out of the fit scores
-     under the installed rip by more than its spread. A recording is judged in
-     one pass. The decoder then says what it kept and dropped, the live
-     view's last read.
+     small trained stage whose reach is its fit's breadth: fitted first on
+     the notes model in use, which needs no round, from every licensed
+     collection with truths, renders and the engine's mixes; refitted after
+     each round, reading the note's voice once notes carry one; and installed
+     only when no collection left out of the fit scores under the installed
+     rip by more than its spread, singing apart, which is reported and holds
+     no stage back. A recording is judged in one pass. The decoder then says
+     what it kept and dropped, the live view's last read.
    - **Sections.** A recording is read in parts, a boundary where tempo,
      density, level or harmony change by more than they vary inside a part;
      tempo, meter, phase and key are decided a part at a time, in the stream

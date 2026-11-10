@@ -166,9 +166,11 @@ front-end seam. What remains, in the design's order:
    writes a list of truth-backed recordings as rows (each reported note and
    each strike over a half with the accounting's evidence, the heads around
    it and whether a truth note answers it), the fit in `tool/rip-train`, and
-   the weights read by audio beside the models'. Its fit wants mixes with a
-   bass line and drums from more than the engine, and singing with truth
-   beyond vocadito; it is read with a collection left out.
+   the weights read by audio beside the models'. Its fit takes licensed
+   collections, renders and the engine's mixes, never a full track, and is
+   read with a collection left out, singing reported and never a gate. Open
+   once one is trained: a bass line under drums when recordings are in the
+   fit.
 
 ### The instrument model
 

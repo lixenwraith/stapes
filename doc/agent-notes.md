@@ -160,6 +160,19 @@ proves wrong or that a document now states, and link the document instead.
   nothing after it tells the two apart. Print the strike head at the missed
   notes (`vif/tmp/audit2/why-v0140`) before training for a miss, and try a
   rule on every condition (`cond-v0140`) before moving it.
+- **`Fidelity` puts no price on a wrong note**, so it cannot set a decode's
+  thresholds. Over 91 recordings under eleven threshold sets it ordered 54 in
+  a hundred of the pairs .02 apart in F1 as their truth does (51 through the
+  models), and a pick by any of its terms scored under the installed set. The
+  installed decode laid again without its wrong notes gains .09 of F1 and
+  loses `Fidelity` on 71 of 87 recordings: a wrong note is worth a third of a
+  right one to it (a tenth on a solo guitar's line, two fifths on a sung
+  one, a half on chords), wherever it lies on a partial, a ring or a glide
+  the recording has. It sees a gross fault two times in three
+  (`vif/tmp/audit2/fidtable.py`, `fidxtable.py`).
+- Two renders compared by `Fidelity` are rendered under the same names, each
+  in a fresh session: a sound's noise is seeded by its name, and one decode
+  rendered under two names scored up to .004 apart.
 
 ## Corpus and bench
 

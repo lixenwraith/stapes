@@ -221,7 +221,8 @@ rip are in place; what remains:
    `Fidelity` against the recording's own frames; what it does not yet move is
    a step's position or length or the drum part, and a note the front end
    never heard it cannot add. Measure its convergence on rendered loops whose
-   truth is known.
+   truth is known, and whether the notes it inserts are the truth's:
+   `Fidelity` puts no price on a wrong note ([rip design](rip-design.md) §7).
 2. Matching by reconstruction: a bar's distance to a member as the rip of the
    member's render against the bar, in place of `BarDistance`, with `Memoize`
    paying for each render once; measure it against the mechanical grouping.
@@ -247,17 +248,12 @@ rip are in place; what remains:
    few dozen such pairs would set the weights of `Fidelity`'s three terms and
    the lead rule's default by what ears prefer rather than by hand.
 
-7. The engine closes on the recording: after a rip, and live over the bars
-   behind it, the search moves the judge's level for that recording against
-   `Fidelity`. Measure first whether `Fidelity` ranks the decodes of one
-   recording as its truth does: every threshold set of the audit's conditions
-   matrix, rendered and judged, against the same set's F1.
-8. A rip's voice from what was heard: the voice heads give nearly the mean of
+7. A rip's voice from what was heard: the voice heads give nearly the mean of
    their training genes on real recordings and the wave head a saw for
    anything bowed, blown or sung, so `rip` fits every line and the heard voice
    is its first seed. What remains is the voice of every note (the
    instrument model, above) and a distance that does not favour a dark voice.
-9. Put off: a second piece of music under the first, which the rip
+8. Put off: a second piece of music under the first, which the rip
    transcribes with it (a third to a half more notes); it wants the judge to
    follow instruments as it follows notes.
 

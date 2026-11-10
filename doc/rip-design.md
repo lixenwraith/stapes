@@ -427,14 +427,12 @@ and the checkpoint earn their keep.
      included, its evidence weighed against the part of the song it is in,
      its logistics fitted on the renders, GuitarSet's training players, the
      takes and snapped MusicNet, and accepted only where each condition left
-     out of the fit scores within its spread of the fit that had it. A small
+     out of the fit scores within its spread of the fit that had it. A
+     recording adapts here and nowhere else: the refit measures first whether
+     a second pass earns its place, the evidence read against the recording's
+     own sure notes, live the reading carried over the bars behind. A small
      learned stage takes the same seat if that evidence cannot part them. The
      decoder then says what it kept and dropped, the live view's last read.
-   - **The engine closes on the recording.** After a rip, and live over the
-     bars behind it, the search moves the judge's level for this recording
-     against `Fidelity`, starting from what `tune ... truth` found for the
-     family under its guard. First the measurement: whether `Fidelity` ranks
-     the decodes of one recording as its truth does.
    - **Sections.** A recording is read in parts, a boundary where tempo,
      density, level or harmony change by more than they vary inside a part;
      tempo, meter, phase and key are decided a part at a time, in the stream
@@ -460,8 +458,12 @@ and the checkpoint earn their keep.
    and the mirror both cost); more width (34a); soups of rounds; rounds of one
    recipe plus one augmentation judged by the mean; a step picked by the
    validation loss, most of which is a head Go never reads; a `rip.toml`
-   tuned on one instrument; and `strike_again` or `strike_low` moved by hand
-   for a set, each measured to trade one set for another.
+   tuned on one instrument; `strike_again` or `strike_low` moved by hand for
+   a set, each measured to trade one set for another; and a recording's
+   thresholds searched against `Fidelity`, which puts no price on a wrong
+   note (a third of a right one's worth to it) and so ranks a recording's
+   decodes at chance against their truth: 54 in a hundred of the pairs .02
+   apart in F1, over 91 recordings under eleven threshold sets.
 5. Then: the weights shipped as data with the `rip.toml` they were judged
    under.
 

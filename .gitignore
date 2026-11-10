@@ -1,5 +1,6 @@
 /stapes
 bin/
 dev/
+weights/
 tool/rip-train/.venv/
 __pycache__/

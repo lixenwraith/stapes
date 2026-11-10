@@ -67,7 +67,7 @@ func cmdFit(s *Session, a []string) error {
 	if rp.x == nil {
 		return errScore(rp)
 	}
-	s.fitVoices(rp, o, true)
+	s.fitVoices(rp, o)
 	for _, v := range rp.rip.Voices(a[0]) {
 		if _, err := s.eng.DefineVoice(v.Clone()); err != nil {
 			return fmt.Errorf("voice %q: %w", v.Name, err)
@@ -187,13 +187,10 @@ func lineVoices(r *audio.Rip) [3]**audio.VoiceDef {
 	return [3]**audio.VoiceDef{&r.MelodyVoice, &r.UnderVoice, &r.BassVoice}
 }
 
-// fitVoices fits a voice to each line of a rip that lacks one, or to each
-// again with the voice held as a seed, and says how far the fit came
-func (s *Session) fitVoices(rp *ripped, o fitOptions, again bool) {
+// fitVoices fits a voice to each line of a rip, a voice the front end heard
+// for it held as a seed, and says how far the fit came
+func (s *Session) fitVoices(rp *ripped, o fitOptions) {
 	for reg, at := range lineVoices(rp.rip) {
-		if *at != nil && !again {
-			continue
-		}
 		notes := lineNotes(rp.rip, reg)
 		if len(notes) == 0 {
 			continue

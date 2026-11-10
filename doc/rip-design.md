@@ -365,58 +365,107 @@ and the checkpoint earn their keep.
    truth, each note with its program; `--validate` and the validation corpus;
    `tune ... truth`; and `RipStream`, bars frozen two behind the sound from the
    sixth bar on, `Final` the whole rip afterwards.
-3. Next, in order, each judged as the audit asks, one change against a paired
-   control on the metric it targets, never on the wide mean alone:
-   - **The instrument model.** The frame model's job is timbre, not notes and
-     not a smaller drum detector: per frame a family, the genes, the drums and
-     the onset, read from the raw planes, where a kick's falling thump differs
-     from a bass note's harmonics as it does not in the harmonic stack (the
-     notes model's drum heads hear Billie Jean's bass as kicks). The corpus
-     and the head exist; the round comes next, from 12a's weights on corpus 11
-     with families and corpus 17 (corpus 15's recipe with NSynth's instruments
-     playing half the lines), then a `--family-holdout` run that sets unknown's
-     bar on the posterior and a Platt line per drum head folded into the output
-     rows. Go then reads the family: the voice fit seeded with the family's
-     bank voices, the decoders gated (legato and bends for a voice, a slow
-     attack for a pad), each line's instrument named in the song. That, not a
-     note transcriber, is what the rip is for: a recording that ends in voices
-     the engine plays, at the game's tempo.
-   - **Glides on the notes model.** A cents head, each pitch's offset within
-     its cell per frame, labelled from the renderer's own frequency, and notes
-     merged across cells where the offset runs continuously into one note with
-     a `bend`. A sung line or a synth lead then keeps one note where the cells
-     gave three.
-   - **The phone's bass.** The strike head is the limit, not the decoder's
-     bar: letting the accounting judge the strikes between `Strike` and
-     `StrikeLow` recovered nothing from the Pixel. 34d's dip took its Billie
-     Jean bass from 3 to 7 of 138; next the accounting's logistics refitted
-     with phone bass in their graded set, and the bass's own long-window plane
-     if the head stays unsure.
-   - **Lines on pop.** On the epic set's first bars a high melody and a
-     mid-register accompaniment interleave through both decoded lines, so the
-     melody voice plays the accompaniment's notes among its own, and the lead
-     rule cannot part them (`lead high` reads as `lead busy` there): two lines
-     cannot hold three voices. The third line, or a line per family once the
-     instrument model names one, is the close, judged on that set.
-   - **The live rip in the hands.** `RipStream` is the library's; a verb that
-     drives it over a file in stapes, then vif's Android app over the
-     microphone, a few seconds behind the music and `Final` once the whole has
-     been heard, measured against the offline rip of the same recording.
-   - **The wide test.** Its MusicNet truth and training labels held three of
-     an ensemble's parts until audio v0.13.0; the truths are rebuilt with every
-     part and the past runs re-scored, and the bars row joins the table.
-   How a round is judged from here: the wide table with its bars row, the
-   validation loss beside the held-out loss, the family's accuracy on NSynth's
-   held-out instruments with its unknown rate on a family held out whole,
-   Billie Jean's bass from the Pixel (right of 138) and the phone takes' low
-   rows, and `bench` on the rendered loops.
+3. Landed from the second audit, of 10 November (its doc holds the
+   measurements, vif's `tmp/audit2` its tools, the agent notes what it
+   learned): `--validate` picks a notes model's step by its strikes' F1 at the
+   decoder's bars; `rip` fits every line's voice, the voice a model heard its
+   first seed; and `corpus` takes every word its usage names.
+4. Next, from that audit and Lixen's answers to it. Four rules hold for all of
+   it:
+   - A number that picks anything counts a note right by its pitch and onset,
+     whatever line holds it. Within lines strummed guitar read .58 for .79 and
+     rounds were ranked by where they filed a note.
+   - No constant is turned by hand until a set scores well. It is fitted from
+     data by a stated procedure and checked on a condition left out of the
+     fit, or it is read from the recording itself, which the rip may loop
+     over: live the bars behind it, and the whole once it has ended.
+   - A line is a voice heard, as many as the recording holds and for as long
+     as each plays, never a register or a count assumed; and a voice is genes
+     the engine plays, with a family's name only where one is sure.
+   - What is decided of a part of a song, its tempo, meter and key, the
+     judge's level, its voices, holds within that part and is never carried
+     across a boundary into a part it has nothing to do with.
+   Code alone, a thread each, in parallel:
+   - **Notes by pitch and onset, and the search under a guard.** `Agreement`
+     counts every note as one line and matches a truth on the recording's own
+     clock without a map; `truth` leads with that row; `tune ... truth` scores
+     by it as the mean over the conditions its list names, refuses a set that
+     costs any condition more than its guard, keeps the frames it heard and
+     starts its pool at the thresholds it is improving. Nothing it writes is
+     installed before every condition has decoded under it: tuned on guitar
+     alone it gave solo guitar .06 and took .02 to .04 from the pianos, the
+     phones and MusicNet.
+   - **Glides.** The corpus labels each note's offset from its cell's centre
+     along its length and generated parts glide; a cents head on the notes
+     model; the decoder joins two cells where they name one frequency and
+     keeps a step that lands. vocadito stands at .69 under a ceiling of .77 to
+     .90, and its truth holds 241 legato steps a merger by adjacency would eat.
+   - **The stream read from outside, and `live`.** `RipStream` gives the frames
+     it has heard and its open bars as last decoded; `live` drives it over a
+     file and measures it against the offline rip.
+   - **Each frame once.** A forward in `transformer` that runs a new frame
+     through each layer once and equals the pass over the whole, and a cheaper
+     GELU: the stream runs both models three times over, and the GELU is 29%
+     of a rip.
+   Then, each waiting on recordings, on a thread above or on a design agreed:
+   - **The voice of every note.** Heard per pitch cell on the notes model, not
+     per frame: a family, a wave and the genes of what plays that pitch,
+     taught on the engine's own voices and on real notes the fit has labelled,
+     so a note of an instrument with no name still has a voice the engine
+     plays. `unknown` is no class: a note has no name where no family's
+     posterior reaches what a family held out of training reaches. The frame
+     model keeps the drums, the onsets and the beat, and is judged by what its
+     raw planes add to a note's voice: its attack, its noise, the room.
+   - **Lines by voice.** Notes gather into lines by their voices and their
+     continuity, a line opening when a voice enters and closing when it
+     stops: first inside the three lines a rip holds today, then the rip, the
+     song and the game with as many as were heard. Pop's interleaved lines, a
+     solo cello filed on two and a guitar's notes on a bass line wait on it.
+   - **The judge.** 78 in a hundred of the notes missed on strummed guitar
+     have a strike over the bar, and no bar or rule returns them at a fair
+     price. The accounting judges every strike over a half, a ringing pitch
+     included, its evidence weighed against the part of the song it is in,
+     its logistics fitted on the renders, GuitarSet's training players, the
+     takes and snapped MusicNet, and accepted only where each condition left
+     out of the fit scores within its spread of the fit that had it. A
+     recording adapts here and nowhere else: the refit measures first whether
+     a second pass earns its place, the evidence read against the recording's
+     own sure notes, live the reading carried over the bars behind. A small
+     learned stage takes the same seat if that evidence cannot part them. The
+     decoder then says what it kept and dropped, the live view's last read.
+   - **Sections.** A recording is read in parts, a boundary where tempo,
+     density, level or harmony change by more than they vary inside a part;
+     tempo, meter, phase and key are decided a part at a time, in the stream
+     again at every bar until two decisions agree, the bars after the last
+     agreed one provisional.
+   - **The live rip in the hands.** stapes in vif's Android app over the
+     microphone, the stack shown as it works: the spectrum, the planes the
+     models are given, the heads, the judge's verdicts, the grid, and the
+     bars in a compact lane that a line or a part filters.
+   Put off: a second piece of music under the first, which wants the judge to
+   follow instruments as it follows notes; and the phone's bass, where the bar
+   is not the lever and 34d's dip is one run.
+   How a round is judged from here: each set by pitch and onset against its
+   own spread (.01 on the renders, the clean take, MusicNet and the mean, .02
+   on the phones and guitar, .03 on vocadito), a pair sharing all but the one
+   change; the bars row; the strikes' F1 on a validation corpus with a
+   condition a kind; vocadito's fragments, wrong cells and repeats with the
+   legato steps kept; each family's recall on NSynth's held-out instruments
+   and the rip's voice over the fit's distance there (2.3 now); Billie Jean's
+   bass and kicks, clean and from the Pixel; and `bench`.
    Dropped by measurement: padding or mirroring a recording's edges (the
    strike head at a loop's first frame scores as mid-song; silence before it
-   and the mirror both cost); more width (34a); soups of rounds; and rounds of
-   one recipe plus one augmentation judged by the mean, which the per-set
-   noise of a single run swallows.
-4. Then: the rip on Android under the mobile budget, and the weights shipped as
-   data with the `rip.toml` `tune` wrote for them.
+   and the mirror both cost); more width (34a); soups of rounds; rounds of one
+   recipe plus one augmentation judged by the mean; a step picked by the
+   validation loss, most of which is a head Go never reads; a `rip.toml`
+   tuned on one instrument; `strike_again` or `strike_low` moved by hand for
+   a set, each measured to trade one set for another; and a recording's
+   thresholds searched against `Fidelity`, which puts no price on a wrong
+   note (a third of a right one's worth to it) and so ranks a recording's
+   decodes at chance against their truth: 54 in a hundred of the pairs .02
+   apart in F1, over 91 recordings under eleven threshold sets.
+5. Then: the weights shipped as data with the `rip.toml` they were judged
+   under.
 
 ## 8. Measured on the sample recording
 

@@ -169,22 +169,23 @@ front-end seam. What remains, in the design's order:
 - Affected files: `tune.go` (`corpus`), `tool/rip-train`, `lixenwraith/audio`
   (`ripmodel`, `rip.go`)
 
-The frame model's job after the audit is timbre ([Rip design
-§7](rip-design.md#7-plan)): per frame a family with an unknown class, the genes,
-the drums and the onset from the raw planes. `corpus` labels each event's family,
-the trainer has the family head and `RipFrames.Family` reads it ([Rip training
-§3 and §5](rip-training.md#3-the-labels-loop_nnnjson-and-corpusjson)). What
-remains: the corpora on disk exported again, all written before `family`;
-unknown's bar, set by a calibration run with a family held out
-(`--family-holdout`); the family read by the voice fit's seeds, the decoders'
-rules and the song's instruments; and one round, judged on E-GMD's kits, Billie
-Jean's kicks clean and from the Pixel, and the family's accuracy on NSynth's
-held-out instruments with its unknown rate on an instrument held out whole.
-Before the round: `unknown` is the largest class the corpora label (a third of
-corpus 17's frames, every engine voice far from the bank), the head names the
-highest note's family alone (bass on 2.6% of frames, so never a lower line),
-voice, strings and winds are 2 to 7% of frames under an unweighted loss, and no
-corpus is rendered from NSynth's held-out instruments to judge it on.
+What plays is heard per pitch, on the notes model, from the first round ([Rip
+design §7](rip-design.md#7-plan)): a family, a wave and the genes of each pitch
+cell's note, so that every note has a voice the engine plays and a name only
+where one is sure. `corpus` labels each event's family and, for the engine's
+notes, its wave and genes; the frame model has a family head a frame, which
+names the highest note alone (the bass on 2.6% of corpus 17's frames, so never
+a lower line) and is taught `unknown` on a third of them, every engine voice
+far from the bank. What remains: the heads a cell and their reading into a
+note; an engine voice far from the bank taught as `synth`, and no name where no
+family's posterior reaches what a family held out reaches (`--family-holdout`);
+real notes labelled by the fit, an instrument of NSynth's at a time; the frame
+model's planes as context to those heads, measured as a pair; and the round,
+judged on NSynth's held-out instruments by each family's recall a note and the
+rip's voice over the fit's distance (2.3 now), with E-GMD's kits and Billie
+Jean's kicks, clean and from the Pixel, unmoved. Then lines by voice: notes
+gathered by their voices and their continuity, first inside the three lines a
+rip holds, then as many as were heard, through the song and the game.
 
 ### A live rip
 
@@ -200,7 +201,11 @@ rip of the same recording, the measurement the Android app's microphone mode
 by a scratch tool through 12a and 32a on twelve recordings: the stream has 95
 in a hundred of the offline rip's notes and its bar grid on three recordings,
 tempo, meter and phase being held from the first six bars, at three times the
-offline cost.
+offline cost. Decided since: the stream gives the frames it has heard and its
+open bars, and a forward that runs each frame once brings its cost to the
+offline rip's; then a recording is read in sections, tempo, meter, phase and
+key decided a part at a time and again at every bar until two decisions agree,
+nothing carried across a boundary between two different parts of a song.
 
 ### Close the rip's loop
 
@@ -216,7 +221,8 @@ rip are in place; what remains:
    `Fidelity` against the recording's own frames; what it does not yet move is
    a step's position or length or the drum part, and a note the front end
    never heard it cannot add. Measure its convergence on rendered loops whose
-   truth is known.
+   truth is known, and whether the notes it inserts are the truth's:
+   `Fidelity` puts no price on a wrong note ([rip design](rip-design.md) §7).
 2. Matching by reconstruction: a bar's distance to a member as the rip of the
    member's render against the bar, in place of `BarDistance`, with `Memoize`
    paying for each render once; measure it against the mechanical grouping.
@@ -242,10 +248,14 @@ rip are in place; what remains:
    few dozen such pairs would set the weights of `Fidelity`'s three terms and
    the lead rule's default by what ears prefer rather than by hand.
 
-9. A rip's voice from what was heard: the voice heads give nearly the mean of their training
-   genes on real recordings, and the wave head a saw through a phone, so a rip plays each register
-   on a modal bank at those genes, its fade set from its notes. The smallest close: a head trained
-   on the instrument alone, or a fit on a few genes against the recording's own fade and brightness.
+7. A rip's voice from what was heard: the voice heads give nearly the mean of
+   their training genes on real recordings and the wave head a saw for
+   anything bowed, blown or sung, so `rip` fits every line and the heard voice
+   is its first seed. What remains is the voice of every note (the
+   instrument model, above) and a distance that does not favour a dark voice.
+8. Put off: a second piece of music under the first, which the rip
+   transcribes with it (a third to a half more notes); it wants the judge to
+   follow instruments as it follows notes.
 
 ## Files and banks
 

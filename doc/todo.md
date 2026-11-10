@@ -283,6 +283,22 @@ only the high-quality tonals from `audio/bank`, so what stapes plays and
 exports stops moving with what vif ships; the rule that stapes embeds no files
 then names that folder.
 
+### Save a pattern document as its author wrote it
+
+- Priority: P3
+- Affected files: `session.go`, `cmd_doc.go`, the library's `patternfile.go`
+
+A pattern document may define macros and invoke them, as the shipped bank does
+([toml's Macros](https://github.com/lixenwraith/toml#macros)). `load` reads it
+expanded, so `save pattern` writes every note out: the bank's 66 KB in 2904
+lines comes back as 172 KB in 15348, its macros and comments gone, and a file a
+person wrote is no longer theirs to read once stapes has saved it. Two ways
+close it. The smaller writes back only the entries a session changed and keeps
+the rest of the file as written, which toml's `Document` does for a key but not
+yet for an entry of an array of tables. The larger folds an entry back into the
+document's own macros where its tracks match a body: matching a tree against a
+template, and `each` read backwards into its lists.
+
 ## The session
 
 ### Keep the slots through `music reset`

@@ -79,7 +79,8 @@ front-end seam. What remains, in the design's order:
    by hand. Towers (7d: no gain for 43% more weights) are tried again once the
    heads compete with the strike head. For a rip of live music: a bench of the
    loops through a phone mic, a room and crowd noise at 20 to 0 dB, the same
-   chain in the corpus, and a rip over a moving window. Also: the fit gave Für Elise's bass a non-piano voice, with
+   chain in the corpus, and the live rip in the hands (`RipStream` is the library's; its host is
+   vif's Android app, and a verb over a file in stapes the step before it). Also: the fit gave Für Elise's bass a non-piano voice, with
    [vif#989](https://github.com/lixenwraith/vif/pull/989)'s drive trap under it. Then: real recordings with their notes in the
    corpus (item 1: `corpus <dir> from` writes E-GMD's, `train.py --mix` mixes
    them in; still lacking a held-out score for a `from` corpus, E-GMD's ET
@@ -135,9 +136,10 @@ front-end seam. What remains, in the design's order:
    of which were cut. The model path's thresholds (`strike`, `strike_low`,
    `strike_again`, `release`, `voicing`) were swept by hand per weight file;
    `tune ... truth <list>` searches them through the model, each recording
-   heard once, by the pooled note F1: run after every round on a real
-   validation list, which is still to gather, it is the smallest
-   close ([Rip design §7](rip-design.md#7-plan)). A bar-phase score belongs
+   heard once, by the pooled note F1: run after every round on the real
+   validation list (`~/data/rip/val-list.tsv`, GuitarSet's player 04; the
+   MusicNet pieces join it once their audio is on disk again), it is the
+   smallest close ([Rip design §7](rip-design.md#7-plan)). A bar-phase score belongs
    beside it: the note scorer's time map never sees a bar line, and the rip's
    lines fall within an eighth of a bar of GuitarSet's downbeats on 72% of
    them after audio v0.8.9, 63% before. When `tune ... truth` scores the bars
@@ -176,16 +178,14 @@ held-out instruments with its unknown rate on an instrument held out whole.
 ### A live rip
 
 - Priority: P2
-- Affected files: `lixenwraith/audio` (`rip.go`, `ripmodel`), the root package,
-  vif's Android app
+- Affected files: `cmd_audio.go`, `command.go`, vif's Android app
 
-A rip that follows the music as it plays ([Rip design §7](rip-design.md#7-plan)):
-blocks of samples in, the PCEN state carried across them, the model over a
-window with half a second of look-ahead, the decoders over the last bars with
-the earlier ones frozen, bars out two behind the sound, and the whole recording
-ripped again at the end when the listener asks. The smallest close: a `RipStream`
-in the library that yields bars, measured against the offline rip of the same
-recording for the bars it froze.
+The library follows a recording as it plays (`RipStream`, audio v0.14.0: blocks
+of samples in, each bar frozen once two follow it from the sixth bar on, `Final`
+the whole rip at the end). What remains is a host: a verb that drives the stream
+over a file in blocks and reports how its frozen bars differ from the offline
+rip of the same recording, the measurement the Android app's microphone mode
+(vif's todo) is then judged by ([Rip design §7](rip-design.md#7-plan)).
 
 ### Close the rip's loop
 

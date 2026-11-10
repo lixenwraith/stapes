@@ -59,6 +59,12 @@ an entry here that names one links there.
 **bend** (also: glide, cents head) — A step's `bend`, the semitones its pitch reaches by its end from `bend_at`, a share of its length; the notes model's cents head labels it, [Rip design §7](rip-design.md#7-plan).
 
 **instrument model** (also: family head, unknown) — The frame model's role after the audit: per frame a family with an unknown class, the genes, the drums and the onset from the raw planes, [Rip design §7](rip-design.md#7-plan); [todo](todo.md#the-instrument-model). The corpus labels each event's **family** and the trainer's family head learns it ([Rip training §5](rip-training.md#5-the-targets)); no decoder reads it yet.
+**live rip** (also: `RipStream`, `Bars`, `Close`, `Final`, frozen bar) — The library's rip that follows a recording as it plays, each bar frozen once two follow it from the sixth bar on, `Final` the whole rip afterwards, [Rip design §7](rip-design.md#7-plan); the host to come is vif's Android app.
+
+**validation corpus** (also: `--validate`, `~/ripcorpus-val`) — Recordings none of the tests hold (GuitarSet's player 04, 19 MusicNet pieces), cut into fixed windows and scored every `--every` steps; the exported step is the best by that loss, [Rip training §8](rip-training.md#8-a-training-step); [Rip design §3](rip-design.md#3-learning).
+
+**further parts** (also: `RipNote.Further`, `MIDIScore.Further`, every-part row) — A MIDI file's parts past melody, under and bass: in the transcript and the labels since audio v0.13.0 and stapes v0.12.2, matched in the melody register or, under E3, the bass's; `truth` prints an every-part row.
+
 
 **PitchNet** (also: harmonic stack, `--pitchnet`, notes model, `ripnotes.bin`) — The rip's convolutions-only model, the same weights at every pitch, over both input planes stacked by harmonic, [Rip training §4 and §7](rip-training.md#7-the-model); `ripmodel.py`'s `PitchNet`. Its weight file, the **root**'s `ripnotes.bin`, gives the notes beside `ripmodel.bin`, [Rip training §9](rip-training.md#9-the-weight-file); audio's `ripmodel.NotesSpec`.
 

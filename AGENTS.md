@@ -94,6 +94,10 @@ it there in the same PR.
   on the same weights, and says whether the corpus bytes change (`corpus <dir> 24
   4 aug gen nowav` before and after, `diff -r`), and so whether a new round is
   needed.
+- Weights live in the main checkout's `weights/`, which git ignores and Lixen
+  backs up: a round's exported `.bin` files and its `.best.pt` are copied there
+  when it ends, and the installed pair with its `rip.toml` whenever it changes.
+  A weight file held only in a round's own folder is one disk from lost.
 
 ## Docs and commits
 

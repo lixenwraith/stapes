@@ -21,6 +21,8 @@ proves wrong or that a document now states, and link the document instead.
   loop's frames come from `stapes -s` over a script of `corpus <dir> 2 4`,
   about a minute; `corpus 8 4` plus sixty training steps of a width-32 model
   also take under a minute, enough to exercise the whole training path.
+- Build the binary from `./cmd/stapes`: `go build -o bin/stapes .` writes the
+  library's archive under that name, which then refuses to run.
 
 ## Tests that flake
 
@@ -130,6 +132,34 @@ proves wrong or that a document now states, and link the document instead.
 - The dictionary search (`dictionary.go`) rarely beats the greedy grouping it
   is seeded with under a Jaccard distance, which is expected, not a bug: the
   size term and the greedy pass apply the same pressure.
+- **A truth's lines are its file's, not the rip's.** `MatchNotes` pairs a note
+  only within its line, and a MIDI truth files notes by `ReadMIDI`'s rule: a
+  guitar's has no bass line, so the low strings the rip puts on its own count
+  as an extra and a miss each. GuitarSet's strummed clips read .58 that way and
+  .79 by pitch and onset within 100 ms, 982 of 1,395 "low extras" right notes;
+  MusicNet .61 and .71, its solo cello .47 and .77. `truth`, `tune ... truth`
+  and the wide table all count within lines: read a MIDI-backed set by pitch
+  and onset (`vif/tmp/audit2/lowline.py`, `score2`) before calling a change
+  on it real.
+- A truth on the recording's own clock (GuitarSet's) needs no time map, and
+  the matcher's, fitted from its in-line pairs, costs it: strummed guitar by
+  pitch and onset reads .72 through the map and .79 without.
+- With a model loaded `rip` fits no voice: every line arrives with one, modal at
+  the heads' mean genes, and `fitVoices` fits only a line that lacks one. By the
+  fit's own distance that voice was farther than the nearest bank voice in 32
+  of 37 lines (ten of NSynth's held-out instruments and five recordings) and
+  2.3 times as far as `fit` came; type `fit <name>` before judging how a rip
+  sounds. The distance favours a sparse, dark voice (it fitted modal to 32 of
+  the 37, a singer and a reed among them), so its choice of wave wants ears.
+- A miss is rarely a note the model never heard: on strummed guitar 78% of the
+  notes the rip misses have a strike over `strike` at their pitch within four
+  frames. No bar or rule returns them at a fair price, though: `strike_again`
+  at .7 brought back 44 for 130 more reported, the partial and within-a-tone
+  rules off about 30, the accounting off 43 for 323 at .03 off the mean of
+  twenty conditions. The head hears as many false strikes at that level, and
+  nothing after it tells the two apart. Print the strike head at the missed
+  notes (`vif/tmp/audit2/why-v0140`) before training for a miss, and try a
+  rule on every condition (`cond-v0140`) before moving it.
 
 ## Corpus and bench
 
@@ -172,6 +202,15 @@ proves wrong or that a document now states, and link the document instead.
   struck one's 65 to 82, which the cut's crossfade follows.
 - The bench's loops play no piano: a piano change moves no bench number, a bass
   change does.
+- `corpus <dir> from` writes a MIDI file's velocities as labels. GuitarSet's,
+  MusicNet's and the singing set's are one constant, which the velocity head
+  would learn as a fact about recordings: strip `vel` from such a corpus's
+  labels (`vif/tmp/round26/strip.py`) before a round reads it.
+- A score aligned to a recording is not a label to the frame. The notes model's
+  strike head peaks within a frame of the label on 98% of a rendered loop's
+  strikes, 80% of GuitarSet's (a frame early) and 36% of MusicNet's, spread
+  over 80 ms either way (`vif/tmp/audit2/offsets.py`), so a strike target a
+  frame wide teaches MusicNet's jitter and a loss there measures it.
 - A drum change is benched piece by piece without editing the tree:
   `stapes -config-sounds piece.toml -s bench.slab` overrides one sound of the
   built-in kit. The analysis hears a kick still ringing at 50 to 60 Hz as the bass
@@ -224,3 +263,47 @@ proves wrong or that a document now states, and link the document instead.
   fourth run slowed from 0.4 to 4 seconds a step under a rip and a test run,
   and the two-hour waiter on it timed out twice. Size a waiter by the run
   alone and expect to re-arm it, or follow the run by a reminder instead.
+- A run's noise differs by set: five rounds of one recipe (32a, 32c, 33a, 33c,
+  34c) spread .003 on the renders, the clean take and MusicNet, .005 to .008 on
+  the phone takes and guitar, .010 on vocadito and .003 on the mean of nine.
+  Two runs that differ in anything else are not a repeat: 34a against 34b,
+  once read as noise, is width, six spreads apart on the clean take.
+- A notes model's loss on recordings is mostly its onset head (57% on
+  GuitarSet's player 04, 68% on MusicNet), which Go never reads from it, and
+  over ten rounds it ranked them unlike their test sets; the strike head's
+  peaks at the decoder's bars ranked them as solo guitar's test player did
+  (Spearman .93), which is what `--validate` picks a notes model by. One
+  instrument's score trades against another's (the same peaks against
+  MusicNet, -.58), so validate on every kind of recording at once.
+- A checkpoint scores a third lower on recordings it trained on: 24b and 33b
+  mixed in GuitarSet's player 04 and the 19 MusicNet pieces before those became
+  `~/ripcorpus-val`, and 33b's validation loss reads 2.16 against 2.9 to 3.3.
+- `ripmodel.features` over a whole long recording overflows: its PCEN average
+  is one running sum over growing weights, past float64 near 24,000 frames
+  (284 s), and every frame after is NaN under a RuntimeWarning alone. Hear a
+  long recording in chunks with the trainer's 128 frames before each; a
+  training window never reaches it.
+- A model run over a whole recording in Python takes memory to match: 12a's
+  attention over ten minutes took 13 GB. Chunk it (3,584 frames with 256 of
+  context) and run any long job as a capped unit (`systemd-run --user -p
+  MemoryMax=...`), where running out stops the unit and not the session.
+- `tune ... truth` pays three CPU-minutes a candidate over the validation
+  list's 60 recordings after 25 minutes of hearing them, six hours for the
+  default 16 by 8, and keeps no frames between runs: tune on a third of the
+  list. Its score counts within lines and its list is guitar alone, so its
+  first run silenced the bass line (`strike_low` to .99): its own score rose
+  .608 to .670 and solo guitar .06 by pitch and onset, while the renders, the
+  clean take, the phones and MusicNet fell .02 to .04 and Billie Jean's bass
+  from 111 right to 93. Decode a tuned `rip.toml` over every condition
+  (`vif/tmp/audit2/cond-v0140`, frames kept on disk) before it ships; no change
+  of one bar from the hand-swept five gained the mean of twenty conditions.
+- The live rip's notes are the offline rip's (95 in a hundred over twelve
+  recordings through 12a and 32a) and its bars are not: tempo, meter and phase
+  hold from the first six bars, so the two agreed on three recordings. It costs
+  three times the offline rip, each model run three times over where the ear's
+  half-second steps overlap (`vif/tmp/audit2/live-v0140`); the exact GELU is
+  29% of either, and offline the notes model, not the frame model, is the
+  larger share (47% against 37%).
+- A tool that names its corpus in its source dies with the corpus: the edge
+  probe read corpus 16, deleted a day later. Take the corpus, the checkpoint
+  and the first loop as arguments.

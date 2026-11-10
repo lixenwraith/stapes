@@ -427,23 +427,24 @@ and the checkpoint earn their keep.
      solo cello filed on two and a guitar's notes on a bass line wait on it.
    - **The judge.** Nearly a quarter of the truth's notes are strikes over a
      half that the decoder drops; a right verdict on each of them and on each
-     reported note would score .96 by pitch and onset where the rip scores
-     .74 (427 recordings of five collections, none of them met by 32a). The
-     accounting's evidence does not reach that: its logistics fitted again on
-     those recordings, every strike over a half judged, score .739 on the
-     mean of conditions against .744. A small network on the heads around a
-     strike, beside that evidence, takes guitar from .73 to .84 with the
-     player left out of its fit, and on a collection it never met is level to
-     +.05, bar singing (.02 to .04 down) and a bass line under drums, which
-     it keeps only when its fit is the engine's own mixes. So the judge is a
-     small trained stage whose reach is its fit's breadth: fitted first on
-     the notes model in use, which needs no round, from every licensed
-     collection with truths, renders and the engine's mixes; refitted after
-     each round, reading the note's voice once notes carry one; and installed
-     only when no collection left out of the fit scores under the installed
-     rip by more than its spread, singing apart, which is reported and holds
-     no stage back. A recording is judged in one pass. The decoder then says
-     what it kept and dropped, the live view's last read.
+     reported note would score .96 by pitch and onset where the rip scores .74
+     (427 recordings of five collections; 32a had met thirty, vocadito's first
+     clips, in its singing corpus). The accounting's evidence does not reach
+     that: its logistics fitted again on those recordings, every strike over a
+     half judged, score .739 on the mean of conditions against .744. A small
+     network on the heads around a strike, beside that evidence, takes guitar
+     from .73 to .84 with the player left out of its fit, and on a collection
+     it never met is level to +.05, bar singing (up to .04 down) and a bass
+     line under drums, which it keeps only when its fit is the engine's own
+     mixes. So the judge is a small trained stage whose reach is its fit's
+     breadth: fitted first on the notes model in use, which needs no round,
+     from every licensed collection with truths, renders and the engine's
+     mixes; refitted after each round, reading the note's voice once notes
+     carry one; and installed only when no collection left out of the fit
+     scores under the installed rip by more than its spread, singing apart,
+     which is reported and holds no stage back. A recording is judged in one
+     pass. The decoder then says what it kept and dropped, the live view's
+     last read.
    - **Sections.** A recording is read in parts, a boundary where tempo,
      density, level or harmony change by more than they vary inside a part;
      tempo, meter, phase and key are decided a part at a time, in the stream

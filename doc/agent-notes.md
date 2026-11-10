@@ -176,7 +176,7 @@ proves wrong or that a document now states, and link the document instead.
 - **A judge's fit is read with a collection left out, never a recording.** A
   small network on the heads around a strike took guitar from .73 to .84
   with the player left out and to .79 with GuitarSet left out; singing lost
-  .02 to .04 unmet. The accounting's logistics refitted on 427 recordings
+  up to .04 unmet. The accounting's logistics refitted on 427 recordings
   gained nothing, and no second pass over a recording did. The frame model's
   drum onsets and the note's length added to the network's input moved no
   collection by .015 (`vif/tmp/audit2/README.md`, the judge's tools).
@@ -184,10 +184,13 @@ proves wrong or that a document now states, and link the document instead.
   the rip hears as wrong: read it by bass notes right (111 of 138 clean). A
   judge fitted on recordings, which hold no drums, kept 49 to 76 of them;
   fitted on the engine's mixes alone, 102.
-- 32a trained on no pitched recording but VocalSet (its log names corpora 15,
-  14 and 11, VocalSet and E-GMD): GuitarSet, MusicNet, vocadito and the takes
-  are unmet by it. A round that trains on one of them takes it out of every
-  held-out reading, a judge's fit included.
+- 32a trained on vocadito's clips 1 to 30: its singing corpus
+  (`~/ripcorpus-vocal`) holds them beside VocalSet, 30 loops of 2,346, which
+  a look at every fiftieth label missed. Search every label's `source` before
+  calling a set unmet. GuitarSet, MusicNet, vocadito's clips 31 to 40 and the
+  takes are unmet by it (its log names corpora 15, 14 and 11, the singing
+  corpus and E-GMD). A round that trains on one of them takes it out of
+  every held-out reading, a judge's fit included.
 - **A full track only measures.** Billie Jean, the pop set and the piano
   takes are never in a corpus or a fit's list: no licence covers training on
   them (AGENTS, Data). The audit's scratch fits of a judge held Billie Jean's

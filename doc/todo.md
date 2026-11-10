@@ -162,6 +162,15 @@ front-end seam. What remains, in the design's order:
    voices for every line of both recordings. A plucked voice (`string`) with
    a doubled, beating course, and the fit's samples cleared of the other
    lines (item 4 of the loop below), measured by the floor the fit reaches.
+9. The judge as a trained stage ([Rip design](rip-design.md) §7): a verb that
+   writes a list of truth-backed recordings as rows (each reported note and
+   each strike over a half with the accounting's evidence, the heads around
+   it and whether a truth note answers it), the fit in `tool/rip-train`, and
+   the weights read by audio beside the models'. Its fit takes licensed
+   collections, renders and the engine's mixes, never a full track, and is
+   read with a collection left out, singing reported and never a gate. Open
+   once one is trained: a bass line under drums when recordings are in the
+   fit.
 
 ### The instrument model
 

@@ -151,11 +151,15 @@ proves wrong or that a document now states, and link the document instead.
   2.3 times as far as `fit` came; type `fit <name>` before judging how a rip
   sounds. The distance favours a sparse, dark voice (it fitted modal to 32 of
   the 37, a singer and a reed among them), so its choice of wave wants ears.
-- A miss is the decoder's more often than the model's: on strummed guitar 78%
-  of the notes the rip misses have a strike over `strike` at their pitch within
-  four frames, the restrikes under a ring mostly between it and `strike_again`.
-  Print the strike head at the missed notes (`vif/tmp/audit2/why`) before
-  training for a miss.
+- A miss is rarely a note the model never heard: on strummed guitar 78% of the
+  notes the rip misses have a strike over `strike` at their pitch within four
+  frames. No bar or rule returns them at a fair price, though: `strike_again`
+  at .7 brought back 44 for 130 more reported, the partial and within-a-tone
+  rules off about 30, the accounting off 43 for 323 at .03 off the mean of
+  twenty conditions. The head hears as many false strikes at that level, and
+  nothing after it tells the two apart. Print the strike head at the missed
+  notes (`vif/tmp/audit2/why-v0140`) before training for a miss, and try a
+  rule on every condition (`cond-v0140`) before moving it.
 
 ## Corpus and bench
 

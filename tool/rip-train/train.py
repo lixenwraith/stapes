@@ -401,17 +401,45 @@ def validation(loops, window: int, channels: int):
     return mels, tgs
 
 
-def evaluate(model: ripmodel.RipModel, mels, tgs, device: str) -> dict:
-    """the mean of the losses over the held-out windows, the model's weights untouched"""
+# A notes model's strikes as the decoder reads them: a peak over the bar a strike starts a note at, the higher bar
+# under E3, right when a labelled strike of its pitch lies within STRIKE_REACH frames
+STRIKE_BARS, STRIKE_LOW, STRIKE_REACH = (0.7, 0.9), 52, 4
+
+
+def struck(logits: torch.Tensor, strike: torch.Tensor, valid: torch.Tensor, low: int) -> torch.Tensor:
+    """a window's peaks right, peaks, labelled strikes heard and labelled strikes, from [frames, pitches] each"""
+    p = torch.sigmoid(logits)
+    bar = torch.where(torch.arange(p.shape[1], device=p.device) < low, STRIKE_BARS[1], STRIKE_BARS[0])
+    peak = (p >= bar) & (p >= F.max_pool1d(p.T[None], 5, 1, 2)[0].T) & (valid[:, None] > 0)
+    first = (strike > 0) & (F.pad(strike[:-1], (0, 0, 1, 0)) == 0)  # a mark's first frame; the strike is the next
+    onset = F.pad(first[:-1], (0, 0, 1, 0))
+    near = lambda x: F.max_pool1d(x.float().T[None], 2 * STRIKE_REACH + 1, 1, STRIKE_REACH)[0].T > 0
+    return torch.stack([(peak & near(onset)).sum(), peak.sum(), (onset & near(peak)).sum(), onset.sum()])
+
+
+def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None = None) -> dict:
+    """the mean of the losses over the held-out windows, the model's weights untouched;
+    with low, the first pitch over the strikes' low bar, the strikes' F1 beside them"""
     model.eval()
     sums: dict = {}
+    counts = torch.zeros(4, dtype=torch.long, device=device)
     with torch.no_grad():
         for mel, t in zip(mels, tgs):
-            l = losses(model, mel.to(device), {k: v.to(device) for k, v in t.items()})
+            mel, t = mel.to(device), {k: v.to(device) for k, v in t.items()}
+            l = losses(model, mel, t)
             for k, v in l.items():
                 sums[k] = sums.get(k, 0.0) + v.item()
+            if low is not None:
+                y = model(mel)[..., model.cfg.slice("strike")]
+                for i in range(len(y)):
+                    counts += struck(y[i], t["strike"][i], t["valid"][i], low)
     model.train()
-    return {k: v / max(len(mels), 1) for k, v in sums.items()}
+    out = {k: v / max(len(mels), 1) for k, v in sums.items()}
+    if low is not None:
+        right, peaks, heard, given = (float(c) for c in counts)
+        precision, recall = right / max(peaks, 1), heard / max(given, 1)
+        out["struck"] = 2 * precision * recall / max(precision + recall, 1e-9)
+    return out
 
 
 STRIKE_POS = 20.0  # a strike's weight against the frames without one
@@ -499,7 +527,7 @@ def main() -> None:
     ap.add_argument("--init", default="", help="start from this .pt's model weights, without its optimizer state or step: a training round's common start; a --checkpoint present wins")
     ap.add_argument("--every", type=int, default=200, help="steps between checkpoints and the held-out and validation scores")
     ap.add_argument("--holdout", type=int, default=-1, help="loops held out of training and scored every --every steps; the step that scores best is what --out gets (default a tenth, none under five loops)")
-    ap.add_argument("--validate", default="", help="a corpus of recordings (corpus <dir> from <list>) cut into fixed windows and scored every --every steps; the step that scores best on it is what --out gets, in place of the held-out loops' best")
+    ap.add_argument("--validate", default="", help="a corpus of recordings (corpus <dir> from <list>) cut into fixed windows and scored every --every steps; the step that scores best on it is what --out gets, in place of the held-out loops' best: by the decoders' loss, a notes model by its strikes' F1 at the decoder's bars")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
     global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT
@@ -593,15 +621,18 @@ def main() -> None:
         print(f"{len(drums)} recordings of {sum(len(m) for m, _ in drums)} frames laid over {len(drumless)} loops with no drums, {over_share:.0%} of the windows")
     t0 = time.time()
 
+    low = STRIKE_LOW - manifest["min_midi"] if args.pitchnet else None
+
     def scored(name: str, mels, tgs):
-        """the decoders' loss over fixed windows, and the line that reports it"""
-        v = evaluate(model, mels, tgs, args.device)
+        """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them"""
+        v = evaluate(model, mels, tgs, args.device, low)
         # the decoders read the onset, drum, pitch, voicing, strike and release
         # heads; the wave, voice, velocity and family heads say how a note is
         # played and by what, and memorize the corpus's, so they do not pick the step
         v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"]
-        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders"))
-        return v["decoders"], f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f} ({parts})"
+        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck"))
+        f1 = f", strikes' F1 {v['struck']:.3f}" if "struck" in v else ""
+        return v["decoders"], v.get("struck"), f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f}{f1} ({parts})"
 
     def weights() -> dict:
         return {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}
@@ -610,15 +641,18 @@ def main() -> None:
         nonlocal best_loss, best_step, best_state, validated
         held_loss = None
         if val_mels:
-            held_loss, line = scored("held-out", val_mels, val_tgs)
+            held_loss, _, line = scored("held-out", val_mels, val_tgs)
             if held_loss < best_loss:
                 best_loss, best_step, best_state = held_loss, step, weights()
                 line += " (best)"
             print(line, flush=True)
         if check_mels:
-            loss, line = scored("validation", check_mels, check_tgs)
-            if loss < validated[0]:
-                validated = (loss, step, weights(), held_loss)
+            # a notes model's loss on recordings is mostly its onset head, which no decoder
+            # reads from it, and ranks rounds unlike their note scores; its strikes' F1 does
+            loss, f1, line = scored("validation", check_mels, check_tgs)
+            key = loss if f1 is None else -f1
+            if key < validated[0]:
+                validated = (key, step, weights(), held_loss)
                 line += " (best)"
             print(line, flush=True)
 
@@ -696,7 +730,8 @@ def main() -> None:
     if args.validate and validated[2] is not None:
         model.load_state_dict(validated[2])
         beside = f", held-out {validated[3]:.3f} there" if validated[3] is not None else ""
-        print(f"best validation decoders' loss {validated[0]:.3f} at step {validated[1]}{beside}; exporting that")
+        what = f"strikes' F1 {-validated[0]:.3f}" if args.pitchnet else f"decoders' loss {validated[0]:.3f}"
+        print(f"best validation {what} at step {validated[1]}{beside}; exporting that")
     elif best_state is not None:
         model.load_state_dict(best_state)
         print(f"best held-out decoders' loss {best_loss:.3f} at step {best_step}; exporting that")

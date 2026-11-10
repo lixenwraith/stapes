@@ -241,8 +241,8 @@ offline (`song <name> <file.wav>`).
   neither a gene, kept by the augmentation when it draws voices near a
   registered one. The step exported is the best by `--validate`, a corpus of
   recordings none of the tests hold (`~/ripcorpus-val`: GuitarSet's player 04
-  and 19 MusicNet pieces), since the rendered loops' held-out loss stopped
-  predicting recordings at round 32; `--family-holdout` leaves a family out
+  and 19 MusicNet pieces), a notes model's by its strikes' F1 there, since the
+  rendered loops' held-out loss stopped predicting recordings at round 32; `--family-holdout` leaves a family out
   for the run that sets unknown's bar; and `tune ... truth <list>` searches
   the decoders' thresholds against real recordings' truths through the loaded
   model, each heard once, writing the `rip.toml` that ships beside the weights.

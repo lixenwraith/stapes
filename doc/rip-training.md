@@ -463,7 +463,12 @@ decoders = onset + drums + pitch + 0.5 voicing + strike + release
 The last 400 loops are held out and scored every 1,000 steps, and the step with the best
 `decoders` score is what gets written, unless `--validate` names a corpus of recordings
 (`corpus <dir> from`): cut into windows the same way and scored beside them, its best
-`decoders` step is written, the held-out score printed beside it. The wave, voice,
+`decoders` step is written, the held-out score printed beside it. A notes model is
+picked there by its strikes instead: the strike head's peaks over the decoder's bars
+(0.7, and 0.9 under E3) against the labelled strikes within four frames, as an F1.
+Its loss on recordings is mostly its onset head (57% on GuitarSet, 68% on MusicNet),
+which no decoder reads from it, and ranked ten rounds unlike their note scores, where
+the strikes' F1 ranked them as solo guitar's test player did. The wave, voice,
 velocity and family heads don't choose it, because they memorize the corpus. A positive
 weight w shifts a head's scale: it scores a posterior p as wp / (wp + 1 - p), which is
 part of why thresholds belong to the weights (§10).

@@ -44,6 +44,30 @@ proves wrong or that a document now states, and link the document instead.
   the root package with ~24 race processes pinned to one CPU (`taskset -c 0`)
   to see one time out.
 
+## The race suite and CI
+
+- The suite takes 81 s plain and 20 minutes under the race detector on four
+  cores, 31 on CI's runner, which is 1.6 times slower. A test that renders or
+  hears audio runs 12 to 18 times slower raced, and 85% of that CPU is the
+  detector watching one goroutine's arithmetic; a light test costs 0.65 s
+  raced, a session's start and stop.
+- CI races the suite as six jobs (`.github/workflows/test.yml`): each lists the
+  tests, deals them heaviest first to the lightest of six shares, and runs its
+  own. `.github/race-seconds.txt` weighs the tests of five seconds and over and
+  any other weighs a second, so the list only balances: a test it does not name
+  runs all the same, and a name no test has is ignored. A new test that renders
+  or hears audio for a third of a second plain goes in at fifteen times its
+  plain seconds, until the list is measured again.
+- To measure it: `go test -race -count=1 -v . > raced.log`, twenty minutes,
+  then under the file's comment lines
+  `awk '/^--- PASS/ { gsub(/[()s]/, "", $4); if ($4 + 0 >= 5) printf "%.0f %s\n", $4, $3 }' raced.log | sort -k1,1nr -k2,2`.
+  More jobs than the suite's time over its heaviest test's gain nothing: that
+  test alone is five minutes on CI's runner.
+- Tests cannot run side by side in one process, so `t.Parallel` is out and a
+  job uses one of its runner's four cores: a session registers its sounds,
+  voices and patterns in the audio module's process-wide registries, which
+  `teardown` resets.
+
 ## Verbs, words and documents
 
 - `slot` is asynchronous: the mixer applies the pattern a tick later and

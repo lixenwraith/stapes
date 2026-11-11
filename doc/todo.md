@@ -455,3 +455,32 @@ bar, resets the sequencer, and that empties every slot, while the session's
 renders the old slots, and a slot's track mutes wait for their pattern to be put
 back. The fix is reset slotting the session's patterns again, or a sequencer
 reset that keeps them.
+
+## The tests
+
+### Take the race suite's time down
+
+- Priority: P2
+- Affected files: `stapes_test.go`, `.github/workflows/test.yml`,
+  `.github/race-seconds.txt`
+
+The suite takes half an hour under the race detector on CI's runner, which the
+workflow splits over six jobs of five minutes of tests each
+([agent notes](agent-notes.md#the-race-suite-and-ci)). What is left:
+
+- Tests that repeat a rip, a corpus or a search another test makes are to be
+  collapsed and their iterations cut. The weights are then measured again and
+  the jobs counted again, since a job is no shorter than the heaviest test.
+- Two splits were weighed and not taken, since each takes tests from the
+  detector. Racing the light tests alone and running every test plain: the 27
+  tests that render or hear audio for half a second skip under `-short`, and
+  the raced run is 113 s on four cores with the lightest test of each
+  goroutine stapes starts kept in it (the fit's and `tune`'s searches,
+  `corpus from`'s workers, the screen's long verbs), but a race only a heavy
+  test reaches goes unseen. Or that on a pull request and the whole raced
+  suite on main, which shows such a race after its merge.
+- A push to a branch with a pull request open runs the workflow twice, for the
+  push and for the pull request; `claude/*` in the push trigger is what tests
+  a branch before its pull request opens.
+- A job uses one core of four: tests run one at a time while a session
+  registers in the audio module's process-wide registries.

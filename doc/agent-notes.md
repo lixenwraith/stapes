@@ -33,6 +33,9 @@ proves wrong or that a document now states, and link the document instead.
   they can be computed from the audio branch's tree before the tag and are
   the tag's while a squash merge leaves that tree as it is; compute them
   again when the audio branch changes.
+- A cloud container holds no PyTorch: `make venv` installs the CPU build in
+  two minutes, and `tool/rip-train/.venv/bin/python3` runs the trainer and
+  `judge.py` from then on.
 
 ## Tests that flake
 
@@ -260,6 +263,41 @@ proves wrong or that a document now states, and link the document instead.
   takes are never in a corpus or a fit's list: no licence covers training on
   them (AGENTS, Data). The audit's scratch fits of a judge held Billie Jean's
   rows whenever another collection was left out; nothing from them is kept.
+- **`rows` knows a recording by its audio alone**: its files are named by
+  the first eight bytes of the WAV's SHA-256, the name `frames <dir>` starts
+  with. Two list lines over one WAV write one recording, under the first
+  line's truth and condition, and a truth corrected later is not read again
+  until the recording's `.json` is removed. A corpus directory is one
+  condition, so a share of loops left out is a second corpus under another
+  `seed`, or a list of the loops with their labels written as transcripts.
+- **A test's judge is `judgeBytes`**, a unit a layer whose hidden layers give
+  0 and whose output's bias is the logit of the odds named, so a stage rules
+  every row alike. It must name the notes weights: a test model's checksum is
+  its file's last eight bytes, which `ripmodel.Load` keeps as `NotesSum`; a
+  front end built by `ripmodel.New` has 0 there.
+- **The trainer's judge and audio's are held together by their odds.**
+  `judge.py` repeats byte for byte on CPU (three fits of one directory wrote
+  one file), and on audio's own rows of six left-out loops, 1,869 strikes,
+  the two sides' odds differ by at most 3.2e-07 with no verdict apart. A
+  scratch program rips a WAV under the root's judge with `Ripper.Strikes` and
+  `Rows` and dumps each strike's stage, odds and row; the file's layers
+  applied to those rows in NumPy give the other side. Redo it after any
+  change to the file, the row or either forward pass.
+- **A count from rows is near `truth`'s decode, not it.** Over 40 left-out
+  loops, 2,838 notes given, the installed scores read 423 right of 761 heard
+  from rows and 424 of 762 decoded by `truth` (F1 .235 and .236), and a
+  judge 740 of 1,028 and 759 of 1,059 (.383 and .390). Installed, the
+  difference is one loop's and one cause: the installed scores weigh the
+  candidates that stand in time order, and the read lists the strongest
+  strike of a pitch within `strike_gap`, which carries the verdict of the
+  candidates near it and is labelled at its own frame. Two candidates
+  returned 17 frames apart around one stronger strike are one row, and a
+  candidate returned eight frames after a stronger strike is a right note
+  whose row is labelled wrong, 104 ms from the truth's. Under a judge a
+  dropped strike is measured against the notes the judge kept, where its row
+  was written against those the installed scores kept, so some verdicts
+  differ. Read a fit by `truth` over the conditions left out, and use the
+  rows' count to see that a fit is sane.
 - Singing is the last to come: little truth, many kinds of voice. Report it
   beside every reading and hold no stage back on it.
 - Lixen's order of work: fix what is already known to help, train a little,
@@ -474,3 +512,14 @@ proves wrong or that a document now states, and link the document instead.
 - A tool that names its corpus in its source dies with the corpus: the edge
   probe read corpus 16, deleted a day later. Take the corpus, the checkpoint
   and the first loop as arguments.
+- **A judge's whole path runs in ninety minutes on four cores**, nearly all
+  of it the notes model: `corpus fit 360 4 aug gen` and `corpus held 40 4 aug
+  gen seed 2`, both with their audio; a frame model of width 64, two layers,
+  2000 steps (four minutes); a notes model (`--pitchnet`), 2500 steps (71
+  minutes, its strikes' held-out F1 .26); `rows` of the 400 loops (a minute
+  in four parts, 235 MB for 108,933 strikes); the fit (eight seconds); `rip`
+  and `truth ... timed` over the 40 left out, against their labels written as
+  transcripts (nine seconds a loop, most of it the voices' fit). It shows
+  that the path holds and nothing of a judge's worth: the loops left out are
+  the fit's own kind under another seed, and the model reports a seventh of
+  the truth's notes.

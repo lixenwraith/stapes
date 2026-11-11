@@ -223,7 +223,8 @@ front-end seam. What remains, in the design's order:
    - `rows` knows a recording by its audio's checksum, so a truth corrected
      after its rows were written is not read again: remove the recording's
      `.json`. The smallest close: the truth's checksum beside the rows.
-   - A count from rows reads apart from `truth`'s decode under the judge (the
+   - A count from rows reads apart from `truth`'s decode, by a note under
+     the installed scores and by .007 of F1 under a small run's judge (the
      trainer's README says why); audio's own open items are in
      [its todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#close-what-a-judge-leaves-open).
 10. A performance's character, generated: how loudness and timing move in the

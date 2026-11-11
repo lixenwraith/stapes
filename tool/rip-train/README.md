@@ -424,12 +424,30 @@ python3 tool/rip-train/judge.py --rows "$dir/rows" --leave-out guitar --out "$di
 - **Left out.** `--leave-out <condition>...` keeps conditions out of the fit
   and counts each by pitch and onset, as `truth`'s `notes` row counts, under
   the installed verdicts, under the judge's, and under a right verdict on
-  every row, which is what the rows could give at best.
+  every row, which is what the rows could give at best. A run of the path
+  alone, 360 rendered loops fitted on and 40 of another seed left out,
+  through models trained an hour on CPU, so it says nothing of a judge's
+  worth on recordings:
 
-  A count from rows is of the rows the installed scores left: under a judge
-  a dropped strike is measured against the notes the judge kept, and a truth
-  note may be answered by another strike, so `truth`'s decode of the same
-  recordings under the judge reads a little apart.
+  ```
+  108933 row(s) of 544 (version 1) read through the notes weights c2f75c44fd18b2e3; fitting on fit
+  reported: 6403 row(s), 0.527 of them right; loss a pass 0.697 0.672 0.611 0.509 0.466 0.436 0.420 0.405 0.393 0.383 0.378 0.376
+  dropped: 90773 row(s), 0.127 of them right; loss a pass 0.478 0.322 0.287 0.271 0.262 0.255 0.248 0.240 0.235 0.229 0.225 0.223
+  held: 40 recording(s), 2838 note(s) given, 1262 of them no strike answers; 11664 strike(s), 801 reported
+    installed  423 heard as given, given 2838, heard 761, F1 0.235
+    judge      740 heard as given, given 2838, heard 1028, F1 0.383
+    right      1576 heard as given, given 2838, heard 1580, F1 0.713
+  ```
+
+  A count from rows is near `truth`'s decode of the same recordings, and
+  `truth` is the reading. Those 40 loops decoded read 424 heard as given of
+  762 under the installed scores (F1 0.236) and 759 of 1059 under the judge
+  (0.390). Under the installed scores a strike listed is the strongest of its
+  pitch within `strike_gap`, and carries the verdict of the candidates near
+  it: two the scores returned around one stronger strike are one row, and a
+  returned note may start up to the gap from the strike its row is labelled
+  at. Under a judge a dropped strike is measured against the notes the judge
+  kept, where its row was written against those the installed scores kept.
 - **The file.** `--out` writes `ripjudge.bin`, which stapes loads from the
   root beside `ripnotes.bin`: `rip`, `truth`, `tune` and `live` then run under
   it, and the session and `stat` name it. It names the row's version and the

@@ -18,7 +18,8 @@ Where each part stands:
   `--cell`, `--dip`, `--ring`, `--bend`, `--dilations`, `--sung`, each event's family (`families`,
   the list's `family` cell, each note's program, every part of a file), the family head and
   `--family-holdout`, `--validate`, `tune ... truth`, a moving note's `cents`, `corpus ... glide`,
-  the notes model's cents head, `corpus ... labels` and a `from` list's `pitch` column.
+  the notes model's cents head, `corpus ... labels` and a `from` list's `pitch` column,
+  `rows`, `judge.py` and the root's `ripjudge.bin`.
 - **In no repository yet:** the phone take's scripts, which play, align and cut a
   recording of a known file, and the wide test's harness (vif's `tmp/round32`: `cmpn.sh`,
   `table.py`, the timed scorer) with the validation corpus's build (`tmp/audit/valbuild.py`).
@@ -35,6 +36,9 @@ Where each part stands:
 6. The best step is written as a weight file (§9).
 7. At a rip, Go computes the same planes, runs the file and hands the heads to the
    decoders (§10).
+8. Where a judge is fitted, `rows` writes every strike's row beside its label,
+   `judge.py` fits a network a stage on them, and the rip's accounting reads its
+   file (§13).
 
 ## 2. The frames: `loop_NNN.mel`
 
@@ -847,3 +851,107 @@ CORPUS=<corpus 11> PCEN=1 CHANNEL=<noise.npz>:0.5 OVER=<e-gmd corpus>:0.25 MIX=<
   recordings. `bench ... sampled <dir>` plays NSynth's held-out instruments.
 - **Pooling** counts every note once. A mean over recordings would give Für Elise's
   869 notes the weight of the others' 83.
+
+## 13. A judge's rows and file
+
+Which strikes of the notes model are notes is the accounting's verdict, and a judge
+rules in its place, a small network a stage over a strike's row ([Rip
+design](rip-design.md) §7). The trainer's [README](../tool/rip-train/README.md#a-judge)
+gives the procedure and [audio
+§9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)
+the row's layout, 544 `float32` in version 1. The samples here are of one small run,
+which shows the bytes and nothing of a judge's worth: 360 rendered loops fitted on
+and 40 of another seed left out, through a frame model and a notes model trained an
+hour on CPU.
+
+`rows <dir> from <list|corpus dir>` writes a directory. Its `rows.json` names the
+kind, and a directory holds one:
+
+```
+{"version":1,"row_version":1,"row_size":544,"notes":"c2f75c44fd18b2e3"}
+```
+
+`notes` is the checksum of the weights that give the notes, the last eight bytes of
+`ripnotes.bin` (§9's trailer) read as one little-endian number: `e3 b2 18 fd 44 5c f7
+c2` in the file. A recording is two files named by the first eight bytes of its
+audio's SHA-256. `43da6b61e655a6af.rows`, the first left-out loop's, is 663,688
+bytes, laid out as a loop's frames are (§2):
+
+```
+00000000  31 01 00 00 20 02 00 00 3b 26 41 be 4c 2f 6a 3f  1... ...;&A.L/j?
+00000010  3d 3b 66 3f 00 00 c0 40 cb f4 e1 bd ae 43 94 3f  =;f?...@.....C.?
+00000020  00 00 80 3f 61 78 44 bf 00 00 00 00 6a bf 8e be  ...?axD.....j...
+```
+
+```
+offset  bytes         field
+0       31 01 00 00   305 rows, a strike over a half each
+4       20 02 00 00   544 values a row
+8       3b 26 41 be   row 0, value 0, float32 -0.18862: the first of the eleven terms
+                      the installed score weighs, then the heads around the strike
+2184    ...           row 1
+```
+
+`43da6b61e655a6af.json` labels them, a strike a row in the same order:
+
+```
+{"source":".../held/loop_000.wav","condition":"held","given":97,"unanswered":73,
+ "strikes":[
+  {"frame":0,"midi":49,"reported":true,"right":false,"kept":true},
+  {"frame":1,"midi":83,"reported":false,"right":false,"kept":false},
+  {"frame":2,"midi":52,"reported":false,"right":false,"kept":false},
+  {"frame":2,"midi":64,"reported":false,"right":false,"kept":false},
+  {"frame":2,"midi":67,"reported":false,"right":true,"kept":false},
+  ...
+```
+
+- `source` is the recording as the list names it, shortened here, and `condition`
+  its list line's, or a corpus folder's name.
+- `given` is the truth's notes and `unanswered` those no strike answers, which no
+  verdict can return: 73 of 97 through this small model.
+- `reported` is the stage: a note the decoder reported, else a strike it dropped.
+  `held`, where present, is a held note the accounting keeps unjudged, which a fit
+  leaves out of the reported stage.
+- `right` is the label: a truth note of the strike's pitch starts within the
+  matcher's window of it, each truth note answering one strike, the nearest, a
+  reported note before a dropped strike. The fifth strike above is a dropped one a
+  truth note answers.
+- `kept` is the installed verdict. Of this loop's 305 strikes 12 are reported, all
+  kept and none right, and 24 are right, each a strike the decoder dropped.
+
+`judge.py --rows <dir>... --leave-out <condition>... --out ripjudge.bin` fits a
+network a stage and writes the file audio's `LoadRipJudge` reads, 1,257,008 bytes at
+hidden layers of 256 and 64:
+
+```
+00000000  56 49 46 4a 01 00 00 00 01 00 00 00 20 02 00 00  VIFJ........ ...
+00000010  00 01 00 00 40 00 00 00 e3 b2 18 fd 44 5c f7 c2  ....@.......D\..
+00000020  f7 23 e9 be c2 31 53 3f a2 d9 4b 3f 6e 49 97 3f  .#...1S?..K?nI.?
+```
+
+```
+offset   bytes                     field
+0        56 49 46 4a               magic "VIFJ"
+4        01 00 00 00               version 1
+8        01 00 00 00               row version 1
+12       20 02 00 00               row size 544
+16       00 01 00 00               first hidden layer 256
+20       40 00 00 00               second hidden layer 64
+24       e3 b2 18 fd 44 5c f7 c2   the notes weights' checksum, as rows.json names it
+32       f7 23 e9 be               the reported stage: mean, 544 floats, the first -0.45535
+2208     f7 9b 3b 3f               spread, 544 floats, the first +0.73285
+4384     7b da bb bc               w1, 256 x 544, an output's inputs together
+561440   c0 76 08 3d               b1, 256
+562464   f3 4f 79 3d               w2, 64 x 256
+628000   6d 9b 87 3a               b2, 64
+628256   49 17 ce bd               w3, 64
+628512   62 ab c4 bd               b3, 1
+628516   34 dd de bf               the dropped stage, the same eight again
+1257000  54 9f 73 30 22 52 75 c3   FNV-1a 64 of every byte before it
+```
+
+A stage's odds for a row are the sigmoid of `w3 · relu(w2 · relu(w1 · (row - mean) /
+spread + b1) + b2) + b3`, in `float32`, and a strike stands at a half or more. The
+file names the row and the notes weights it was fitted on, so audio refuses it beside
+any other: new notes weights mean new rows and a new fit. In the stapes root the file
+is `ripjudge.bin`, beside `ripnotes.bin`.

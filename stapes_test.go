@@ -2896,9 +2896,9 @@ func TestRipFitsVoicesAndCompressesToASong(t *testing.T) {
 			}
 		}
 	}
-	// two bars at 100 bpm: the shortest loop the rip takes, since every judge
-	// of the refinement renders and hears the whole song
-	buf, err := s.eng.RenderMusic(slots, 100, audio.Meter{}, 2, audio.DefaultRootNote, audio.ScalePhrygian, nil, 1)
+	// two bars at 110 bpm, little over the four seconds a rip takes at least,
+	// since every judge of the refinement renders and hears the whole song
+	buf, err := s.eng.RenderMusic(slots, 110, audio.Meter{}, 2, audio.DefaultRootNote, audio.ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

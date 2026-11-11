@@ -262,7 +262,10 @@ Left open by what landed, each with the option not taken:
 
 - The measure is one family's reach at one quantile (`SURE`, 0.95), and the
   file that ships takes it from another run of its recipe (`--sure`), since a
-  run that teaches every name has no family left to measure with. Not taken:
+  run that teaches every name has no family left to measure with. It bounds
+  how often a family never taught is named, a note in twenty, and not how
+  often a name given is right: on 720 loops for 3,000 steps 2% of the taught
+  families' notes pass it and half of those are named right. Not taken:
   each family held out in turn and the highest reach carried, a run a family;
   and the reach of notes outside the eight families on a validation corpus,
   NSynth's mallets and organs, which would measure the shipped run itself and

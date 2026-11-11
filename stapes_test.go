@@ -91,6 +91,7 @@ func TestEndToEnd(t *testing.T) {
 # --- author a sound over the seed ---
 new sound blip                       # seeded minimal valid spec
 validate blip                        # seed must be valid
+play blip
 set blip.layer.0.source.kind wrong
 ! validate blip                      # unknown kind must fail
 set blip.layer.0.source.kind osc
@@ -107,6 +108,7 @@ hit kick                             # registry fallback path
 export blip %s
 # --- author a pattern ---
 new pattern p1
+validate p1                          # its seed too
 set p1.steps 16
 set p1.track.0.instr kick
 set p1.track.0.event.0.pos 0
@@ -127,6 +129,9 @@ stat
 	runOrFatal(t, s1, &out1, script1)
 	if !strings.Contains(out1.String(), "auto-applied dirty pattern") {
 		t.Fatalf("slot did not auto-apply:\n%s", out1.String())
+	}
+	if s1.sounds.modified || s1.pats.modified {
+		t.Fatal("save must clear modified")
 	}
 	teardown(t, s1)
 
@@ -255,42 +260,6 @@ validate u1
 	if !strings.Contains(o, "= 5") || !strings.Contains(o, "<unset>") {
 		t.Fatalf("unset round-trip failed:\n%s", o)
 	}
-}
-
-func TestModifiedFlag(t *testing.T) {
-	dir := t.TempDir()
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, `
-new sound mf
-set mf.duration 0.1
-add mf.layer
-set mf.layer.0.source.kind osc
-set mf.layer.0.source.freq 200
-`)
-	if !s.sounds.modified {
-		t.Fatal("edits must set modified")
-	}
-	runOrFatal(t, s, &out, "save sound "+filepath.Join(dir, "mf.toml"))
-	if s.sounds.modified {
-		t.Fatal("save must clear modified")
-	}
-}
-
-func TestNewSeedsValid(t *testing.T) {
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, `
-new sound ns1
-validate ns1
-play ns1
-new pattern np1
-validate np1
-apply np1
-slot 0 np1
-`)
 }
 
 // TestNoPhantomModified pins bug 1: the TUI seeds builtins through

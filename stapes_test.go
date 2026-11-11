@@ -2393,9 +2393,10 @@ func judgeBytes(notes uint64, odds [2]float64) []byte {
 }
 
 // TestAJudgeBesideTheModelRulesItsRips: ripjudge.bin in the root, fitted on the
-// notes weights loaded, rules the strikes of rip, live and tune truth, the
-// session and stat name it, and rows still writes the installed verdicts; one
-// fitted on other weights is refused by name and the installed scores judge.
+// notes weights loaded, rules the strikes of rip, whose ripper live hears
+// through, and of tune truth, the session and stat name it, and rows still
+// writes the installed verdicts; one fitted on other weights is refused by
+// name and the installed scores judge.
 func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
@@ -2436,14 +2437,14 @@ func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	s, out = open(sum)
 	defer teardown(t, s)
 	named := ", judge " + filepath.Join(root, judgeFile)
-	if s.judge == nil || !strings.Contains(out.String(), named) {
-		t.Fatalf("a judge fitted on the notes weights loaded gave none: %s", out)
+	if s.judge == nil || s.ripper().Judge == nil || !strings.Contains(out.String(), named) {
+		t.Fatalf("a judge fitted on the notes weights loaded gave the ripper none: %s", out)
 	}
 	wav, list, to := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rows")
-	runOrFatal(t, s, out, fmt.Sprintf("rip %[1]s ripped\nlive %[1]s lived\n", wav))
+	runOrFatal(t, s, out, fmt.Sprintf("rip %s ripped\n", wav))
 	ruled := s.rips["ripped"].rip.Notes
-	if len(ruled) == 0 || len(ruled) == len(installed) || len(s.rips["lived"].rip.Notes) != len(ruled) {
-		t.Fatalf("rip heard %d note(s) under the judge and live %d, the installed scores %d: want the judge's, which differ\n%s", len(ruled), len(s.rips["lived"].rip.Notes), len(installed), out)
+	if len(ruled) == 0 || len(ruled) == len(installed) {
+		t.Fatalf("rip heard %d note(s) under the judge, the installed scores %d: want the judge's, which differ\n%s", len(ruled), len(installed), out)
 	}
 	write("ruled.mid", ruled)
 	writeFile(t, list, "loop.wav\truled.mid\truled\ttimed\n")

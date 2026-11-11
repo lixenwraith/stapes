@@ -1506,25 +1506,24 @@ func TestRipMakesPatternsOfARecording(t *testing.T) {
 	defer teardown(t, s)
 	runOrFatal(t, s, &out, fmt.Sprintf(`
 ! rip %s loop                        # not a recording
-rip %s loop
-! rip %s loop                        # the names are taken
-rip %s fast 2 bpm 180 nodrums lead soft
+rip %s quiet 4 bpm 180 nodrums lead soft
 ! rip %s slow 2 bpm 10
 ! rip %s slow 2 lead sideways           # not a lead rule
-rip %s quiet 4 nodrums
+rip %s loop
+! rip %s loop                        # the names are taken
 ls pattern loop*
 ! notes nothing
 notes loop
 compress quiet 5
 song quiet score
 validate all
-`, filepath.Join(t.TempDir(), "missing.wav"), wav, wav, wav, wav, wav, wav))
+`, filepath.Join(t.TempDir(), "missing.wav"), wav, wav, wav, wav, wav))
 	if !strings.Contains(out.String(), "note(s) at") || !strings.Contains(out.String(), "bar 1 step") || !strings.Contains(out.String(), "support 0.") || !strings.Contains(out.String(), ", bright ") || !strings.Contains(out.String(), "brightness unmeasured on ") {
 		t.Errorf("notes listed no transcript with support and brightness:\n%s", out.String())
 	}
 	// bpm <n> reads the recording at that tempo, the bar line decoded
-	if fast := s.rips["fast"]; fast == nil || fast.rip.BPM != 180 {
-		t.Errorf("rip at 180 bpm: %+v", fast)
+	if quiet := s.rips["quiet"]; quiet == nil || quiet.rip.BPM != 180 {
+		t.Errorf("rip at 180 bpm: %+v", quiet)
 	}
 	// a rip without a kit is compared without one, so the render's attacks
 	// cannot grade the song on drums it has none of; score prints both grades

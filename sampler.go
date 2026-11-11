@@ -165,11 +165,11 @@ func (in *sampleInstr) layer(pitch int, vel float64) sampleNote {
 var errUnusable = errors.New("unusable note")
 
 // draw picks which of a loop's tonal slots play on recorded notes and on what,
-// each with its share's chance, and renders their lines: the slots the engine
-// renders come back with those silenced. A slot whose pattern holds a drum
+// each with its share's chance, and renders their lines under render: the slots the
+// engine renders come back with those silenced. A slot whose pattern holds a drum
 // track, or for which no instrument drawn covers the notes and plays them all,
 // keeps its engine voice.
-func (set *sampleSet) draw(slots [audio.MusicSlots]audio.PatternID, m audio.Meter, bars, bpm, root int, scale audio.ScaleID, cents float64, rng *rand.Rand) ([audio.MusicSlots]audio.PatternID, [audio.MusicSlots]*sampledLine, error) {
+func (set *sampleSet) draw(slots [audio.MusicSlots]audio.PatternID, m audio.Meter, bars, bpm, root int, scale audio.ScaleID, cents float64, rng *rand.Rand, render bool) ([audio.MusicSlots]audio.PatternID, [audio.MusicSlots]*sampledLine, error) {
 	var lines [audio.MusicSlots]*sampledLine
 	pedal := rng.Float64() < 1.0/3
 	cache := map[sampleKey][]float64{}
@@ -196,7 +196,7 @@ func (set *sampleSet) draw(slots [audio.MusicSlots]audio.PatternID, m audio.Mete
 			if !in.covers(notes) {
 				continue
 			}
-			l, err := set.line(in, notes, m, bars, bpm, cents, pedal && k != audio.MusicSlots-1, cache)
+			l, err := set.line(in, notes, m, bars, bpm, cents, pedal && k != audio.MusicSlots-1, cache, render)
 			if errors.Is(err, errUnusable) {
 				continue
 			}
@@ -230,11 +230,14 @@ type sampleKey struct {
 // nearest its velocity, shifted from the nearest recorded pitch, its own level
 // taken out and its velocity put in. A note held past its sample's hold ends
 // there; a shorter one is cut at its note-off into the sample's release, or
-// under the pedal rings on uncut, labelled as played.
-func (set *sampleSet) line(in *sampleInstr, notes []audio.RipEvent, m audio.Meter, bars, bpm int, cents float64, pedal bool, cache map[sampleKey][]float64) (*sampledLine, error) {
+// under the pedal rings on uncut, labelled as played. Not rendered, it has no audio.
+func (set *sampleSet) line(in *sampleInstr, notes []audio.RipEvent, m audio.Meter, bars, bpm int, cents float64, pedal bool, cache map[sampleKey][]float64, render bool) (*sampledLine, error) {
 	sr := float64(audio.AudioSampleRate)
 	stepSec := float64(audio.SamplesPerStep(bpm)) / sr
-	l := &sampledLine{instr: in.name, family: in.family, audio: make([]float64, bars*audio.SamplesPerBar(bpm, m))}
+	l := &sampledLine{instr: in.name, family: in.family}
+	if render {
+		l.audio = make([]float64, bars*audio.SamplesPerBar(bpm, m))
+	}
 	fade := int(sampledFade * sr)
 	for _, e := range notes {
 		pitch := in.nearest(e.MIDI)
@@ -243,7 +246,7 @@ func (set *sampleSet) line(in *sampleInstr, notes []audio.RipEvent, m audio.Mete
 		x, ok := cache[key]
 		if !ok {
 			var err error
-			x, err = recorded(key.file, ratio)
+			x, err = recorded(key.file, ratio, render)
 			if err != nil && !errors.Is(err, errUnusable) {
 				return nil, err
 			}
@@ -255,7 +258,10 @@ func (set *sampleSet) line(in *sampleInstr, notes []audio.RipEvent, m audio.Mete
 		start := float64(e.Bar*m.Steps()+e.Step) * stepSec
 		hold := min(int(nsynthHold/ratio*sr), len(x))
 		cut := int(float64(e.Dur) * stepSec * sr)
-		end := start + float64(min(cut, hold))/sr
+		l.ends = append(l.ends, start+float64(min(cut, hold))/sr)
+		if !render {
+			continue
+		}
 		at := int(start * sr)
 		put := func(i int, v float64) {
 			if i += at; i < len(l.audio) {
@@ -279,15 +285,15 @@ func (set *sampleSet) line(in *sampleInstr, notes []audio.RipEvent, m audio.Mete
 				put(cut+i, v)
 			}
 		}
-		l.ends = append(l.ends, end)
 	}
 	return l, nil
 }
 
 // recorded is a recorded note at the engine's rate sped up by ratio, divided
 // by its loudest held window's RMS; errUnusable when it does not decode as
-// NSynth's or that window is under the floor
-func recorded(file string, ratio float64) ([]float64, error) {
+// NSynth's or that window is under the floor. Not rendered, it is silence of the
+// note's length, which with whether it is usable is all a label reads of it.
+func recorded(file string, ratio float64, render bool) ([]float64, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
@@ -309,11 +315,19 @@ func recorded(file string, ratio float64) ([]float64, error) {
 	if level <= math.Pow(10, sampledFloor/20.0) {
 		return nil, fmt.Errorf("%s: %w", file, errUnusable)
 	}
+	if !render {
+		return make([]float64, shiftedLen(len(x), ratio)), nil
+	}
 	y := shiftNote(x, ratio)
 	for i := range y {
 		y[i] /= level
 	}
 	return y, nil
+}
+
+// shiftedLen is how many samples shiftNote makes of n read at ratio times their rate
+func shiftedLen(n int, ratio float64) int {
+	return int(float64(n) / (ratio * nsynthRate / audio.AudioSampleRate))
 }
 
 // shiftNote reads x at ratio times its rate into the engine's rate through a
@@ -344,7 +358,7 @@ func shiftNote(x []float64, ratio float64) []float64 {
 		}
 		table[j] = s * w
 	}
-	y := make([]float64, int(float64(len(x))/step))
+	y := make([]float64, shiftedLen(len(x), ratio))
 	for i := range y {
 		t := float64(i) * step
 		c := int(t)

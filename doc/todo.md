@@ -202,6 +202,10 @@ front-end seam. What remains, in the design's order:
    read with a collection left out, singing reported and never a gate. Open
    once one is trained: a bass line under drums when recordings are in the
    fit.
+10. A performance's character, generated: how loudness and timing move in the
+    licensed performances (GuitarSet's and MusicNet's annotations against a
+    steady grid), measured there and then drawn in `corpus`, judged as any
+    corpus change, a pair. No round may learn it from a track.
 
 ### The instrument model
 

@@ -10,7 +10,7 @@ terms, the sound, the voice, the sequencer, the rip and the rest, are in the
 audio library's [term index](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md);
 an entry here that names one links there.
 
-[A](#a) · [B](#b) · [C](#c) · [F](#f) · [G](#g) · [K](#k) · [L](#l) · [M](#m) · [O](#o) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [V](#v)
+[A](#a) · [B](#b) · [C](#c) · [F](#f) · [G](#g) · [J](#j) · [K](#k) · [L](#l) · [M](#m) · [O](#o) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [V](#v)
 
 ## A
 
@@ -28,7 +28,7 @@ an entry here that names one links there.
 - *Input*: one plane of 230 inputs a frame the rip's model reads, the first the bands in dB over the frame's level and the level, a second, when the file has one, each band's **PCEN** and their mean. [Rip training §4](rip-training.md#4-the-input-two-planes) · `tool/rip-train` `ripmodel.features`
 - *Phone*: what a small speaker, a room and a phone do to a training window, drawn per window for `CHANNEL`'s share of them (`train.py --channel <file.npz>:<share>`): the lows and highs cut, a ripple across the bands and a steady noise floor added in power, shaped from a noise bank, two minutes of white noise as mel frames and a real room's band shape, which `make_noise.py <quiet.wav> <out.npz>` builds. [Rip training §6](rip-training.md#6-what-may-change-a-windows-frames) · [rip-train README](../tool/rip-train/README.md#turning-a-run-toward-your-music) · `tool/rip-train` `Channel`, make_noise.py
 
-**condition** (also: truth list's third column) — A kind of recording in a **truth** list, such as a phone's takes or solo guitar: the list's lines that name one are counted as one, a line that names none is a condition of its own, and `tune ... truth` scores a set by the mean of its conditions' F1 and says each before and after. See also **guard**. [Stapes §4](stapes.md#4-the-rips-verbs) · `stapes` `readTruthList`, `conditionF1`
+**condition** (also: truth list's third column) — A kind of recording in a **truth** list, such as a phone's takes or solo guitar: the list's lines that name one are counted as one, a line that names none is a condition of its own, and `tune ... truth` scores a set by the mean of its conditions' F1 and says each before and after. `rows` writes each recording's condition beside its rows, a corpus directory one condition under its folder's name, and a **judge**'s fit leaves conditions out by name. See also **guard**. [Stapes §4](stapes.md#4-the-rips-verbs) · `stapes` `readTruthLines`, `conditionF1`
 
 ## F
 
@@ -39,6 +39,10 @@ an entry here that names one links there.
 ## G
 
 **guard** (also: `guard <x>`, refused set) — The F1 a set `tune ... truth` tries may take from any **condition**, against that condition under the starting thresholds, 0.01 when not given: a set that takes more is refused, scored under every set that passes, so the mean cannot be bought with one kind of recording. [Stapes §4](stapes.md#4-the-rips-verbs) · `stapes` `guarded`
+
+## J
+
+**judge** (also: `ripjudge.bin`, `rows`, rows directory, `rows.json`, `rowStrike`, `rightStrikes`, `judge.py`, `--leave-out`, stage) — What rules which strikes of the notes model are notes, in the place of the accounting's installed scores, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#j)): a network a stage, the notes the decoder reported and the strikes it dropped, over a strike's row. `rows <dir> from <list|corpus dir>` writes the rows of a **truth** list's recordings or of a corpus's loops that kept their audio, each strike with its stage, its label (a truth note answers one strike, the nearest, a reported note first) and the installed verdict; `tool/rip-train/judge.py` fits a judge on them by one stated procedure, counts the **condition**s left out, and exports the file; the **root**'s `ripjudge.bin` then rules `rip`, `truth`, `tune ... truth` and `live`, refused by name beside notes weights it was not fitted on. No fit ships yet. [Stapes §4](stapes.md#4-the-rips-verbs) · [a judge](../tool/rip-train/README.md#a-judge) · [Rip design §7](rip-design.md#7-plan) · `stapes` rows.go, `Session.judge`; `tool/rip-train` judge.py
 
 ## K
 
@@ -95,7 +99,7 @@ an entry here that names one links there.
 
 **ripmodel** (also: RipModel, `ripmodel.bin`, rip model, front-end model) — The rip's learned front end, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#r)): `tool/rip-train` is its PyTorch twin and trainer, and the **root**'s `ripmodel.bin` the weights stapes hears with. See also **rip**, **training round**, **transformer**. [Rip design §3](rip-design.md#3-learning) · [Rip training](rip-training.md) · `lixenwraith/audio/ripmodel`; `tool/rip-train`
 
-**root** (also: `-config-dir`, `stapes.toml`) — The folder that holds stapes' own files, flat: `-config-dir`, or else `os.UserConfigDir()` plus `stapes`. `stapes.toml` is its settings, today `[audio] buffer_ms`, the mixer period, a key it has no field for refused by name; `rip.toml` the parameters `rip` listens with and `tune` writes; `ripmodel.bin` the weights `rip` hears with, and `ripnotes.bin` beside it the notes model's. The documents are not the root's but the **search path**'s. [Stapes §2](stapes.md#2-its-files) · `stapes` `ResolveFiles`, `Files`
+**root** (also: `-config-dir`, `stapes.toml`) — The folder that holds stapes' own files, flat: `-config-dir`, or else `os.UserConfigDir()` plus `stapes`. `stapes.toml` is its settings, today `[audio] buffer_ms`, the mixer period, a key it has no field for refused by name; `rip.toml` the parameters `rip` listens with and `tune` writes; `ripmodel.bin` the weights `rip` hears with, `ripnotes.bin` beside it the notes model's, and `ripjudge.bin` a **judge** fitted on those weights. The documents are not the root's but the **search path**'s. [Stapes §2](stapes.md#2-its-files) · `stapes` `ResolveFiles`, `Files`
 
 ## S
 

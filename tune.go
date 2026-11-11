@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -901,7 +902,21 @@ type corpusEvent struct {
 	Wave   int       `json:"wave"`   // index into the waves of the manifest; -1 unknown
 	Family int       `json:"family"` // index into the families of the manifest; -1 unlabelled
 	Voice  []float64 `json:"voice,omitempty"`
-	Cents  []float64 `json:"cents,omitempty"` // a note that moves: cents from MIDI's cell centre at each frame from Frame to End
+	Cents  centsList `json:"cents,omitempty"` // a note that moves or a pitch track places: cents from MIDI's cell centre at each frame from Frame to End
+}
+
+// centsList is where a note sits at each of its frames, NaN at a frame its pitch
+// track does not place, which a label writes as null
+type centsList []float64
+
+func (c centsList) MarshalJSON() ([]byte, error) {
+	out := make([]any, len(c))
+	for i, v := range c {
+		if !math.IsNaN(v) {
+			out[i] = v
+		}
+	}
+	return json.Marshal(out)
 }
 
 // corpusLoop is an exported loop's label file
@@ -1021,9 +1036,9 @@ func cmdCorpus(s *Session, a []string) error {
 
 // corpusFrom writes a corpus of recordings and the MIDI files they were played
 // from, one loop each, listed by a CSV with audio_filename and midi_filename
-// columns, and split, duration and family when present: the frames as heard, the
-// notes as the MIDI plays them, the voices unknown. A loop on disk is kept, known
-// by its source, so a run again goes on; under labels its label alone is written over.
+// columns, and split, duration, family and pitch when present: the frames as heard,
+// the notes as the MIDI plays them, placed by the pitch track, the voices unknown. A
+// loop on disk is kept, known by its source; under labels its label is written over.
 func (s *Session) corpusFrom(dir, list string, a []string) error {
 	split, hours, codec, labels := "", math.Inf(1), false, false
 	for len(a) > 0 {
@@ -1085,6 +1100,15 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		return err1 != nil && !labels || err2 != nil
 	})
 	missing := listed - len(rows)
+	pitch := func([]string) string { return "" }
+	if c, ok := col["pitch"]; ok {
+		for _, r := range rows {
+			if _, err := os.Stat(at(r[c])); r[c] != "" && err != nil {
+				return fmt.Errorf("%s: pitch: %w", list, err)
+			}
+		}
+		pitch = func(r []string) string { return r[c] }
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -1159,10 +1183,11 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		return fmt.Errorf("%s: no recordings listed for split %q, %d skipped", list, split, len(skipped))
 	}
 	var (
-		mu    sync.Mutex
-		wg    sync.WaitGroup
-		first error
-		work  = make(chan job)
+		mu            sync.Mutex
+		wg            sync.WaitGroup
+		first         error
+		work          = make(chan job)
+		placed, notes int // of the recordings a pitch track is named for
 	)
 	for range min(4, runtime.NumCPU()) { // a recording's samples are hundreds of megabytes
 		wg.Go(func() {
@@ -1171,10 +1196,21 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 				if codec {
 					coder = rand.New(rand.NewPCG(0xc0dec, uint64(j.at)+1))
 				}
-				n, err := corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), j.score, coder, labels)
+				var tracks []pitchTrack
+				err := error(nil)
+				if p := pitch(j.row); p != "" {
+					tracks, err = readPitch(at(p))
+				}
+				n, sat := 0, 0
+				if err == nil {
+					n, sat, err = corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), j.score, tracks, coder, labels)
+				}
 				mu.Lock()
 				if !labels {
 					frames += n
+				}
+				if tracks != nil {
+					placed, notes = placed+sat, notes+len(j.score.Notes)
 				}
 				first = cmp.Or(first, err)
 				mu.Unlock()
@@ -1200,6 +1236,9 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	} else if codec {
 		what += ", a third through a lossy codec"
 	}
+	if notes > 0 {
+		what += fmt.Sprintf(", %d of %d note(s) placed by a pitch track", placed, notes)
+	}
 	fmt.Fprintf(s.out, "%s, %d loop(s) and %.1f hours in all; %d listed were not on disk\n", what, loops, float64(frames)*audio.RipFrameSec/3600, missing)
 	if len(skipped) > 0 {
 		fmt.Fprintf(s.out, "skipped %d whose MIDI has no notes and no kick, snare or hihat, as %s\n", len(skipped), skipped[0])
@@ -1208,34 +1247,34 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 }
 
 // corpusRecording writes a recording's frames, through a codec when coder is
-// set, and its score as one loop, the frames it holds returned: its notes played
-// by family, or each by its program's (programFamily) when family is -1, its hits
-// and other strikes by the drums, a strike of no line (a tom, a crash) an onset,
-// drum -1 and midi 0. Under labels the frames on disk stand and say how long it is.
-func corpusRecording(base, wav, source string, family int, score *audio.MIDIScore, coder *rand.Rand, labels bool) (int, error) {
-	frames, whole := 0, false
+// set, and its score as one loop, its frames and the notes its pitch tracks place
+// returned: a note by family, or its program's (programFamily) when family is -1,
+// a hit and a strike of no line (a tom, a crash: drum -1, midi 0) by the drums.
+// Under labels the frames on disk stand and say how long it is.
+func corpusRecording(base, wav, source string, family int, score *audio.MIDIScore, tracks []pitchTrack, coder *rand.Rand, labels bool) (int, int, error) {
+	frames, whole, placed := 0, false, 0
 	if labels {
 		if frames, whole = melLength(base + ".mel"); !whole {
-			return 0, fmt.Errorf("%s.mel: no frames whole on disk to label", base)
+			return 0, 0, fmt.Errorf("%s.mel: no frames whole on disk to label", base)
 		}
 	} else {
 		f, err := os.Open(wav)
 		if err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 		x, rate, err := audio.ReadWAV(f)
 		f.Close()
 		if err != nil {
-			return 0, fmt.Errorf("%s: %w", wav, err)
+			return 0, 0, fmt.Errorf("%s: %w", wav, err)
 		}
 		if coder != nil {
 			if x, err = codecRoundTrip(x, rate, coder); err != nil {
-				return 0, err
+				return 0, 0, err
 			}
 		}
 		mel := audio.MelFrames(x, rate)
 		if err := writeMel(base+".mel", mel); err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 		frames = len(mel)
 	}
@@ -1246,13 +1285,208 @@ func corpusRecording(base, wav, source string, family int, score *audio.MIDIScor
 		if f < 0 {
 			f = programFamily(n.Program)
 		}
-		lab.Events = append(lab.Events, corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: n.Vel, Wave: -1, Family: f})
+		ev := corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: n.Vel, Wave: -1, Family: f}
+		if tr := trackOf(tracks, n); tr != nil {
+			ev.Cents = tr.cents(n.MIDI, ev.Frame, ev.End)
+			placed += min(len(ev.Cents), 1)
+		}
+		lab.Events = append(lab.Events, ev)
 	}
 	for _, h := range append(slices.Clip(score.Hits), score.Struck...) {
 		lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: h.Vel, Wave: -1, Family: familyIndex("drums")})
 	}
 	lab.Events = slices.DeleteFunc(lab.Events, func(e corpusEvent) bool { return e.Frame >= frames })
-	return frames, writeJSON(base+".json", lab)
+	return frames, placed, writeJSON(base+".json", lab)
+}
+
+// pitchTrack is a recording's pitch as its collection annotates it, one voice's
+// or one string's: the seconds of its samples, ascending, the Hz there, 0 where
+// nothing is voiced, and the usual time between two, which its reach is told in
+type pitchTrack struct {
+	sec, hz []float64
+	step    float64
+	notes   [][3]float64 // a string's notes: start, end, pitch; nil for a voice, whose track is every note's
+}
+
+// readPitch reads a pitch track by what its file is: a JAMS file's strings, each
+// pitch_contour annotation beside the note_midi annotation of its data_source or
+// its place, or a CSV's one voice, seconds and Hz a row under any header
+func readPitch(file string) ([]pitchTrack, error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	var tracks []pitchTrack
+	if !bytes.HasPrefix(bytes.TrimSpace(data), []byte("{")) {
+		rows, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		tracks = []pitchTrack{{}}
+		for i, r := range rows {
+			sec, err1 := strconv.ParseFloat(strings.TrimSpace(r[0]), 64)
+			hz, err2 := strconv.ParseFloat(strings.TrimSpace(r[min(1, len(r)-1)]), 64)
+			if (err1 != nil || err2 != nil || len(r) < 2) && i > 0 {
+				return nil, fmt.Errorf("%s: row %d: want seconds and Hz", file, i+1)
+			} else if err1 == nil && err2 == nil {
+				tracks[0].sec, tracks[0].hz = append(tracks[0].sec, sec), append(tracks[0].hz, hz)
+			}
+		}
+	} else {
+		var jam struct {
+			Annotations []struct {
+				Namespace string
+				Data      json.RawMessage
+				Meta      struct {
+					Source string `json:"data_source"`
+				} `json:"annotation_metadata"`
+			}
+		}
+		if err := json.Unmarshal(data, &jam); err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		of, seen := map[string]int{}, map[string]int{} // a string's track, and the annotations seen of a namespace
+		for _, a := range jam.Annotations {
+			if a.Namespace != "pitch_contour" && a.Namespace != "note_midi" {
+				continue
+			}
+			key := cmp.Or(a.Meta.Source, strconv.Itoa(seen[a.Namespace]))
+			seen[a.Namespace]++
+			k, ok := of[key]
+			if !ok {
+				k, of[key] = len(tracks), len(tracks)
+				tracks = append(tracks, pitchTrack{notes: [][3]float64{}})
+			}
+			obs, err := jamsData(a.Data)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %s: %w", file, a.Namespace, err)
+			}
+			for _, o := range obs {
+				var note float64
+				sample := struct {
+					Frequency float64
+					Voiced    *bool
+				}{}
+				if a.Namespace == "note_midi" && json.Unmarshal(o.Value, &note) == nil {
+					tracks[k].notes = append(tracks[k].notes, [3]float64{o.Time, o.Time + o.Duration, note})
+				} else if a.Namespace == "pitch_contour" && json.Unmarshal(o.Value, &sample) == nil {
+					if sample.Voiced != nil && !*sample.Voiced {
+						sample.Frequency = 0
+					}
+					tracks[k].sec, tracks[k].hz = append(tracks[k].sec, o.Time), append(tracks[k].hz, sample.Frequency)
+				}
+			}
+		}
+	}
+	for k := range tracks {
+		tr := &tracks[k]
+		if !slices.IsSorted(tr.sec) {
+			return nil, fmt.Errorf("%s: a pitch track's seconds do not ascend", file)
+		}
+		var gaps []float64
+		for i := 1; i < len(tr.sec); i++ {
+			gaps = append(gaps, tr.sec[i]-tr.sec[i-1])
+		}
+		if slices.Sort(gaps); len(gaps) > 0 {
+			tr.step = gaps[len(gaps)/2]
+		}
+	}
+	if !slices.ContainsFunc(tracks, func(t pitchTrack) bool { return len(t.sec) > 0 }) {
+		return nil, fmt.Errorf("%s: no pitch track: want a CSV of seconds and Hz, or a JAMS file's pitch_contour annotations", file)
+	}
+	return tracks, nil
+}
+
+// jamsObservation is one of a JAMS annotation's observations
+type jamsObservation struct {
+	Time, Duration float64
+	Value          json.RawMessage
+}
+
+// jamsData reads an annotation's data, written as a list of observations or as a
+// list a field
+func jamsData(raw json.RawMessage) ([]jamsObservation, error) {
+	var obs []jamsObservation
+	if json.Unmarshal(raw, &obs) == nil {
+		return obs, nil
+	}
+	var cols struct {
+		Time, Duration []float64
+		Value          []json.RawMessage
+	}
+	if err := json.Unmarshal(raw, &cols); err != nil {
+		return nil, err
+	}
+	if len(cols.Duration) != len(cols.Time) || len(cols.Value) != len(cols.Time) {
+		return nil, errors.New("its time, duration and value lists differ in length")
+	}
+	for i, t := range cols.Time {
+		obs = append(obs, jamsObservation{t, cols.Duration[i], cols.Value[i]})
+	}
+	return obs, nil
+}
+
+// trackOf is the track that places a note: a voice's own, or that of the string
+// whose notes hold one of its pitch sounding at its onset, a frame's slack before
+// it, the nearest onset first; nil where none does
+func trackOf(tracks []pitchTrack, n audio.RipNote) *pitchTrack {
+	var best *pitchTrack
+	off := math.Inf(1)
+	for k := range tracks {
+		tr := &tracks[k]
+		if tr.notes == nil {
+			return tr
+		}
+		for _, a := range tr.notes {
+			if d := math.Abs(a[0] - n.Start); math.Abs(a[2]-float64(n.MIDI)) <= 0.5 && n.Start >= a[0]-audio.RipFrameSec && n.Start <= a[1] && d < off {
+				best, off = tr, d
+			}
+		}
+	}
+	return best
+}
+
+// pitchTrackReach is how far from a sample a pitch track still speaks, in its
+// steps: past the half a whole track leaves, short of the step a missing sample does
+const pitchTrackReach = 0.75
+
+// at is the track's pitch at sec as a MIDI number, NaN where it voices nothing: its
+// nearest sample's when that is voiced and in reach, and on the line to the
+// sample across sec when that one is voiced and no sample is missing between
+func (p *pitchTrack) at(sec float64) float64 {
+	near := sort.SearchFloat64s(p.sec, sec)
+	far := near - 1
+	if near == len(p.sec) || near > 0 && sec-p.sec[far] < p.sec[near]-sec {
+		near, far = far, near
+	}
+	voiced := func(k int, from, reach float64) bool {
+		return k >= 0 && k < len(p.sec) && p.hz[k] > 0 && math.Abs(p.sec[k]-from) <= reach*p.step
+	}
+	midi := func(k int) float64 { return 69 + 12*math.Log2(p.hz[k]/440) }
+	switch {
+	case !voiced(near, sec, pitchTrackReach):
+		return math.NaN()
+	case !voiced(far, p.sec[near], 2*pitchTrackReach) || p.sec[far] == p.sec[near]:
+		return midi(near)
+	}
+	return midi(near) + (sec-p.sec[near])/(p.sec[far]-p.sec[near])*(midi(far)-midi(near))
+}
+
+// cents is where the track places a note at each frame from from to to, as
+// noteCents an engine's: NaN at a frame it does not voice, or voices a semitone
+// or more from the note, and nil for a note it places at no frame
+func (p *pitchTrack) cents(midi, from, to int) centsList {
+	out, placed := make(centsList, max(to-from, 1)), false
+	for i := range out {
+		c := math.Round((p.at(float64(from+i)*audio.RipFrameSec)-float64(midi))*1000) / 10
+		if out[i] = math.NaN(); math.Abs(c) < 100 {
+			out[i], placed = c, true
+		}
+	}
+	if !placed {
+		return nil
+	}
+	return out
 }
 
 // parseTempos reads a range lo-hi, six tempos spread over it, or a list a,b,c,

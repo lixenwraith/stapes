@@ -77,7 +77,8 @@ class Label:
                 if self.voice[i] == len(voices):
                     voices.append(e["voice"])
         self.voices = np.array(voices, np.float32).reshape(-1, manifest["voice_genes"])
-        # a note that moves carries its cents from its pitch's cell centre at each frame; one that holds sits at the tuning
+        # a note that moves carries its cents from its pitch's cell centre at each frame; one that holds sits at the tuning.
+        # A recording's note lists them where its pitch track places it, null, read as nan, at a frame it does not
         self.tuning = float(label.get("tuning", 0.0))
         lists = [np.asarray(e.get("cents") or [], np.float32) for e in ev]
         self.cents_at = np.array([at if len(c) else -1 for c, at in zip(lists, accumulate(map(len, lists), initial=0))], np.int64)
@@ -85,7 +86,7 @@ class Label:
         self.moves = np.zeros(len(self.cents), bool)  # a glide's frames: where the cents differ from the frame before or after
         for c, at in zip(lists, self.cents_at):
             if len(c) > 1:
-                d = np.diff(c) != 0
+                d = np.abs(np.diff(c)) > 0  # false beside a frame that is not placed
                 self.moves[at + 1:at + len(c)] |= d
                 self.moves[at:at + len(c) - 1] |= d
         self.order = np.argsort(self.t, kind="stable")
@@ -144,28 +145,30 @@ class Label:
             x, at = max(t, a), int(self.cents_at[i])
             rows = np.arange(x - a, max(min(end, b), x) - a)  # the note's frames in the window
             first = last = p
+            placed = np.full(len(rows), self.voice[i] >= 0)  # an engine voice plays where the label says; a recording only where it lists its cents
             if at < 0:
                 off, glides = np.full(len(rows), p + self.tuning / 100, np.float32), np.zeros(len(rows), bool)
                 if 0 <= p < pitches:
                     pitch[rows, p] = 1
             else:
-                off, glides = p + self.cents[at + x - t:at + x - t + len(rows)] / 100, self.moves[at + x - t:at + x - t + len(rows)]
+                c, glides = self.cents[at + x - t:at + x - t + len(rows)], self.moves[at + x - t:at + x - t + len(rows)]
+                placed = ~np.isnan(c)  # a frame that is not placed sounds in the note's own cell
+                off = p + np.nan_to_num(c) / 100
                 cell = np.rint(off).astype(np.int64)
                 ok = (cell >= 0) & (cell < pitches)
                 pitch[rows[ok], cell[ok]] = 1
-                first, last = (int(np.rint(p + self.cents[at + k] / 100)) for k in (0, end - t - 1))
+                first, last = (int(np.rint(p + np.nan_to_num(self.cents[at + k]) / 100)) for k in (0, end - t - 1))
             if 0 <= first < pitches:
                 strikes.append((t - a, first))
                 vels.append(self.vel[i])
             if 0 <= last < pitches and self.end[i] < frames:
                 releases.append((int(self.end[i]) - a, last))
-            known = self.voice[i] >= 0 or at >= 0  # an engine voice plays where the label says; a recording only where it lists its cents
-            if not known and 0 <= p < pitches:
-                near[rows, p], asked[rows, p] = 0, 0  # where it sits in its cell is not known
-            for beside in (-1, 0, 1) if known else ():
+            if 0 <= p < pitches:
+                near[rows[~placed], p], asked[rows[~placed], p] = 0, 0  # where it sits in its cell is not known
+            for beside in (-1, 0, 1):
                 cell = np.rint(off).astype(np.int64) + beside
                 o = off - cell
-                ok = (np.abs(o) < 1) & (cell >= 0) & (cell < pitches)
+                ok = placed & (np.abs(o) < 1) & (cell >= 0) & (cell < pitches)
                 ok[ok] = np.abs(o[ok]) < near[rows[ok], cell[ok]]  # the nearest sound is the one a cell reports
                 r, c = rows[ok], cell[ok]
                 near[r, c], cents[r, c], asked[r, c], moving[r, c] = np.abs(o[ok]), o[ok], 1, glides[ok]

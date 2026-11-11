@@ -3092,6 +3092,188 @@ func TestAGlidingCorpusLabelsWhereEachMovingNoteSits(t *testing.T) {
 	}
 }
 
+// TestAPitchTrackPlacesARecordingsNotes: a gliding voice's loop, its cents written
+// out as a CSV track and as a JAMS file of two strings, comes back through from to
+// a tenth. A frame the track leaves unvoiced or holds a semitone off is null, a
+// note it never voices lists none, labels writes the same again, a recording with
+// no track is as without the column, and a finer track is read along its line.
+func TestAPitchTrackPlacesARecordingsNotes(t *testing.T) {
+	dir := t.TempDir()
+	var notes []audio.RipNote
+	for b := range 4 {
+		at := 2 * float64(b)
+		notes = append(notes, audio.RipNote{Start: at, End: at + 0.5, MIDI: 64, Vel: 0.8, Bend: 0.8, BendAt: 0.25},
+			audio.RipNote{Start: at + 0.5, End: at + 1.5, MIDI: 67, Vel: 0.8, Bend: 2, BendAt: 0.5})
+	}
+	var mid bytes.Buffer
+	if err := audio.WriteMIDI(&mid, notes, nil, 120, audio.Meter{}); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "mid", "bent.mid"), mid.String())
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("builtin pattern\ncorpus %s 4 2 midi %s\n", filepath.Join(dir, "engine"), filepath.Join(dir, "mid")))
+	var eng corpusLoop // the first loop that is the file's voice alone
+	wav, hole, cut := []byte(nil), -1, -1
+	for i := 0; i < 4 && hole < 0; i++ {
+		data, _ := os.ReadFile(filepath.Join(dir, "engine", fmt.Sprintf("loop_%03d.json", i)))
+		if eng = (corpusLoop{}); json.Unmarshal(data, &eng) != nil {
+			t.Fatalf("loop %d: %s", i, data)
+		}
+		alone := true
+		for k, e := range eng.Events {
+			alone = alone && e.Drum < 0 && e.Voice != nil && (k == 0 || eng.Events[k-1].End <= e.Frame)
+		}
+		// the tracks leave a frame of one moving note unvoiced and hold another a semitone and a half off, and never voice a second
+		for k, e := range eng.Events {
+			if !alone || e.Cents == nil {
+				continue
+			}
+			if hole < 0 && len(e.Cents) > 8 && math.Abs(e.Cents[3]) < 100 && math.Abs(e.Cents[5]) < 100 {
+				hole = k
+			} else if cut < 0 {
+				cut = k
+			}
+		}
+		wav, _ = os.ReadFile(filepath.Join(dir, "engine", fmt.Sprintf("loop_%03d.wav", i)))
+	}
+	if hole < 0 || cut < 0 || len(wav) == 0 {
+		t.Fatalf("no loop of the gliding voice alone: %+v", eng.Events)
+	}
+	sits := func(e corpusEvent, i int) float64 { // where the engine's note sits at its frame i
+		if e.Cents == nil {
+			return eng.Tuning
+		}
+		return e.Cents[i]
+	}
+	hz := func(midi int, cents float64) float64 { return 440 * math.Pow(2, (float64(midi)+cents/100-69)/12) }
+	type obs = map[string]any
+	voice := make([]float64, eng.Frames) // the track of the whole voice, 0 where nothing is voiced, -1 its hole
+	var of [2][]float64                  // and of each string, which takes two notes in turn
+	var held [2][]obs
+	var recorded []audio.RipNote
+	for k, e := range eng.Events {
+		str := k / 2 % 2
+		if of[str] == nil {
+			of[str] = make([]float64, eng.Frames)
+		}
+		held[str] = append(held[str], obs{"time": float64(e.Frame) * audio.RipFrameSec, "duration": float64(e.End-e.Frame) * audio.RipFrameSec, "value": float64(e.MIDI) + 0.2})
+		recorded = append(recorded, audio.RipNote{Start: float64(e.Frame) * audio.RipFrameSec, End: float64(e.End) * audio.RipFrameSec, MIDI: e.MIDI, Vel: 0.8})
+		for i := range max(e.End-e.Frame, 1) {
+			at := hz(e.MIDI, sits(e, i))
+			switch {
+			case k == cut:
+				at = 0
+			case k == hole && i == 3:
+				at = -1
+			case k == hole && i == 5:
+				at *= math.Pow(2, 1.5/12)
+			}
+			voice[e.Frame+i], of[str][e.Frame+i] = at, at
+		}
+	}
+	track := ""
+	var contour [2][]obs
+	for f, at := range voice {
+		sec := float64(f) * audio.RipFrameSec
+		track += fmt.Sprintf("%.6f,%.4f\n", sec, max(at, 0))
+		for str := range of {
+			sample := obs{"time": sec, "duration": 0.0, "value": obs{"index": 0, "frequency": max(of[str][f], 0), "voiced": of[str][f] > 0}}
+			if of[str][f] < 0 {
+				sample["value"].(obs)["frequency"] = 220.0 // a frequency the string's track calls unvoiced
+			}
+			if of[str][f] != 0 || str == 1 { // the first string's track holds no sample where it voices nothing
+				contour[str] = append(contour[str], sample)
+			}
+		}
+	}
+	columns := obs{"time": []any{}, "duration": []any{}, "value": []any{}} // the second string's track a list a field
+	for _, o := range contour[1] {
+		for name := range columns {
+			columns[name] = append(columns[name].([]any), o[name])
+		}
+	}
+	jam, err := json.Marshal(obs{"annotations": []obs{
+		{"namespace": "tempo", "data": []obs{{"time": 0.0, "duration": 4.0, "value": 120.0}}},
+		{"namespace": "pitch_contour", "annotation_metadata": obs{"data_source": "0"}, "data": contour[0]},
+		{"namespace": "pitch_contour", "data": columns},
+		{"namespace": "note_midi", "annotation_metadata": obs{"data_source": "0"}, "data": held[0]},
+		{"namespace": "note_midi", "data": held[1]},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mid.Reset()
+	if err := audio.WriteMIDI(&mid, recorded, nil, 120, audio.Meter{}); err != nil {
+		t.Fatal(err)
+	}
+	rec := func(name string) string { return filepath.Join(dir, "rec", name) }
+	for name, data := range map[string]string{"csv.wav": string(wav), "jams.wav": string(wav), "none.wav": string(wav), "notes.mid": mid.String(),
+		"track.csv": track, "strings.jams": string(jam), "plain.csv": "audio_filename,midi_filename\nnone.wav,notes.mid\n",
+		"list.csv": "audio_filename,midi_filename,pitch\ncsv.wav,notes.mid,track.csv\njams.wav,notes.mid,strings.jams\nnone.wav,notes.mid,\n"} {
+		writeFile(t, rec(name), data)
+	}
+	out.Reset()
+	line := fmt.Sprintf("corpus %s from %s", filepath.Join(dir, "tracked"), rec("list.csv"))
+	runOrFatal(t, s, &out, fmt.Sprintf("%s\ncorpus %s from %s\n", line, filepath.Join(dir, "plain"), rec("plain.csv")))
+	if want := fmt.Sprintf("%d of %d note(s) placed by a pitch track", 2*len(eng.Events)-2, 2*len(eng.Events)); !strings.Contains(out.String(), want) {
+		t.Errorf("want %s:\n%s", want, out.String())
+	}
+	plain, _ := os.ReadFile(filepath.Join(dir, "plain", "loop_000.json"))
+	for i := range 3 {
+		file := filepath.Join(dir, "tracked", fmt.Sprintf("loop_%03d.json", i))
+		data, _ := os.ReadFile(file)
+		var lab struct {
+			Source string
+			Events []struct {
+				Frame, End, MIDI int
+				Cents            []*float64
+			}
+		}
+		if err := json.Unmarshal(data, &lab); err != nil || len(lab.Events) != len(eng.Events) {
+			t.Fatalf("loop %d: %d event(s), %v, want the voice's %d", i, len(lab.Events), err, len(eng.Events))
+		}
+		if lab.Source == "none.wav" {
+			if !bytes.Equal(data, plain) || len(plain) == 0 || bytes.Contains(data, []byte("cents")) {
+				t.Errorf("a recording with no track is labelled\n%s\nand without the column\n%s", data, plain)
+			}
+			continue
+		}
+		for k, e := range lab.Events {
+			w := eng.Events[k]
+			if e.Frame != w.Frame || e.End != w.End || e.MIDI != w.MIDI || len(e.Cents) != max(w.End-w.Frame, 1) && k != cut || e.Cents != nil && k == cut {
+				t.Fatalf("%s: note %d over frames %d to %d lists %d cents, the engine's over %d to %d", lab.Source, k, e.Frame, e.End, len(e.Cents), w.Frame, w.End)
+			}
+			for i, c := range e.Cents {
+				want := sits(w, i)
+				if asked := math.Abs(want) < 100 && (k != hole || i != 3 && i != 5); asked != (c != nil) || asked && math.Abs(*c-want) > 0.05 {
+					t.Fatalf("%s: note %d frame %d reads %v, the engine's at %.1f, asked %v", lab.Source, k, i, c, want, asked)
+				}
+			}
+		}
+		if lab.Source == "csv.wav" {
+			writeFile(t, file, strings.ReplaceAll(string(data), `"cents":`, `"was":`))
+			runOrFatal(t, s, &out, line+" labels\n")
+			if again, _ := os.ReadFile(file); !bytes.Equal(again, data) {
+				t.Errorf("labels wrote the track's readings as\n%s\nwant\n%s", again, data)
+			}
+		}
+	}
+	// a track on its collection's grid, two samples a frame: read along its line, and silent where a sample is missing
+	fine := "time,f0\n"
+	for j := range 200 {
+		if j != 100 {
+			fine += fmt.Sprintf("%.4f,%.4f\n", 0.0058*float64(j), hz(60, float64(j)/2))
+		}
+	}
+	writeFile(t, rec("fine.csv"), fine)
+	tracks, err := readPitch(rec("fine.csv"))
+	if err != nil || len(tracks) != 1 || math.Abs(tracks[0].at(0.0058*44.5)-60.2225) > 1e-4 || !math.IsNaN(tracks[0].at(0.58)) || !math.IsNaN(tracks[0].at(1.17)) {
+		t.Errorf("a finer track: %v, %d track(s) reading %v between two samples, %v at a missing one", err, len(tracks), tracks[0].at(0.0058*44.5), tracks[0].at(0.58))
+	}
+}
+
 // TestAVoiceSoundsAsTheFamilyOfARegisteredVoiceNearIt: a registered voice and one
 // redrawn within reach of it are its name's family, a voice of another name near
 // one is that one's, and one on another wave or just past the reach is unknown

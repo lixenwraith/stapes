@@ -135,22 +135,22 @@ front-end seam. What remains, in the design's order:
    notes are the first thing to chase, note by note, with the `truth` listing
    of which were cut. The model path's thresholds (`strike`, `strike_low`,
    `strike_again`, `release`, `voicing`) were swept by hand per weight file;
-   `tune ... truth <list>` searches them through the model, each recording
-   heard once, by the pooled note F1: run after every round on the real
-   validation list (`~/data/rip/val-list.tsv`, GuitarSet's player 04; the
-   MusicNet pieces join it once their audio is on disk again), it is the
-   smallest close ([Rip design §7](rip-design.md#7-plan)). A bar-phase score belongs
-   beside it: the note scorer's time map never sees a bar line, and the rip's
-   lines fall within an eighth of a bar of GuitarSet's downbeats on 72% of
-   them after audio v0.8.9, 63% before. When `tune ... truth` scores the bars
-   too (`MatchBars`), the tempo and beat genes (`tempo_prior`, `tempo_width`,
-   `tightness`) join `modelGenes`, which stays a list, not a rule. Its first
-   run through 32a gained solo guitar .06 and lost .02 to .04 on the renders,
-   the clean take, the phones and MusicNet, as its list is guitar alone and
-   its score counts within lines, where a guitar's truth has no bass line:
-   before it writes a `rip.toml` it wants a count by pitch and onset, a list
-   with a condition a kind, a guard on every set's loss, and the frames it
-   heard kept between runs (six CPU-hours for sixty recordings without).
+   `tune ... truth <list>` searches them through the model by pitch and
+   onset, as the mean over its list's conditions under a guard, the frames
+   kept between runs ([Rip design §7](rip-design.md#7-plan)). Left of it: the
+   real validation list (`~/data/rip/val-list.tsv`, GuitarSet's player 04;
+   the MusicNet pieces join it once their audio is on disk again) names no
+   condition and is guitar alone, so it wants a condition a kind, of the
+   collections and renders a fit may hold and never a full track, and
+   `timed` on GuitarSet's lines, before a run after every round writes a
+   `rip.toml`; a timed truth's drum hits still pass through `MatchHits`' own
+   map; and kept frames outlive a change to the model's code, which their
+   names do not hold. A bar-phase score belongs beside it: the note scorer's
+   time map never sees a bar line, and the rip's lines fall within an eighth
+   of a bar of GuitarSet's downbeats on 72% of them after audio v0.8.9, 63%
+   before. When `tune ... truth` scores the bars too (`MatchBars`), the tempo
+   and beat genes (`tempo_prior`, `tempo_width`, `tightness`) join
+   `modelGenes`, which stays a list, not a rule.
 7. The pedal: a piano arpeggio under pedal rings three or four notes at once,
    and the analysis's two lines hold two; the second line's eighths read as
    held notes (30 of 58 heard, 11 spanning two). A model's strikes start every

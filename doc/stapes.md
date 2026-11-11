@@ -130,10 +130,12 @@ Over the library's rip (library
   more generations.
 - `agree` compares two rips of one piece (`MatchNotes`); `truth` scores a rip
   against notes given as text or a tapped rhythm (`ParseTranscript`) or a MIDI
-  file (`truth <name> <file.mid>`), counting the notes heard by level as well
-  (`NoteLevels`); a MIDI file's parts past its melody, under and bass count in
-  the melody register as one line, or the bass under E3, and an `every part` row
-  gives the F1 over all its notes, as `tune ... truth` pools them. It prints a
+  file (`truth <name> <file.mid>`), first every note as one line by pitch and
+  onset (`Agreement.All`, the `notes` row), then by line, counting the notes
+  heard by level as well (`NoteLevels`); `timed` matches a truth on the
+  recording's own clock (`MatchNotes`' `timed`: no map, no transposition); a
+  MIDI file's parts past its melody, under and bass count in the melody
+  register as one line, or the bass under E3, in an `every part` row. It prints a
   `bars` row for a MIDI file's bars, placed as its notes matched
   (`MIDIScore.Beats`), or a JAMS file's beats, a truth of beats
   alone (`truth <name> <file.jams>`, `ReadJAMSBeats`): the rip's bar lines
@@ -160,10 +162,15 @@ Over the library's rip (library
   ([todo](todo.md#tune-the-rip) for what the corpus still lacks). `tune ...
   truth <list>` searches instead the thresholds the loaded model's decoders
   read (`modelGenes`), the rest held, against real recordings, a line
-  `wav<TAB>truth` each, by the note F1 pooled over them as `truth` matches
-  (`MatchNotes`, every note once); the model's `Hear` ignores `RipParams`, so
+  `wav<TAB>truth[<TAB>condition[<TAB>timed]]` each, by the mean over the
+  conditions of each condition's F1 by pitch and onset (`conditionF1`), from a
+  pool drawn near the current thresholds (`search`'s `near`); a set that takes
+  more than `guard` from a condition's F1 at the start scores under zero
+  (`guarded`) and is never written. The model's `Hear` ignores `RipParams`, so
   each recording is heard once (`heardOnce`) and a candidate pays the decoders
-  alone.
+  alone; `frames <dir>` keeps what was heard between runs, a gob of the
+  `RipFrames` named by the checksums of the recording and of the weight files
+  (`Session.earSum`).
 - `compress` gives a first bar that starts partway the beat of the bar most
   like it (`Rip.MendPickup`), runs the grouping (`Rip.Cluster`) at each part's
   threshold (`compressPercent`), refines the assignment with

@@ -2859,7 +2859,7 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 	}
 	driven := 0
 	for k := range 40 {
-		voices, families, restore := s.loopVoices(clean[0].slots, true, rand.New(rand.NewPCG(uint64(k), 1)))
+		voices, families, restore := s.loopVoices(clean[0].slots, true, rand.New(rand.NewPCG(uint64(k), 1)), nil)
 		restore()
 		for name, v := range voices {
 			if v.Drive > 4 {
@@ -2914,6 +2914,76 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "random genes") {
 		t.Errorf("corpus did not say it augmented:\n%s", out.String())
+	}
+}
+
+// TestAGlidingCorpusLabelsWhereEachMovingNoteSits: under glide a share of the
+// notes bend, scoop or sway, each labelled with its cents from its cell's centre
+// at every frame, the tuning in them; a note that holds its pitch carries none,
+// nor does any without the word, whose loops are drawn as with it, and the
+// registered voices are as they were afterwards
+func TestAGlidingCorpusLabelsWhereEachMovingNoteSits(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	lead := *audio.VoiceDefByName("lead")
+	dir := t.TempDir()
+	o := tuneOptions{loops: 6, bars: 2, seed: 5, gen: true, aug: true, nowav: true}
+	labels := func(name string) []corpusLoop {
+		if err := s.exportCorpus(filepath.Join(dir, name), o); err != nil {
+			t.Fatal(err)
+		}
+		labs := make([]corpusLoop, o.loops)
+		for i := range labs {
+			data, _ := os.ReadFile(filepath.Join(dir, name, fmt.Sprintf("loop_%03d.json", i)))
+			if err := json.Unmarshal(data, &labs[i]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return labs
+	}
+	plain := labels("plain")
+	o.glide = true
+	gliding := labels("gliding")
+	if *audio.VoiceDefByName("lead") != lead {
+		t.Error("the registered lead was not put back")
+	}
+	bent, swaying, held := 0, 0, 0
+	for i, lab := range gliding {
+		if p := plain[i]; p.BPM != lab.BPM || p.Root != lab.Root || p.Scale != lab.Scale || p.Tuning != lab.Tuning {
+			t.Errorf("loop %d drawn at %d bpm on %d, at %d on %d without the word", i, lab.BPM, lab.Root, p.BPM, p.Root)
+		}
+		for _, e := range plain[i].Events {
+			if e.Cents != nil {
+				t.Fatalf("loop %d: a note labelled with cents without the word", i)
+			}
+		}
+		for _, e := range lab.Events {
+			switch {
+			case e.Cents == nil:
+				held += min(len(e.Voice), 1)
+				continue
+			case e.Voice == nil || len(e.Cents) != max(e.End-e.Frame, 1):
+				t.Fatalf("loop %d: %d cents over frames %d to %d, %d genes", i, len(e.Cents), e.Frame, e.End, len(e.Voice))
+			case math.Abs(e.Cents[len(e.Cents)-1]-e.Cents[0]) > 60:
+				bent++
+			default:
+				swaying++
+			}
+		}
+	}
+	if bent == 0 || swaying == 0 || held == 0 {
+		t.Errorf("%d note(s) bent, %d swaying, %d held", bent, swaying, held)
+	}
+	// a second's note bending two semitones from its half: at the loop's tuning
+	// until then, and all but the last frame's share of the bend on at its end
+	saw := &audio.VoiceDef{Wave: "saw"}
+	c := noteCents(saw, audio.RipEvent{Bend: 2, BendAt: 0.5}, 0, 1, -20, 0, 87)
+	if len(c) != 87 || c[0] != -20 || c[43] != -20 || math.Abs(c[86]-179.4) > 0.11 {
+		t.Errorf("a bent note's cents %v", c)
+	}
+	if c := noteCents(saw, audio.RipEvent{}, 0, 1, -20, 0, 87); c != nil {
+		t.Errorf("a held note labelled %v", c)
 	}
 }
 

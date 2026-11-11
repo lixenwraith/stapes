@@ -166,7 +166,11 @@ func cmdNotes(s *Session, a []string) error {
 		if n.Bright != audio.RipUnmeasured {
 			bright = fmt.Sprintf(", bright %.2f", n.Bright)
 		}
-		fmt.Fprintf(s.out, "%-6s %7.3fs %-20s %-4s degree %d%s octave %d, %.1f step(s) at %.2f%s%s\n", line, n.Start, where, noteName(n.MIDI), deg, marks[acc+2], oct, (n.End-n.Start)/span, n.Vel, support(n), bright)
+		bend := ""
+		if n.Bend != 0 {
+			bend = fmt.Sprintf(", bend %+.2f from %.2f", n.Bend, n.BendAt)
+		}
+		fmt.Fprintf(s.out, "%-6s %7.3fs %-20s %-4s degree %d%s octave %d, %.1f step(s) at %.2f%s%s%s\n", line, n.Start, where, noteName(n.MIDI), deg, marks[acc+2], oct, (n.End-n.Start)/span, n.Vel, support(n), bright, bend)
 	}
 	return nil
 }

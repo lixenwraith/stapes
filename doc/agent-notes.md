@@ -23,6 +23,16 @@ proves wrong or that a document now states, and link the document instead.
   also take under a minute, enough to exercise the whole training path.
 - Build the binary from `./cmd/stapes`: `go build -o bin/stapes .` writes the
   library's archive under that name, which then refuses to run.
+- A change that needs an audio not yet tagged names the tag in `go.mod` and
+  builds through a workspace kept outside both trees: a `go.work` of `use
+  <stapes>` and `replace github.com/lixenwraith/audio vX => <audio>`, named by
+  `GOWORK=` on each stapes command. A `replace` in `go.mod` cannot be
+  committed, `use` of both trees still reads the tag's `go.mod`, and a
+  `go.work` in a parent directory breaks the builds inside the audio tree.
+  `go.sum`'s two lines for the version are a hash of the module's files, so
+  they can be computed from the audio branch's tree before the tag and are
+  the tag's while a squash merge leaves that tree as it is; compute them
+  again when the audio branch changes.
 
 ## Tests that flake
 
@@ -275,6 +285,13 @@ proves wrong or that a document now states, and link the document instead.
   stand against that, not against the third run's table. The model's corpus
   is rendered at A440, so nothing it saw was detuned; a recording off the
   standard is a recording it was never shown, whatever its held-out loss.
+- `corpus ... glide` draws its bends and scoops from one stream and its
+  vibratos from another, each seeded apart from the loop's own, so a loop's
+  patterns, key, voices and tuning are those the line draws without the word,
+  which a test compares. A label's `cents` is written only on a note that
+  moves, so a corpus without the word is byte for byte what it was: a new label
+  field stays out of the file where it is unset. A voice with a vibrato of its
+  own (the vocal focus's) moves without the word, and its labels gain the list.
 - A `corpus <dir> from` loop is known by its `source`, the CSV's
   `audio_filename`: the set may move, but an entry renamed joins as new. A clap
   in a test file is a hit for a song, not for `truth`.
@@ -325,6 +342,20 @@ proves wrong or that a document now states, and link the document instead.
   weights, and they are to be tried again once new heads (offset, velocity,
   pedal) compete with the strike head for the shared layers. Keep them, their
   loader and their round-trip test.
+- A notes model's per-pitch heads are rows of two tables, `CELL_HEADS` in
+  `ripmodel.py` and audio's `notesHeads`: a new head adds a row to each, with
+  the values it reads at a pitch, and goes after the others in
+  `PITCHNET_HEADS`, since `--init` grows a model only from weights whose heads
+  are the first of the new one's. The file's version holds while its header
+  does; an older audio reads the heads it knows by name.
+- The cents head states its own error, and audio joins two cells where their
+  readings agree within the errors stated (`oneFrequency`), with no factor on
+  them: a head too sure of itself merges steps, and nothing downstream corrects
+  it. The stated error is fitted to the offset's miss with the miss held fixed
+  (`losses`), so read the held-out line's `within` before a round's notes: near
+  63% is a head that states its mean miss, and the gliding readings are the
+  ones the decoder leans on. Weighting the miss by the stated error, or a
+  margin in the decoder, would put a number set by hand back in the rule.
 - A training loss that keeps falling says nothing about fresh loops: 12000
   steps on 300 loops reached 0.31 and benched worse than 3000 steps on 120,
   each loop seen three hundred times. `train.py` holds a tenth of the loops

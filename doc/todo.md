@@ -121,9 +121,40 @@ front-end seam. What remains, in the design's order:
    quarter tone would still cross rows. A pitch prior that holds a semitone
    wobble (a higher cost for a one-semitone move than per semitone of a leap,
    or the salience smoothed across the neighbours before the path), measured
-   on a rendered vibrato voice, which the voices have now; or a cents head on
-   the notes model and a step's `bend`, so a glide is one note
-   ([Rip design §7](rip-design.md#7-plan)).
+   on a rendered vibrato voice, which the voices have now. Through a notes
+   model with the cents head the decoder follows the sound across the cells
+   and writes one note ([Rip design §7](rip-design.md#7-plan)); left there:
+   - A round trained on a `glide` corpus, judged on vocadito by its fragments
+     (156), wrong cells (76), repeats (69) and how many of the 241 legato
+     steps still read as two notes. A small run (360 loops, 3,000 steps on a
+     CPU) learned a loop's tuning and little of a glide inside a mix: steady
+     readings 11.9 cents off, gliding ones 22.5 where a head that knows
+     nothing reads 25, pulled toward the cell's centre at every slope with no
+     lag. It states 25 there, so the decoder joins nothing; on a solo render
+     it states 3 to 11 and joins. If a full round stays there, the glides'
+     share of a corpus or a loss that weighs the moving frames is next.
+   - The stated error is fitted to the offset's miss with the miss's gradient
+     stopped, and its own gradient still reaches the features the heads
+     share. The offset read the same with the channel and without, 14.5
+     against 14.6 cents on the same held-out loops. If a full round shows a
+     cost, the channel reads the features with their gradient stopped too:
+     no cost by construction, and an error that can only say what the other
+     heads' features hold.
+   - One error from validation carried in the weight file, the same margin at
+     every reading, was the other rule with no number set by hand. Not taken:
+     the miss differs twofold by place (steady 11.9, gliding 22.5), so one
+     number joins legato steps on a steady voice or nothing on a glide, and
+     the file gains a field (a transformer change and a format version). It
+     is the fallback if `within` reads well under 63% on real singing.
+   - A corpus scoop rises over its note's whole length, since a step's bend
+     ends with its note: a scoop that settles early, as a singer's does, needs
+     audio's step to glide to a share of its length (audio's todo).
+   - The labels know where an engine voice sits and not a recorded note:
+     `sampled` lines and `from` recordings ask the head nothing, and
+     `--validate` on recordings prints only the error it states there. The
+     trainer already reads a `cents` list on a recorded note; `corpus ... from`
+     writing one from a pitch track of the recording (vocadito's f0 files, or
+     pYIN on a solo line) would train and score the head on real singing.
 6. The decoder's and the parting's constants tuned against truths: `tune`
    searches `RipParams` over rendered loops whose truth is the render's; with
    `truth` files (rhythms, corrected transcripts, MIDI) on real recordings,

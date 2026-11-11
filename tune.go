@@ -38,6 +38,7 @@ type tuneOptions struct {
 	loops, bars, generations, pool int
 	seed                           uint64
 	aug, gen                       bool
+	glide                          bool           // a share of the generated notes bend into the next or scoop, and of the voices sway
 	meters                         bool           // a third of the loops in 3/4 or 6/8, every part generated in it
 	nowav                          bool           // an export keeps the frames and the labels only
 	codec                          bool           // an export sends a third of its loops through a lossy codec and back
@@ -197,6 +198,7 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 		other := meter != audio.Meter{} // the bank's patterns are 4/4: every part is generated
 		if o.gen || other {
 			grng := rand.New(rand.NewPCG(o.seed^0x5a5a5a5a, uint64(i)+1))
+			glrng := rand.New(rand.NewPCG(o.seed^0x676c6964, uint64(i)+1))
 			degrees := len(audio.ScaleIntervals(scale))
 			for _, g := range []struct {
 				slot int
@@ -206,6 +208,9 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 					continue
 				}
 				p := g.make(grng, degrees, meter)
+				if o.glide {
+					glide(glrng, p, root, scale, float64(audio.SamplesPerStep(bpm))/audio.AudioSampleRate)
+				}
 				p.ID = audio.PatternIDByName(p.Name) // the last loop's, replaced in place
 				if id, err := s.eng.DefinePattern(p); err == nil {
 					slots[g.slot] = id
@@ -230,8 +235,11 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 				}
 			}
 		}
-		arng := rand.New(rand.NewPCG(o.seed^0xa5a5a5a5, uint64(i)+1))
-		voices, families, restore := s.loopVoices(slots, o.aug, arng)
+		arng, sway := rand.New(rand.NewPCG(o.seed^0xa5a5a5a5, uint64(i)+1)), (*rand.Rand)(nil)
+		if o.glide {
+			sway = rand.New(rand.NewPCG(o.seed^0x73776179, uint64(i)+1))
+		}
+		voices, families, restore := s.loopVoices(slots, o.aug, arng, sway)
 		cents := 0.0
 		if o.aug {
 			cents = arng.Float64()*100 - 50 // a recording's pitch standard, within a quarter tone of A440
@@ -562,12 +570,46 @@ func genBass(rng *rand.Rand, degrees int, m audio.Meter) *audio.Pattern {
 	return &audio.Pattern{Name: "corpus_bass", Steps: steps, Meter: m, Role: audio.RoleBass, Tracks: []audio.Track{{Instr: audio.InstrBass, Events: evs}}}
 }
 
+// glideReach is the widest step in semitones a generated note bends into: a fifth
+const glideReach = 7
+
+// glide moves a generated part's pitch between its notes as a singer or a string
+// player does: a fifth of its notes bend into the note that follows them at
+// once, over their last 60 to 250 ms, and a seventh scoop, written a semitone or
+// two under and rising to their pitch over their length, which is all a step's
+// bend holds of a scoop; step is a step's length in seconds
+func glide(rng *rand.Rand, p *audio.Pattern, root int, scale audio.ScaleID, step float64) {
+	for _, tr := range p.Tracks {
+		if tr.Instr.IsDrum() {
+			continue
+		}
+		evs := tr.Events
+		pitch := func(e audio.Step) int { return audio.StepPitch(root, scale, e.Deg, e.Oct, e.Acc) }
+		into := -1 // the note the last bend arrives at, which starts on its pitch
+		for i := range evs {
+			e := &evs[i]
+			switch u := rng.Float64(); {
+			case u < 0.2:
+				if i+1 == len(evs) || evs[i+1].Pos != e.Pos+max(e.Dur, 1) {
+					continue
+				}
+				if d := pitch(evs[i+1]) - pitch(*e); d != 0 && max(d, -d) <= glideReach {
+					e.Bend, e.BendAt, into = float64(d), max(1-(0.06+0.19*rng.Float64())/(float64(max(e.Dur, 1))*step), 0), i+1
+				}
+			case u < 0.2+1.0/7 && i != into:
+				under := 1 + rng.IntN(2)
+				e.Acc, e.Bend, e.BendAt = e.Acc-under, float64(under), 0
+			}
+		}
+	}
+}
+
 // loopVoices is the voice each tonal instrument the slotted patterns name plays
 // with and the family it sounds as: the registered one, or under aug one of random
 // genes near it, a third of the time on another wave, and in a third of the loops
 // every release but the bass's three to ten times as long, as under a piano's
-// pedal; registered for the render and put back by restore
-func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, rng *rand.Rand) (map[string]*audio.VoiceDef, map[string]int, func()) {
+// pedal; sway gives three in ten a vibrato; restore puts the registered ones back
+func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, rng, sway *rand.Rand) (map[string]*audio.VoiceDef, map[string]int, func()) {
 	voices, families, known := map[string]*audio.VoiceDef{}, map[string]int{}, familyVoices()
 	var originals []*audio.VoiceDef
 	pedal := 1.0 // the labels stay the notes as played, however long they ring
@@ -589,37 +631,46 @@ func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, 
 				continue
 			}
 			voices[name], families[name] = v, voiceFamily(known, name, v)
-			if !aug {
+			play, family := v, families[name]
+			if aug {
+				genes := v.Genes()
+				for i := range genes {
+					genes[i] = min(max(genes[i]+rng.NormFloat64()*0.15, 0), 1)
+				}
+				wave := cmp.Or(v.Wave, "sine")
+				if rng.Float64() < 0.3 {
+					wave = audio.VoiceWaves[rng.IntN(len(audio.VoiceWaves))]
+				}
+				r := audio.VoiceFromGenes(wave, genes)
+				// measured before the pedal: its long release is the player's, not the instrument's
+				heard := voiceFamily(known, name, r)
+				if rng.Float64() < 0.15 { // distorted, as a guitar through an amp
+					r.Drive, r.Level = 2+rng.Float64()*14, r.Level*0.6
+					heard = familyIndex("unknown")
+				}
+				if tr.Instr != audio.InstrBass {
+					r.Release = min(r.Release*pedal, 3)
+				}
+				r.VibratoHz, r.VibratoCents, r.VibratoDelay, r.Vowel = v.VibratoHz, v.VibratoCents, v.VibratoDelay, v.Vowel // not genes; kept from the registered voice
+				r.Name = name
+				if audio.ValidateVoice(r) == nil {
+					play, family = r, heard
+				}
+			}
+			// a string and a modal bank hold their pitch, and a voice's own vibrato stays
+			if w := cmp.Or(play.Wave, "sine"); sway != nil && sway.Float64() < 0.3 && w != "string" && w != "modal" && play.VibratoHz == 0 {
+				c := *play
+				c.VibratoHz, c.VibratoCents, c.VibratoDelay = 4.5+2.5*sway.Float64(), 10+70*sway.Float64(), 0.4*sway.Float64()
+				play = &c
+			}
+			if play == v {
 				continue
 			}
-			genes := v.Genes()
-			for i := range genes {
-				genes[i] = min(max(genes[i]+rng.NormFloat64()*0.15, 0), 1)
-			}
-			wave := cmp.Or(v.Wave, "sine")
-			if rng.Float64() < 0.3 {
-				wave = audio.VoiceWaves[rng.IntN(len(audio.VoiceWaves))]
-			}
-			r := audio.VoiceFromGenes(wave, genes)
-			// measured before the pedal: its long release is the player's, not the instrument's
-			family := voiceFamily(known, name, r)
-			if rng.Float64() < 0.15 { // distorted, as a guitar through an amp
-				r.Drive, r.Level = 2+rng.Float64()*14, r.Level*0.6
-				family = familyIndex("unknown")
-			}
-			if tr.Instr != audio.InstrBass {
-				r.Release = min(r.Release*pedal, 3)
-			}
-			r.VibratoHz, r.VibratoCents, r.VibratoDelay, r.Vowel = v.VibratoHz, v.VibratoCents, v.VibratoDelay, v.Vowel // not genes; kept from the registered voice
-			r.Name = name
-			if audio.ValidateVoice(r) != nil {
-				continue
-			}
-			if _, err := s.eng.DefineVoice(r); err != nil {
+			if _, err := s.eng.DefineVoice(play); err != nil {
 				continue
 			}
 			originals = append(originals, v)
-			voices[name], families[name] = r, family
+			voices[name], families[name] = play, family
 		}
 	}
 	return voices, families, func() {
@@ -841,6 +892,7 @@ type corpusEvent struct {
 	Wave   int       `json:"wave"`   // index into the waves of the manifest; -1 unknown
 	Family int       `json:"family"` // index into the families of the manifest; -1 unlabelled
 	Voice  []float64 `json:"voice,omitempty"`
+	Cents  []float64 `json:"cents,omitempty"` // a note that moves: cents from MIDI's cell centre at each frame from Frame to End
 }
 
 // corpusLoop is an exported loop's label file
@@ -883,6 +935,8 @@ func cmdCorpus(s *Session, a []string) error {
 			o.aug = true
 		case a[n-1] == "gen":
 			o.gen = true
+		case a[n-1] == "glide":
+			o.glide = true
 		case a[n-1] == "meters":
 			o.meters = true
 		case a[n-1] == "nowav":
@@ -1279,6 +1333,7 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 				} else if v := l.voices[name]; v != nil {
 					ev.Wave = max(slices.Index(audio.VoiceWaves[:], cmp.Or(v.Wave, "sine")), 0)
 					ev.Voice, ev.Family = v.Genes(), l.families[name]
+					ev.Cents = noteCents(v, e.RipEvent, start, float64(e.Dur)*stepSec, l.tuning, ev.Frame, ev.End)
 				}
 			}
 			if ev.Frame < len(mel) {
@@ -1304,6 +1359,9 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	if o.gen {
 		how += ", with generated beats, melodies and bass lines"
 	}
+	if o.glide {
+		how += ", a share of the generated notes bending into the next or scooping and of the voices swaying"
+	}
 	if o.meters {
 		how += fmt.Sprintf(", %d in 3/4 or 6/8 with every part generated", metered)
 	}
@@ -1321,6 +1379,21 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	}
 	fmt.Fprintf(s.out, "wrote %d loop(s) of %d bar(s) to %s, %s\n", written, o.bars, dir, how)
 	return nil
+}
+
+// noteCents is where a note the voice played sits at each of its frames, in cents
+// from its pitch's cell centre, the loop's tuning in it, to a tenth: nil for a
+// note that holds its pitch, which sits at the tuning throughout
+func noteCents(v *audio.VoiceDef, e audio.RipEvent, start, dur, tuning float64, from, to int) []float64 {
+	out, moves := make([]float64, max(to-from, 1)), false
+	for i := range out {
+		c := v.NoteCents(e.Bend, e.BendAt, dur, min(max(float64(from+i)*audio.RipFrameSec-start, 0), dur))
+		out[i], moves = math.Round((tuning+c)*10)/10, moves || c != 0
+	}
+	if !moves {
+		return nil
+	}
+	return out
 }
 
 // slotEvent is an expected event with the slot it plays in and its place among that slot's

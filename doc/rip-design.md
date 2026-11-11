@@ -224,7 +224,12 @@ offline (`song <name> <file.wav>`).
   6 to 18 dB softer, as a phrase played softly, and `codec` sends a third of
   the loops through Opus, MP3 or AAC and back. Some voices are driven hard, as a
   guitar through an amp. A generated loop leaves out its drums three times
-  in ten and its bass once in seven, so a line is heard bare too. Both draw
+  in ten and its bass once in seven, so a line is heard bare too. `glide`
+  moves pitch as a singer or a string player does: a fifth of the generated
+  notes bend into the note that follows at once, over their last 60 to 250
+  ms, a seventh scoop into their pitch from a semitone or two under, and three
+  in ten of a loop's oscillator voices sway with a vibrato; every note that
+  moves is labelled with its cents at each frame. Each draws
   from streams of their own, so a loop's bank patterns and key are the same
   with and without them. The trainer changes a share of the windows as it
   draws them: `--channel` hears them through a small speaker, a room and a
@@ -403,11 +408,16 @@ and the checkpoint earn their keep.
      before every condition has decoded under it: tuned on guitar alone it
      gave solo guitar .06 and took .02 to .04 from the pianos, the phones and
      MusicNet.
-   - **Glides.** The corpus labels each note's offset from its cell's centre
-     along its length and generated parts glide; a cents head on the notes
-     model; the decoder joins two cells where they name one frequency and
-     keeps a step that lands. vocadito stands at .69 under a ceiling of .77 to
-     .90, and its truth holds 241 legato steps a merger by adjacency would eat.
+   - **Glides.** Landed: the corpus labels a moving note's cents at every
+     frame and `glide` bends, scoops and sways generated notes; a cents head
+     on the notes model gives each pitch's offset and the error it states for
+     it; the decoder joins two cells where they name one frequency within
+     those errors and keeps a step that lands. Through a small model (360
+     loops, 3,000 steps) a rendered bend, scoop and short slide each came out
+     as one note carrying its motion, stubs without the head, and a fall of
+     three semitones was cut by a strike the model was sure of. A full round
+     is not trained: vocadito stands at .69 under a ceiling of .77 to .90,
+     and its truth holds 241 legato steps a merger by adjacency would eat.
    - **The stream read from outside, and `live`.** Landed: `RipStream` gives
      the frames heard since a frame with the spectrum they were read from
      (`Frames`) and its open bars as last laid out (`Open`); `live` drives it

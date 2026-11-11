@@ -17,7 +17,8 @@ Where each part stands:
   `make_noise.py`, `corpus ... midi`, `--pitchnet` and its `ripnotes.bin`, `--shuffle`, `--extra`,
   `--cell`, `--dip`, `--ring`, `--bend`, `--dilations`, `--sung`, each event's family (`families`,
   the list's `family` cell, each note's program, every part of a file), the family head and
-  `--family-holdout`, `--validate`, and `tune ... truth`.
+  `--family-holdout`, `--validate`, `tune ... truth`, a moving note's `cents`, `corpus ... glide`
+  and the notes model's cents head.
 - **In no repository yet:** the phone take's scripts, which play, align and cut a
   recording of a known file, and the wide test's harness (vif's `tmp/round32`: `cmpn.sh`,
   `table.py`, the timed scorer) with the validation corpus's build (`tmp/audit/valbuild.py`).
@@ -28,7 +29,8 @@ Where each part stands:
 2. Each training step draws 8 windows of 512 frames, 5.9 s each (§7).
 3. A window's frames may be changed in place, as §6 lists, then become two input
    planes (§4).
-4. A window's events become per-frame targets for the 10 heads (§5).
+4. A window's events become per-frame targets for the 10 heads, and a notes model's
+   cents head (§5).
 5. The model turns frames into 327 numbers a frame, and the losses train it (§7, §8).
 6. The best step is written as a weight file (§9).
 7. At a rip, Go computes the same planes, runs the file and hands the heads to the
@@ -91,7 +93,8 @@ The loop's fields:
 - `frames`: the length of its `.mel`.
 - `tuning`: cents off A440 it was rendered at, within 50 either way. Events keep the
   written pitch, so at nearly +50 cents as here, a note labelled 55 sounds nearly as
-  much like 56.
+  much like 56. It is where every note of an engine voice sits from its pitch's cell
+  centre, unless the note carries `cents`.
 - `source`: in a corpus of recordings, the file it was heard from.
 - `events`: in no time order; the trainer sorts them.
 
@@ -117,15 +120,36 @@ An event's fields:
   parts past the score's melody, under and bass too (`RipNote.Further`), so all five
   parts of a quintet sound in its labels.
 - `voice`: the 32 genes of the voice that played it, absent when unknown.
+- `cents`: on a note that moves, where it sits at each frame from `frame` to `end`, one
+  frame at least, in cents from `midi`'s cell centre to a tenth, the tuning in it: its
+  step's bend and its voice's vibrato as the engine played them (audio's
+  `VoiceDef.NoteCents`). A note that holds its pitch carries none, so a corpus of
+  the bank's voices and patterns, which neither bend nor sway, is byte for byte what it
+  was before the field. Where a recorded note sits is not known and no verb writes
+  one's, though the trainer takes a list on any note.
 
-The four kinds of event in use, each from a real file:
+The five kinds of event in use, each from a real file:
 
 ```
 a drum hit          {"frame":0,"end":0,"drum":0,"midi":0,"vel":0.987,"wave":-1,"family":7}
 a note on a voice   {"frame":0,"end":40,"drum":-1,"midi":55,"vel":0.662,"wave":1,"family":8,"voice":[0.5,0.417,0,0.157,...]}
 a recorded note     {"frame":0,"end":40,"drum":-1,"midi":55,"vel":0.662,"wave":-1}
 a strike, no line   {"frame":23,"end":23,"drum":-1,"midi":0,"vel":0.787,"wave":-1}
+a note that moves   {"frame":0,"end":9,"drum":-1,"midi":52,"vel":0.506,"wave":2,"family":8,"voice":[...],"cents":[-35.9,-3.4,29.1,61.7,94.2,126.7,159.2,191.7,224.2]}
 ```
+
+The last is from `corpus <dir> 24 4 aug gen glide nowav`, loop 003, tuned 35.9 cents
+flat: a broken chord's 52 bending three semitones into the 55 that follows, over the
+whole of its 104 ms, a quarter tone over 54 by its last frame. `glide` draws from two
+streams of its own, so a loop's patterns, key, voices and tuning are those the same
+line draws without it:
+
+- A fifth of the generated notes bend into the note that follows them at once, when
+  that is a fifth away or nearer, over their last 60 to 250 ms.
+- A seventh scoop: written a semitone or two under and rising to their pitch over
+  their length, which is all a step's bend holds of a scoop.
+- Three in ten of a loop's oscillator voices take a vibrato of 4.5 to 7 Hz, 10 to 80
+  cents either way, coming in over up to 0.4 s; a voice that has its own keeps it.
 
 A recorded note is one of NSynth's, so its voice is unknown. The last is a tom or a
 crash from E-GMD: `drum` -1 with `midi` 0 means something struck that no drum head or
@@ -264,7 +288,9 @@ gives 8 channels, one per harmonic of 0.5, 1 and 2 to 7, each shifted by -36, 0,
 ## 5. The targets
 
 `Label.window(a, b)` builds what each head should say for frames a to b. A note's pitch
-index is `midi - 28`, and one outside 0 to 68 sets no pitch.
+index is `midi - 28`, and one outside 0 to 68 sets no pitch. A note that carries `cents`
+sounds, is struck and is let go in the cell nearest its frequency at each frame, so a
+glide's pitch target walks the cells it crosses.
 
 - `onset`: within one frame of any event, drum or note, that is `t-1 <= frame < t+2`.
 - `drums[d]`: the same, for that drum's hits.
@@ -278,6 +304,14 @@ index is `midi - 28`, and one outside 0 to 68 sets no pitch.
 - `family`: that of the highest event sounding, a hit or a strike at midi 0 on its own
   frame, scored only on frames where it is labelled: a hit never stands in for an
   unlabelled note over it.
+- `cents[p]`: how far the sound nearest the cell sits from its centre, in semitones,
+  asked where the label places that sound, an engine voice's note or one that lists
+  its `cents`, and within a semitone: in the cell a pitch sounds in, and in the cell
+  beside it on the side the sound leans to, so both cells at a boundary say where the
+  sound is (cell k at +0.5 is cell k+1 at -0.5) and a cell lit by its neighbour's
+  sound says so. A recorded note that lists none is unplaced, and its own cell is not
+  asked. `moving[p]` marks a glide's frames, where the label's cents differ from the
+  frame before or after, for the scores of §8.
 
 Frames 0 to 7 of loop 000, from its kick and hat at 0, its G3 (55) and its C3 (48):
 
@@ -293,7 +327,11 @@ strike   (frame 0, pitch 27, vel 0.662), (frame 0, pitch 20, vel 0.485), each on
 release  (frame 40, pitch 27), (frame 27, pitch 20)
 wave     1 on every frame: saw, from the highest note, G3
 family   8 on every frame: unknown, from the highest note, G3
+cents    pitch 27 +0.496 and pitch 28 -0.504, pitch 20 +0.496 and pitch 21 -0.504: the tuning
 ```
+
+A shuffled window (§6) asks a cell its cents where one of its two clips alone sounds
+within a semitone of it.
 
 A window running past a loop's end is padded with zero frames, which a `valid` mask
 leaves out of every loss.
@@ -423,10 +461,12 @@ offset    size  head       read as
 A file may lack the last 4 heads and still load: one without `family` hears no family.
 
 `--pitchnet` builds another model on the same heads but `family`, the frame model's to hear:
-convolutions only, the same weights at every pitch, 169,862 weights in all. Its file is
-`ripnotes.bin` (§9). `--dilations 3,9,27` adds a residual 3x3 over the cells for each, its
-frames that far apart: each note head then hears half a second either way instead of 80 ms,
-197,606 weights, about 1.5 times the compute.
+convolutions only, the same weights at every pitch, 169,928 weights in all, 66 of them the
+cents head's. Its file is `ripnotes.bin` (§9). `--dilations 3,9,27` adds a residual 3x3 over
+the cells for each, its frames that far apart: each note head then hears half a second
+either way instead of 80 ms, 197,672 weights, about 1.5 times the compute. Its per-pitch
+heads are a table, `CELL_HEADS` in `ripmodel.py`, a row a head with the values it reads at a
+pitch; the cents head reads two, the offset in semitones and the log of the error it states.
 
 ```
 input          B x T x 460              the two planes
@@ -436,7 +476,7 @@ wide           B x 16 x T x 213         3x39, thirteen semitones, GELU
 cells          B x 32 x T x 71          7x3, stride 3 over features, one cell a semitone, GELU
 near           B x 32 x T x 71          7x3 with a residual, GELU
 long           B x 32 x T x 71          3x3 dilated in time, one each of --dilations, with a residual, GELU
-notes          B x 4 x T x 69           1x1: pitch, strike, release, velocity
+notes          B x 6 x T x 69           1x1: pitch, strike, release, velocity, and the cents head's two
 frame          B x T x 39               wide pooled to 16 regions plus the scalars, a 1D conv of 5
                                         and one of 9 dilated by 2, linear: the other heads
 ```
@@ -454,11 +494,30 @@ velocity: squared error, on strike frames with a known velocity
 wave:     cross-entropy, on frames with a known voice
 voice:    squared error, on frames with a known voice
 family:   cross-entropy, on frames with a known family, the frame model's alone
+cents:    absolute error in semitones, where asked, the notes model's alone
+spread:   miss / e + log e where asked, e the error the head states and miss the
+          offset's absolute error held fixed: a Laplace's scale fitted to it
 
 total    = onset + drums + pitch + 0.5 voicing + strike + release + 2 velocity + 0.5 wave + 2 voice
-           + 0.5 family
+           + 0.5 family + 2 cents + 0.2 spread
 decoders = onset + drums + pitch + 0.5 voicing + strike + release
 ```
+
+The stated error learns from the offset's miss and never the other way: the miss
+enters `spread` with its gradient stopped, so stating an error moves no offset. At
+its best the stated error is the mean miss to expect of such a reading, which 63% of
+a Laplace's fall within; it is what audio's decoder widens a reading by before it
+calls two cells one frequency, with no factor on it. The decoders read the cents head
+too, but it does not join `decoders`: its loss is in semitones and no likelihood.
+
+The held-out and validation lines say what the head reads, after the strikes' F1: the
+median miss, the median error stated and the share of readings whose miss is within
+the error stated for them, over every placed reading and then by kind (`CENTS_KINDS`):
+`gliding`, a cell its sound is on a glide in; `steady`, one it holds its pitch in;
+`beside`, the cell next to a sound; and `unplaced`, a sounding cell the label does not
+place, a recording's, where only the error stated can be told. 63% within is a head
+that states its misses' mean; a share well under it on the gliding readings is a head
+too sure of itself where the decoder leans on it.
 
 The last 400 loops are held out and scored every 1,000 steps, and the step with the best
 `decoders` score is what gets written, unless `--validate` names a corpus of recordings
@@ -546,18 +605,24 @@ checks its shape against its tensors.
 `--pitchnet` writes version 5, whose `kind` word after the version, 1, makes the model
 transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
 scalars, then the long convolutions' spacings, then the heads, the per-pitch ones first: pitch,
-strike, release and velocity, then onset, drums, voicing, wave and voice. The tensors are
+strike, release, velocity and cents, then onset, drums, voicing, wave and voice. `cents` is
+138 numbers a frame, the 69 offsets then the 69 log errors, `cellout`'s fifth and sixth
+channels. The layout and the version are as they were: a file without the head lists four
+per-pitch heads and loads as before, its rip with no glides, and one with it loads in an
+audio before v0.21.0 too, which reads the heads it knows by name. The tensors are
 `reduce`, `wide`, `cells`, `near.0`, `long.{i}`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
 `nn.Conv1d` or `nn.Linear` holds it. In the stapes root the file is `ripnotes.bin`.
-Beside `ripmodel.bin` it gives pitch, voicing, strike, release and velocity, and the model
-keeps onset, drums, wave and voice. Alone it is unused. `average.py --out ripnotes.bin
+Beside `ripmodel.bin` it gives pitch, voicing, strike, release, velocity and cents, and the
+model keeps onset, drums, wave and voice. Alone it is unused. `average.py --out ripnotes.bin
 a.pt` turns a `.pt` of either model into its file.
 
 ## 10. Reading the model back
 
 `ripmodel.Hear` runs `Forward` over all of a recording's frames, and a notes model's over
 their harmonic stack, built in Go as §4 builds it, takes the sigmoid of
-each head and fills `RipFrames`, the same fields the analysis fills. Loop 000 through
+each head and fills `RipFrames`, the same fields the analysis fills, and from a cents
+head `Cents`, a hundred times each offset, and `CentsError`, a hundred times e to each
+log error. Loop 000 through
 12a, with a sure strike on frame 0 where the labels say kick, hihat, G3 and C3:
 
 ```

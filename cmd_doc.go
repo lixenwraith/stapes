@@ -517,7 +517,7 @@ func cmdLive(s *Session, a []string) error {
 		paced = " paced to real time"
 	}
 	fmt.Fprintf(s.out, "live %s: the stream, fed blocks of %d ms%s, against the offline rip\n", a[0], block, paced)
-	ag := audio.MatchNotes(heard.Notes, final.Notes)
+	ag := audio.MatchNotes(heard.Notes, final.Notes, false)
 	c := agreed(ag)
 	fmt.Fprintf(s.out, "notes  the stream has %d of the offline rip's %d, and %d the offline rip has not: melody %d of %d, under %d of %d, the two as one register %d of %d, bass %d of %d\n",
 		c.hits, c.given, c.heard-c.hits, ag.Lines[0].Matched, ag.Lines[0].B, ag.Lines[1].Matched, ag.Lines[1].B, ag.Register.Matched, ag.Register.B, ag.Lines[2].Matched, ag.Lines[2].B)

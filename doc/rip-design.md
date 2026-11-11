@@ -391,15 +391,18 @@ and the checkpoint earn their keep.
      licence covers training on it; a corpus or a fit takes licensed
      collections, renders and the engine's own mixes.
    Code alone, a thread each, in parallel:
-   - **Notes by pitch and onset, and the search under a guard.** `Agreement`
-     counts every note as one line and matches a truth on the recording's own
-     clock without a map; `truth` leads with that row; `tune ... truth` scores
-     by it as the mean over the conditions its list names, refuses a set that
-     costs any condition more than its guard, keeps the frames it heard and
-     starts its pool at the thresholds it is improving. Nothing it writes is
-     installed before every condition has decoded under it: tuned on guitar
-     alone it gave solo guitar .06 and took .02 to .04 from the pianos, the
-     phones and MusicNet.
+   - **Notes by pitch and onset, and the search under a guard**, landed.
+     `Agreement` counts every note as one line (`All`) and `MatchNotes`
+     matches a truth on the recording's own clock without a map (`timed`);
+     `truth` leads with that row; `tune ... truth` scores by it as the mean
+     over the conditions its list names, refuses a set that costs any
+     condition more than its guard, keeps the frames it heard (`frames
+     <dir>`) and starts its pool at the thresholds it is improving. It has
+     not run on recordings since: the validation list wants its conditions
+     first ([todo](todo.md#tune-the-rip)). Nothing it writes is installed
+     before every condition has decoded under it: tuned on guitar alone it
+     gave solo guitar .06 and took .02 to .04 from the pianos, the phones and
+     MusicNet.
    - **Glides.** The corpus labels each note's offset from its cell's centre
      along its length and generated parts glide; a cents head on the notes
      model; the decoder joins two cells where they name one frequency and

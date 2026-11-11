@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/csv"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,6 +47,8 @@ type tuneOptions struct {
 	samples                        *sampleSet     // recorded notes some tonal slots play on; none when nil
 	midis                          []string       // arrangements most loops play bars of, in place of drawn patterns
 	dense                          bool           // those arrangements play every part, the inner ones softer, on instruments of their own
+	guard                          float64        // the F1 a set tune truth tries may take from any condition's before it is refused
+	frames                         string         // where tune truth keeps each recording's frames between runs; "" hears them every run
 }
 
 // tuneLoop is one rendered loop, what made it, the rip a perfect listener makes
@@ -71,7 +75,7 @@ var tuneTempos = []int{96, 112, 128, 140, 156, 176}
 var tuneMeters = []audio.Meter{{Num: 3, Den: 4}, {Num: 6, Den: 8}}
 
 func cmdTune(s *Session, a []string) error {
-	o := tuneOptions{loops: 12, bars: 4, generations: 8, pool: 16, seed: 1}
+	o := tuneOptions{loops: 12, bars: 4, generations: 8, pool: 16, seed: 1, guard: 0.01}
 	generations := func(w string) error {
 		n, err := strconv.Atoi(w)
 		if err != nil || n < 1 || n > 200 {
@@ -80,10 +84,24 @@ func cmdTune(s *Session, a []string) error {
 		o.generations = n
 		return nil
 	}
-	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list>")
+	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list> [guard <x>] [frames <dir>]")
 	if i := slices.Index(a, "truth"); i >= 0 {
-		if i != len(a)-2 || i > 2 {
+		if i > 2 || i+1 >= len(a) {
 			return usage
+		}
+		for w := a[i+2:]; len(w) > 0; w = w[2:] {
+			switch {
+			case len(w) > 1 && w[0] == "guard":
+				g, err := strconv.ParseFloat(w[1], 64)
+				if err != nil || !(g >= 0 && g <= 1) {
+					return fmt.Errorf("guard %q: want 0 to 1, the F1 a set may take from a condition", w[1])
+				}
+				o.guard = g
+			case len(w) > 1 && w[0] == "frames":
+				o.frames = s.path(w[1])
+			default:
+				return usage
+			}
 		}
 		if i > 0 {
 			n, err := strconv.Atoi(a[0])
@@ -1597,7 +1615,7 @@ func (s *Session) tune(o tuneOptions, file string) error {
 		bounds[i] = genetic.ParameterBounds{Min: r[0], Max: r[1]}
 	}
 	over := fmt.Sprintf("%d loop(s) of %d bar(s)", len(loops), o.bars)
-	best, base, err := s.search(o, over, bounds, s.rip.Genes(), func(genes []float64) float64 {
+	best, base, err := s.search(o, over, bounds, s.rip.Genes(), false, func(genes []float64) float64 {
 		p := audio.RipParamsFromGenes(genes)
 		var sum float64
 		for _, l := range loops {
@@ -1613,11 +1631,12 @@ func (s *Session) tune(o tuneOptions, file string) error {
 	return s.keepRip(file, audio.RipParamsFromGenes(best.Data), best.Score, base)
 }
 
-// search runs the generational engine over genes within bounds, start seeding the
-// pool and the rest drawn across the ranges, candidates scored in parallel and a
-// genome once; it says the start's score and each generation's best and mean, and
-// returns the best and the start's score
-func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterBounds, start []float64, eval func([]float64) float64) (genetic.Candidate[[]float64, float64], float64, error) {
+// search runs the generational engine over genes within bounds from start, a
+// genome scored once and candidates in parallel: near, its first pool is start
+// and sets a step from it, the step widening while the best betters and
+// narrowing while it stalls, as the fit's; else draws across the ranges. A
+// score under zero is a set refused. It returns the best and the start's score.
+func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterBounds, start []float64, near bool, eval func([]float64) float64) (genetic.Candidate[[]float64, float64], float64, error) {
 	eval = genetic.Memoize(func(g []float64) string { return fmt.Sprint(g) }, eval)
 	base := eval(start)
 	fmt.Fprintf(s.out, "tuning over %s: the current parameters score %.3f\n", over, base)
@@ -1625,18 +1644,43 @@ func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterB
 	cfg.PoolSize, cfg.EliteCount, cfg.MaxIterations = o.pool, max(o.pool/8, 1), o.generations
 	cfg.Parallelism, cfg.Seed = runtime.NumCPU(), o.seed
 	cfg.PerturbationRate, cfg.PerturbationStrength = 0.25, 0.15
-	e := genetic.NewEngine[[]float64, float64](eval, func(rng *rand.Rand) []float64 {
+	step := &genetic.BoundedPerturbator{Bounds: bounds, Boundary: genetic.BoundaryReflect}
+	draw := func(rng *rand.Rand) []float64 {
 		g := make([]float64, len(bounds))
 		for i, b := range bounds {
 			g[i] = b.Min + rng.Float64()*(b.Max-b.Min)
 		}
 		return g
-	}, &genetic.TournamentSelector[[]float64, float64]{TournamentSize: 3},
-		&genetic.UniformCombiner[[]float64, float64, float64]{MixProbability: 0.5},
-		&genetic.BoundedPerturbator{Bounds: bounds, Boundary: genetic.BoundaryReflect}, cfg)
+	}
+	if near {
+		cfg.PerturbationStrength = nearStep
+		draw = func(rng *rand.Rand) []float64 {
+			g := slices.Clone(start)
+			for try := 0; try < 8 && slices.Equal(g, start); try++ { // a draw that moved no gene is the start again
+				step.Perturb(&g, cfg.PerturbationRate, nearStep, rng)
+			}
+			return g
+		}
+	}
+	e := genetic.NewEngine[[]float64, float64](eval, draw, &genetic.TournamentSelector[[]float64, float64]{TournamentSize: 3},
+		&genetic.UniformCombiner[[]float64, float64, float64]{MixProbability: 0.5}, step, cfg)
 	e.SetSeeds([][]float64{slices.Clone(start)})
+	if near {
+		e.SetSchedule(genetic.AdaptiveStrength[float64](cfg.PerturbationRate, nearStep, 0.01, 0.4, 1.5))
+	}
 	say := func(p *genetic.Pool[[]float64, float64], gen int) bool {
-		fmt.Fprintf(s.out, "generation %d: best %.3f mean %.3f\n", gen, p.Stats.BestScore, p.Stats.AverageScore)
+		var sum float64
+		passed := 0
+		for _, m := range p.Members {
+			if m.Score >= 0 {
+				sum, passed = sum+m.Score, passed+1
+			}
+		}
+		fmt.Fprintf(s.out, "generation %d: best %.3f mean %.3f", gen, p.Stats.BestScore, sum/float64(max(passed, 1)))
+		if refused := len(p.Members) - passed; refused > 0 {
+			fmt.Fprintf(s.out, " of %d, %d refused", passed, refused)
+		}
+		fmt.Fprintln(s.out)
 		return false
 	}
 	e.SetTerminator(say)
@@ -1647,6 +1691,10 @@ func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterB
 	say(pool, pool.Generation) // the engine's loop ends before the last one's turn
 	return pool.Members[0], base, nil
 }
+
+// nearStep is the step a search near its start opens with, a share of each
+// gene's range, as the voice fit's
+const nearStep = 0.1
 
 // keepRip writes p and listens with it from now on when its score beats the
 // current parameters' base
@@ -1695,12 +1743,13 @@ func geneOf(at func(*audio.RipParams) *float64) int {
 	return slices.Index(p.Genes(), 1)
 }
 
-// tuneTruth searches modelGenes against the recordings a list names with their
-// truths, each heard once through fe and every candidate scored by the pooled note
-// F1, the other parameters held at the session's; it says each recording's F1
-// before and after
+// tuneTruth searches modelGenes against the recordings a list names, each heard
+// once through fe or read back from o.frames, the other parameters held at the
+// session's: a set scores the mean of its conditions' F1 by pitch and onset, and
+// one that takes more than o.guard from a condition's F1 at the start is refused;
+// it says each condition's F1 before and after
 func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontEnd) error {
-	takes, err := readTruthList(list, fe)
+	takes, conds, err := readTruthList(list, fe, o.frames, s.earSum)
 	if err != nil {
 		return err
 	}
@@ -1718,71 +1767,139 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 		return p
 	}
 	// the current parameters' rips hear every recording and read every transcript
-	before, given := make([]noteCount, len(takes)), 0
-	for i, t := range takes {
-		if before[i], err = t.count(cur, s.lead); err != nil {
+	sums, given, read := make([]noteCount, len(conds)), 0, 0
+	for _, t := range takes {
+		c, err := t.count(cur, s.lead)
+		if err != nil {
 			return err
 		}
-		if before[i].given == 0 {
+		if c.given == 0 {
 			return fmt.Errorf("%s: no notes given", t.truthFile)
 		}
-		t.given, given = before[i].given, given+before[i].given
-	}
-	over := fmt.Sprintf("%d recording(s) against %d note(s) given", len(takes), given)
-	best, base, err := s.search(o, over, bounds, start, func(genes []float64) float64 {
-		p := params(genes)
-		var sum noteCount
-		for _, t := range takes {
-			c, _ := t.count(p, s.lead) // a rip that fails hears none of the notes
-			sum = sum.plus(c)
+		t.given, given, sums[t.cond] = c.given, given+c.given, sums[t.cond].plus(c)
+		if t.ear.read {
+			read++
 		}
-		return sum.f1()
+	}
+	if o.frames != "" {
+		fmt.Fprintf(s.out, "%d recording(s) heard and their frames kept in %s, %d read back from it\n", len(takes)-read, o.frames, read)
+	}
+	before := f1s(sums)
+	over := fmt.Sprintf("%d recording(s) of %d condition(s) against %d note(s) given, a set refused that takes over %g from a condition", len(takes), len(conds), given, o.guard)
+	best, base, err := s.search(o, over, bounds, start, true, func(genes []float64) float64 {
+		return guarded(conditionF1(takes, len(conds), params(genes), s.lead), before, o.guard)
 	})
 	if err != nil {
 		return err
 	}
-	kept := cur
+	after := before
 	if best.Score > base {
-		kept = params(best.Data)
+		after = conditionF1(takes, len(conds), params(best.Data), s.lead)
 	}
-	for i, t := range takes {
-		after, _ := t.count(kept, s.lead)
-		fmt.Fprintf(s.out, "%s: F1 %.3f before, %.3f after\n", t.wav, before[i].f1(), after.f1())
+	for c, name := range conds {
+		fmt.Fprintf(s.out, "%s: F1 %.3f before, %.3f after\n", name, before[c], after[c])
 	}
 	return s.keepRip(file, params(best.Data), best.Score, base)
 }
 
-// heardOnce hears one recording once: valid while the front end it wraps ignores
-// the parameters, as the model does, so a search over the decoders pays them alone
+// guarded is a set's score: the mean of its conditions' F1, or for a set that
+// takes more than guard from any condition's F1 at the start, the most it takes
+// under zero, so every set that passes scores over every set refused
+func guarded(f1, start []float64, guard float64) float64 {
+	var sum, cost float64
+	for c := range f1 {
+		sum, cost = sum+f1[c], max(cost, start[c]-f1[c])
+	}
+	if cost > guard {
+		return -cost
+	}
+	return sum / float64(len(f1))
+}
+
+// heardOnce hears one recording once, or reads the frames a run before kept in
+// file: valid while the front end it wraps ignores the parameters, as the model
+// does, so a search over the decoders pays them alone
 type heardOnce struct {
 	fe   audio.RipFrontEnd
+	file string // where the frames are kept between runs, "" for nowhere
 	once sync.Once
 	f    *audio.RipFrames
+	read bool // the frames came from file
 	err  error
 }
 
 func (h *heardOnce) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFrames, error) {
-	h.once.Do(func() { h.f, h.err = h.fe.Hear(x, rate, p) })
+	h.once.Do(func() {
+		if h.f = readFrames(h.file); h.f != nil {
+			h.read = true
+		} else if h.f, h.err = h.fe.Hear(x, rate, p); h.err == nil && h.file != "" {
+			h.err = writeFrames(h.file, h.f)
+		}
+	})
 	return h.f, h.err
 }
 
+// readFrames is the frames a file keeps, nil when it holds none whole
+func readFrames(file string) *audio.RipFrames {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var fr audio.RipFrames
+	if gob.NewDecoder(bufio.NewReader(f)).Decode(&fr) != nil {
+		return nil
+	}
+	return &fr
+}
+
+// writeFrames keeps a model's frames in file, whole or not at all: every field
+// a model fills is exported, which is all gob writes
+func writeFrames(file string, fr *audio.RipFrames) error {
+	tmp, err := os.CreateTemp(filepath.Dir(file), "*.part")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	w := bufio.NewWriter(tmp)
+	err = gob.NewEncoder(w).Encode(fr)
+	if err == nil {
+		err = w.Flush()
+	}
+	if err == nil {
+		err = tmp.Chmod(0o644)
+	}
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), file)
+}
+
 // truthTake is a recording a truth list names, kept at the rate the rip reads it
-// at, so no candidate resamples it, and its truth: a MIDI file's notes, or a
-// transcript read against each rip as truth reads it
+// at, so no candidate resamples it, its condition, and its truth: a MIDI file's
+// notes, or a transcript read against each rip as truth reads it
 type truthTake struct {
 	wav, truthFile string
 	x              []float64
 	ear            *heardOnce
 	truth          func(*audio.Rip) ([]audio.RipNote, error)
-	given          int // the notes the truth gives, all missed by a rip that fails
+	given          int  // the notes the truth gives, all missed by a rip that fails
+	cond           int  // its condition, an index into the list's
+	timed          bool // the truth's seconds are the recording's
 }
 
-// readTruthList reads a line "wav<TAB>truth" a recording, a relative path from
-// the list's own folder
-func readTruthList(list string, fe audio.RipFrontEnd) ([]*truthTake, error) {
+// readTruthList reads a line "wav<TAB>truth[<TAB>condition[<TAB>timed]]" a
+// recording, a relative path from the list's own folder, and the conditions in
+// the list's order, a line that names none a condition of its own under its
+// recording's name; with frames, each recording's are kept there under the
+// checksums of its file and of the weight files
+func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([]*truthTake, []string, error) {
 	data, err := os.ReadFile(list)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	at := func(p string) string {
 		if filepath.IsAbs(p) {
@@ -1790,34 +1907,52 @@ func readTruthList(list string, fe audio.RipFrontEnd) ([]*truthTake, error) {
 		}
 		return filepath.Join(filepath.Dir(list), p)
 	}
+	if frames != "" {
+		if err := os.MkdirAll(frames, 0o755); err != nil {
+			return nil, nil, err
+		}
+	}
 	var takes []*truthTake
+	var conds []string
 	for i, line := range strings.Split(string(data), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		wav, truth, ok := strings.Cut(line, "\t")
-		wav, truth = strings.TrimSpace(wav), strings.TrimSpace(truth)
-		if !ok || wav == "" || truth == "" || strings.Contains(truth, "\t") {
-			return nil, fmt.Errorf("%s line %d: want wav<TAB>truth", list, i+1)
+		f := strings.Split(line, "\t")
+		for k := range f {
+			f[k] = strings.TrimSpace(f[k])
 		}
-		f, err := os.Open(at(wav))
-		if err != nil {
-			return nil, err
+		if len(f) < 2 || len(f) > 4 || f[0] == "" || f[1] == "" || len(f) == 4 && f[3] != "timed" && f[3] != "" {
+			return nil, nil, fmt.Errorf("%s line %d: want wav<TAB>truth[<TAB>condition[<TAB>timed]]", list, i+1)
 		}
-		x, rate, err := audio.ReadWAV(f)
-		f.Close()
+		wav, truth, cond := f[0], f[1], f[0]
+		if len(f) > 2 && f[2] != "" {
+			cond = f[2]
+		}
+		recording, err := os.ReadFile(at(wav))
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", wav, err)
+			return nil, nil, err
+		}
+		x, rate, err := audio.ReadWAV(bytes.NewReader(recording))
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", wav, err)
 		}
 		given, err := os.ReadFile(at(truth))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		t := &truthTake{wav: wav, truthFile: truth, x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: fe}}
+		t := &truthTake{wav: wav, truthFile: truth, x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: fe}, timed: len(f) == 4 && f[3] == "timed"}
+		if t.cond = slices.Index(conds, cond); t.cond < 0 {
+			t.cond, conds = len(conds), append(conds, cond)
+		}
+		if frames != "" {
+			sum := sha256.Sum256(recording)
+			t.ear.file = filepath.Join(frames, fmt.Sprintf("%x-%.16s.frames", sum[:8], weights))
+		}
 		if isMIDI(truth) {
 			score, err := audio.ReadMIDI(bytes.NewReader(given))
 			if err != nil {
-				return nil, fmt.Errorf("%s: %w", truth, err)
+				return nil, nil, fmt.Errorf("%s: %w", truth, err)
 			}
 			t.truth = func(*audio.Rip) ([]audio.RipNote, error) { return score.Notes, nil }
 		} else {
@@ -1827,9 +1962,9 @@ func readTruthList(list string, fe audio.RipFrontEnd) ([]*truthTake, error) {
 		takes = append(takes, t)
 	}
 	if len(takes) == 0 {
-		return nil, fmt.Errorf("%s: no recordings listed", list)
+		return nil, nil, fmt.Errorf("%s: no recordings listed", list)
 	}
-	return takes, nil
+	return takes, conds, nil
 }
 
 // count rips the take under p and counts its notes against its truth's
@@ -1842,20 +1977,22 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (noteCount, er
 	if err != nil {
 		return noteCount{given: t.given}, fmt.Errorf("%s: %w", t.truthFile, err)
 	}
-	return countNotes(r.Notes, given), nil
+	return everyNote(audio.MatchNotes(r.Notes, given, t.timed)), nil
 }
 
 // noteCount is a rip's notes against a truth's: those that hit, those given and
 // those heard
 type noteCount struct{ hits, given, heard int }
 
-// countNotes matches a rip's notes to a truth's as truth does, every note once
-func countNotes(heard, given []audio.RipNote) noteCount {
-	return agreed(audio.MatchNotes(heard, given))
+// everyNote counts an agreement's notes by pitch and onset, whatever line holds
+// each: the count a search or a round is picked by
+func everyNote(ag audio.Agreement) noteCount {
+	return noteCount{ag.All.Matched, ag.All.B, ag.All.A}
 }
 
-// agreed counts an agreement's notes, every note once: the melody register's
-// hits as one line or as its two lines apart, whichever is more, and the bass's
+// agreed counts an agreement's notes within their lines, every note once: the
+// melody register's hits as one line or as its two lines apart, whichever is
+// more, and the bass's
 func agreed(ag audio.Agreement) noteCount {
 	reg, bass := ag.Register, ag.Lines[2]
 	return noteCount{max(reg.Matched, ag.Lines[0].Matched+ag.Lines[1].Matched) + bass.Matched, reg.B + bass.B, reg.A + bass.A}
@@ -1867,3 +2004,23 @@ func (c noteCount) plus(o noteCount) noteCount {
 
 // f1 is twice the hits over the notes given and heard
 func (c noteCount) f1() float64 { return 2 * float64(c.hits) / float64(max(c.given+c.heard, 1)) }
+
+// conditionF1 is each of n conditions' F1 under p, by pitch and onset, its
+// recordings' counts as one; a rip that fails hears none of its notes
+func conditionF1(takes []*truthTake, n int, p audio.RipParams, lead audio.LeadRule) []float64 {
+	sums := make([]noteCount, n)
+	for _, t := range takes {
+		c, _ := t.count(p, lead)
+		sums[t.cond] = sums[t.cond].plus(c)
+	}
+	return f1s(sums)
+}
+
+// f1s is each count's F1
+func f1s(counts []noteCount) []float64 {
+	out := make([]float64, len(counts))
+	for i, c := range counts {
+		out[i] = c.f1()
+	}
+	return out
+}

@@ -8,6 +8,8 @@ package stapes
 import (
 	"bytes"
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -59,6 +61,7 @@ type Session struct {
 	rip      audio.RipParams
 	ripSrc   string
 	frontEnd *ripmodel.FrontEnd
+	earSum   string // the checksum of the weight files frontEnd loaded, which names the frames tune truth keeps
 	// rips keeps what rip heard of each recording, by the name it was ripped as,
 	// with the samples, so fit and compress work on it without the file; songs
 	// are the timelines compress makes and the pattern document carries
@@ -333,25 +336,26 @@ func (s *Session) Close() {
 // loadModel makes a weight file, and a notes model's when notes is not "", the
 // front end rip hears with
 func (s *Session) loadModel(file, notes string) error {
-	f, err := os.Open(file)
+	data, err := os.ReadFile(file)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	var n io.Reader // nil, not a nil *os.File, when there is no notes model
+	sum := sha256.Sum256(data)
+	var n io.Reader // nil, not a nil *bytes.Reader, when there is no notes model
 	if notes != "" {
-		nf, err := os.Open(notes)
+		nd, err := os.ReadFile(notes)
 		if err != nil {
 			return err
 		}
-		defer nf.Close()
-		n = nf
+		both := sha256.Sum256(nd)
+		sum = sha256.Sum256(append(sum[:], both[:]...))
+		n = bytes.NewReader(nd)
 	}
-	fe, err := ripmodel.Load(f, n)
+	fe, err := ripmodel.Load(bytes.NewReader(data), n)
 	if err != nil {
 		return err
 	}
-	s.frontEnd = fe
+	s.frontEnd, s.earSum = fe, hex.EncodeToString(sum[:])
 	return nil
 }
 

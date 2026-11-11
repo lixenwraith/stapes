@@ -2085,9 +2085,9 @@ func (h *hearCount) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFr
 
 // TestTuneTruthSearchesTheModelsThresholds: tune truth refuses with no model
 // loaded; with one, it hears each recording its list names once, searches the
-// thresholds the model's decoders read, the rest held, by the note F1 against
-// each recording's truth, says each recording's F1 before and after, and writes
-// parameters that score at least the start's.
+// thresholds the model's decoders read, the rest held, from a pool near the
+// start, says the F1 before and after of a line that names no condition under
+// its recording's name, and writes parameters that score at least the start's.
 func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
@@ -2099,7 +2099,9 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 ! tune 4 truth
 ! tune 4 2 2 truth %s
 ! tune 1 truth %s
-`, list, list, list))
+! tune truth %s guard 2
+! tune truth %s frames
+`, list, list, list, list, list))
 	if !strings.Contains(out.String(), "no "+modelFile+" is loaded") {
 		t.Errorf("no refusal for want of a model:\n%s", out.String())
 	}
@@ -2125,7 +2127,8 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	writeWAV(t, filepath.Join(dir, "loop.wav"), l.audio)
 	writeFile(t, filepath.Join(dir, "loop.mid"), mid.String())
 	writeFile(t, list, "loop.wav\tloop.mid\n")
-	// a model too small to hear well, from a start too sure to take its strikes
+	// a model too small to hear well, from a start that takes a strike whose
+	// pitch hardly sounds: the sets near it hear fewer notes that were not played
 	cfg := ripmodel.Spec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
@@ -2137,7 +2140,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 		t.Fatal(err)
 	}
 	ear := &hearCount{RipFrontEnd: fe}
-	s.rip.Strike, s.rip.StrikeLow = 0.99, 0.99
+	s.rip.StrikeHold = 0.3
 	start, file := s.rip, filepath.Join(dir, "rip.toml")
 	if err := s.tuneTruth(tuneOptions{generations: 1, pool: 4, seed: 1}, list, file, ear); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
@@ -2150,7 +2153,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {
-		t.Fatalf("nothing written over a start that takes no strike:\n%s", out.String())
+		t.Fatalf("nothing written over a start that takes every strike:\n%s", out.String())
 	}
 	p, err := audio.LoadRipParams(data)
 	if err != nil || p != s.rip {
@@ -2163,7 +2166,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	if p != held {
 		t.Errorf("a parameter the model's decoders do not read moved: %+v, from %+v", p, start)
 	}
-	takes, err := readTruthList(list, fe)
+	takes, _, err := readTruthList(list, fe, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2177,6 +2180,165 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	}
 	if now.f1() < was.f1() {
 		t.Errorf("the written parameters score %.3f, the start %.3f:\n%s", now.f1(), was.f1(), out.String())
+	}
+}
+
+// truthFixture is a rendered loop as loop.wav in a new folder and a model too
+// small to hear well, with the notes its rip of that file holds under p
+func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmodel.FrontEnd, heard func(audio.RipParams) []audio.RipNote, write func(name string, notes []audio.RipNote)) {
+	t.Helper()
+	loops, err := s.corpus(tuneOptions{loops: 2, bars: 2, seed: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir = t.TempDir()
+	writeWAV(t, filepath.Join(dir, "loop.wav"), loops[1].audio)
+	cfg := ripmodel.Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+	m, err := transformer.NewRandom(cfg, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fe, err = ripmodel.New(m, nil); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(filepath.Join(dir, "loop.wav"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	x, rate, err := audio.ReadWAV(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	heard = func(p audio.RipParams) []audio.RipNote {
+		t.Helper()
+		r, err := audio.Ripper{Params: p, FrontEnd: fe, Lead: s.lead}.Samples(x, rate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Notes
+	}
+	write = func(name string, notes []audio.RipNote) {
+		t.Helper()
+		var b bytes.Buffer
+		if err := audio.WriteMIDI(&b, notes, nil, loops[1].bpm, audio.Meter{}); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(dir, name), b.String())
+	}
+	return dir, fe, heard, write
+}
+
+// TestTuneTruthRefusesASetThatCostsACondition: a set that raises the mean of the
+// conditions' F1 by taking more than the guard from one of them scores as
+// refused, and a search whose every gain costs that condition says the sets it
+// refused and writes nothing.
+func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	dir, fe, heard, write := truthFixture(t, s, 1)
+	// sure is what the start hears and soft what a lower bar hears beyond it, so
+	// a soft note is gained only as one sure never had
+	s.rip.Strike = 0.7
+	lower := s.rip
+	lower.Strike = 0.6
+	sure := heard(s.rip)
+	soft := audio.MatchNotes(heard(lower), sure, true).All.OnlyA
+	if len(sure) == 0 || len(soft) == 0 {
+		t.Fatalf("the start hears %d note(s) and a lower bar %d more: no fixture", len(sure), len(soft))
+	}
+	write("sure.mid", sure)
+	write("soft.mid", soft)
+	list, file := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rip.toml")
+	writeFile(t, list, "loop.wav\tsure.mid\tsure\ttimed\nloop.wav\tsoft.mid\tsoft\ttimed\n")
+	takes, conds, err := readTruthList(list, fe, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const guard = 0.01
+	before, costly := conditionF1(takes, len(conds), s.rip, s.lead), conditionF1(takes, len(conds), lower, s.lead)
+	if before[0] != 1 || guarded(costly, before, 1) <= guarded(before, before, 1) || before[0]-costly[0] <= guard {
+		t.Fatalf("the lower bar scores %.3f from %.3f: want a gain of the mean that costs sure over %g", costly, before, guard)
+	}
+	if got := guarded(costly, before, guard); got >= 0 {
+		t.Errorf("a set that takes %.3f from sure scores %.3f, want it refused", before[0]-costly[0], got)
+	}
+	if err := s.tuneTruth(tuneOptions{generations: 1, pool: 4, seed: 1, guard: guard}, list, file, fe); err != nil {
+		t.Fatalf("tune truth: %v\n%s", err, out.String())
+	}
+	for _, want := range []string{" refused\n", "sure: F1 1.000 before, 1.000 after\n", "soft: F1 0.000 before, 0.000 after\n", "nothing beat the current parameters"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("no %q from a search whose gains all cost sure:\n%s", want, out.String())
+		}
+	}
+	if _, err := os.Stat(file); err == nil {
+		t.Errorf("a set was written past the guard:\n%s", out.String())
+	}
+}
+
+// TestTuneTruthReadsKeptFramesBack: with frames, tune truth keeps what it heard
+// of a recording under the checksums of the recording and of the weight files; a
+// second run reads it back and scores as the first, and another model hears the
+// recording again.
+func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	open := func(seed uint64) (*Session, *bytes.Buffer) {
+		cfg := ripmodel.Spec()
+		cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+		m, err := transformer.NewRandom(cfg, seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var b bytes.Buffer
+		if err := m.Save(&b); err != nil {
+			t.Fatal(err)
+		}
+		root := t.TempDir()
+		writeFile(t, filepath.Join(root, modelFile), b.String())
+		files, err := ResolveFiles(root, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		s, err := NewSession(Options{Backend: "null", Out: &out, Files: files})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s, &out
+	}
+	s, out := open(1)
+	// the truth is what the start hears, so nothing beats it and nothing is written
+	dir, _, heard, write := truthFixture(t, s, 1)
+	write("loop.mid", heard(s.rip))
+	list, kept := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "frames")
+	writeFile(t, list, "loop.wav\tloop.mid\t\ttimed\n")
+	run := func(s *Session, out *bytes.Buffer) (string, string) {
+		t.Helper()
+		out.Reset()
+		runOrFatal(t, s, out, fmt.Sprintf("tune 2 1 truth %s frames %s\n", list, kept))
+		ears, search, _ := strings.Cut(out.String(), "\n")
+		return ears, search
+	}
+	first, search := run(s, out)
+	again, same := run(s, out)
+	teardown(t, s)
+	said := func(heard, read int) string {
+		return fmt.Sprintf("%d recording(s) heard and their frames kept in %s, %d read back from it", heard, kept, read)
+	}
+	if first != said(1, 0) || again != said(0, 1) {
+		t.Errorf("a first run said %q and a second %q, want one heard and then one read back", first, again)
+	}
+	if same != search || !strings.Contains(search, "the current parameters score 1.000") {
+		t.Errorf("the frames read back score otherwise than the frames heard:\n%s\n%s", search, same)
+	}
+	s, out = open(2)
+	defer teardown(t, s)
+	other, _ := run(s, out)
+	names, _ := filepath.Glob(filepath.Join(kept, "*.frames"))
+	if other != said(1, 0) || len(names) != 2 {
+		t.Errorf("another model said %q over %d file(s) of frames, want the recording heard again and kept beside the first", other, len(names))
 	}
 }
 
@@ -2452,6 +2614,33 @@ save pattern %s
 				t.Errorf("a note given went unheard by its level or company (%s): %s", m[0], l)
 			}
 		}
+	}
+	// the bass filed with the melody, on the recording's clock: every note is
+	// heard by pitch and onset, where the lines miss the bass; the same a tone
+	// up is heard under the transposition searched, and not on that clock
+	moved, up, part := filepath.Join(dir, "moved.mid"), filepath.Join(dir, "up.mid"), slices.Clone(rp.rip.Notes)
+	for _, file := range []string{moved, up} {
+		for i := range part {
+			part[i].Bass = false
+			if file == up {
+				part[i].MIDI += 2
+			}
+		}
+		var smf bytes.Buffer
+		if err := audio.WriteMIDI(&smf, part, nil, s.bpm, audio.Meter{}); err != nil {
+			t.Fatal(err)
+		}
+		os.WriteFile(file, smf.Bytes(), 0o644)
+	}
+	out.Reset()
+	runOrFatal(t, s, &out, fmt.Sprintf("truth loop %s timed\n! truth loop %s soon\ntruth loop %s\ntruth loop %s timed\n", moved, moved, up, up))
+	every := fmt.Sprintf("notes  %d heard as given, given %d, loop %d, F1 1.000: by pitch and onset", n, n, n)
+	timed := "given on the recording's own clock: no map fitted, no transposition tried\n"
+	if strings.Count(out.String(), timed+every) != 1 || !strings.Contains(out.String(), "bass only loop:") {
+		t.Errorf("a truth filed on other lines, want %q once, over lines that miss the bass:\n%s", timed+every, out.String())
+	}
+	if strings.Count(out.String(), every) != 2 || !strings.Contains(out.String(), "given, transposed -2: ") {
+		t.Errorf("a truth a tone up, want every note heard transposed -2 and not on the recording's clock:\n%s", out.String())
 	}
 	// one line of the song on its own: the instruments named after the file
 	runOrFatal(t, s, &out, fmt.Sprintf("! song loop %s nothing\nsong loop %s kick\n", song, song))

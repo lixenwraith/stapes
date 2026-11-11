@@ -180,13 +180,14 @@ proves wrong or that a document now states, and link the document instead.
   guitar's has no bass line, so the low strings the rip puts on its own count
   as an extra and a miss each. GuitarSet's strummed clips read .58 that way and
   .79 by pitch and onset within 100 ms, 982 of 1,395 "low extras" right notes;
-  MusicNet .61 and .71, its solo cello .47 and .77. `truth`, `tune ... truth`
-  and the wide table all count within lines: read a MIDI-backed set by pitch
-  and onset (`vif/tmp/audit2/lowline.py`, `score2`) before calling a change
-  on it real.
+  MusicNet .61 and .71, its solo cello .47 and .77. `truth`'s `notes` row and
+  `tune ... truth` count by pitch and onset (`Agreement.All`); `truth`'s rows
+  by line, its `every part` row and the wide table still count within lines.
 - A truth on the recording's own clock (GuitarSet's) needs no time map, and
   the matcher's, fitted from its in-line pairs, costs it: strummed guitar by
-  pitch and onset reads .72 through the map and .79 without.
+  pitch and onset reads .72 through the map and .79 without. Say `timed`, to
+  `truth` or as a list line's fourth field; a timed truth's drum hits still
+  pass through `MatchHits`' own map.
 - The voice a model hears for a line is the fit's first seed, no more: modal at
   the heads' mean genes, it stood farther by the fit's own distance than the
   nearest bank voice in 32 of 37 lines (ten of NSynth's held-out instruments
@@ -372,14 +373,29 @@ proves wrong or that a document now states, and link the document instead.
   MemoryMax=...`), where running out stops the unit and not the session.
 - `tune ... truth` pays three CPU-minutes a candidate over the validation
   list's 60 recordings after 25 minutes of hearing them, six hours for the
-  default 16 by 8, and keeps no frames between runs: tune on a third of the
-  list. Its score counts within lines and its list is guitar alone, so its
-  first run silenced the bass line (`strike_low` to .99): its own score rose
-  .608 to .670 and solo guitar .06 by pitch and onset, while the renders, the
-  clean take, the phones and MusicNet fell .02 to .04 and Billie Jean's bass
-  from 111 right to 93. Decode a tuned `rip.toml` over every condition
-  (`vif/tmp/audit2/cond-v0140`, frames kept on disk) before it ships; no change
+  default 16 by 8: give it `frames <dir>`, and a later run reads them back
+  (six rendered recordings, 356 s, at full-size random weights and 2 by 1: 16.4
+  s and 36 CPU-seconds the first run, 6.8 and 6.5 the second; 180 kB of frames
+  a second of recording). A file's name holds the recording's and the weight
+  files' checksums, not the model's code: clear the folder after a change to
+  `ripmodel` or the transformer.
+- Scored within lines over a list of guitar alone, its first run silenced the
+  bass line (`strike_low` to .99): its own score rose .608 to .670 and solo
+  guitar .06 by pitch and onset, while the renders, the clean take, the phones
+  and MusicNet fell .02 to .04 and Billie Jean's bass from 111 right to 93. The
+  guard refuses that only for conditions its list names: list every kind a
+  fit may hold, and decode a tuned `rip.toml` over every condition, the full
+  tracks among them (`vif/tmp/audit2/cond-v0140`), before it ships; no change
   of one bar from the hand-swept five gained the mean of twenty conditions.
+- A pool drawn near its start suits `tune ... truth` and not `tune`: over 12
+  rendered loops of 4 bars at 16 by 8, from .616, the pool drawn across the
+  ranges reached .678, .677 and .686 on three seeds and the near one .650,
+  .676 and .642, so `search` takes `near` from the truth search alone.
+- A test of `tune ... truth` cannot count on the pool: a near draw moves a
+  gene one time in four, a rip of the tiny model's 4.3 s loop costs 0.1 s, and
+  a recording under four seconds is refused. Force the outcome in the fixture:
+  a truth the start hears exactly leaves nothing to beat, and a start at
+  `strike_hold` 0.3 hears so much that every seed's pool betters it.
 - The live rip's notes are the offline rip's (95 in a hundred over twelve
   recordings through 12a and 32a) and its bars are not: tempo, meter and phase
   hold from the first six bars, so the two agreed on three recordings. It costs

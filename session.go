@@ -396,7 +396,7 @@ func (s *Session) loadSoundFile(file string, replace bool) error {
 	if bank == nil || (len(bank.Sound)+len(bank.Voice) == 0 && lerr != nil) {
 		return lerr
 	}
-	// The root's include list must survive to save (MarshalSoundsFile), but
+	// The root's include list must survive to save (SaveSoundsFile), but
 	// LoadSoundsFS flattens. Recover it with a lax decode: the decoder
 	// ignores unknown keys, so this reads only what it names.
 	var head struct {
@@ -505,6 +505,17 @@ func saveFile(named, src, target string) (string, error) {
 	return file, os.MkdirAll(filepath.Dir(file), 0o755)
 }
 
+// authored is the file a document came from, read when its save runs, so the
+// macros and comments kept are the ones on disk and no bytes ride through
+// undo; nil, which saves as marshalled, with none to read
+func authored(src string) []byte {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
 func (s *Session) saveSounds(named string) error {
 	file, err := saveFile(named, s.sounds.src, s.files.soundsTarget)
 	if err != nil {
@@ -513,7 +524,7 @@ func (s *Session) saveSounds(named string) error {
 	// Name-shadow model: the root re-emits every sound and voice in the document.
 	// Includes still load first and are overridden per name, so reloading
 	// reproduces this document exactly while the include set is preserved.
-	data, err := audio.MarshalSoundsFile(&audio.SoundSpecFile{Include: s.sounds.include, Sound: s.sounds.all(), Voice: s.voices.all()})
+	data, err := audio.SaveSoundsFile(authored(s.sounds.src), &audio.SoundSpecFile{Include: s.sounds.include, Sound: s.sounds.all(), Voice: s.voices.all()})
 	if err != nil {
 		return err
 	}
@@ -535,7 +546,7 @@ func (s *Session) savePatterns(named string) error {
 	if err != nil {
 		return err
 	}
-	data, err := audio.MarshalPatternFile(&audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
+	data, err := audio.SavePatternFile(authored(s.pats.src), &audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
 	if err != nil {
 		return err
 	}

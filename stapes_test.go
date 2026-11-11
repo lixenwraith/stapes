@@ -3029,3 +3029,163 @@ func TestLoadTellsAFileByWhatItIs(t *testing.T) {
 		t.Errorf("play of a recording:\n%s", out.String())
 	}
 }
+
+// TestASoundDocumentMadeHereSavesAsMarshalled: the drums compress matched and
+// the voices rip fitted save byte for byte as audio.MarshalSoundsFile writes
+// them, to a new file and bare over it once loaded and changed, and load back
+// as they were saved.
+func TestASoundDocumentMadeHereSavesAsMarshalled(t *testing.T) {
+	dir := t.TempDir()
+	wav, file := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "sounds.toml")
+	writeWAV(t, wav, thumpLoop())
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	marshalled := func(when string) {
+		t.Helper()
+		want, err := audio.MarshalSoundsFile(&audio.SoundSpecFile{Include: s.sounds.include, Sound: s.sounds.all(), Voice: s.voices.all()})
+		if got, rerr := os.ReadFile(file); err != nil || rerr != nil || !bytes.Equal(got, want) {
+			t.Fatalf("%s, the file is not the session as marshalled (%v, %v):\n%s", when, err, rerr, got)
+		}
+	}
+	runOrFatal(t, s, &out, fmt.Sprintf("rip %s loop\ncompress loop\nsave sound %s\n", wav, file))
+	if len(s.sounds.order) == 0 || len(s.voices.order) == 0 {
+		t.Fatalf("%d matched drum(s) and %d fitted voice(s) to save, want some of each:\n%s", len(s.sounds.order), len(s.voices.order), out.String())
+	}
+	marshalled("made here")
+	runOrFatal(t, s, &out, "load sound "+file+"\n")
+	marshalled("loaded back")
+	runOrFatal(t, s, &out, "set "+s.voices.order[0]+".desc kept\nsave sound\n")
+	marshalled("changed and saved bare")
+}
+
+// TestAPatternDocumentMadeHereSavesAsMarshalled: the same for the patterns and
+// the song a rip and compress leave, a step of them holding a bend, as
+// audio.MarshalPatternFile writes them.
+func TestAPatternDocumentMadeHereSavesAsMarshalled(t *testing.T) {
+	dir := t.TempDir()
+	wav, file := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "music.toml")
+	writeWAV(t, wav, thumpLoop())
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	marshalled := func(when string) {
+		t.Helper()
+		want, err := audio.MarshalPatternFile(&audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
+		if got, rerr := os.ReadFile(file); err != nil || rerr != nil || !bytes.Equal(got, want) {
+			t.Fatalf("%s, the file is not the session as marshalled (%v, %v):\n%s", when, err, rerr, got)
+		}
+	}
+	runOrFatal(t, s, &out, fmt.Sprintf("rip %s loop\ncompress loop\n", wav))
+	note := "loop_bass_1.track.0.event.0" // the first note heard, on either line
+	if s.pats.has("loop_melody_1") {
+		note = "loop_melody_1.track.0.event.0"
+	}
+	runOrFatal(t, s, &out, fmt.Sprintf("set %[1]s.bend 2\nset %[1]s.bend_at 0.5\nsave pattern %[2]s\n", note, file))
+	marshalled("made here")
+	runOrFatal(t, s, &out, "load pattern "+file+"\n")
+	marshalled("loaded back")
+	runOrFatal(t, s, &out, "set "+note+".vel 0.25\nsave pattern\n")
+	marshalled("changed and saved bare")
+}
+
+// authoredMusic and authoredSounds stand in for documents a person wrote: a
+// comment of the file's, macros, and an entry under a comment that invokes
+// one; the sounds include a file beside them.
+const authoredMusic = `# A beat as its author wrote it.
+
+[macros.Hit]
+params = { pos = "int" }
+body = { pos = "${pos}", vel = 1.0 }
+
+# a lane is one drum on every pos
+[macros.Lane]
+params = { instr = "string", pos = "array" }
+body = { instr = "${instr}", event = [{ macro = "Hit", each = { pos = "${pos}" } }] }
+
+# four on the floor
+[[pattern]]
+name = "floor"
+steps = 16
+[[pattern.track]]
+macro = "Lane"
+instr = "kick"
+pos = [0, 4, 8, 12]
+`
+
+const authoredSounds = `# Sounds as their author wrote them.
+
+include = ["more.toml"] # beside this file
+
+# a blip is one sine
+[macros.Blip]
+params = { name = "string", freq = "float" }
+body = { name = "${name}", duration = 0.1, layer = [{ source = { kind = "osc", wave = "sine", freq = "${freq}" } }] }
+
+# the low one
+[[sound]]
+macro = "Blip"
+name = "low"
+freq = 220
+`
+
+// TestASavedDocumentIsStillItsAuthors: a document a person wrote, loaded,
+// edited and saved bare, keeps its text down to its first entry and the
+// comment above that entry byte for byte, writes the edited entry as the
+// invocation that still makes it, and loads to what the session holds.
+func TestASavedDocumentIsStillItsAuthors(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "music.toml")
+	writeFile(t, file, authoredMusic)
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	held := func() []byte {
+		data, err := audio.MarshalPatternFile(&audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	runOrFatal(t, s, &out, "load pattern "+file+"\nset floor.track.0.event.3.pos 14\nsave pattern\n")
+	saved, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := authoredMusic[:strings.Index(authoredMusic, "name = \"floor\"\n")] + "name = \"floor\"\n"
+	if !strings.HasPrefix(string(saved), own) {
+		t.Errorf("the author's text or the comment above the entry moved:\n%s", saved)
+	}
+	if !strings.Contains(string(saved), "macro = \"Lane\"\ninstr = \"kick\"\npos = [0, 4, 8, 14]\n") {
+		t.Errorf("the edited entry is not an invocation of its macro:\n%s", saved)
+	}
+	want := held()
+	runOrFatal(t, s, &out, "load pattern "+file+"\n")
+	if !bytes.Equal(held(), want) {
+		t.Errorf("the saved document loads to other definitions:\n%s", saved)
+	}
+}
+
+// TestADocumentSavedElsewhereCarriesItsMacrosAndComments: save to another
+// file writes over the text of the file the document came from, its include
+// as written, leaves that file as it was and moves the document there.
+func TestADocumentSavedElsewhereCarriesItsMacrosAndComments(t *testing.T) {
+	dir := t.TempDir()
+	file, other := filepath.Join(dir, "sounds.toml"), filepath.Join(dir, "other.toml")
+	writeFile(t, file, authoredSounds)
+	writeFile(t, filepath.Join(dir, "more.toml"), "[[voice]]\nname = \"reed\"\nwave = \"square\"\n")
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("load sound %s\nset low.layer.0.source.freq 330\nsave sound %s\n", file, other))
+	saved, err := os.ReadFile(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := authoredSounds[:strings.Index(authoredSounds, "name = \"low\"\n")] + "freq = 330.0\nname = \"low\"\n"
+	if !strings.HasPrefix(string(saved), own) || !strings.Contains(string(saved), "name = \"reed\"\n") {
+		t.Errorf("the other file lacks the author's text, the invocation or the included voice:\n%s", saved)
+	}
+	if left, _ := os.ReadFile(file); string(left) != authoredSounds || s.sounds.src != other {
+		t.Errorf("the first file changed, or the document stayed at %s:\n%s", s.sounds.src, left)
+	}
+}

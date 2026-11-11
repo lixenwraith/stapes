@@ -216,6 +216,10 @@ Android app's microphone mode (vif's todo) is judged by ([Rip design
   register): the stream parts the register's two lines over the window it
   holds when a bar freezes (`streams`), the offline rip over the whole
   recording. A view that colours a line shows it.
+- The clock. The stream and the offline rip share the recording's, and `live`
+  still matches them untimed, through a fitted map and the transposition that
+  matches most (`MatchNotes`): timed, as `truth ... timed` matches, a stream
+  that hears late or a semitone off counts as wrong.
 - The stream's own reads (`Frames`, `Open`) are for the view; `live` does not
   ask for them, so a recording does not yet check them through a trained
   model.

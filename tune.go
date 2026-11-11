@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,6 +43,7 @@ type tuneOptions struct {
 	meters                         bool           // a third of the loops in 3/4 or 6/8, every part generated in it
 	nowav                          bool           // an export keeps the frames and the labels only
 	codec                          bool           // an export sends a third of its loops through a lossy codec and back
+	labels                         bool           // an export writes each loop's label over the one on disk and renders nothing
 	tempos                         []int          // the tempos the loops cycle through; tuneTempos when nil
 	part, parts                    int            // an export renders the loops i%parts == part; all when parts is 0
 	skip                           func(int) bool // the loops drawn but not rendered
@@ -239,7 +241,7 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 		if o.glide {
 			sway = rand.New(rand.NewPCG(o.seed^0x73776179, uint64(i)+1))
 		}
-		voices, families, restore := s.loopVoices(slots, o.aug, arng, sway)
+		voices, families, restore := s.loopVoices(slots, o.aug, arng, sway, !o.labels)
 		cents := 0.0
 		if o.aug {
 			cents = arng.Float64()*100 - 50 // a recording's pitch standard, within a quarter tone of A440
@@ -249,26 +251,29 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 		if o.samples != nil {
 			srng = rand.New(rand.NewPCG(o.seed^0x3c3c3c3c, uint64(i)+1))
 			var err error
-			if played, sampled, err = o.samples.draw(slots, meter, o.bars, bpm, root, scale, cents, srng); err != nil {
+			if played, sampled, err = o.samples.draw(slots, meter, o.bars, bpm, root, scale, cents, srng, !o.labels); err != nil {
 				restore()
 				return err
 			}
 		}
-		s.eng.SetTuning(cents)
-		buf, err := s.eng.RenderMusic(played, bpm, meter, o.bars, root, scale, nil, int64(i+1))
-		s.eng.SetTuning(0)
-		restore()
-		if err != nil {
-			return err
+		l := tuneLoop{slots: slots, bpm: bpm, meter: meter, root: root, scale: scale, voices: voices, families: families, tuning: cents, sampled: sampled}
+		if !o.labels { // a label holds what was drawn, and nothing of how it sounds
+			s.eng.SetTuning(cents)
+			buf, err := s.eng.RenderMusic(played, bpm, meter, o.bars, root, scale, nil, int64(i+1))
+			s.eng.SetTuning(0)
+			restore()
+			if err != nil {
+				return err
+			}
+			if o.samples != nil {
+				buf = mixSampled(buf, sampled, srng)
+			}
+			if o.aug {
+				buf = degrade(buf, arng)
+			}
+			l.audio, l.want = buf, audio.ExpectedRip(slots, bpm, meter, o.bars, root, scale, nil)
 		}
-		if o.samples != nil {
-			buf = mixSampled(buf, sampled, srng)
-		}
-		if o.aug {
-			buf = degrade(buf, arng)
-		}
-		want := audio.ExpectedRip(slots, bpm, meter, o.bars, root, scale, nil)
-		if err := visit(i, tuneLoop{audio: buf, want: want, slots: slots, bpm: bpm, meter: meter, root: root, scale: scale, voices: voices, families: families, tuning: cents, sampled: sampled}); err != nil {
+		if err := visit(i, l); err != nil {
 			return err
 		}
 	}
@@ -606,10 +611,10 @@ func glide(rng *rand.Rand, p *audio.Pattern, root int, scale audio.ScaleID, step
 
 // loopVoices is the voice each tonal instrument the slotted patterns name plays
 // with and the family it sounds as: the registered one, or under aug one of random
-// genes near it, a third of the time on another wave, and in a third of the loops
-// every release but the bass's three to ten times as long, as under a piano's
-// pedal; sway gives three in ten a vibrato; restore puts the registered ones back
-func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, rng, sway *rand.Rand) (map[string]*audio.VoiceDef, map[string]int, func()) {
+// genes near it, a third of the time on another wave, a third of the loops under a
+// piano's pedal; sway gives three in ten a vibrato; restore puts the registered ones
+// back. A loop not rendered registers none: the mixer refuses one past its queue.
+func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, rng, sway *rand.Rand, render bool) (map[string]*audio.VoiceDef, map[string]int, func()) {
 	voices, families, known := map[string]*audio.VoiceDef{}, map[string]int{}, familyVoices()
 	var originals []*audio.VoiceDef
 	pedal := 1.0 // the labels stay the notes as played, however long they ring
@@ -666,10 +671,15 @@ func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, 
 			if play == v {
 				continue
 			}
-			if _, err := s.eng.DefineVoice(play); err != nil {
+			if !render {
+				if audio.ValidateVoice(play) != nil {
+					continue
+				}
+			} else if _, err := s.eng.DefineVoice(play); err != nil {
 				continue
+			} else {
+				originals = append(originals, v)
 			}
-			originals = append(originals, v)
 			voices[name], families[name] = play, family
 		}
 	}
@@ -892,7 +902,21 @@ type corpusEvent struct {
 	Wave   int       `json:"wave"`   // index into the waves of the manifest; -1 unknown
 	Family int       `json:"family"` // index into the families of the manifest; -1 unlabelled
 	Voice  []float64 `json:"voice,omitempty"`
-	Cents  []float64 `json:"cents,omitempty"` // a note that moves: cents from MIDI's cell centre at each frame from Frame to End
+	Cents  centsList `json:"cents,omitempty"` // a note that moves or a pitch track places: cents from MIDI's cell centre at each frame from Frame to End
+}
+
+// centsList is where a note sits at each of its frames, NaN at a frame its pitch
+// track does not place, which a label writes as null
+type centsList []float64
+
+func (c centsList) MarshalJSON() ([]byte, error) {
+	out := make([]any, len(c))
+	for i, v := range c {
+		if !math.IsNaN(v) {
+			out[i] = v
+		}
+	}
+	return json.Marshal(out)
 }
 
 // corpusLoop is an exported loop's label file
@@ -945,6 +969,8 @@ func cmdCorpus(s *Session, a []string) error {
 			o.codec = true
 		case a[n-1] == "dense":
 			o.dense = true
+		case a[n-1] == "labels":
+			o.labels = true
 		case n > 2 && a[n-2] == "seed":
 			v, err := strconv.ParseUint(a[n-1], 10, 64)
 			if err != nil {
@@ -1010,18 +1036,18 @@ func cmdCorpus(s *Session, a []string) error {
 
 // corpusFrom writes a corpus of recordings and the MIDI files they were played
 // from, one loop each, listed by a CSV with audio_filename and midi_filename
-// columns, and split, duration and family when present: the frames as heard, the
-// notes as the MIDI plays them, the voices unknown. A loop on disk is kept, known
-// by its source, so a run again goes on where it stopped and a batch after it.
+// columns, and split, duration, family and pitch when present: the frames as heard,
+// the notes as the MIDI plays them, placed by the pitch track, the voices unknown. A
+// loop on disk is kept, known by its source; under labels its label is written over.
 func (s *Session) corpusFrom(dir, list string, a []string) error {
-	split, hours, codec := "", math.Inf(1), false
+	split, hours, codec, labels := "", math.Inf(1), false, false
 	for len(a) > 0 {
-		if a[0] == "codec" {
-			codec, a = true, a[1:]
+		if a[0] == "codec" || a[0] == "labels" {
+			codec, labels, a = codec || a[0] == "codec", labels || a[0] == "labels", a[1:]
 			continue
 		}
 		if len(a) < 2 || a[0] != "split" && a[0] != "hours" {
-			return fmt.Errorf("%q: want split <name>, hours <h> or codec", a[0])
+			return fmt.Errorf("%q: want split <name>, hours <h>, codec or labels", a[0])
 		}
 		if a[0] == "split" {
 			split = a[1]
@@ -1066,30 +1092,43 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		}
 		family = func(r []string) int { return familyIndex(r[c]) }
 	}
-	// a share of a large set may be all that is on disk
+	// a share of a large set may be all that is on disk, and a recording heard may be gone
 	listed := len(rows)
 	rows = slices.DeleteFunc(rows, func(r []string) bool {
 		_, err1 := os.Stat(at(r[wav]))
 		_, err2 := os.Stat(at(r[mid]))
-		return err1 != nil || err2 != nil
+		return err1 != nil && !labels || err2 != nil
 	})
 	missing := listed - len(rows)
+	pitch := func([]string) string { return "" }
+	if c, ok := col["pitch"]; ok {
+		for _, r := range rows {
+			if _, err := os.Stat(at(r[c])); r[c] != "" && err != nil {
+				return fmt.Errorf("%s: pitch: %w", list, err)
+			}
+		}
+		pitch = func(r []string) string { return r[c] }
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	loopFile := func(i int) string { return filepath.Join(dir, fmt.Sprintf("loop_%03d", i)) }
-	taken, held, frames := map[int]bool{}, map[string]bool{}, 0
-	labels, _ := filepath.Glob(filepath.Join(dir, "loop_*.json"))
-	for _, name := range labels {
+	taken, held, frames := map[int]bool{}, map[string]int{}, 0
+	there, _ := filepath.Glob(filepath.Join(dir, "loop_*.json"))
+	for _, name := range there {
 		i, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(filepath.Base(name), "loop_"), ".json"))
 		data, rerr := os.ReadFile(name)
 		var l corpusLoop
 		if err != nil || rerr != nil || json.Unmarshal(data, &l) != nil {
+			if labels {
+				return fmt.Errorf("%s does not read, so its recording is not known: remove it and its frames, and run the line without labels", name)
+			}
 			continue // a label cut short is written again
 		}
-		taken[i], held[l.Source], frames = true, true, frames+l.Frames
+		taken[i], held[l.Source], frames = true, i, frames+l.Frames
 	}
-	rows = slices.DeleteFunc(rows, func(r []string) bool { return held[r[wav]] })
+	// a run hears the recordings no loop holds, and labels writes those some loop does
+	rows = slices.DeleteFunc(rows, func(r []string) bool { _, ok := held[r[wav]]; return ok != labels })
 	// the same draw every run, so a share of the list spans its composers and years
 	rng := rand.New(rand.NewPCG(1, 2))
 	rng.Shuffle(len(rows), func(i, j int) { rows[i], rows[j] = rows[j], rows[i] })
@@ -1105,7 +1144,7 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		sum     = float64(frames) * audio.RipFrameSec
 	)
 	for _, r := range rows {
-		if sum >= hours*3600 {
+		if !labels && sum >= hours*3600 {
 			break
 		}
 		g, err := os.Open(at(r[mid]))
@@ -1119,6 +1158,10 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 			continue
 		} else if err != nil {
 			return fmt.Errorf("%s: %w", at(r[mid]), err)
+		}
+		if i, ok := held[r[wav]]; ok {
+			jobs = append(jobs, job{i, r, score})
+			continue
 		}
 		for taken[next] {
 			next++
@@ -1140,10 +1183,11 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		return fmt.Errorf("%s: no recordings listed for split %q, %d skipped", list, split, len(skipped))
 	}
 	var (
-		mu    sync.Mutex
-		wg    sync.WaitGroup
-		first error
-		work  = make(chan job)
+		mu            sync.Mutex
+		wg            sync.WaitGroup
+		first         error
+		work          = make(chan job)
+		placed, notes int // of the recordings a pitch track is named for
 	)
 	for range min(4, runtime.NumCPU()) { // a recording's samples are hundreds of megabytes
 		wg.Go(func() {
@@ -1152,9 +1196,22 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 				if codec {
 					coder = rand.New(rand.NewPCG(0xc0dec, uint64(j.at)+1))
 				}
-				n, err := corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), j.score, coder)
+				var tracks []pitchTrack
+				err := error(nil)
+				if p := pitch(j.row); p != "" {
+					tracks, err = readPitch(at(p))
+				}
+				n, sat := 0, 0
+				if err == nil {
+					n, sat, err = corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), j.score, tracks, coder, labels)
+				}
 				mu.Lock()
-				frames += n
+				if !labels {
+					frames += n
+				}
+				if tracks != nil {
+					placed, notes = placed+sat, notes+len(j.score.Notes)
+				}
 				first = cmp.Or(first, err)
 				mu.Unlock()
 			}
@@ -1173,12 +1230,16 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	if err := writeJSON(filepath.Join(dir, "corpus.json"), m); err != nil {
 		return err
 	}
-	how := ""
-	if codec {
-		how = ", a third through a lossy codec"
+	what := fmt.Sprintf("wrote %d recording(s) to %s from %s", len(jobs), dir, list)
+	if labels {
+		what = fmt.Sprintf("wrote the labels of %d recording(s) in %s again from %s and heard none", len(jobs), dir, list)
+	} else if codec {
+		what += ", a third through a lossy codec"
 	}
-	fmt.Fprintf(s.out, "wrote %d recording(s) to %s from %s%s, %d loop(s) and %.1f hours in all; %d listed were not on disk\n",
-		len(jobs), dir, list, how, loops, float64(frames)*audio.RipFrameSec/3600, missing)
+	if notes > 0 {
+		what += fmt.Sprintf(", %d of %d note(s) placed by a pitch track", placed, notes)
+	}
+	fmt.Fprintf(s.out, "%s, %d loop(s) and %.1f hours in all; %d listed were not on disk\n", what, loops, float64(frames)*audio.RipFrameSec/3600, missing)
 	if len(skipped) > 0 {
 		fmt.Fprintf(s.out, "skipped %d whose MIDI has no notes and no kick, snare or hihat, as %s\n", len(skipped), skipped[0])
 	}
@@ -1186,43 +1247,246 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 }
 
 // corpusRecording writes a recording's frames, through a codec when coder is
-// set, and its score as one loop, the frames it holds returned: its notes played
-// by family, or each by its program's (programFamily) when family is -1, its hits
-// and other strikes by the drums, a strike of no line (a tom, a crash) an onset,
-// drum -1 and midi 0.
-func corpusRecording(base, wav, source string, family int, score *audio.MIDIScore, coder *rand.Rand) (int, error) {
-	f, err := os.Open(wav)
-	if err != nil {
-		return 0, err
-	}
-	x, rate, err := audio.ReadWAV(f)
-	f.Close()
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", wav, err)
-	}
-	if coder != nil {
-		if x, err = codecRoundTrip(x, rate, coder); err != nil {
-			return 0, err
+// set, and its score as one loop, its frames and the notes its pitch tracks place
+// returned: a note by family, or its program's (programFamily) when family is -1,
+// a hit and a strike of no line (a tom, a crash: drum -1, midi 0) by the drums.
+// Under labels the frames on disk stand and say how long it is.
+func corpusRecording(base, wav, source string, family int, score *audio.MIDIScore, tracks []pitchTrack, coder *rand.Rand, labels bool) (int, int, error) {
+	frames, whole, placed := 0, false, 0
+	if labels {
+		if frames, whole = melLength(base + ".mel"); !whole {
+			return 0, 0, fmt.Errorf("%s.mel: no frames whole on disk to label", base)
 		}
-	}
-	mel := audio.MelFrames(x, rate)
-	if err := writeMel(base+".mel", mel); err != nil {
-		return 0, err
+	} else {
+		f, err := os.Open(wav)
+		if err != nil {
+			return 0, 0, err
+		}
+		x, rate, err := audio.ReadWAV(f)
+		f.Close()
+		if err != nil {
+			return 0, 0, fmt.Errorf("%s: %w", wav, err)
+		}
+		if coder != nil {
+			if x, err = codecRoundTrip(x, rate, coder); err != nil {
+				return 0, 0, err
+			}
+		}
+		mel := audio.MelFrames(x, rate)
+		if err := writeMel(base+".mel", mel); err != nil {
+			return 0, 0, err
+		}
+		frames = len(mel)
 	}
 	frame := func(sec float64) int { return int(sec/audio.RipFrameSec + 0.5) }
-	lab := corpusLoop{Frames: len(mel), Source: source}
+	lab := corpusLoop{Frames: frames, Source: source}
 	for _, n := range score.Notes {
 		f := family
 		if f < 0 {
 			f = programFamily(n.Program)
 		}
-		lab.Events = append(lab.Events, corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: n.Vel, Wave: -1, Family: f})
+		ev := corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: n.Vel, Wave: -1, Family: f}
+		if tr := trackOf(tracks, n); tr != nil {
+			ev.Cents = tr.cents(n.MIDI, ev.Frame, ev.End)
+			placed += min(len(ev.Cents), 1)
+		}
+		lab.Events = append(lab.Events, ev)
 	}
 	for _, h := range append(slices.Clip(score.Hits), score.Struck...) {
 		lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: h.Vel, Wave: -1, Family: familyIndex("drums")})
 	}
-	lab.Events = slices.DeleteFunc(lab.Events, func(e corpusEvent) bool { return e.Frame >= len(mel) })
-	return len(mel), writeJSON(base+".json", lab)
+	lab.Events = slices.DeleteFunc(lab.Events, func(e corpusEvent) bool { return e.Frame >= frames })
+	return frames, placed, writeJSON(base+".json", lab)
+}
+
+// pitchTrack is a recording's pitch as its collection annotates it, one voice's
+// or one string's: the seconds of its samples, ascending, the Hz there, 0 where
+// nothing is voiced, and the usual time between two, which its reach is told in
+type pitchTrack struct {
+	sec, hz []float64
+	step    float64
+	notes   [][3]float64 // a string's notes: start, end, pitch; nil for a voice, whose track is every note's
+}
+
+// readPitch reads a pitch track by what its file is: a JAMS file's strings, each
+// pitch_contour annotation beside the note_midi annotation of its data_source or
+// its place, or a CSV's one voice, seconds and Hz a row under any header
+func readPitch(file string) ([]pitchTrack, error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	var tracks []pitchTrack
+	if !bytes.HasPrefix(bytes.TrimSpace(data), []byte("{")) {
+		rows, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		tracks = []pitchTrack{{}}
+		for i, r := range rows {
+			sec, err1 := strconv.ParseFloat(strings.TrimSpace(r[0]), 64)
+			hz, err2 := strconv.ParseFloat(strings.TrimSpace(r[len(r)-1]), 64)
+			if len(r) != 2 || (err1 != nil || err2 != nil) && i > 0 {
+				return nil, fmt.Errorf("%s: row %d: want seconds and Hz", file, i+1)
+			} else if err1 == nil && err2 == nil {
+				tracks[0].sec, tracks[0].hz = append(tracks[0].sec, sec), append(tracks[0].hz, hz)
+			}
+		}
+	} else {
+		var jam struct {
+			Annotations []struct {
+				Namespace string
+				Data      json.RawMessage
+				Meta      struct {
+					Source string `json:"data_source"`
+				} `json:"annotation_metadata"`
+			}
+		}
+		if err := json.Unmarshal(data, &jam); err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		of, seen := map[string]int{}, map[string]int{} // a string's track, and the annotations seen of a namespace
+		for _, a := range jam.Annotations {
+			if a.Namespace != "pitch_contour" && a.Namespace != "note_midi" {
+				continue
+			}
+			key := cmp.Or(a.Meta.Source, strconv.Itoa(seen[a.Namespace]))
+			seen[a.Namespace]++
+			k, ok := of[key]
+			if !ok {
+				k, of[key] = len(tracks), len(tracks)
+				tracks = append(tracks, pitchTrack{notes: [][3]float64{}})
+			}
+			obs, err := jamsData(a.Data)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %s: %w", file, a.Namespace, err)
+			}
+			for _, o := range obs {
+				var note float64
+				sample := struct {
+					Frequency float64
+					Voiced    *bool
+				}{}
+				if a.Namespace == "note_midi" && json.Unmarshal(o.Value, &note) == nil {
+					tracks[k].notes = append(tracks[k].notes, [3]float64{o.Time, o.Time + o.Duration, note})
+				} else if a.Namespace == "pitch_contour" && json.Unmarshal(o.Value, &sample) == nil {
+					if sample.Voiced != nil && !*sample.Voiced {
+						sample.Frequency = 0
+					}
+					tracks[k].sec, tracks[k].hz = append(tracks[k].sec, o.Time), append(tracks[k].hz, sample.Frequency)
+				}
+			}
+		}
+	}
+	for k := range tracks {
+		tr := &tracks[k]
+		if !slices.IsSorted(tr.sec) {
+			return nil, fmt.Errorf("%s: a pitch track's seconds do not ascend", file)
+		}
+		var gaps []float64
+		for i := 1; i < len(tr.sec); i++ {
+			gaps = append(gaps, tr.sec[i]-tr.sec[i-1])
+		}
+		if slices.Sort(gaps); len(gaps) > 0 {
+			tr.step = gaps[len(gaps)/2]
+		}
+	}
+	if !slices.ContainsFunc(tracks, func(t pitchTrack) bool { return len(t.sec) > 0 }) {
+		return nil, fmt.Errorf("%s: no pitch track: want a CSV of seconds and Hz, or a JAMS file's pitch_contour annotations", file)
+	}
+	return tracks, nil
+}
+
+// jamsObservation is one of a JAMS annotation's observations
+type jamsObservation struct {
+	Time, Duration float64
+	Value          json.RawMessage
+}
+
+// jamsData reads an annotation's data, written as a list of observations or as a
+// list a field
+func jamsData(raw json.RawMessage) ([]jamsObservation, error) {
+	var obs []jamsObservation
+	if json.Unmarshal(raw, &obs) == nil {
+		return obs, nil
+	}
+	var cols struct {
+		Time, Duration []float64
+		Value          []json.RawMessage
+	}
+	if err := json.Unmarshal(raw, &cols); err != nil {
+		return nil, err
+	}
+	if len(cols.Duration) != len(cols.Time) || len(cols.Value) != len(cols.Time) {
+		return nil, errors.New("its time, duration and value lists differ in length")
+	}
+	for i, t := range cols.Time {
+		obs = append(obs, jamsObservation{t, cols.Duration[i], cols.Value[i]})
+	}
+	return obs, nil
+}
+
+// trackOf is the track that places a note: a voice's own, or that of the string
+// whose notes hold one of its pitch sounding at its onset, a frame's slack before
+// it, the nearest onset first; nil where none does
+func trackOf(tracks []pitchTrack, n audio.RipNote) *pitchTrack {
+	var best *pitchTrack
+	off := math.Inf(1)
+	for k := range tracks {
+		tr := &tracks[k]
+		if tr.notes == nil {
+			return tr
+		}
+		for _, a := range tr.notes {
+			if d := math.Abs(a[0] - n.Start); math.Abs(a[2]-float64(n.MIDI)) <= 0.5 && n.Start >= a[0]-audio.RipFrameSec && n.Start <= a[1] && d < off {
+				best, off = tr, d
+			}
+		}
+	}
+	return best
+}
+
+// pitchTrackReach is how far from a sample a pitch track still speaks, in its
+// steps: past the half a whole track leaves, short of the step a missing sample does
+const pitchTrackReach = 0.75
+
+// at is the track's pitch at sec as a MIDI number, NaN where it voices nothing: its
+// nearest sample's when that is voiced and in reach, and on the line to the
+// sample across sec when that one is voiced and no sample is missing between
+func (p *pitchTrack) at(sec float64) float64 {
+	near := sort.SearchFloat64s(p.sec, sec)
+	far := near - 1
+	if near == len(p.sec) || near > 0 && sec-p.sec[far] < p.sec[near]-sec {
+		near, far = far, near
+	}
+	voiced := func(k int, from, reach float64) bool {
+		return k >= 0 && k < len(p.sec) && p.hz[k] > 0 && math.Abs(p.sec[k]-from) <= reach*p.step
+	}
+	midi := func(k int) float64 { return 69 + 12*math.Log2(p.hz[k]/440) }
+	switch {
+	case !voiced(near, sec, pitchTrackReach):
+		return math.NaN()
+	case !voiced(far, p.sec[near], 2*pitchTrackReach) || p.sec[far] == p.sec[near]:
+		return midi(near)
+	}
+	return midi(near) + (sec-p.sec[near])/(p.sec[far]-p.sec[near])*(midi(far)-midi(near))
+}
+
+// cents is where the track places a note at each frame from from to to, as
+// noteCents an engine's: NaN at a frame it does not voice, or voices a semitone
+// or more from the note, and nil for a note it places at no frame
+func (p *pitchTrack) cents(midi, from, to int) centsList {
+	out, placed := make(centsList, max(to-from, 1)), false
+	for i := range out {
+		c := math.Round((p.at(float64(from+i)*audio.RipFrameSec)-float64(midi))*1000) / 10
+		if out[i] = math.NaN(); math.Abs(c) < 100 {
+			out[i], placed = c, true
+		}
+	}
+	if !placed {
+		return nil
+	}
+	return out
 }
 
 // parseTempos reads a range lo-hi, six tempos spread over it, or a list a,b,c,
@@ -1256,19 +1520,26 @@ func parseTempos(arg string) ([]int, error) {
 }
 
 // exportCorpus writes loops into dir: loop_NNN.wav as rendered, loop_NNN.mel as
-// the log-mel frames a front-end model hears (frames, bands, then float32 rows,
-// little-endian), loop_NNN.json as the events that sound in it with their frames
-// and voices, and corpus.json naming the layout. A loop whose label is on disk is
-// kept, so an export run again goes on where it stopped; a part writes no layout.
+// the log-mel frames a model hears (frames, bands, then float32 rows, little-endian),
+// loop_NNN.json as its events with their frames and voices, and corpus.json naming
+// the layout. A loop whose label is on disk is kept, so an export run again goes on;
+// a part writes no layout. Under labels it writes each loop's label over, by its frames.
 func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	loopFile := func(i int) string { return filepath.Join(dir, fmt.Sprintf("loop_%03d", i)) }
-	written, kept := 0, 0
+	written, kept, unheard := 0, 0, 0
 	o.skip = func(i int) bool {
 		if o.parts > 0 && i%o.parts != o.part {
 			return true
+		}
+		if o.labels {
+			if _, ok := melLength(loopFile(i) + ".mel"); !ok {
+				unheard++
+				return true
+			}
+			return false
 		}
 		_, err := os.Stat(loopFile(i) + ".json") // written last, so its loop is whole
 		if err == nil {
@@ -1289,31 +1560,37 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 				sampledLines++
 			}
 		}
-		if o.codec {
-			coded, err := codecRoundTrip(l.audio, audio.AudioSampleRate, rand.New(rand.NewPCG(o.seed^0xc0dec, uint64(i)+1)))
-			if err != nil {
+		frames := 0 // all a label takes from the render: how many frames it came to
+		if o.labels {
+			frames, _ = melLength(base + ".mel")
+		} else {
+			if o.codec {
+				coded, err := codecRoundTrip(l.audio, audio.AudioSampleRate, rand.New(rand.NewPCG(o.seed^0xc0dec, uint64(i)+1)))
+				if err != nil {
+					return err
+				}
+				l.audio = coded
+			}
+			if !o.nowav {
+				f, err := os.Create(base + ".wav")
+				if err != nil {
+					return err
+				}
+				werr := audio.WriteWAV(f, l.audio)
+				if cerr := f.Close(); werr == nil {
+					werr = cerr
+				}
+				if werr != nil {
+					return werr
+				}
+			}
+			mel := audio.MelFrames(l.audio, audio.AudioSampleRate)
+			if err := writeMel(base+".mel", mel); err != nil {
 				return err
 			}
-			l.audio = coded
+			frames = len(mel)
 		}
-		if !o.nowav {
-			f, err := os.Create(base + ".wav")
-			if err != nil {
-				return err
-			}
-			werr := audio.WriteWAV(f, l.audio)
-			if cerr := f.Close(); werr == nil {
-				werr = cerr
-			}
-			if werr != nil {
-				return werr
-			}
-		}
-		mel := audio.MelFrames(l.audio, audio.AudioSampleRate)
-		if err := writeMel(base+".mel", mel); err != nil {
-			return err
-		}
-		lab := corpusLoop{BPM: l.bpm, Root: l.root, Scale: int(l.scale), Bars: o.bars, Meter: l.meter.Doc(), Frames: len(mel), Tuning: l.tuning}
+		lab := corpusLoop{BPM: l.bpm, Root: l.root, Scale: int(l.scale), Bars: o.bars, Meter: l.meter.Doc(), Frames: frames, Tuning: l.tuning}
 		stepSec := float64(audio.SamplesPerStep(l.bpm)) / audio.AudioSampleRate
 		for _, e := range loopEvents(l.slots, l.meter, o.bars, l.root, l.scale) {
 			start := float64(e.Bar*l.meter.Steps()+e.Step) * stepSec
@@ -1336,7 +1613,7 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 					ev.Cents = noteCents(v, e.RipEvent, start, float64(e.Dur)*stepSec, l.tuning, ev.Frame, ev.End)
 				}
 			}
-			if ev.Frame < len(mel) {
+			if ev.Frame < frames {
 				lab.Events = append(lab.Events, ev)
 			}
 		}
@@ -1345,7 +1622,7 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	if err != nil {
 		return err
 	}
-	if o.parts == 0 {
+	if o.parts == 0 && unheard == 0 {
 		m := corpusManifest{Version: 1, Loops: o.loops, Rate: audio.RipRate, Hop: audio.RipHop, MelBands: audio.RipMelBands,
 			MinMIDI: audio.RipMinMIDI, Pitches: audio.RipPitches, Drums: []string{"kick", "snare", "hihat"}, Waves: audio.VoiceWaves[:], Families: audio.RipFamilies[:], VoiceGenes: audio.VoiceGeneCount}
 		if err := writeJSON(filepath.Join(dir, "corpus.json"), m); err != nil {
@@ -1373,6 +1650,12 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	}
 	if kept > 0 {
 		how += fmt.Sprintf("; %d were there", kept)
+	}
+	if o.labels {
+		how += "; their labels alone, over those there, and nothing rendered"
+	}
+	if unheard > 0 {
+		how += fmt.Sprintf("; %d with no frames whole on disk were left, so no corpus.json", unheard)
 	}
 	if o.parts > 0 {
 		how += fmt.Sprintf("; part %d of %d, so no corpus.json", o.part, o.parts)
@@ -1464,6 +1747,22 @@ func codecPass(x []float64, sampleRate int, name, ext string, kbps int) ([]float
 		y[i] = math.Float64frombits(binary.LittleEndian.Uint64(out[8*i:]))
 	}
 	return y, nil
+}
+
+// melLength is the frames a loop's .mel holds by its header, false for a file
+// that is not there or not whole: what a labels pass reads in place of a render
+func melLength(file string) (int, bool) {
+	f, err := os.Open(file)
+	if err != nil {
+		return 0, false
+	}
+	defer f.Close()
+	var head [2]uint32
+	st, err := f.Stat()
+	if err != nil || binary.Read(f, binary.LittleEndian, &head) != nil || st.Size() != 8+4*int64(head[0])*int64(head[1]) {
+		return 0, false
+	}
+	return int(head[0]), true
 }
 
 func writeMel(file string, mel [][]float32) error {

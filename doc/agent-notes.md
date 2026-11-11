@@ -306,7 +306,29 @@ proves wrong or that a document now states, and link the document instead.
 - A `midi` corpus holds glides without the word: a MIDI file's pitch bend is a
   step's `bend`, which the engine plays, so such a note lists its `cents`.
   Labels written before the cents head call it steady: in corpus 17's first
-  24 loops one event of 3,486, the frames byte for byte the same.
+  24 loops one event of 3,486, the frames byte for byte the same. The line
+  with `labels` after it writes them again and renders nothing.
+- `corpus ... labels` plays nothing, so nothing a label holds may wait on the
+  mixer: `DefineVoice` queues a command and fails once 256 wait unplayed,
+  which dropped voices from a pass's labels from its loop 34 on, 166 of 200
+  differing. The pass checks a voice with `ValidateVoice` and registers none,
+  so the registered voices stay as they are and need no restoring. A label takes
+  only its length from the render, read from the `.mel` header; a field a
+  label gains must be drawn before the render, or the pass cannot write it.
+  2,000 loops are labelled in under a second, against 11.6 minutes to export.
+- A `from` corpus's labels pass knows a recording by its label's `source`, so
+  a label that does not read stops it. It writes the MIDI's `vel` again:
+  strip a constant-velocity corpus's once more after it (below).
+- A pitch track at 44.1 kHz and a hop of 256 has two samples a frame, one on
+  the frame's own time, so a missing sample lies a whole step from its
+  neighbours. A reach of a step read a neighbour's pitch there by a rounding's
+  luck; the reach is three quarters of a step (`pitchTrackReach`).
+- A tracker's jitter makes every frame unlike its neighbour, which is how the
+  trainer knows an engine note's glide: by that rule all 258 readings of a
+  jittered track were gliding. A recorded note glides when its track spans
+  half a cell (`GLIDE_SPAN`). A change to how `train.py` reads a label is
+  checked by `Label.window` before and after over a `glide` corpus: its
+  targets from engine labels must not move.
 - A `corpus <dir> from` loop is known by its `source`, the CSV's
   `audio_filename`: the set may move, but an entry renamed joins as new. A clap
   in a test file is a hit for a song, not for `truth`.

@@ -1610,7 +1610,7 @@ func (s *Session) tune(o tuneOptions, file string) error {
 		bounds[i] = genetic.ParameterBounds{Min: r[0], Max: r[1]}
 	}
 	over := fmt.Sprintf("%d loop(s) of %d bar(s)", len(loops), o.bars)
-	best, base, err := s.search(o, over, bounds, s.rip.Genes(), func(genes []float64) float64 {
+	best, base, err := s.search(o, over, bounds, s.rip.Genes(), false, func(genes []float64) float64 {
 		p := audio.RipParamsFromGenes(genes)
 		var sum float64
 		for _, l := range loops {
@@ -1626,11 +1626,12 @@ func (s *Session) tune(o tuneOptions, file string) error {
 	return s.keepRip(file, audio.RipParamsFromGenes(best.Data), best.Score, base)
 }
 
-// search runs the generational engine over genes within bounds, start seeding the
-// pool and the rest drawn across the ranges, candidates scored in parallel and a
-// genome once, a score under zero a set refused; it says the start's score and
-// each generation's best and mean, and returns the best and the start's score
-func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterBounds, start []float64, eval func([]float64) float64) (genetic.Candidate[[]float64, float64], float64, error) {
+// search runs the generational engine over genes within bounds from start, a
+// genome scored once and candidates in parallel: near, its first pool is start
+// and sets a step from it, the step widening while the best betters and
+// narrowing while it stalls, as the fit's; else draws across the ranges. A
+// score under zero is a set refused. It returns the best and the start's score.
+func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterBounds, start []float64, near bool, eval func([]float64) float64) (genetic.Candidate[[]float64, float64], float64, error) {
 	eval = genetic.Memoize(func(g []float64) string { return fmt.Sprint(g) }, eval)
 	base := eval(start)
 	fmt.Fprintf(s.out, "tuning over %s: the current parameters score %.3f\n", over, base)
@@ -1638,16 +1639,30 @@ func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterB
 	cfg.PoolSize, cfg.EliteCount, cfg.MaxIterations = o.pool, max(o.pool/8, 1), o.generations
 	cfg.Parallelism, cfg.Seed = runtime.NumCPU(), o.seed
 	cfg.PerturbationRate, cfg.PerturbationStrength = 0.25, 0.15
-	e := genetic.NewEngine[[]float64, float64](eval, func(rng *rand.Rand) []float64 {
+	step := &genetic.BoundedPerturbator{Bounds: bounds, Boundary: genetic.BoundaryReflect}
+	draw := func(rng *rand.Rand) []float64 {
 		g := make([]float64, len(bounds))
 		for i, b := range bounds {
 			g[i] = b.Min + rng.Float64()*(b.Max-b.Min)
 		}
 		return g
-	}, &genetic.TournamentSelector[[]float64, float64]{TournamentSize: 3},
-		&genetic.UniformCombiner[[]float64, float64, float64]{MixProbability: 0.5},
-		&genetic.BoundedPerturbator{Bounds: bounds, Boundary: genetic.BoundaryReflect}, cfg)
+	}
+	if near {
+		cfg.PerturbationStrength = nearStep
+		draw = func(rng *rand.Rand) []float64 {
+			g := slices.Clone(start)
+			for try := 0; try < 8 && slices.Equal(g, start); try++ { // a draw that moved no gene is the start again
+				step.Perturb(&g, cfg.PerturbationRate, nearStep, rng)
+			}
+			return g
+		}
+	}
+	e := genetic.NewEngine[[]float64, float64](eval, draw, &genetic.TournamentSelector[[]float64, float64]{TournamentSize: 3},
+		&genetic.UniformCombiner[[]float64, float64, float64]{MixProbability: 0.5}, step, cfg)
 	e.SetSeeds([][]float64{slices.Clone(start)})
+	if near {
+		e.SetSchedule(genetic.AdaptiveStrength[float64](cfg.PerturbationRate, nearStep, 0.01, 0.4, 1.5))
+	}
 	say := func(p *genetic.Pool[[]float64, float64], gen int) bool {
 		var sum float64
 		passed := 0
@@ -1671,6 +1686,10 @@ func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterB
 	say(pool, pool.Generation) // the engine's loop ends before the last one's turn
 	return pool.Members[0], base, nil
 }
+
+// nearStep is the step a search near its start opens with, a share of each
+// gene's range, as the voice fit's
+const nearStep = 0.1
 
 // keepRip writes p and listens with it from now on when its score beats the
 // current parameters' base
@@ -1756,7 +1775,7 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	}
 	before := f1s(sums)
 	over := fmt.Sprintf("%d recording(s) of %d condition(s) against %d note(s) given, a set refused that takes over %g from a condition", len(takes), len(conds), given, o.guard)
-	best, base, err := s.search(o, over, bounds, start, func(genes []float64) float64 {
+	best, base, err := s.search(o, over, bounds, start, true, func(genes []float64) float64 {
 		return guarded(conditionF1(takes, len(conds), params(genes), s.lead), before, o.guard)
 	})
 	if err != nil {

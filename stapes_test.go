@@ -2085,9 +2085,9 @@ func (h *hearCount) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFr
 
 // TestTuneTruthSearchesTheModelsThresholds: tune truth refuses with no model
 // loaded; with one, it hears each recording its list names once, searches the
-// thresholds the model's decoders read, the rest held, says the F1 before and
-// after of a line that names no condition under its recording's name, and
-// writes parameters that score at least the start's.
+// thresholds the model's decoders read, the rest held, from a pool near the
+// start, says the F1 before and after of a line that names no condition under
+// its recording's name, and writes parameters that score at least the start's.
 func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
@@ -2126,7 +2126,8 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	writeWAV(t, filepath.Join(dir, "loop.wav"), l.audio)
 	writeFile(t, filepath.Join(dir, "loop.mid"), mid.String())
 	writeFile(t, list, "loop.wav\tloop.mid\n")
-	// a model too small to hear well, from a start too sure to take its strikes
+	// a model too small to hear well, from a start that takes a strike whose
+	// pitch hardly sounds: the sets near it hear fewer notes that were not played
 	cfg := ripmodel.Spec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
@@ -2138,7 +2139,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 		t.Fatal(err)
 	}
 	ear := &hearCount{RipFrontEnd: fe}
-	s.rip.Strike, s.rip.StrikeLow = 0.99, 0.99
+	s.rip.StrikeHold = 0.3
 	start, file := s.rip, filepath.Join(dir, "rip.toml")
 	if err := s.tuneTruth(tuneOptions{generations: 1, pool: 4, seed: 1}, list, file, ear); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
@@ -2151,7 +2152,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {
-		t.Fatalf("nothing written over a start that takes no strike:\n%s", out.String())
+		t.Fatalf("nothing written over a start that takes every strike:\n%s", out.String())
 	}
 	p, err := audio.LoadRipParams(data)
 	if err != nil || p != s.rip {

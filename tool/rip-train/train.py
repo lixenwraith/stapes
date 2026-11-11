@@ -8,9 +8,10 @@ Each loop's log-mel frames (loop_NNN.mel) are the input; its events
 (loop_NNN.json) become per-frame targets: an onset within a frame of any event,
 each drum's hits, the pitches sounding, whether any sounds, the wave and voice
 genes of the highest note sounding, the family playing it, each pitch within a
-frame of its strikes and of its releases, and how hard each was struck. Training
-crops random windows of frames and builds their targets a window at a time, so
-memory holds the events rather than a row per frame.
+frame of its strikes and of its releases, how hard each was struck, and where
+each pitch an engine voice plays sits from its cell's centre. Training crops
+random windows of frames and builds their targets a window at a time, so memory
+holds the events rather than a row per frame.
 """
 from __future__ import annotations
 
@@ -76,6 +77,17 @@ class Label:
                 if self.voice[i] == len(voices):
                     voices.append(e["voice"])
         self.voices = np.array(voices, np.float32).reshape(-1, manifest["voice_genes"])
+        # a note that moves carries its cents from its pitch's cell centre at each frame; one that holds sits at the tuning
+        self.tuning = float(label.get("tuning", 0.0))
+        lists = [np.asarray(e.get("cents") or [], np.float32) for e in ev]
+        self.cents_at = np.array([at if len(c) else -1 for c, at in zip(lists, accumulate(map(len, lists), initial=0))], np.int64)
+        self.cents = np.concatenate(lists) if lists else np.zeros(0, np.float32)
+        self.moves = np.zeros(len(self.cents), bool)  # a glide's frames: where the cents differ from the frame before or after
+        for c, at in zip(lists, self.cents_at):
+            if len(c) > 1:
+                d = np.diff(c) != 0
+                self.moves[at + 1:at + len(c)] |= d
+                self.moves[at:at + len(c) - 1] |= d
         self.order = np.argsort(self.t, kind="stable")
         self.sorted = self.t[self.order]
         # how far past its frame an event's targets reach
@@ -91,7 +103,10 @@ class Label:
         """Per-frame targets for frames a to b from the events; masks say where a
         target counts. The yes-or-no ones are bytes until batch; the strikes and
         releases are lists of (frame, pitch) from a, each strike's velocity beside
-        it, -1 where the corpus does not say."""
+        it, -1 where the corpus does not say. A note that moves sounds, is struck
+        and is let go in the cell nearest its frequency at each frame. cents is
+        each cell's offset in semitones from the sound nearest it within one, asked
+        where an engine voice plays that sound, moving where it is on a glide."""
         m, frames, w = self.manifest, self.frames, b - a
         pitches, min_midi = m["pitches"], m["min_midi"]
         onset = np.zeros(w, np.uint8)
@@ -104,6 +119,9 @@ class Label:
         high = np.full(w, -1, np.int64)  # the same over every event, a hit at midi 0 on its frame, whose family the frame reports
         whose = np.full(w, -1, np.int64)
         strikes, releases, vels = [], [], []
+        cents = np.zeros((w, pitches), np.float32)
+        near = np.full((w, pitches), np.inf, np.float32)  # how far from a cell's centre the sound it reports sits
+        asked, moving = np.zeros((w, pitches), np.uint8), np.zeros((w, pitches), np.uint8)
 
         def span(x, y):  # frames x to y of the loop, in the window
             x, y = max(x, a), min(y, b)
@@ -123,12 +141,34 @@ class Label:
             if self.drum[i] >= 0:
                 drums[span(max(t - 1, 0), min(t + 2, frames)), self.drum[i]] = 1
                 continue
-            if 0 <= p < pitches:
-                pitch[span(t, end), p] = 1
-                strikes.append((t - a, p))
+            x, at = max(t, a), int(self.cents_at[i])
+            rows = np.arange(x - a, max(min(end, b), x) - a)  # the note's frames in the window
+            first = last = p
+            if at < 0:
+                off, glides = np.full(len(rows), p + self.tuning / 100, np.float32), np.zeros(len(rows), bool)
+                if 0 <= p < pitches:
+                    pitch[rows, p] = 1
+            else:
+                off, glides = p + self.cents[at + x - t:at + x - t + len(rows)] / 100, self.moves[at + x - t:at + x - t + len(rows)]
+                cell = np.rint(off).astype(np.int64)
+                ok = (cell >= 0) & (cell < pitches)
+                pitch[rows[ok], cell[ok]] = 1
+                first, last = (int(np.rint(p + self.cents[at + k] / 100)) for k in (0, end - t - 1))
+            if 0 <= first < pitches:
+                strikes.append((t - a, first))
                 vels.append(self.vel[i])
-                if self.end[i] < frames:
-                    releases.append((int(self.end[i]) - a, p))
+            if 0 <= last < pitches and self.end[i] < frames:
+                releases.append((int(self.end[i]) - a, last))
+            known = self.voice[i] >= 0 or at >= 0  # an engine voice plays where the label says; a recording only where it lists its cents
+            if not known and 0 <= p < pitches:
+                near[rows, p], asked[rows, p] = 0, 0  # where it sits in its cell is not known
+            for beside in (-1, 0, 1) if known else ():
+                cell = np.rint(off).astype(np.int64) + beside
+                o = off - cell
+                ok = (np.abs(o) < 1) & (cell >= 0) & (cell < pitches)
+                ok[ok] = np.abs(o[ok]) < near[rows[ok], cell[ok]]  # the nearest sound is the one a cell reports
+                r, c = rows[ok], cell[ok]
+                near[r, c], cents[r, c], asked[r, c], moving[r, c] = np.abs(o[ok]), o[ok], 1, glides[ok]
             if self.wave[i] >= 0:
                 up = midi > top[seg]
                 top[seg][up], who[seg][up] = midi, i
@@ -139,7 +179,7 @@ class Label:
         return {"onset": onset, "drums": drums, "pitch": pitch, "voicing": (pitch.sum(1) > 0).astype(np.uint8),
                 "wave": wave, "voice": voice, "voiced": (top >= 0).astype(np.uint8), "family": family,
                 "strikes": np.array(strikes, np.int32).reshape(-1, 2), "vels": np.array(vels, np.float32),
-                "releases": np.array(releases, np.int32).reshape(-1, 2)}
+                "releases": np.array(releases, np.int32).reshape(-1, 2), "cents": cents, "asked": asked, "moving": moving}
 
 
 # a family's index in ripmodel.FAMILIES whose loops the run leaves out, so a calibration run never hears it
@@ -231,7 +271,7 @@ def targets(mel, lab: Label, start: int, window: int, with_drums: bool = True) -
 
     def take(a, fill=0):
         return np.concatenate([a, np.full((pad,) + a.shape[1:], fill, a.dtype)]) if pad else a
-    out = {k: take(t[k]) for k in ("onset", "drums", "pitch", "voicing", "voice", "voiced")}
+    out = {k: take(t[k]) for k in ("onset", "drums", "pitch", "voicing", "voice", "voiced", "cents", "asked", "moving")}
     out["wave"], out["family"] = take(t["wave"], -1), take(t["family"], -1)
     shape = (window, t["pitch"].shape[1])
     strike, release, velocity, heard = np.zeros(shape, np.uint8), np.zeros(shape, np.uint8), np.zeros(shape, np.float32), np.zeros(shape, np.uint8)
@@ -272,6 +312,10 @@ def shuffled(pick, window: int, channels: int, rng, channel=None):
         ta, tb = targets(ma, la, sa, CHUNK, False), targets(mb, lb, sb, CHUNK, False)
         out = {k: np.maximum(ta[k], tb[k]) for k in ("onset", "drums", "pitch", "voicing", "strike", "release", "velocity", "heard", "valid")}
         out.update(wave=np.full(CHUNK, -1, np.int64), family=np.full(CHUNK, -1, np.int64), voice=np.zeros_like(ta["voice"]), voiced=np.zeros_like(ta["voiced"]))
+        # a cell is asked its cents where one clip alone sounds within a semitone of it
+        mine = (ta["asked"] > 0) & (tb["asked"] == 0) & (tb["pitch"] == 0)
+        asked = mine | (tb["asked"] > 0) & (ta["asked"] == 0) & (ta["pitch"] == 0)
+        out.update(asked=asked.astype(np.uint8), cents=np.where(mine, ta["cents"], tb["cents"]) * asked, moving=np.where(mine, ta["moving"], tb["moving"]) * asked)
         hiss = noise[at:at + CHUNK]
         hiss = np.concatenate([hiss, np.zeros((CHUNK - len(hiss), hiss.shape[1]))]) if len(hiss) < CHUNK else hiss
         for d, rest, lab, s in ((ea * through, eb * through + hiss, la, sa), (eb * through, ea * through + hiss, lb, sb)):
@@ -417,12 +461,21 @@ def struck(logits: torch.Tensor, strike: torch.Tensor, valid: torch.Tensor, low:
     return torch.stack([(peak & near(onset)).sum(), peak.sum(), (onset & near(peak)).sum(), onset.sum()])
 
 
+# the readings a cents head is scored over: of a cell its sound is on a glide in, of one it holds its pitch in, and of the
+# cell beside a sound; and of a sounding cell the label does not place, where only the error stated can be told
+CENTS_KINDS = ("gliding", "steady", "beside", "unplaced")
+
+
 def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None = None) -> dict:
     """the mean of the losses over the held-out windows, the model's weights untouched;
-    with low, the first pitch over the strikes' low bar, the strikes' F1 beside them"""
+    with low, the first pitch over the strikes' low bar, the strikes' F1 beside them,
+    and what a cents head reads: over the readings the labels place and each kind,
+    the median miss and the median error it states, in cents, and the share within
+    the stated; nan where a label does not say"""
     model.eval()
     sums: dict = {}
     counts = torch.zeros(4, dtype=torch.long, device=device)
+    read = []  # each asked reading's miss and stated error in cents, and its kind
     with torch.no_grad():
         for mel, t in zip(mels, tgs):
             mel, t = mel.to(device), {k: v.to(device) for k, v in t.items()}
@@ -430,11 +483,25 @@ def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None =
             for k, v in l.items():
                 sums[k] = sums.get(k, 0.0) + v.item()
             if low is not None:
-                y = model(mel)[..., model.cfg.slice("strike")]
+                out = model(mel)
+                y = out[..., model.cfg.slice("strike")]
                 for i in range(len(y)):
                     counts += struck(y[i], t["strike"][i], t["valid"][i], low)
+                if "cents" in dict(model.cfg.outputs):
+                    place, spread = out[..., model.cfg.slice("cents")].chunk(2, -1)
+                    placed = t["asked"] > 0
+                    ask = (placed | (t["pitch"] > 0)) & (t["valid"][..., None] > 0)
+                    kind = torch.where(t["pitch"] > 0, 1 - t["moving"], torch.full_like(t["moving"], 2))
+                    kind = torch.where(placed, kind, torch.full_like(kind, 3))
+                    miss = torch.where(placed, 100 * (place - t["cents"]).abs(), torch.full_like(place, float("nan")))
+                    read.append(torch.stack([miss[ask], 100 * spread.exp()[ask], kind[ask]]).cpu())
     model.train()
     out = {k: v / max(len(mels), 1) for k, v in sums.items()}
+    if read and sum(r.shape[1] for r in read):
+        miss, stated, kind = torch.cat(read, 1)
+        out["read"] = [(name, miss[at].median().item(), stated[at].median().item(),
+                        (miss[at] <= stated[at]).float().mean().item() if name != CENTS_KINDS[3] else float("nan"))
+                       for name, at in [("cents", kind < 3)] + [(k, kind == i) for i, k in enumerate(CENTS_KINDS)] if at.any()]
     if low is not None:
         right, peaks, heard, given = (float(c) for c in counts)
         precision, recall = right / max(peaks, 1), heard / max(given, 1)
@@ -445,6 +512,8 @@ def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None =
 STRIKE_POS = 20.0  # a strike's weight against the frames without one
 DIP = 0.0  # the share of the channel's windows given a dip under the melody, as phones across a room measured 15 dB at 160-320 Hz
 STRIKE_AGAIN = 1.0  # and a strike of a pitch still sounding, the most missed of all, by this much more
+CENTS_GRAIN = 0.001  # a label's cents are written to a tenth: a miss under it, in semitones, says no more
+SPREAD = 0.2  # the stated error's weight in the total: its own row of weights learns as fast as any, the layers under it less from it
 
 
 def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
@@ -480,8 +549,18 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
         logits = y[..., cfg.slice("family")].reshape(-1, len(ripmodel.FAMILIES))
         ce = F.cross_entropy(logits, t["family"].reshape(-1).clamp(min=0), reduction="none").reshape(asked.shape)
         out["family"] = (ce * asked).sum() / asked.sum().clamp(min=1)
+    if "cents" in dict(cfg.outputs):  # the notes model's alone
+        place, spread = y[..., cfg.slice("cents")].chunk(2, -1)
+        asked = t["asked"] * valid[..., None]
+        n = asked.sum().clamp(min=1)
+        miss = (place - t["cents"]).abs()
+        out["cents"] = (miss * asked).sum() / n
+        # the error the head states is a Laplace's scale fitted to the miss as it
+        # stands: the miss is held fixed, so stating an error moves no offset
+        out["spread"] = ((miss.detach().clamp(min=CENTS_GRAIN) * torch.exp(-spread) + spread) * asked).sum() / n
     out["total"] = (out["onset"] + out["drums"] + out["pitch"] + 0.5 * out["voicing"] + out["strike"] + out["release"]
-                    + 2.0 * out["velocity"] + 0.5 * out["wave"] + 2.0 * out["voice"] + 0.5 * out.get("family", 0.0))
+                    + 2.0 * out["velocity"] + 0.5 * out["wave"] + 2.0 * out["voice"] + 0.5 * out.get("family", 0.0)
+                    + 2.0 * out.get("cents", 0.0) + SPREAD * out.get("spread", 0.0))
     return out
 
 
@@ -630,9 +709,12 @@ def main() -> None:
         # heads; the wave, voice, velocity and family heads say how a note is
         # played and by what, and memorize the corpus's, so they do not pick the step
         v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"]
-        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck"))
+        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read"))
         f1 = f", strikes' F1 {v['struck']:.3f}" if "struck" in v else ""
-        return v["decoders"], v.get("struck"), f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f}{f1} ({parts})"
+        # the cents head: each kind of reading's median miss, the median error stated for it, and the share within the stated
+        read = "".join(f"{'; ' if i else ', '}{k} " + (f"{stated:.1f} stated" if miss != miss else f"{miss:.1f} off, {stated:.1f} stated, {within:.0%} within")
+                       for i, (k, miss, stated, within) in enumerate(v.get("read", [])))
+        return v["decoders"], v.get("struck"), f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f}{f1}{read} ({parts})"
 
     def weights() -> dict:
         return {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}

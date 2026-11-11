@@ -251,7 +251,7 @@ class PitchNet(nn.Module):
         self.cells = nn.Conv2d(16, cfg.cell, (7, 3), stride=(1, 3), padding=(3, 0))  # to one cell a semitone
         self.near = nn.Conv2d(cfg.cell, cfg.cell, (7, 3), padding=(3, 1))
         self.long = nn.ModuleList(nn.Conv2d(cfg.cell, cfg.cell, 3, padding=(d, 1), dilation=(d, 1)) for d in cfg.dilations)
-        self.notes = nn.Conv2d(cfg.cell, 4, 1)  # pitch, strike, release, velocity
+        self.notes = nn.Conv2d(cfg.cell, sum(n for _, n in cell_heads(cfg)), 1)  # a channel for each value a cell head reads at a pitch
         self.frame1 = nn.Conv1d(16 * 16 + 2, 64, 5, padding=2)
         self.frame2 = nn.Conv1d(64, 64, 9, padding=8, dilation=2)
         sizes = dict(cfg.outputs)
@@ -278,7 +278,7 @@ class PitchNet(nn.Module):
         c = F.gelu(self.near(c) + c)
         for layer in self.long:
             c = F.gelu(layer(c) + c)
-        n = self.notes(c)[..., 1:PITCHES + 1]  # B 4 T pitches
+        n = self.notes(c)[..., 1:PITCHES + 1]  # B channels T pitches
         f = F.adaptive_avg_pool2d(w, (T, 16)).transpose(2, 3).flatten(1, 2)  # B 16*16 T
         f = torch.cat([f, level[:, None], pcen[:, None]], 1)
         f = F.gelu(self.frame1(f))
@@ -287,17 +287,28 @@ class PitchNet(nn.Module):
         at, part = 0, {}
         for k in ("onset", "drums", "voicing", "wave", "voice"):
             part[k], at = f[..., at:at + sizes[k]], at + sizes[k]
-        part.update(pitch=n[:, 0], strike=n[:, 1], release=n[:, 2], velocity=n[:, 3])
+        at = 0
+        for k, per in cell_heads(self.cfg):  # a head of several values a pitch lays each value's pitches in turn
+            part[k], at = n[:, at:at + per].transpose(1, 2).flatten(2), at + per
         return torch.cat([part[k] for k, _ in self.cfg.outputs], -1)
 
 
 # PitchNet's file: version 5 names the model's kind, 1 a cell net, whose heads
 # are the per-pitch ones in the notes convolution's order, then the frame's
 CELLS_VERSION, CELLS_KIND = 5, 1
-CELL_HEADS = ("pitch", "strike", "release", "velocity")
+# the per-pitch heads and the values each reads at a pitch; a new head adds a row.
+# cents is a pitch's offset from its cell's centre in semitones, then the log of the error it states
+CELL_HEADS = (("pitch", 1), ("strike", 1), ("release", 1), ("velocity", 1), ("cents", 2))
 FRAME_HEADS = ("onset", "drums", "voicing", "wave", "voice")
-# PitchNet's heads in HEADS order: what plays a note is the frame model's to hear
-PITCHNET_HEADS = [h for h in HEADS if h[0] in CELL_HEADS + FRAME_HEADS]
+# PitchNet's heads: those of HEADS in its order, what plays a note being the frame
+# model's to hear, then the per-pitch heads the frame model has none of
+PITCHNET_HEADS = [h for h in HEADS if h[0] in dict(CELL_HEADS) or h[0] in FRAME_HEADS] + \
+    [(k, n * PITCHES) for k, n in CELL_HEADS if k not in dict(HEADS)]
+
+
+def cell_heads(cfg: Config) -> list:
+    """the per-pitch heads a model of this shape has, in the notes convolution's order: one trained before a head has none of it"""
+    return [(k, n) for k, n in CELL_HEADS if k in dict(cfg.outputs)]
 
 
 def build(cfg: Config) -> nn.Module:
@@ -319,13 +330,13 @@ def _cells_header(model: PitchNet) -> bytes:
     assert wide.padding == (wt // 2, wf // 2) and cells.padding == (ct // 2, 0) and cf // 2 == 1 and cells.stride[0] == 1
     assert all(n.kernel_size == (nt, nf) and n.padding == (nt // 2, nf // 2) for n in nears)
     assert frame1.padding == (ft // 2,) and frame2.padding == (dil * (at // 2),)
-    sizes = dict(model.cfg.outputs)
-    assert all(sizes[k] == PITCHES for k in CELL_HEADS) and model.notes.out_channels == len(CELL_HEADS)
+    sizes, heads = dict(model.cfg.outputs), cell_heads(model.cfg)
+    assert all(sizes[k] == n * PITCHES for k, n in heads) and model.notes.out_channels == sum(n for _, n in heads)
     scalars = (STACK_BINS, 8 * STACK_INPUTS + STACK_BINS)  # the level, the PCEN mean: channel 0's and 8's last
     regions = (frame1.in_channels - len(scalars)) // wide.out_channels
     assert regions * wide.out_channels + len(scalars) == frame1.in_channels
     v = (STACK_BINS, model.reduce.out_channels, wide.out_channels, wt, wf, cells.out_channels, ct, cf, stride, len(nears), nt, nf,
-         1, PITCHES, len(CELL_HEADS), regions, frame1.out_channels, ft, at, dil, len(scalars), *scalars,
+         1, PITCHES, len(heads), regions, frame1.out_channels, ft, at, dil, len(scalars), *scalars,
          len(model.long), *(layer.dilation[0] for layer in model.long))
     return struct.pack(f"<{len(v)}I", *v)
 
@@ -337,7 +348,7 @@ def export(model: nn.Module, path: str) -> None:
     if isinstance(model, PitchNet):
         body += struct.pack("<4I", CELLS_VERSION, CELLS_KIND, cfg.inputs, cfg.channels) + _cells_header(model)
         sizes = dict(cfg.outputs)
-        heads = [(k, sizes[k]) for k in CELL_HEADS + FRAME_HEADS]
+        heads = [(k, sizes[k]) for k in [k for k, _ in cell_heads(cfg)] + list(FRAME_HEADS)]
         layers = [("reduce", model.reduce), ("wide", model.wide), ("cells", model.cells)]
         layers += [(f"near.{i}", n) for i, n in enumerate(_nears(model))]
         layers += [(f"long.{i}", n) for i, n in enumerate(model.long)]

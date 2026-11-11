@@ -3785,10 +3785,12 @@ func TestRunScriptVerb(t *testing.T) {
 	}
 }
 
-// TestLongVerbsRunBehindTheScreen: a long verb typed in the TUI runs on its own
-// goroutine under a working box, keys wait for it, and its output and its end
-// reach the log and the screen
+// TestLongVerbsRunBehindTheScreen: a long verb typed in the TUI, here a script
+// that waits, runs on its own goroutine under a working box, keys wait for it,
+// and its output and its end reach the log and the screen
 func TestLongVerbsRunBehindTheScreen(t *testing.T) {
+	slab := filepath.Join(t.TempDir(), "slow.slab")
+	writeFile(t, slab, "wait 300\nnew pattern behind\n")
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
@@ -3797,9 +3799,9 @@ func TestLongVerbsRunBehindTheScreen(t *testing.T) {
 	a := newTUIApp(s, lb)
 	a.term, a.w, a.h = frameTerm{}, 100, 40
 	a.render()
-	a.exec("bench 1 2")
+	a.exec("run " + slab)
 	if a.busy == "" {
-		t.Fatal("bench did not go behind the screen")
+		t.Fatal("the script did not go behind the screen")
 	}
 	a.handle(terminal.Event{Type: terminal.EventKey, Key: terminal.KeyRune, Rune: 'n'})
 	if a.mode != modeNormal {
@@ -3809,9 +3811,9 @@ func TestLongVerbsRunBehindTheScreen(t *testing.T) {
 	waitFor(t, func() bool {
 		a.handle(terminal.Event{Type: terminal.EventKey, Key: terminal.KeyNone})
 		return a.busy == ""
-	}, "bench never ended")
+	}, "the script never ended")
 	lines := strings.Join(lb.Lines(), "\n")
-	if !strings.Contains(lines, "analysis on 1 clean loop(s)") || !strings.Contains(lines, "keys wait") {
+	if !strings.Contains(lines, `created pattern "behind"`) || !strings.Contains(lines, "keys wait") {
 		t.Errorf("the log after:\n%s", lines)
 	}
 }

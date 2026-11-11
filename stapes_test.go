@@ -1544,7 +1544,7 @@ func TestLiveKeepsTheRipRipMakes(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	loops, err := s.corpus(tuneOptions{loops: 1, bars: 8, seed: 1, tempos: []int{140}})
+	loops, err := s.corpus(tuneOptions{loops: 1, bars: 8, seed: 1, tempos: []int{160}})
 	if err != nil {
 		t.Fatal(err)
 	}

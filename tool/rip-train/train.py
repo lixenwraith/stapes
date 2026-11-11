@@ -610,6 +610,7 @@ STRIKE_POS = 20.0  # a strike's weight against the frames without one
 DIP = 0.0  # the share of the channel's windows given a dip under the melody, as phones across a room measured 15 dB at 160-320 Hz
 STRIKE_AGAIN = 1.0  # and a strike of a pitch still sounding, the most missed of all, by this much more
 CENTS_GRAIN = 0.001  # a label's cents are written to a tenth: a miss under it, in semitones, says no more
+EVEN_GLIDES = False  # the gliding readings half the cents loss wherever a batch holds them, a few in a hundred of its readings
 SPREAD = 0.2  # the stated error's weight in the total: its own row of weights learns as fast as any, the layers under it less from it
 PLAYS = 0.25  # what plays a cell against what plays the frame: its heads teach the channels the decoders read, and at the whole weight the strikes are heard worse
 
@@ -652,10 +653,15 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
         asked = t["asked"] * valid[..., None]
         n = asked.sum().clamp(min=1)
         miss = (place - t["cents"]).abs()
-        out["cents"] = (miss * asked).sum() / n
         # the error the head states is a Laplace's scale fitted to the miss as it
         # stands: the miss is held fixed, so stating an error moves no offset
-        out["spread"] = ((miss.detach().clamp(min=CENTS_GRAIN) * torch.exp(-spread) + spread) * asked).sum() / n
+        fit = miss.detach().clamp(min=CENTS_GRAIN) * torch.exp(-spread) + spread
+        glide = asked * t["moving"]
+        if EVEN_GLIDES and 0 < glide.sum() < asked.sum():  # a glide's readings weigh as much as the rest
+            rest = asked - glide
+            out["cents"], out["spread"] = ((x * glide).sum() / glide.sum() / 2 + (x * rest).sum() / rest.sum() / 2 for x in (miss, fit))
+        else:
+            out["cents"], out["spread"] = (miss * asked).sum() / n, (fit * asked).sum() / n
     if "pitchfamily" in dict(cfg.outputs):  # what plays each cell, asked where one note alone sounds in it
         for name in ("pitchfamily", "pitchwave"):
             at = (t[name] >= 0) & (valid[..., None] > 0)
@@ -701,6 +707,7 @@ def main() -> None:
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
     ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
+    ap.add_argument("--even-glides", action="store_true", help="the cents head's gliding readings weigh as much as the rest in its loss wherever a batch holds both")
     ap.add_argument("--dip", type=float, default=0.0, help="the share of the channel's windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room hears")
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
@@ -717,8 +724,8 @@ def main() -> None:
     ap.add_argument("--validate", default="", help="a corpus of recordings (corpus <dir> from <list>) cut into fixed windows and scored every --every steps; the step that scores best on it is what --out gets, in place of the held-out loops' best: by the decoders' loss, a notes model by its strikes' F1 at the decoder's bars")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
-    global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT
-    RING, STRIKE_POS, STRIKE_AGAIN, DIP = args.ring, args.strike_weight, args.again_weight, args.dip
+    global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT, EVEN_GLIDES
+    RING, STRIKE_POS, STRIKE_AGAIN, DIP, EVEN_GLIDES = args.ring, args.strike_weight, args.again_weight, args.dip, args.even_glides
     FAMILY_HOLDOUT = ripmodel.FAMILIES.index(args.family_holdout) if args.family_holdout else None
 
     torch.manual_seed(args.seed)

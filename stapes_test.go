@@ -2100,7 +2100,8 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 ! tune 4 2 2 truth %s
 ! tune 1 truth %s
 ! tune truth %s guard 2
-`, list, list, list, list))
+! tune truth %s frames
+`, list, list, list, list, list))
 	if !strings.Contains(out.String(), "no "+modelFile+" is loaded") {
 		t.Errorf("no refusal for want of a model:\n%s", out.String())
 	}
@@ -2165,7 +2166,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	if p != held {
 		t.Errorf("a parameter the model's decoders do not read moved: %+v, from %+v", p, start)
 	}
-	takes, _, err := readTruthList(list, fe)
+	takes, _, err := readTruthList(list, fe, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2252,7 +2253,7 @@ func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
 	write("soft.mid", soft)
 	list, file := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rip.toml")
 	writeFile(t, list, "loop.wav\tsure.mid\tsure\ttimed\nloop.wav\tsoft.mid\tsoft\ttimed\n")
-	takes, conds, err := readTruthList(list, fe)
+	takes, conds, err := readTruthList(list, fe, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2274,6 +2275,70 @@ func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
 	}
 	if _, err := os.Stat(file); err == nil {
 		t.Errorf("a set was written past the guard:\n%s", out.String())
+	}
+}
+
+// TestTuneTruthReadsKeptFramesBack: with frames, tune truth keeps what it heard
+// of a recording under the checksums of the recording and of the weight files; a
+// second run reads it back and scores as the first, and another model hears the
+// recording again.
+func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	open := func(seed uint64) (*Session, *bytes.Buffer) {
+		cfg := ripmodel.Spec()
+		cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+		m, err := transformer.NewRandom(cfg, seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var b bytes.Buffer
+		if err := m.Save(&b); err != nil {
+			t.Fatal(err)
+		}
+		root := t.TempDir()
+		writeFile(t, filepath.Join(root, modelFile), b.String())
+		files, err := ResolveFiles(root, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		s, err := NewSession(Options{Backend: "null", Out: &out, Files: files})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s, &out
+	}
+	s, out := open(1)
+	// the truth is what the start hears, so nothing beats it and nothing is written
+	dir, _, heard, write := truthFixture(t, s, 1)
+	write("loop.mid", heard(s.rip))
+	list, kept := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "frames")
+	writeFile(t, list, "loop.wav\tloop.mid\t\ttimed\n")
+	run := func(s *Session, out *bytes.Buffer) (string, string) {
+		t.Helper()
+		out.Reset()
+		runOrFatal(t, s, out, fmt.Sprintf("tune 2 1 truth %s frames %s\n", list, kept))
+		ears, search, _ := strings.Cut(out.String(), "\n")
+		return ears, search
+	}
+	first, search := run(s, out)
+	again, same := run(s, out)
+	teardown(t, s)
+	said := func(heard, read int) string {
+		return fmt.Sprintf("%d recording(s) heard and their frames kept in %s, %d read back from it", heard, kept, read)
+	}
+	if first != said(1, 0) || again != said(0, 1) {
+		t.Errorf("a first run said %q and a second %q, want one heard and then one read back", first, again)
+	}
+	if same != search || !strings.Contains(search, "the current parameters score 1.000") {
+		t.Errorf("the frames read back score otherwise than the frames heard:\n%s\n%s", search, same)
+	}
+	s, out = open(2)
+	defer teardown(t, s)
+	other, _ := run(s, out)
+	names, _ := filepath.Glob(filepath.Join(kept, "*.frames"))
+	if other != said(1, 0) || len(names) != 2 {
+		t.Errorf("another model said %q over %d file(s) of frames, want the recording heard again and kept beside the first", other, len(names))
 	}
 }
 

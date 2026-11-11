@@ -108,6 +108,23 @@ proves wrong or that a document now states, and link the document instead.
 
 ## The rip and its truths
 
+- **`live` keeps the offline rip, and its test compares that, not the
+  stream.** `RipStream.Final` rips the samples the stream kept as float32,
+  which a 16-bit WAV's are exactly (a 32-bit integer or 64-bit float one's
+  are rounded), so the rip `live` registers is `rip`'s to the last field,
+  fitted voices included (`TestLiveKeepsTheRipRipMakes`). The stream's own
+  rip differs by design:
+  through the test's random model it reads another tempo than the offline
+  rip, so nothing in a test should pin the measure's numbers.
+- **A bar's delay is from its end, and paced it is the clock's.** Unpaced,
+  where the sound is means the samples fed, as if the stream took no time;
+  with `pace` it is the time since the first block, which counts what the
+  stream took. The first bars freeze together once six are tracked, seconds
+  behind, so the worst bar is taken after them.
+- **`live`'s CPU is the process's** (`syscall.Getrusage`): the transformer
+  runs a model across the cores, so the time a call takes is not what it
+  cost. The mixer's and a screen's are in it; measure with the music stopped.
+
 - Write a truth from a score or a MIDI file, never from memory: a remembered
   Billie Jean riff had its first note an octave low, the synthesizer's doubling
   the analysis hears, and turned a 96-to-94 tie into a 110-to-84 loss.

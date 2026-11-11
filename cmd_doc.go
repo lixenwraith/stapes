@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/lixenwraith/audio"
 	"github.com/lixenwraith/toml"
@@ -298,6 +300,19 @@ func cmdRip(s *Session, a []string) error {
 	if err != nil {
 		return err
 	}
+	return s.takeRip(a[0], name, rp, bars, nodrums)
+}
+
+// ripVoices are the voices a rip under name registers
+func ripVoices(name string) []string {
+	return []string{name + "_melody_voice", name + "_under_voice", name + "_bass_voice"}
+}
+
+// takeRip puts a rip of file into the pattern document as patterns of up to
+// bars bars under name, dirty, registers its voices, fitted where a recording
+// is behind it, sets the transport to its tempo, meter and key, and keeps it
+// under name for fit, compress and song
+func (s *Session) takeRip(file, name string, rp *ripped, bars int, nodrums bool) error {
 	r := rp.rip
 	if nodrums {
 		for b := range r.Bars {
@@ -306,7 +321,7 @@ func cmdRip(s *Session, a []string) error {
 		r.Tone = [audio.InstrClap]audio.RipTone{} // no drums to match
 	}
 	if len(r.Patterns(name, bars)) == 0 {
-		return fmt.Errorf("%s: nothing heard to write", a[0])
+		return fmt.Errorf("%s: nothing heard to write", file)
 	}
 	// The names first, so a taken one costs no fit
 	for _, d := range r.Patterns(name, bars) {
@@ -314,7 +329,7 @@ func cmdRip(s *Session, a []string) error {
 			return fmt.Errorf("%q: already exists", d.Name)
 		}
 	}
-	for _, vn := range []string{name + "_melody_voice", name + "_under_voice", name + "_bass_voice"} {
+	for _, vn := range ripVoices(name) {
 		if s.has(vn) {
 			return fmt.Errorf("%q: already exists", vn)
 		}
@@ -361,7 +376,7 @@ func cmdRip(s *Session, a []string) error {
 		tuned = fmt.Sprintf(" tuned %+.0f cents", r.Tuning)
 	}
 	fmt.Fprintf(s.out, "ripped %s: %d bpm %s%s, %s%s, %d bar(s) %s; kicks %d snares %d hats %d, melody notes %d and %d under, bass notes %d\n",
-		a[0], r.BPM, r.Meter, feltWord(r.Meter, r.BPM), s.keyName(), tuned, len(r.Bars), from, hits[audio.InstrKick], hits[audio.InstrSnare], hits[audio.InstrHihat], notes, under, low)
+		file, r.BPM, r.Meter, feltWord(r.Meter, r.BPM), s.keyName(), tuned, len(r.Bars), from, hits[audio.InstrKick], hits[audio.InstrSnare], hits[audio.InstrHihat], notes, under, low)
 	names := make([]string, 0, len(defs))
 	for _, d := range defs {
 		names = append(names, d.Name)
@@ -380,12 +395,7 @@ func cmdRip(s *Session, a []string) error {
 
 // hear rips a recording, at tempo and in meter when they are given
 func (s *Session) hear(file string, tempo int, meter *audio.Meter) (*ripped, error) {
-	f, err := os.Open(s.path(file))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	x, rate, err := audio.ReadWAV(f)
+	x, rate, err := s.readWAV(file)
 	if err != nil {
 		return nil, err
 	}
@@ -399,6 +409,158 @@ func (s *Session) hear(file string, tempo int, meter *audio.Meter) (*ripped, err
 		return nil, err
 	}
 	return &ripped{rip: r, x: x, rate: rate, file: file}, nil
+}
+
+// The block live feeds a stream when none is named, a device's period, and the
+// longest it takes, in milliseconds
+const (
+	liveBlockMs    = 50
+	liveBlockMaxMs = 60000
+)
+
+// cmdLive rips a recording as it would be heard playing: a stream is fed its
+// blocks and each bar said as it freezes, with how far behind the sound; then
+// the offline rip of it is registered under the name as rip registers one, and
+// the stream measured against it
+func cmdLive(s *Session, a []string) error {
+	name := a[1]
+	if err := badName(name); err != nil {
+		return err
+	}
+	if isMIDI(a[0]) {
+		return fmt.Errorf("%s: a score has no sound to hear as it plays; rip <file.mid> <name> reads it", a[0])
+	}
+	block, pace := liveBlockMs, false
+	for rest := a[2:]; len(rest) > 0; {
+		switch {
+		case rest[0] == "pace":
+			pace, rest = true, rest[1:]
+		case rest[0] == "block" && len(rest) > 1:
+			ms, err := strconv.Atoi(rest[1])
+			if err != nil || ms < 1 || ms > liveBlockMaxMs {
+				return fmt.Errorf("block %q: want 1 to %d ms", rest[1], liveBlockMaxMs)
+			}
+			block, rest = ms, rest[2:]
+		default:
+			return fmt.Errorf("usage: %s", commands["live"].usage)
+		}
+	}
+	for _, vn := range ripVoices(name) { // a taken name costs no stream
+		if s.has(vn) {
+			return fmt.Errorf("%q: already exists", vn)
+		}
+	}
+	x, rate, err := s.readWAV(a[0])
+	if err != nil {
+		return err
+	}
+	st, err := audio.NewRipStream(s.ripper())
+	if err != nil {
+		return err
+	}
+	sec := func(n int) float64 { return float64(n) / float64(rate) }
+	began, cpu := time.Now(), cpuTime()
+	// where the sound is once fed samples are in: paced, the clock's time, which
+	// counts what the stream took to hear them
+	now := func(fed int) float64 {
+		if pace {
+			return time.Since(began).Seconds()
+		}
+		return sec(fed)
+	}
+	told, first, firstAt, worst, worstBar := 0, 0, 0.0, 0.0, 0
+	say := func(r *audio.Rip, at float64) {
+		if r == nil || len(r.Bars) == told {
+			return
+		}
+		per := r.Meter.Beats()
+		for b := told; b < len(r.Bars); b++ {
+			bar, behind := &r.Bars[b], at-r.Beats[(b+1)*per]
+			if told > 0 && behind > worst {
+				worst, worstBar = behind, b+1
+			}
+			fmt.Fprintf(s.out, "bar %d from %.2fs froze at %.2fs, %.2fs behind its end: kicks %d snares %d hats %d, melody notes %d and %d under, bass notes %d\n",
+				b+1, r.Beats[b*per], at, behind, len(bar.Drums[audio.InstrKick]), len(bar.Drums[audio.InstrSnare]), len(bar.Drums[audio.InstrHihat]), len(bar.Melody), len(bar.Under), len(bar.Bass))
+		}
+		if told == 0 {
+			first, firstAt = len(r.Bars), at
+		}
+		told = len(r.Bars)
+	}
+	for at, n := 0, max(rate*block/1000, 1); at < len(x); at += n {
+		end := min(at+n, len(x))
+		if pace { // a block is in once its last sample has sounded
+			time.Sleep(time.Until(began.Add(time.Duration(sec(end) * float64(time.Second)))))
+		}
+		if err := st.Write(x[at:end], rate); err != nil {
+			return err
+		}
+		say(st.Bars(), now(end))
+	}
+	heard, err := st.Close()
+	if err != nil {
+		return err
+	}
+	say(heard, now(len(x)))
+	streamCPU := cpuTime() - cpu
+	cpu = cpuTime()
+	final, err := st.Final()
+	if err != nil {
+		return err
+	}
+	offlineCPU := cpuTime() - cpu
+	if err := s.takeRip(a[0], name, &ripped{rip: final, x: x, rate: rate, file: a[0]}, audio.MaxPatternLen/audio.StepsPerBar, false); err != nil {
+		return err
+	}
+	paced := ""
+	if pace {
+		paced = " paced to real time"
+	}
+	fmt.Fprintf(s.out, "live %s: the stream, fed blocks of %d ms%s, against the offline rip\n", a[0], block, paced)
+	ag := audio.MatchNotes(heard.Notes, final.Notes)
+	c := agreed(ag)
+	fmt.Fprintf(s.out, "notes  the stream has %d of the offline rip's %d, and %d the offline rip has not: melody %d of %d, under %d of %d, the two as one register %d of %d, bass %d of %d\n",
+		c.hits, c.given, c.heard-c.hits, ag.Lines[0].Matched, ag.Lines[0].B, ag.Lines[1].Matched, ag.Lines[1].B, ag.Register.Matched, ag.Register.B, ag.Lines[2].Matched, ag.Lines[2].B)
+	lines := make([]float64, len(final.Bars))
+	for b := range lines {
+		lines[b] = final.Beats[b*final.Meter.Beats()]
+	}
+	bars := audio.MatchBars(heard, final.Beats, lines)
+	same := "the same length"
+	if !bars.Same {
+		same = "not the same length, so no downbeat counts"
+	}
+	fmt.Fprintf(s.out, "bars   the stream's bar %.2f of the offline rip's, %s: %.2f of its %d downbeat(s) on a stream bar line, phase %+.2f bar, %.2f of its %d beat(s) on a stream beat\n",
+		bars.Ratio, same, bars.Downbeats, len(lines), bars.Phase, bars.Beats, len(final.Beats))
+	fmt.Fprintf(s.out, "read   the stream %d bpm %s%s, the offline rip %d bpm %s%s\n",
+		heard.BPM, heard.Meter, feltWord(heard.Meter, heard.BPM), final.BPM, final.Meter, feltWord(final.Meter, final.BPM))
+	after := "no bar froze after them"
+	if worstBar > 0 {
+		after = fmt.Sprintf("after them the worst, bar %d, froze %.2fs behind its end", worstBar, worst)
+	}
+	fmt.Fprintf(s.out, "froze  the first %d bar(s) at %.2fs; %s\n", first, firstAt, after)
+	dur := sec(len(x))
+	fmt.Fprintf(s.out, "cpu    the stream took the process %.3fs a second of audio, the offline rip %.3fs\n", streamCPU.Seconds()/dur, offlineCPU.Seconds()/dur)
+	return nil
+}
+
+// cpuTime is the processor time the process has spent, the kernel's with its own
+func cpuTime() time.Duration {
+	var ru syscall.Rusage
+	if syscall.Getrusage(syscall.RUSAGE_SELF, &ru) != nil {
+		return 0
+	}
+	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
+}
+
+// readWAV reads a recording's samples, mono, and its rate
+func (s *Session) readWAV(file string) ([]float64, int, error) {
+	f, err := os.Open(s.path(file))
+	if err != nil {
+		return nil, 0, err
+	}
+	defer f.Close()
+	return audio.ReadWAV(f)
 }
 
 // readScore reads a MIDI file as a rip with no recording behind it, each line

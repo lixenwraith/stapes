@@ -295,8 +295,9 @@ offline (`song <name> <file.wav>`).
 - `lixenwraith/stapes`, this module: the verbs that drive it all (`rip`, `fit`,
   `compress`, `song`, `render`, `corpus`, `tune`, `truth` with its bars and
   every-part rows), the documents the results land in, and the files overlay
-  (`^O`) that loads, rips and saves them. The live rip's host is vif's Android
-  app, which takes `RipStream` from the library (vif's todo).
+  (`^O`) that loads, rips and saves them. `live` drives the live rip over a
+  file; its host to come is vif's Android app, which takes `RipStream` from
+  the library (vif's todo).
 - `tool/rip-train`: the trainer, Python, beside the Go module.
 
 ## 5. Budgets and determinism
@@ -404,9 +405,10 @@ and the checkpoint earn their keep.
      model; the decoder joins two cells where they name one frequency and
      keeps a step that lands. vocadito stands at .69 under a ceiling of .77 to
      .90, and its truth holds 241 legato steps a merger by adjacency would eat.
-   - **The stream read from outside, and `live`.** `RipStream` gives the frames
-     it has heard and its open bars as last decoded; `live` drives it over a
-     file and measures it against the offline rip.
+   - **The stream read from outside, and `live`.** Landed: `RipStream` gives
+     the frames heard since a frame with the spectrum they were read from
+     (`Frames`) and its open bars as last laid out (`Open`); `live` drives it
+     over a file and measures it against the offline rip.
    - **Each frame once.** A forward in `transformer` that runs a new frame
      through each layer once and equals the pass over the whole, and a cheaper
      GELU: the stream runs both models three times over, and the GELU is 29%

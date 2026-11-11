@@ -138,6 +138,14 @@ Over the library's rip (library
   <name> <file.mid>` writes one (`WriteMIDI`) to correct in a sequencer.
   `corpus <dir> from` labels a file's other drum strikes (`MIDIScore.Struck`)
   as onsets alone.
+- `live` drives the library's stream over a file (`RipStream`): `Write` a
+  block at a time, as fast as they go or paced by the clock, the bars `Bars`
+  gains said as they freeze against the samples fed, or paced against the
+  clock; `Close` ends the stream's rip and `Final` is the offline rip, which
+  `rip`'s registration takes (`takeRip`). The measure is the stream's rip
+  against it: `MatchNotes` counted every note once, `MatchBars` with the
+  offline rip's bar lines and beats as the truth, and the process's CPU over
+  each (`getrusage`, so the mixer's and a screen's are in it).
 - `rip` listens with the root's `rip.toml` when one is there, and hears with
   the root's `ripmodel.bin`, and the notes from its `ripnotes.bin` when that is
   there, which `tool/rip-train` trains on loops stapes exports (`corpus`); `render` writes what the slots hold to a WAV through

@@ -199,22 +199,31 @@ rip holds, then as many as were heard, through the song and the game.
 ### A live rip
 
 - Priority: P2
-- Affected files: `cmd_audio.go`, `command.go`, vif's Android app
+- Affected files: `cmd_doc.go`, vif's Android app
 
-The library follows a recording as it plays (`RipStream`, audio v0.14.0: blocks
-of samples in, each bar frozen once two follow it from the sixth bar on, `Final`
-the whole rip at the end). What remains is a host: a verb that drives the stream
-over a file in blocks and reports how its frozen bars differ from the offline
-rip of the same recording, the measurement the Android app's microphone mode
-(vif's todo) is then judged by ([Rip design §7](rip-design.md#7-plan)). Measured
-by a scratch tool through 12a and 32a on twelve recordings: the stream has 95
-in a hundred of the offline rip's notes and its bar grid on three recordings,
-tempo, meter and phase being held from the first six bars, at three times the
-offline cost. Decided since: the stream gives the frames it has heard and its
-open bars, and a forward that runs each frame once brings its cost to the
-offline rip's; then a recording is read in sections, tempo, meter, phase and
-key decided a part at a time and again at every bar until two decisions agree,
-nothing carried across a boundary between two different parts of a song.
+`live` drives the library's stream (`RipStream`) over a file in blocks and
+measures it against the offline rip of the same recording, the measurement the
+Android app's microphone mode (vif's todo) is judged by ([Rip design
+§7](rip-design.md#7-plan)). What is left:
+- The measure through the trained models on real recordings: no weights or
+  recordings were where the verb was written. A scratch tool through 12a and
+  32a on twelve recordings read 95 in a hundred of the offline rip's notes and
+  its bar grid on three, tempo, meter and phase being held from the first six
+  bars, at three times the offline cost; `live` is to say the same.
+- The lines. On a loop of the bank through the analysis the stream has 79 of
+  the offline rip's 80 notes and every bar line, but 18 of the melody
+  register's 48 on the line the offline rip files them on (47 as one
+  register): the stream parts the register's two lines over the window it
+  holds when a bar freezes (`streams`), the offline rip over the whole
+  recording. A view that colours a line shows it.
+- The stream's own reads (`Frames`, `Open`) are for the view; `live` does not
+  ask for them, so a recording does not yet check them through a trained
+  model.
+- Decided since the audit: a forward that runs each frame once brings the
+  stream's cost to the offline rip's; then a recording is read in sections,
+  tempo, meter, phase and key decided a part at a time and again at every bar
+  until two decisions agree, nothing carried across a boundary between two
+  different parts of a song.
 
 ### Close the rip's loop
 

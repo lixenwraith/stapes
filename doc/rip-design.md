@@ -391,10 +391,12 @@ and the checkpoint earn their keep.
    - What is decided of a part of a song, its tempo, meter and key, its
      voices, holds within that part and is never carried across a boundary
      into a part it has nothing to do with.
-   - Nothing is trained or fitted on a full track. A commercial song such as
-     Billie Jean measures the rip on real-world music and no more, since no
-     licence covers training on it; a corpus or a fit takes licensed
-     collections, renders and the engine's own mixes.
+   - Nothing is trained or fitted on a full track, bought or not. A commercial
+     song such as Billie Jean measures the rip on real-world music and no
+     more, since no licence covers training on it; a corpus or a fit takes
+     licensed collections, renders and the engine's own mixes. A piece that
+     is wanted is rendered from its score with licensed notes, and a round's
+     notes name every collection it took, for the credits.
    Code alone, a thread each, in parallel:
    - **Notes by pitch and onset, and the search under a guard**, landed.
      `Agreement` counts every note as one line (`All`) and `MatchNotes`
@@ -422,10 +424,17 @@ and the checkpoint earn their keep.
      the frames heard since a frame with the spectrum they were read from
      (`Frames`) and its open bars as last laid out (`Open`); `live` drives it
      over a file and measures it against the offline rip.
-   - **Each frame once.** A forward in `transformer` that runs a new frame
-     through each layer once and equals the pass over the whole, and a cheaper
-     GELU: the stream runs both models three times over, and the GELU is 29%
-     of a rip.
+   - **Each frame once.** Landed: a stream in `transformer` runs each frame
+     through each layer once and gives the pass over the whole when it waits
+     the model's reach, which the ear does (2.97 s for the frame model), and
+     the GELU runs over a row in the kernels. Through 12a and 32a on twelve
+     recordings a second of audio costs the offline rip 0.17 s of a core
+     where it cost 0.46, and the stream 0.24 where it cost 1.37, the offline
+     rip's note count unchanged on each. Waiting half a second instead leaves
+     the pitched heads as they are and moves the frame model's, the drums by
+     three tenths of their rms: on Billie Jean from the Pixel the stream's
+     kicks or snares then differ in 10 of 19 bars. So the reach is the
+     default.
    Then, each waiting on recordings, on a thread above or on a design agreed:
    - **The voice of every note.** Heard per pitch cell on the notes model, not
      per frame: a family, a wave and the genes of what plays that pitch,

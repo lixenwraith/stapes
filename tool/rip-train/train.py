@@ -208,14 +208,17 @@ class Label:
             out = np.full(sole.shape, -1, a.dtype)
             out[one] = a[sole[one]]
             return out
+        name = of(self.name)
+        if FAMILY_HOLDOUT is not None:  # the family held out is named to no head
+            family[family == FAMILY_HOLDOUT], name[name == FAMILY_HOLDOUT] = -1, -1
         return {"onset": onset, "drums": drums, "pitch": pitch, "voicing": (pitch.sum(1) > 0).astype(np.uint8),
                 "wave": wave, "voice": voice, "voiced": (top >= 0).astype(np.uint8), "family": family,
                 "strikes": np.array(strikes, np.int32).reshape(-1, 2), "vels": np.array(vels, np.float32),
                 "releases": np.array(releases, np.int32).reshape(-1, 2), "cents": cents, "asked": asked, "moving": moving,
-                "note": np.where(one, sole, -1), "pitchfamily": of(self.name), "pitchwave": of(self.wave), "pitchvoice": of(self.voice)}
+                "note": np.where(one, sole, -1), "pitchfamily": name, "pitchwave": of(self.wave), "pitchvoice": of(self.voice)}
 
 
-# a family's index in ripmodel.FAMILIES whose loops the run leaves out, so a calibration run never hears it
+# a family's index in ripmodel.FAMILIES whose notes the run names to no head, so a calibration run never hears its name
 FAMILY_HOLDOUT = None
 
 
@@ -224,7 +227,7 @@ def load_corpus(d: str):
         manifest = json.load(f)
     if manifest.get("families", list(ripmodel.FAMILIES)) != list(ripmodel.FAMILIES):
         raise SystemExit(f"{d}: families {manifest['families']}, the model's {list(ripmodel.FAMILIES)}")
-    loops, unheard = [], 0
+    loops, unnamed = [], 0
     skip = set(open(os.path.join(d, "skip.txt")).read().split()) if os.path.exists(os.path.join(d, "skip.txt")) else set()
     for i in range(manifest["loops"]):
         if f"loop_{i:03d}" in skip:
@@ -234,12 +237,10 @@ def load_corpus(d: str):
         with open(base + ".json") as f:
             label = json.load(f)
         lab = Label(label, len(mel), manifest)
-        if FAMILY_HOLDOUT is not None and (lab.family == FAMILY_HOLDOUT).any():
-            unheard += 1
-            continue
+        unnamed += int((lab.name == FAMILY_HOLDOUT).sum()) if FAMILY_HOLDOUT is not None else 0
         loops.append((mel, lab))
-    if unheard:
-        print(f"{unheard} loops of {d} sound {ripmodel.FAMILIES[FAMILY_HOLDOUT]}, held out of the run")
+    if unnamed:
+        print(f"{unnamed} notes of {d} are {ripmodel.FAMILIES[FAMILY_HOLDOUT]}'s, held out: no head is told their family")
     return manifest, loops
 
 
@@ -471,14 +472,18 @@ def batch(draw, window: int, size: int, rng: random.Random, channels: int, chann
 
 
 def validation(loops, window: int, channels: int):
-    """every held-out loop cut into windows of `window` frames, fixed, so the held-out loss is comparable step to step"""
-    mels, tgs = [], []
+    """every held-out loop cut into windows of `window` frames, fixed, so the held-out loss is comparable step to step;
+    and their notes, a column a note in the windows' `note`: its name, its wave and its voice's row, -1 where its label says none"""
+    mels, tgs, notes, first = [], [], [np.zeros((3, 0), np.int64)], 0
     for mel, lab in loops:
         for start in range(0, max(len(mel) - 1, 1), window):
             m, tg = stack([sample(mel, lab, start, window, channels)])
+            tg["note"] = torch.where(tg["note"] >= 0, tg["note"] + first, tg["note"])
             mels.append(m)
             tgs.append(tg)
-    return mels, tgs
+        notes.append(np.stack([lab.name, lab.wave, lab.voice]).astype(np.int64))
+        first += len(lab.t)
+    return mels, tgs, torch.from_numpy(np.concatenate(notes, 1))
 
 
 # A notes model's strikes as the decoder reads them: a peak over the bar a strike starts a note at, the higher bar
@@ -502,21 +507,63 @@ def struck(logits: torch.Tensor, strike: torch.Tensor, valid: torch.Tensor, low:
 CENTS_KINDS = ("gliding", "steady", "beside", "unplaced")
 
 
+# A note is played by what its cells say, each by its salience, over the frames a cell is among the
+# VOICE_CELLS most salient: those lixenwraith/audio keeps the say of (RipVoiceCells)
+VOICE_CELLS = 12
+SURE = 0.95  # the share of a held-out family's notes whose surest name stays under the measure
+
+
 def cells(y: torch.Tensor, cfg, name: str) -> torch.Tensor:
     """a per-pitch head's scores, [..., pitches, values]"""
     return y[..., cfg.slice(name)].unflatten(-1, (-1, ripmodel.PITCHES)).transpose(-1, -2)
 
 
-def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None = None) -> dict:
+def said(y: torch.Tensor, cfg):
+    """what a notes model says plays each cell, [..., pitches, each family's share, each wave's, the genes],
+    and the weight a cell's say has in its note's"""
+    v = torch.cat([cells(y, cfg, "pitchfamily").softmax(-1), cells(y, cfg, "pitchwave").softmax(-1), torch.sigmoid(cells(y, cfg, "pitchvoice"))], -1)
+    p = y[..., cfg.slice("pitch")]
+    return v, torch.sigmoid(p) * (p >= p.topk(VOICE_CELLS, -1).values[..., -1:])
+
+
+def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
+    """the notes of fixed windows as they were heard against their labels: the share named their family, over
+    all, by family and over those under another note; the share given their wave; their genes' RMS miss; and of
+    a family held out, the share its notes' surest name reaches, SURE of them under it and at the median, with
+    the share of the other notes past it and of those the share named right"""
+    name, wave, voice = notes
+    names, waves = ripmodel.NAMES, ripmodel.WAVES
+    w = heard[:, -2]
+    share, to = heard[:, :names] / w.clamp(min=1e-9)[:, None], heard[:, names:names + waves].argmax(1)
+    top, named = share.max(1)
+    asked, right = (w > 0) & (name >= 0) & (name != (-1 if FAMILY_HOLDOUT is None else FAMILY_HOLDOUT)), named == name
+    rate = lambda at: (right[at].float().mean().item(), int(at.sum()))
+    known = (w > 0) & (voice >= 0)
+    miss = (heard[known, names + waves:-2] / w[known, None] - torch.from_numpy(genes()[voice[known].numpy()])) ** 2
+    out = {"families": rate(asked), "by": [(ripmodel.FAMILIES[k], *rate(asked & (name == k))) for k in range(names) if (asked & (name == k)).any()],
+           "under": rate(asked & (heard[:, -1] > 0.5 * w)), "waves": (to == wave)[(w > 0) & (wave >= 0)].float().mean().item(),
+           "genes": miss.mean(1).sqrt().mean().item()}
+    held = (w > 0) & (name == FAMILY_HOLDOUT) if FAMILY_HOLDOUT is not None else torch.zeros(0, dtype=torch.bool)
+    if held.any():
+        reach = top[held].quantile(SURE).item()
+        out["held"] = (int(held.sum()), reach, top[held].median().item(), (top[asked] > reach).float().mean().item(), rate(asked & (top > reach))[0])
+    return out
+
+
+def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None) -> dict:
     """the mean of the losses over the held-out windows, the model's weights untouched;
     with low, the first pitch over the strikes' low bar, the strikes' F1 beside them,
     and what a cents head reads: over the readings the labels place and each kind,
     the median miss and the median error it states, in cents, and the share within
-    the stated; nan where a label does not say"""
+    the stated; nan where a label does not say; with notes, the windows' notes
+    (validation), what a model that says what plays each pitch heard them as (noted)"""
     model.eval()
     sums: dict = {}
     counts = torch.zeros(4, dtype=torch.long, device=device)
     read = []  # each asked reading's miss and stated error in cents, and its kind
+    voiced = notes is not None and notes.shape[1] > 0 and "pitchfamily" in dict(model.cfg.outputs)
+    # a note's cells' say summed by their weights, then the weights and those of the cells under a higher one sounding
+    heard = torch.zeros(notes.shape[1] if voiced else 0, ripmodel.NAMES + ripmodel.WAVES + ripmodel.VOICE_GENES + 2, device=device)
     with torch.no_grad():
         for mel, t in zip(mels, tgs):
             mel, t = mel.to(device), {k: v.to(device) for k, v in t.items()}
@@ -536,8 +583,17 @@ def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None =
                     kind = torch.where(placed, kind, torch.full_like(kind, 3))
                     miss = torch.where(placed, 100 * (place - t["cents"]).abs(), torch.full_like(place, float("nan")))
                     read.append(torch.stack([miss[ask], 100 * spread.exp()[ask], kind[ask]]).cpu())
+                if voiced:
+                    v, w = said(out, model.cfg)
+                    at = (t["note"] >= 0) & (t["valid"][..., None] > 0)
+                    cell = torch.arange(ripmodel.PITCHES, device=device)
+                    under = cell < (t["pitch"] * cell).amax(-1, keepdim=True)
+                    w = w[at]
+                    heard.index_add_(0, t["note"][at].long(), torch.cat([v[at] * w[:, None], w[:, None], (w * under[at])[:, None]], 1))
     model.train()
     out = {k: v / max(len(mels), 1) for k, v in sums.items()}
+    if voiced:
+        out["voices"] = noted(heard.cpu(), notes)
     if read and sum(r.shape[1] for r in read):
         miss, stated, kind = torch.cat(read, 1)
         out["read"] = [(name, miss[at].median().item(), stated[at].median().item(),
@@ -649,7 +705,8 @@ def main() -> None:
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
     ap.add_argument("--extra", default="", help="more corpora and the share of windows drawn from each, dir:share, comma-separated")
     ap.add_argument("--pitchnet", action="store_true", help="the notes model: convolutions only over the harmonic stack, the same weights at every pitch; --out is then ripnotes.bin, which stapes reads beside ripmodel.bin")
-    ap.add_argument("--family-holdout", choices=ripmodel.FAMILIES, help="a family left out of the run: every loop that sounds it is neither trained on nor scored, so a calibration run sets unknown's bar on how the model hears an instrument it never heard")
+    ap.add_argument("--family-holdout", choices=ripmodel.FAMILIES, help="a family no head is told the name of: its notes are trained on as sound and scored as notes, and a notes model's lines print the share their surest name reaches, the measure of where a name stops being sure, which its weight file carries")
+    ap.add_argument("--sure", type=float, default=0.0, help="the share a family must pass over a note to name it, as a --family-holdout run of the same recipe measured it, for a notes model's weight file to carry; without it the start's is kept, and with neither no family names a note")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--shard-seed", type=int, default=0, help="offsets the stream the windows are drawn from, so a round's workers see different loops; the starting weights stay --seed's")
     ap.add_argument("--checkpoint", default="", help="write a .pt every --every steps, and resume from it when present")
@@ -693,16 +750,16 @@ def main() -> None:
     holdout = args.holdout if args.holdout >= 0 else (len(loops) // 10 if len(loops) >= 5 else 0)
     held = loops[len(loops) - holdout:] if holdout else []
     loops = loops[:len(loops) - holdout] if holdout else loops
-    val_mels, val_tgs = validation(held, args.window, planes) if held else ([], [])
+    val_mels, val_tgs, val_notes = validation(held, args.window, planes)
     assert manifest["mel_bands"] == ripmodel.MEL_BANDS and manifest["pitches"] == ripmodel.PITCHES
     assert manifest["voice_genes"] == ripmodel.VOICE_GENES and len(manifest["waves"]) == ripmodel.WAVES
-    recorded, check_mels, check_tgs = [], [], []
+    recorded, check_mels, check_tgs, check_notes = [], [], [], None
     if args.validate:
         check_manifest, recorded = load_corpus(args.validate)
         assert check_manifest["mel_bands"] == ripmodel.MEL_BANDS and check_manifest["pitches"] == ripmodel.PITCHES
         if not recorded:
             raise SystemExit(f"--validate {args.validate}: no recordings to score")
-        check_mels, check_tgs = validation(recorded, args.window, planes)
+        check_mels, check_tgs, check_notes = validation(recorded, args.window, planes)
     mixed, share = [], 0.0
     if args.mix:
         d, _, sh = args.mix.rpartition(":")
@@ -741,6 +798,8 @@ def main() -> None:
     elif ck is not None:
         model.load_state_dict(ck["model"])
         print(f"started from {args.init}")
+    if args.sure and hasattr(model, "sure"):
+        model.sure.fill_(args.sure)
     print(f"{sum(p.numel() for p in model.parameters())} weights, {len(loops)} loops, {sum(len(m) for m, _ in loops)} frames, {len(held)} held out in {len(val_mels)} windows")
     if recorded:
         print(f"{len(recorded)} recordings of {sum(len(m) for m, _ in recorded)} frames to validate on in {len(check_mels)} windows, from {args.validate}")
@@ -752,19 +811,29 @@ def main() -> None:
 
     low = STRIKE_LOW - manifest["min_midi"] if args.pitchnet else None
 
-    def scored(name: str, mels, tgs):
-        """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them"""
-        v = evaluate(model, mels, tgs, args.device, low)
+    def scored(name: str, mels, tgs, notes):
+        """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them;
+        a family held out sets the model's measure by its notes there"""
+        v = evaluate(model, mels, tgs, args.device, low, notes)
         # the decoders read the onset, drum, pitch, voicing, strike and release
         # heads; the wave, voice, velocity and family heads say how a note is
         # played and by what, and memorize the corpus's, so they do not pick the step
         v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"]
-        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read"))
+        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read", "voices"))
         f1 = f", strikes' F1 {v['struck']:.3f}" if "struck" in v else ""
         # the cents head: each kind of reading's median miss, the median error stated for it, and the share within the stated
         read = "".join(f"{'; ' if i else ', '}{k} " + (f"{stated:.1f} stated" if miss != miss else f"{miss:.1f} off, {stated:.1f} stated, {within:.0%} within")
                        for i, (k, miss, stated, within) in enumerate(v.get("read", [])))
-        return v["decoders"], v.get("struck"), f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f}{f1}{read} ({parts})"
+        voices = ""
+        if "voices" in v:  # what plays each note: the share named right, by family and under another note, their waves and genes
+            n = v["voices"]
+            by = ", ".join(f"{k} {x:.3f} of {count}" for k, x, count in n["by"])
+            voices = f"; families {n['families'][0]:.3f} of {n['families'][1]} notes ({by}), {n['under'][0]:.3f} of the {n['under'][1]} under another, waves {n['waves']:.3f}, genes {n['genes']:.3f} off"
+            if "held" in n:
+                count, reach, median, past, right = n["held"]
+                model.sure.fill_(reach)
+                voices += f"; {args.family_holdout}'s {count} notes, held out, reach {reach:.3f}, {median:.3f} at the median: {past:.0%} of the others' notes pass it, {right:.0%} of them right"
+        return v["decoders"], v.get("struck"), f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f}{f1}{read}{voices} ({parts})"
 
     def weights() -> dict:
         return {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}
@@ -773,7 +842,7 @@ def main() -> None:
         nonlocal best_loss, best_step, best_state, validated
         held_loss = None
         if val_mels:
-            held_loss, _, line = scored("held-out", val_mels, val_tgs)
+            held_loss, _, line = scored("held-out", val_mels, val_tgs, val_notes)
             if held_loss < best_loss:
                 best_loss, best_step, best_state = held_loss, step, weights()
                 line += " (best)"
@@ -781,7 +850,7 @@ def main() -> None:
         if check_mels:
             # a notes model's loss on recordings is mostly its onset head, which no decoder
             # reads from it, and ranks rounds unlike their note scores; its strikes' F1 does
-            loss, f1, line = scored("validation", check_mels, check_tgs)
+            loss, f1, line = scored("validation", check_mels, check_tgs, check_notes)
             key = loss if f1 is None else -f1
             if key < validated[0]:
                 validated = (key, step, weights(), held_loss)
@@ -867,9 +936,14 @@ def main() -> None:
     elif best_state is not None:
         model.load_state_dict(best_state)
         print(f"best held-out decoders' loss {best_loss:.3f} at step {best_step}; exporting that")
+    if args.sure and hasattr(model, "sure"):
+        model.sure.fill_(args.sure)  # over the step exported, whatever its run measured
     model.eval()
     ripmodel.export(model.cpu(), args.out)
-    print(f"wrote {args.out}")
+    sure = ""
+    if hasattr(model, "sure"):
+        sure = f", a family naming a note past a share of {model.sure.item():.3f}" if model.sure > 0 else ", no family naming a note: no run measured where a name stops being sure (--family-holdout, --sure)"
+    print(f"wrote {args.out}{sure}")
 
 
 if __name__ == "__main__":

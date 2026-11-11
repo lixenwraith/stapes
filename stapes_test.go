@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -2339,6 +2340,104 @@ func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 	names, _ := filepath.Glob(filepath.Join(kept, "*.frames"))
 	if other != said(1, 0) || len(names) != 2 {
 		t.Errorf("another model said %q over %d file(s) of frames, want the recording heard again and kept beside the first", other, len(names))
+	}
+}
+
+// judgeBytes is a judge file, a unit a layer, fitted on the notes weights of
+// the checksum given, whose stages give every row the odds named: the reported
+// notes' and the dropped strikes'
+func judgeBytes(notes uint64, odds [2]float64) []byte {
+	le := binary.LittleEndian
+	b := []byte("VIFJ")
+	for _, v := range []uint32{1, audio.RipRowVersion, uint32(audio.RipRowSize), 1, 1} {
+		b = le.AppendUint32(b, v)
+	}
+	b = le.AppendUint64(b, notes)
+	values := func(n int, v float64) {
+		for range n {
+			b = le.AppendUint32(b, math.Float32bits(float32(v)))
+		}
+	}
+	for _, o := range odds {
+		values(audio.RipRowSize, 0) // the mean
+		values(audio.RipRowSize, 1) // the spread
+		values(audio.RipRowSize+4, 0)
+		values(1, math.Log(o/(1-o))) // the output's bias, over hidden layers that give 0
+	}
+	h := fnv.New64a()
+	h.Write(b)
+	return le.AppendUint64(b, h.Sum64())
+}
+
+// TestAJudgeBesideTheModelRulesItsRips: ripjudge.bin in the root, fitted on the
+// notes weights loaded, rules the strikes of rip, live and tune truth, the
+// session and stat name it, and rows still writes the installed verdicts; one
+// fitted on other weights is refused by name and the installed scores judge.
+func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	cfg := ripmodel.Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+	m, err := transformer.NewRandom(cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var weights bytes.Buffer
+	if err := m.Save(&weights); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(root, modelFile), weights.String())
+	sum := binary.LittleEndian.Uint64(weights.Bytes()[weights.Len()-8:])
+	open := func(notes uint64) (*Session, *bytes.Buffer) {
+		// a judge that keeps every reported note and returns no dropped strike
+		writeFile(t, filepath.Join(root, judgeFile), string(judgeBytes(notes, [2]float64{0.9, 0.1})))
+		files, err := ResolveFiles(root, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		s, err := NewSession(Options{Backend: "null", Out: &out, Files: files})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.fit, s.rip.Strike = fitOptions{notes: 2, generations: 1, pool: 4, seed: 1}, 0.7
+		return s, &out
+	}
+	s, out := open(sum + 1)
+	if s.judge != nil || s.ripper().Judge != nil || !strings.Contains(out.String(), "rip judge "+filepath.Join(root, judgeFile)+": ") || !strings.Contains(out.String(), "the installed scores judge") {
+		t.Errorf("a judge fitted on other notes weights loaded %v: %s", s.judge != nil, out)
+	}
+	dir, _, heard, write := truthFixture(t, s, 1)
+	installed := heard(s.rip)
+	teardown(t, s)
+	s, out = open(sum)
+	defer teardown(t, s)
+	named := ", judge " + filepath.Join(root, judgeFile)
+	if s.judge == nil || !strings.Contains(out.String(), named) {
+		t.Fatalf("a judge fitted on the notes weights loaded gave none: %s", out)
+	}
+	wav, list, to := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rows")
+	runOrFatal(t, s, out, fmt.Sprintf("rip %[1]s ripped\nlive %[1]s lived\n", wav))
+	ruled := s.rips["ripped"].rip.Notes
+	if len(ruled) == 0 || len(ruled) == len(installed) || len(s.rips["lived"].rip.Notes) != len(ruled) {
+		t.Fatalf("rip heard %d note(s) under the judge and live %d, the installed scores %d: want the judge's, which differ\n%s", len(ruled), len(s.rips["lived"].rip.Notes), len(installed), out)
+	}
+	write("ruled.mid", ruled)
+	writeFile(t, list, "loop.wav\truled.mid\truled\ttimed\n")
+	out.Reset()
+	runOrFatal(t, s, out, fmt.Sprintf("tune 2 1 truth %s\nrows %s from %s\nstat\n", list, to, list))
+	if !strings.Contains(out.String(), "ruled: F1 1.000 before") || !strings.Contains(out.String(), named) {
+		t.Errorf("tune truth did not hear the recording under the judge, or stat names none:\n%s", out)
+	}
+	recs, _ := readRows(t, to)
+	kept := 0
+	for _, st := range recs["ruled/loop.wav"].Strikes {
+		if st.Kept {
+			kept++
+		}
+	}
+	if kept != len(installed) {
+		t.Errorf("rows wrote %d strike(s) kept under a judge loaded, the installed scores keep %d", kept, len(installed))
 	}
 }
 

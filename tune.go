@@ -2160,6 +2160,7 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	// the current parameters' rips hear every recording and read every transcript
 	sums, given, read := make([]noteCount, len(conds)), 0, 0
 	for _, t := range takes {
+		t.judge = s.judge
 		c, err := t.count(cur, s.lead)
 		if err != nil {
 			return err
@@ -2277,9 +2278,10 @@ type truthTake struct {
 	x              []float64
 	ear            *heardOnce
 	truth          func(*audio.Rip) ([]audio.RipNote, error)
-	given          int  // the notes the truth gives, all missed by a rip that fails
-	cond           int  // its condition, an index into the list's
-	timed          bool // the truth's seconds are the recording's
+	given          int             // the notes the truth gives, all missed by a rip that fails
+	cond           int             // its condition, an index into the list's
+	timed          bool            // the truth's seconds are the recording's
+	judge          *audio.RipJudge // what rules its rip's strikes, nil for the installed scores
 }
 
 // truthLine is a truth list's line: a recording and its truth, relative paths
@@ -2399,7 +2401,7 @@ func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([
 
 // count rips the take under p and counts its notes against its truth's
 func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (noteCount, error) {
-	r, err := audio.Ripper{Params: p, FrontEnd: t.ear, Lead: lead}.Samples(t.x, audio.RipRate)
+	r, err := audio.Ripper{Params: p, FrontEnd: t.ear, Lead: lead, Judge: t.judge}.Samples(t.x, audio.RipRate)
 	if err != nil {
 		return noteCount{given: t.given}, fmt.Errorf("%s: %w", t.wav, err)
 	}

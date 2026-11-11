@@ -80,6 +80,7 @@ tool/rip-train/pipeline.sh install
 | `PARTS` | 1 | exports at once, each rendering every `PARTS`-th loop on a core of its own; a last export renders any loop they left and writes `corpus.json` |
 | `AUG` | `aug` | a room, a mix, voices of random genes near the registered ones, a pedal's ringing in a third of the loops, a soft clip in a third, a compressor and a noise floor in half, each loop rendered off A440 by up to a quarter tone; empty for clean renders |
 | `GEN` | `gen` | beats, melodies, bass lines and accompaniments the bank never had, three loops in five per part: a broken chord in eighths or sixteenths in the free slot, and in half the loops a melody of longer notes over it; a third of the generated melodies and accompaniments half 6 to 18 dB softer; three generated loops in ten without their drums and one in seven without its bass; empty for the bank alone |
+| `GLIDE` | empty | `glide`: a fifth of the generated notes bend into the note that follows, a seventh scoop into their pitch and three in ten of a loop's oscillator voices sway, each such note labelled with its cents at every frame, which is what teaches the notes model's cents head a glide |
 | `WAV` | `nowav` | frames and labels only; empty keeps each loop's WAV too (300 MB per 200 loops) |
 | `CODEC` | empty | `codec`: a third of the loops through Opus, MP3 or AAC at 64 to 192 kbps and back, by ffmpeg, which the export then needs |
 | `SAMPLED` | empty | a directory of NSynth notes (`family_source_NNN-pitch-velocity.wav`, a partial set too): each tonal line plays on one of its instruments in half the loops, labelled with no voice and by its instrument's family; empty for the engine's voices alone |
@@ -388,13 +389,45 @@ hears. `--family-holdout <family>` leaves every loop that sounds a family out of
 the run, trained on and scored by neither, so a calibration run can set unknown's
 bar on how the model hears an instrument it never heard. A checkpoint from before
 a setting existed loads with that setting's default, and `--init` takes one of the
-frame model from before the family head: every weight carries over and the head's
-rows start fresh, though resuming one is refused.
+frame model from before the family head, or of the notes model from before the
+cents head: every weight carries over and the head's rows start fresh, though
+resuming one is refused.
+
+A notes model has a cents head: for each pitch, how far its sound sits from the
+cell's centre and the error it states for that, taught where a sound the labels
+place lies within a semitone of the cell: an engine voice's note, from the loop's
+`tuning` and a moving note's `cents`, or any note that lists its `cents`
+([Rip training](../../doc/rip-training.md) §3, §5 and §8). `corpus ...
+glide` is the word that makes notes move: bends into the next note, scoops and
+vibratos. A corpus without it still teaches the head each loop's tuning; its labels
+written before `cents` take a voice that sways, the vocal focus's, for a steady one,
+so export that corpus again, its labels removed first. The held-out line and
+`--validate`'s say what the head reads, in cents, all the placed readings first,
+then those of a cell a glide is in, of a cell a pitch holds in, and of the cell
+beside a sound; of a sounding cell the labels do not place, a recording's, only
+the error it states (`unplaced 31.0 stated`), so a validation corpus of recordings
+shows how sure the head is of real sound and not how right. A small model's
+after 2,500 steps on 360 loops of a `glide` corpus:
+
+```
+cents 14.5 off, 21.4 stated, 63% within; gliding 22.5 off, 25.1 stated, 54% within; steady 11.9 off, 19.3 stated, 69% within; beside 16.0 off, 22.8 stated, 59% within
+```
+
+`off` is the median miss, `stated` the median error the head states, and `within`
+the share of readings whose miss is within the error stated for them: 63% for a
+head that states its mean miss of misses spread as a Laplace's. A share well under
+that on the gliding readings is a head too sure of itself where the decoder leans on
+it, since audio joins two cells only where their readings agree within the stated
+errors, with no margin on top. A head that knows nothing of a sound reads a median
+25 cents off, so the line above is a head that has a loop's tuning and little of a
+glide's motion yet: it states as much there, and the decoder joins nothing on its word.
 
 It writes the file's version 3, the channels after the inputs, which needs
 transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio
-refuses it, of one channel or two. `--pitchnet`'s file is version 4, a cell net,
-which needs transformer v0.4.0 (audio v0.5.0).
+refuses it, of one channel or two. `--pitchnet`'s file is version 5, a cell net
+with its long convolutions listed, which needs transformer v0.5.0 (audio v0.8.2);
+the cents head changes neither, being one more per-pitch head of two values, and
+an audio before v0.21.0 reads such a file's other heads and hears no glide.
 A change to either side is a change to both: check a random model's outputs on
 a corpus loop from the two before trusting a trained file, as the module's
 [agent notes](https://github.com/lixenwraith/transformer/blob/main/doc/agent-notes.md)

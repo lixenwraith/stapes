@@ -372,6 +372,89 @@ sounds in, each strike's velocity as squared error where the corpus gives one,
 and the family of the highest note or hit sounding as cross-entropy where the
 corpus gives one, at half weight and outside the score that picks the step.
 
+## A judge
+
+Which strikes of the notes model are notes is the accounting's verdict, two
+installed scores. A judge rules in their place: a small network a stage, the
+notes the decoder reported and the strikes it dropped, over a strike's row
+([audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)).
+It is fitted on the rows one notes model gives, needs no round, and audio
+refuses it beside any other notes model. None ships yet: one is installed on
+its readings with a collection left out ([Rip design](../../doc/rip-design.md)
+§7).
+
+```bash
+printf 'rows rows from truths.txt frames frames\nrows rows from corpus\n' > "$dir/rows.slab"   # read from the script's folder
+go run ./cmd/stapes -headless -config-dir "$dir/root" -s "$dir/rows.slab"                      # the root's models, never its judge
+python3 tool/rip-train/judge.py --rows "$dir/rows" --leave-out guitar --out "$dir/root/ripjudge.bin"
+```
+
+- **What a fit may take.** Licensed collections with truths, renders, and the
+  engine's own mixes (a corpus written with its audio, `WAV=` empty). Never a
+  full track such as a commercial song: no licence covers training on it, so
+  it only measures, read under a judge with `rip` and `truth`, or listed under
+  a condition every fit leaves out.
+- **Rows.** `rows <dir> from <list>` rips each recording of a truth list, the
+  lines `tune ... truth` reads, and `rows <dir> from <corpus dir>` each loop
+  of a corpus that kept its audio, against its label, the corpus one condition
+  under its folder's name. Each strike over a half is a row, as the decoder
+  reads it:
+  - `<checksum>.rows`, a recording's rows, laid out as a loop's frames are:
+    the count, the row's size, then `float32` rows, little-endian;
+  - `<checksum>.json`, its `source`, `condition`, `given` (the truth's notes),
+    `unanswered` (those no strike answers) and `strikes`, a row each: `frame`,
+    `midi`, `reported` (its stage), `held` (a held note the accounting keeps
+    unjudged), `right` (a truth note of its pitch starts within the matcher's
+    window of it; a truth note answers one strike, the nearest, a reported
+    note before a dropped strike) and `kept` (the installed verdict);
+  - `rows.json`, the row's version and size and the notes weights' checksum.
+    A directory holds one kind, and `judge.py` refuses directories of two.
+
+  A recording already written is kept, `part k/n` takes every `n`-th from the
+  `k`-th so parts run side by side, and `frames <dir>` keeps what the models
+  heard between runs, as `tune ... truth` does.
+- **The fit**, one stated procedure, nothing picked by a held-out score. A
+  stage's rows are standardized by their mean and spread (a value that never
+  varies is left as it is); the network is two hidden layers of 256 and 64
+  with ReLU, dropout of .2 after the first, and one output; the loss is binary
+  cross-entropy against `right`; AdamW at 1e-3 with weight decay 1e-4 under
+  PyTorch's `OneCycleLR` to a peak of 2e-3, which sets the rate at every step
+  (from a twenty-fifth of the peak up, then down); batches of 2048, twelve
+  passes, seed 0. The held notes are left out of the reported stage.
+- **Left out.** `--leave-out <condition>...` keeps conditions out of the fit
+  and counts each by pitch and onset, as `truth`'s `notes` row counts, under
+  the installed verdicts, under the judge's, and under a right verdict on
+  every row, which is what the rows could give at best. A run of the path
+  alone, 360 rendered loops fitted on and 40 of another seed left out,
+  through models trained an hour on CPU, so it says nothing of a judge's
+  worth on recordings:
+
+  ```
+  108933 row(s) of 544 (version 1) read through the notes weights c2f75c44fd18b2e3; fitting on fit
+  reported: 6403 row(s), 0.527 of them right; loss a pass 0.697 0.672 0.611 0.509 0.466 0.436 0.420 0.405 0.393 0.383 0.378 0.376
+  dropped: 90773 row(s), 0.127 of them right; loss a pass 0.478 0.322 0.287 0.271 0.262 0.255 0.248 0.240 0.235 0.229 0.225 0.223
+  held: 40 recording(s), 2838 note(s) given, 1262 of them no strike answers; 11664 strike(s), 801 reported
+    installed  423 heard as given, given 2838, heard 761, F1 0.235
+    judge      740 heard as given, given 2838, heard 1028, F1 0.383
+    right      1576 heard as given, given 2838, heard 1580, F1 0.713
+  ```
+
+  A count from rows is near `truth`'s decode of the same recordings, and
+  `truth` is the reading. Those 40 loops decoded read 424 heard as given of
+  762 under the installed scores (F1 0.236) and 759 of 1059 under the judge
+  (0.390). Under the installed scores a strike listed is the strongest of its
+  pitch within `strike_gap`, and carries the verdict of the candidates near
+  it: two the scores returned around one stronger strike are one row, and a
+  returned note may start up to the gap from the strike its row is labelled
+  at. Under a judge a dropped strike is measured against the notes the judge
+  kept, where its row was written against those the installed scores kept.
+- **The file.** `--out` writes `ripjudge.bin`, which stapes loads from the
+  root beside `ripnotes.bin`: `rip`, `truth`, `tune` and `live` then run under
+  it, and the session and `stat` name it. It names the row's version and the
+  notes weights it was fitted on, so new weights or a new row refuse it by
+  name and the installed scores judge until it is fitted again; remove the
+  file to go back to them.
+
 ## Parity
 
 The Go forward pass and this model agree to `float32` rounding: exact GELU,

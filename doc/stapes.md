@@ -48,7 +48,11 @@ The root is `-config-dir`, or else `os.UserConfigDir()` plus `stapes`
   there, the built-in analysis when it is not
   ([rip-train](../tool/rip-train/README.md));
 - `ripnotes.bin`, the notes model: beside `ripmodel.bin` it gives the notes, the
-  pitches and their strikes, releases and velocities, and alone it is unused.
+  pitches and their strikes, releases and velocities, and alone it is unused;
+- `ripjudge.bin`, a judge of the strikes: beside the weights it was fitted on
+  it rules which strikes are notes, in the installed scores' place, and beside
+  any others it is refused by name and they judge
+  ([a judge](../tool/rip-train/README.md#a-judge)).
 
 The documents, `music.toml` and `sounds.toml`, are found along a search path,
 whose one folder is vif's audio folder, `os.UserConfigDir()` plus `vif/audio`:
@@ -155,7 +159,21 @@ Over the library's rip (library
 - `rip` listens with the root's `rip.toml` when one is there, and hears with
   the root's `ripmodel.bin`, and the notes from its `ripnotes.bin` when that is
   there, which `tool/rip-train` trains on loops stapes exports (`corpus`); `render` writes what the slots hold to a WAV through
-  `RenderMusic`, so an estimate is heard without a device.
+  `RenderMusic`, so an estimate is heard without a device. The root's
+  `ripjudge.bin` is the rip's judge (`Ripper.Judge`, loaded with
+  `LoadRipJudge` under the front end's `NotesSum`): `Session.ripper` carries
+  it, so `rip`, `live` and what `truth` scores run under it, and `tune ...
+  truth` rips its recordings under it; `bench` and `rows` do not.
+- `rows` writes what a judge is fitted on: each recording of a truth list, or
+  each loop of a corpus directory that kept its audio against its label
+  (`truthSources`), ripped with no judge and the strikes read with their rows
+  (`Ripper.Strikes`, `Rows`), each strike labelled by `rightStrikes`: the
+  library's matcher run over the reported strikes and then over the dropped
+  against the truth notes left, the truth placed by the map the rip's notes
+  fit (`Agreement.At`). A recording is a `.rows` file, laid out as a loop's
+  frames, and a `.json` of its strikes, named by the recording's checksum, so
+  a run keeps what is there and parts need no numbering; `rows.json` names
+  the row and the notes weights, and a directory of another kind is refused.
 - `tune` searches the rip's parameters over loops rendered from the registered
   patterns across tempos and keys with `lixenwraith/genetic`'s generational
   engine, the current set seeding the pool, and writes a set that beats it

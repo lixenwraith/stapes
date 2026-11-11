@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -2339,6 +2340,274 @@ func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 	names, _ := filepath.Glob(filepath.Join(kept, "*.frames"))
 	if other != said(1, 0) || len(names) != 2 {
 		t.Errorf("another model said %q over %d file(s) of frames, want the recording heard again and kept beside the first", other, len(names))
+	}
+}
+
+// judgeBytes is a judge file, a unit a layer, fitted on the notes weights of
+// the checksum given, whose stages give every row the odds named: the reported
+// notes' and the dropped strikes'
+func judgeBytes(notes uint64, odds [2]float64) []byte {
+	le := binary.LittleEndian
+	b := []byte("VIFJ")
+	for _, v := range []uint32{1, audio.RipRowVersion, uint32(audio.RipRowSize), 1, 1} {
+		b = le.AppendUint32(b, v)
+	}
+	b = le.AppendUint64(b, notes)
+	values := func(n int, v float64) {
+		for range n {
+			b = le.AppendUint32(b, math.Float32bits(float32(v)))
+		}
+	}
+	for _, o := range odds {
+		values(audio.RipRowSize, 0) // the mean
+		values(audio.RipRowSize, 1) // the spread
+		values(audio.RipRowSize+4, 0)
+		values(1, math.Log(o/(1-o))) // the output's bias, over hidden layers that give 0
+	}
+	h := fnv.New64a()
+	h.Write(b)
+	return le.AppendUint64(b, h.Sum64())
+}
+
+// TestAJudgeBesideTheModelRulesItsRips: ripjudge.bin in the root, fitted on the
+// notes weights loaded, rules the strikes of rip, live and tune truth, the
+// session and stat name it, and rows still writes the installed verdicts; one
+// fitted on other weights is refused by name and the installed scores judge.
+func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	cfg := ripmodel.Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+	m, err := transformer.NewRandom(cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var weights bytes.Buffer
+	if err := m.Save(&weights); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(root, modelFile), weights.String())
+	sum := binary.LittleEndian.Uint64(weights.Bytes()[weights.Len()-8:])
+	open := func(notes uint64) (*Session, *bytes.Buffer) {
+		// a judge that keeps every reported note and returns no dropped strike
+		writeFile(t, filepath.Join(root, judgeFile), string(judgeBytes(notes, [2]float64{0.9, 0.1})))
+		files, err := ResolveFiles(root, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		s, err := NewSession(Options{Backend: "null", Out: &out, Files: files})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.fit, s.rip.Strike = fitOptions{notes: 2, generations: 1, pool: 4, seed: 1}, 0.7
+		return s, &out
+	}
+	s, out := open(sum + 1)
+	if s.judge != nil || s.ripper().Judge != nil || !strings.Contains(out.String(), "rip judge "+filepath.Join(root, judgeFile)+": ") || !strings.Contains(out.String(), "the installed scores judge") {
+		t.Errorf("a judge fitted on other notes weights loaded %v: %s", s.judge != nil, out)
+	}
+	dir, _, heard, write := truthFixture(t, s, 1)
+	installed := heard(s.rip)
+	teardown(t, s)
+	s, out = open(sum)
+	defer teardown(t, s)
+	named := ", judge " + filepath.Join(root, judgeFile)
+	if s.judge == nil || !strings.Contains(out.String(), named) {
+		t.Fatalf("a judge fitted on the notes weights loaded gave none: %s", out)
+	}
+	wav, list, to := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rows")
+	runOrFatal(t, s, out, fmt.Sprintf("rip %[1]s ripped\nlive %[1]s lived\n", wav))
+	ruled := s.rips["ripped"].rip.Notes
+	if len(ruled) == 0 || len(ruled) == len(installed) || len(s.rips["lived"].rip.Notes) != len(ruled) {
+		t.Fatalf("rip heard %d note(s) under the judge and live %d, the installed scores %d: want the judge's, which differ\n%s", len(ruled), len(s.rips["lived"].rip.Notes), len(installed), out)
+	}
+	write("ruled.mid", ruled)
+	writeFile(t, list, "loop.wav\truled.mid\truled\ttimed\n")
+	out.Reset()
+	runOrFatal(t, s, out, fmt.Sprintf("tune 2 1 truth %s\nrows %s from %s\nstat\n", list, to, list))
+	if !strings.Contains(out.String(), "ruled: F1 1.000 before") || !strings.Contains(out.String(), named) {
+		t.Errorf("tune truth did not hear the recording under the judge, or stat names none:\n%s", out)
+	}
+	recs, _ := readRows(t, to)
+	kept := 0
+	for _, st := range recs["ruled/loop.wav"].Strikes {
+		if st.Kept {
+			kept++
+		}
+	}
+	if kept != len(installed) {
+		t.Errorf("rows wrote %d strike(s) kept under a judge loaded, the installed scores keep %d", kept, len(installed))
+	}
+}
+
+// readRows is a rows directory's recordings by condition and source, each
+// strike with its row
+func readRows(t *testing.T, dir string) (recs map[string]rowsRecording, rows map[string][][]float32) {
+	t.Helper()
+	recs, rows = map[string]rowsRecording{}, map[string][][]float32{}
+	names, _ := filepath.Glob(filepath.Join(dir, "*.rows"))
+	for _, name := range names {
+		var rec rowsRecording
+		data, err := os.ReadFile(strings.TrimSuffix(name, ".rows") + ".json")
+		if err != nil || json.Unmarshal(data, &rec) != nil {
+			t.Fatalf("%s has no label that reads beside it: %v", name, err)
+		}
+		raw, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, size := int(binary.LittleEndian.Uint32(raw)), int(binary.LittleEndian.Uint32(raw[4:]))
+		if len(raw) != 8+4*n*size || n != len(rec.Strikes) || n > 0 && size != audio.RipRowSize {
+			t.Fatalf("%s holds %d row(s) of %d in %d bytes beside %d strike(s)", name, n, size, len(raw), len(rec.Strikes))
+		}
+		at := rec.Condition + "/" + rec.Source
+		for k := range n {
+			row := make([]float32, size)
+			for i := range row {
+				row[i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[8+4*(k*size+i):]))
+			}
+			rows[at] = append(rows[at], row)
+		}
+		recs[at] = rec
+	}
+	return recs, rows
+}
+
+// TestRowsWritesEachStrikesRowAsTheRipReadIt: rows refuses with no model; with
+// one it rips a list's recording and writes every strike's row as the rip's
+// read gives it, with its stage, start, pitch and installed verdict, a strike
+// right where the truth has its note, under the notes weights' checksum; a
+// second run keeps the recording, and rows of other weights are refused there.
+func TestRowsWritesEachStrikesRowAsTheRipReadIt(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	dir, fe, heard, write := truthFixture(t, s, 1)
+	list, to := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rows")
+	runOrFatal(t, s, &out, fmt.Sprintf("! rows %[1]s from %[2]s\n! rows %[1]s %[2]s\n! rows %[1]s from %[2]s part 2/2\n! rows %[1]s from %[2]s frames\n", to, list))
+	if !strings.Contains(out.String(), "no "+modelFile+" is loaded") {
+		t.Errorf("no refusal for want of a model:\n%s", out.String())
+	}
+	// the truth is what the rip hears, so the notes it kept are the right ones
+	s.rip.Strike = 0.7
+	notes := heard(s.rip)
+	write("loop.mid", notes)
+	writeFile(t, list, "loop.wav\tloop.mid\tloops\ttimed\n")
+	s.frontEnd = fe
+	out.Reset()
+	runOrFatal(t, s, &out, fmt.Sprintf("rows %s from %s\n", to, list))
+	f, err := os.Open(filepath.Join(dir, "loop.wav"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, rate, err := audio.ReadWAV(f)
+	f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := audio.Ripper{Params: s.rip, FrontEnd: fe, Lead: s.lead, Strikes: true, Rows: true}.Samples(audio.Resample(x, rate, audio.RipRate), audio.RipRate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recs, rows := readRows(t, to)
+	rec, got := recs["loops/loop.wav"], rows["loops/loop.wav"]
+	dropped := slices.ContainsFunc(r.Strikes, func(st audio.RipStrike) bool { return !st.Reported })
+	if len(recs) != 1 || len(r.Strikes) == 0 || len(got) != len(r.Strikes) || !dropped || len(notes) == 0 {
+		t.Fatalf("%d recording(s) with %d row(s) for the rip's %d strike(s), a dropped one among them %v, and %d note(s): no fixture\n%s", len(recs), len(got), len(r.Strikes), dropped, len(notes), out.String())
+	}
+	for k, st := range r.Strikes {
+		if want := (rowStrike{st.Frame, st.MIDI, st.Reported, st.Held, st.Kept, st.Kept}); rec.Strikes[k] != want {
+			t.Errorf("strike %d is written %+v, the rip read %+v and kept the notes the truth gives", k, rec.Strikes[k], want)
+		}
+		if !slices.Equal(got[k], st.Row) {
+			t.Errorf("strike %d's row is not the row the rip read for it", k)
+		}
+	}
+	if rec.Given != len(notes) || rec.Unanswered != 0 {
+		t.Errorf("%d note(s) given and %d no strike answers, want the rip's own %d, each answered", rec.Given, rec.Unanswered, len(notes))
+	}
+	var m rowsManifest
+	data, _ := os.ReadFile(filepath.Join(to, rowsFile))
+	if want := (rowsManifest{1, audio.RipRowVersion, audio.RipRowSize, fmt.Sprintf("%016x", fe.NotesSum)}); json.Unmarshal(data, &m) != nil || m != want {
+		t.Errorf("the manifest reads %+v, want %+v", m, want)
+	}
+	out.Reset()
+	runOrFatal(t, s, &out, fmt.Sprintf("rows %s from %s\n", to, list))
+	if !strings.Contains(out.String(), "the rows of 0 recording(s)") || !strings.Contains(out.String(), "1 were there") {
+		t.Errorf("a second run did not keep the recording:\n%s", out.String())
+	}
+	if err := s.rows(to, list, tuneOptions{}, fe, fe.NotesSum+1); err == nil || !strings.Contains(err.Error(), "holds one kind") {
+		t.Errorf("rows read through other notes weights went into the directory: %v", err)
+	}
+}
+
+// TestRowsReadACorpusThatKeptItsAudio: a corpus directory's loops that kept
+// their audio are rows' recordings, each against its label's notes on its own
+// clock, the corpus one condition under its folder's name; part k/n takes its
+// share and the rest are written by a run after; a corpus without audio has none.
+func TestRowsReadACorpusThatKeptItsAudio(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	cfg := ripmodel.Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+	m, err := transformer.NewRandom(cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.frontEnd, err = ripmodel.New(m, nil); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	corpus, bare, to := filepath.Join(dir, "engine"), filepath.Join(dir, "bare"), filepath.Join(dir, "rows")
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %[1]s 2 2\ncorpus %[2]s 1 2 nowav\n! rows %[3]s from %[2]s\nrows %[3]s from %[1]s part 1/2\n", corpus, bare, to))
+	recs, _ := readRows(t, to)
+	rec, ok := recs["engine/loop_001.wav"]
+	var lab corpusLoop
+	data, _ := os.ReadFile(filepath.Join(corpus, "loop_001.json"))
+	if err := json.Unmarshal(data, &lab); err != nil {
+		t.Fatal(err)
+	}
+	if given := len(lab.notes()); len(recs) != 1 || !ok || given == 0 || rec.Given != given || len(rec.Strikes) == 0 {
+		t.Fatalf("part 1/2 wrote %d recording(s), the second loop among them %v with %d note(s) given for its label's %d and %d strike(s)\n%s", len(recs), ok, rec.Given, given, len(rec.Strikes), out.String())
+	}
+	out.Reset()
+	runOrFatal(t, s, &out, fmt.Sprintf("rows %s from %s\n", to, corpus))
+	if recs, _ = readRows(t, to); len(recs) != 2 || !strings.Contains(out.String(), "the rows of 1 recording(s)") || !strings.Contains(out.String(), "1 were there") {
+		t.Errorf("a run after the part left %d recording(s):\n%s", len(recs), out.String())
+	}
+}
+
+// TestALabelServesReportedNotesFirstAndATruthNoteOnce: a strike is right when
+// a truth note of its pitch starts within the matcher's window of it; a truth
+// note answers one strike, the nearest, a reported note before a dropped
+// strike; and a truth off the recording's clock is placed by the map the rip's
+// notes fit.
+func TestALabelServesReportedNotesFirstAndATruthNoteOnce(t *testing.T) {
+	sec := func(frame int) float64 { return float64(frame) * audio.RipFrameSec }
+	r := &audio.Rip{Strikes: []audio.RipStrike{
+		{Frame: 100, MIDI: 60},                 // dropped, on the truth's frame
+		{Frame: 104, MIDI: 60, Reported: true}, // reported, four frames late: served first
+		{Frame: 200, MIDI: 64, Reported: true}, // two reported strikes of one truth note:
+		{Frame: 203, MIDI: 64, Reported: true}, // the nearer answers it
+		{Frame: 300, MIDI: 67},                 // a dropped strike of a note nothing reported
+		{Frame: 400, MIDI: 72, Reported: true}, // a semitone off the truth at its start
+		{Frame: 500, MIDI: 55, Reported: true}, // past the window
+	}}
+	truth := []audio.RipNote{{Start: sec(100), MIDI: 60}, {Start: sec(202), MIDI: 64}, {Start: sec(300), MIDI: 67}, {Start: sec(400), MIDI: 71}, {Start: sec(500) + 0.2, MIDI: 55}}
+	want := []bool{false, true, false, true, true, false, false}
+	if right, unanswered := rightStrikes(r, truth, true); !slices.Equal(right, want) || unanswered != 2 {
+		t.Errorf("labels %v with %d note(s) unanswered, want %v with 2", right, unanswered, want)
+	}
+	// the truth three seconds late and a tone down, the rip's notes where it was
+	late := make([]audio.RipNote, len(truth))
+	for i, n := range truth {
+		r.Notes = append(r.Notes, audio.RipNote{Start: n.Start, End: n.Start + 0.1, MIDI: n.MIDI})
+		late[i] = audio.RipNote{Start: n.Start + 3, End: n.Start + 3.1, MIDI: n.MIDI - 2}
+	}
+	if right, unanswered := rightStrikes(r, late, false); !slices.Equal(right, want) || unanswered != 2 {
+		t.Errorf("a truth off the clock labels %v with %d note(s) unanswered, want %v with 2", right, unanswered, want)
 	}
 }
 

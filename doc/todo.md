@@ -210,15 +210,23 @@ front-end seam. What remains, in the design's order:
    voices for every line of both recordings. A plucked voice (`string`) with
    a doubled, beating course, and the fit's samples cleared of the other
    lines (item 4 of the loop below), measured by the floor the fit reaches.
-9. The judge as a trained stage ([Rip design](rip-design.md) §7): a verb that
-   writes a list of truth-backed recordings as rows (each reported note and
-   each strike over a half with the accounting's evidence, the heads around
-   it and whether a truth note answers it), the fit in `tool/rip-train`, and
-   the weights read by audio beside the models'. Its fit takes licensed
-   collections, renders and the engine's mixes, never a full track, and is
-   read with a collection left out, singing reported and never a gate. Open
-   once one is trained: a bass line under drums when recordings are in the
-   fit.
+9. The judge as a trained stage ([Rip design](rip-design.md) §7) is built and
+   none is fitted on recordings or installed: `rows`, `tool/rip-train`'s
+   `judge.py` and the root's `ripjudge.bin`
+   ([a judge](../tool/rip-train/README.md#a-judge)). Left:
+   - The fit: licensed collections, renders and the engine's mixes, never a
+     full track, read with a collection left out, singing reported and never
+     a gate; and a bass line under drums when recordings are in the fit.
+   - `bench` grades the model under the installed scores whatever the root
+     holds, as a round is benched before a judge is fitted on its weights.
+     Once a judge is accepted it should grade what `rip` hears.
+   - `rows` knows a recording by its audio's checksum, so a truth corrected
+     after its rows were written is not read again: remove the recording's
+     `.json`. The smallest close: the truth's checksum beside the rows.
+   - A count from rows reads apart from `truth`'s decode, by a note under
+     the installed scores and by .007 of F1 under a small run's judge (the
+     trainer's README says why); audio's own open items are in
+     [its todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#close-what-a-judge-leaves-open).
 10. A performance's character, generated: how loudness and timing move in the
     licensed performances (GuitarSet's and MusicNet's annotations against a
     steady grid), measured there and then drawn in `corpus`, judged as any

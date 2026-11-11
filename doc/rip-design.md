@@ -468,7 +468,10 @@ and the checkpoint earn their keep.
      scores under the installed rip by more than its spread, singing apart,
      which is reported and holds no stage back. A recording is judged in one
      pass. The decoder then says what it kept and dropped, the live view's
-     last read.
+     last read. The stage stands since audio v0.22.0 and stapes v0.19.0, with
+     no fit installed: the row and the judge's file (library §9), `rows`,
+     `judge.py` and the root's `ripjudge.bin`
+     ([a judge](../tool/rip-train/README.md#a-judge)).
    - **Sections.** A recording is read in parts, a boundary where tempo,
      density, level or harmony change by more than they vary inside a part;
      tempo, meter, phase and key are decided a part at a time, in the stream

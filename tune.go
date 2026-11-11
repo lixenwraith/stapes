@@ -932,6 +932,17 @@ type corpusLoop struct {
 	Source string        `json:"source,omitempty"` // the recording a loop was heard from
 }
 
+// notes is a label's notes as a truth on the loop's own clock
+func (l corpusLoop) notes() []audio.RipNote {
+	var out []audio.RipNote
+	for _, e := range l.Events {
+		if e.Drum < 0 && e.MIDI > 0 {
+			out = append(out, audio.RipNote{Start: float64(e.Frame) * audio.RipFrameSec, End: float64(e.End) * audio.RipFrameSec, MIDI: e.MIDI, Vel: e.Vel, Bass: e.MIDI < audio.RipBassTop})
+		}
+	}
+	return out
+}
+
 // corpusManifest names the corpus's layout for the trainer
 type corpusManifest struct {
 	Version    int      `json:"version"`
@@ -1004,13 +1015,10 @@ func cmdCorpus(s *Session, a []string) error {
 			o.tempos = tempos
 			a = a[:n-1]
 		case n > 2 && a[n-2] == "part":
-			k, of, _ := strings.Cut(a[n-1], "/")
-			part, err1 := strconv.Atoi(k)
-			parts, err2 := strconv.Atoi(of)
-			if err1 != nil || err2 != nil || part < 0 || part >= parts {
-				return fmt.Errorf("part %q: want k/n, k from 0 below n", a[n-1])
+			var err error
+			if o.part, o.parts, err = parsePart(a[n-1]); err != nil {
+				return err
 			}
-			o.part, o.parts = part, parts
 			a = a[:n-1]
 		default:
 			more = false
@@ -1032,6 +1040,17 @@ func cmdCorpus(s *Session, a []string) error {
 		}
 	}
 	return s.exportCorpus(s.path(a[0]), o)
+}
+
+// parsePart reads "k/n", the share of a job a run takes: its items i%n == k
+func parsePart(arg string) (part, parts int, err error) {
+	k, of, _ := strings.Cut(arg, "/")
+	part, err1 := strconv.Atoi(k)
+	parts, err2 := strconv.Atoi(of)
+	if err1 != nil || err2 != nil || part < 0 || part >= parts {
+		return 0, 0, fmt.Errorf("part %q: want k/n, k from 0 below n", arg)
+	}
+	return part, parts, nil
 }
 
 // corpusFrom writes a corpus of recordings and the MIDI files they were played
@@ -2141,6 +2160,7 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	// the current parameters' rips hear every recording and read every transcript
 	sums, given, read := make([]noteCount, len(conds)), 0, 0
 	for _, t := range takes {
+		t.judge = s.judge
 		c, err := t.count(cur, s.lead)
 		if err != nil {
 			return err
@@ -2258,34 +2278,36 @@ type truthTake struct {
 	x              []float64
 	ear            *heardOnce
 	truth          func(*audio.Rip) ([]audio.RipNote, error)
-	given          int  // the notes the truth gives, all missed by a rip that fails
-	cond           int  // its condition, an index into the list's
-	timed          bool // the truth's seconds are the recording's
+	given          int             // the notes the truth gives, all missed by a rip that fails
+	cond           int             // its condition, an index into the list's
+	timed          bool            // the truth's seconds are the recording's
+	judge          *audio.RipJudge // what rules its rip's strikes, nil for the installed scores
 }
 
-// readTruthList reads a line "wav<TAB>truth[<TAB>condition[<TAB>timed]]" a
-// recording, a relative path from the list's own folder, and the conditions in
-// the list's order, a line that names none a condition of its own under its
-// recording's name; with frames, each recording's are kept there under the
-// checksums of its file and of the weight files
-func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([]*truthTake, []string, error) {
+// truthLine is a truth list's line: a recording and its truth, relative paths
+// read from dir, its condition, and whether the truth's seconds are the
+// recording's; label says the truth is a corpus loop's label
+type truthLine struct {
+	dir, wav, truth, cond string
+	timed, label          bool
+}
+
+func (l truthLine) at(p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(l.dir, p)
+}
+
+// readTruthLines reads a line "wav<TAB>truth[<TAB>condition[<TAB>timed]]" a
+// recording, a relative path from the list's own folder, a line that names no
+// condition one of its own under its recording's name
+func readTruthLines(list string) ([]truthLine, error) {
 	data, err := os.ReadFile(list)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	at := func(p string) string {
-		if filepath.IsAbs(p) {
-			return p
-		}
-		return filepath.Join(filepath.Dir(list), p)
-	}
-	if frames != "" {
-		if err := os.MkdirAll(frames, 0o755); err != nil {
-			return nil, nil, err
-		}
-	}
-	var takes []*truthTake
-	var conds []string
+	var lines []truthLine
 	for i, line := range strings.Split(string(data), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -2295,53 +2317,91 @@ func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([
 			f[k] = strings.TrimSpace(f[k])
 		}
 		if len(f) < 2 || len(f) > 4 || f[0] == "" || f[1] == "" || len(f) == 4 && f[3] != "timed" && f[3] != "" {
-			return nil, nil, fmt.Errorf("%s line %d: want wav<TAB>truth[<TAB>condition[<TAB>timed]]", list, i+1)
+			return nil, fmt.Errorf("%s line %d: want wav<TAB>truth[<TAB>condition[<TAB>timed]]", list, i+1)
 		}
-		wav, truth, cond := f[0], f[1], f[0]
+		l := truthLine{dir: filepath.Dir(list), wav: f[0], truth: f[1], cond: f[0], timed: len(f) == 4 && f[3] == "timed"}
 		if len(f) > 2 && f[2] != "" {
-			cond = f[2]
+			l.cond = f[2]
 		}
-		recording, err := os.ReadFile(at(wav))
+		lines = append(lines, l)
+	}
+	if len(lines) == 0 {
+		return nil, fmt.Errorf("%s: no recordings listed", list)
+	}
+	return lines, nil
+}
+
+// take is a line's recording, its bytes and their checksum given, at the rate
+// the rip reads it at, and its truth; with frames, its frames are kept there
+// under the checksums of its file and of the weight files
+func (l truthLine) take(recording []byte, sum [sha256.Size]byte, fe audio.RipFrontEnd, frames, weights string) (*truthTake, error) {
+	x, rate, err := audio.ReadWAV(bytes.NewReader(recording))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", l.wav, err)
+	}
+	given, err := os.ReadFile(l.at(l.truth))
+	if err != nil {
+		return nil, err
+	}
+	t := &truthTake{wav: l.wav, truthFile: l.truth, x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: fe}, timed: l.timed}
+	if frames != "" {
+		t.ear.file = filepath.Join(frames, fmt.Sprintf("%x-%.16s.frames", sum[:8], weights))
+	}
+	switch {
+	case l.label:
+		var lab corpusLoop
+		if err := json.Unmarshal(given, &lab); err != nil {
+			return nil, fmt.Errorf("%s: %w", l.truth, err)
+		}
+		notes := lab.notes()
+		t.truth = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }
+	case isMIDI(l.truth):
+		score, err := audio.ReadMIDI(bytes.NewReader(given))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", l.truth, err)
+		}
+		t.truth = func(*audio.Rip) ([]audio.RipNote, error) { return score.Notes, nil }
+	default:
+		text := string(given)
+		t.truth = func(r *audio.Rip) ([]audio.RipNote, error) { return transcript(text, r) }
+	}
+	return t, nil
+}
+
+// readTruthList reads a truth list's recordings and the conditions in the list's
+// order; with frames, each recording's are kept there
+func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([]*truthTake, []string, error) {
+	lines, err := readTruthLines(list)
+	if err != nil {
+		return nil, nil, err
+	}
+	if frames != "" {
+		if err := os.MkdirAll(frames, 0o755); err != nil {
+			return nil, nil, err
+		}
+	}
+	var takes []*truthTake
+	var conds []string
+	for _, l := range lines {
+		recording, err := os.ReadFile(l.at(l.wav))
 		if err != nil {
 			return nil, nil, err
 		}
-		x, rate, err := audio.ReadWAV(bytes.NewReader(recording))
-		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", wav, err)
-		}
-		given, err := os.ReadFile(at(truth))
+		t, err := l.take(recording, sha256.Sum256(recording), fe, frames, weights)
 		if err != nil {
 			return nil, nil, err
 		}
-		t := &truthTake{wav: wav, truthFile: truth, x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: fe}, timed: len(f) == 4 && f[3] == "timed"}
-		if t.cond = slices.Index(conds, cond); t.cond < 0 {
-			t.cond, conds = len(conds), append(conds, cond)
-		}
-		if frames != "" {
-			sum := sha256.Sum256(recording)
-			t.ear.file = filepath.Join(frames, fmt.Sprintf("%x-%.16s.frames", sum[:8], weights))
-		}
-		if isMIDI(truth) {
-			score, err := audio.ReadMIDI(bytes.NewReader(given))
-			if err != nil {
-				return nil, nil, fmt.Errorf("%s: %w", truth, err)
-			}
-			t.truth = func(*audio.Rip) ([]audio.RipNote, error) { return score.Notes, nil }
-		} else {
-			text := string(given)
-			t.truth = func(r *audio.Rip) ([]audio.RipNote, error) { return transcript(text, r) }
+		if t.cond = slices.Index(conds, l.cond); t.cond < 0 {
+			t.cond, conds = len(conds), append(conds, l.cond)
 		}
 		takes = append(takes, t)
-	}
-	if len(takes) == 0 {
-		return nil, nil, fmt.Errorf("%s: no recordings listed", list)
 	}
 	return takes, conds, nil
 }
 
 // count rips the take under p and counts its notes against its truth's
 func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (noteCount, error) {
-	r, err := audio.Ripper{Params: p, FrontEnd: t.ear, Lead: lead}.Samples(t.x, audio.RipRate)
+	r, err := audio.Ripper{Params: p, FrontEnd: t.ear, Lead: lead, Judge: t.judge}.Samples(t.x, audio.RipRate)
 	if err != nil {
 		return noteCount{given: t.given}, fmt.Errorf("%s: %w", t.wav, err)
 	}

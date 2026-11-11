@@ -1821,7 +1821,7 @@ event = [{pos = 0, vel = 0.6}, {pos = 2, vel = 0.6}, {pos = 4, vel = 0.6}, {pos 
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	s.ticked = true
-	runOrFatal(t, s, &out, fmt.Sprintf("load %s\nbpm 120\nslot 0 backbeat\nrender %s 8\nrip %s beat\ncompress beat\nsong beat play\nmusic stop\nsave sound %s\nsave pattern %s\n", doc, wav, wav, sounds, music))
+	runOrFatal(t, s, &out, fmt.Sprintf("load %s\nbpm 120\nslot 0 backbeat\nrender %s 4\nrip %s beat\ncompress beat\nsong beat play\nmusic stop\nsave sound %s\nsave pattern %s\n", doc, wav, wav, sounds, music))
 	want := map[string]string{"kick": "beat_kick", "snare": "beat_snare", "hihat": "beat_hihat"}
 	d, _ := s.songs.get("beat")
 	if d == nil || !reflect.DeepEqual(d.Kit, want) || !reflect.DeepEqual(s.kit, want) {

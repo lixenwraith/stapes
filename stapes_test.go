@@ -2616,21 +2616,31 @@ save pattern %s
 		}
 	}
 	// the bass filed with the melody, on the recording's clock: every note is
-	// heard by pitch and onset, where the lines miss the bass
-	moved, part := filepath.Join(dir, "moved.mid"), slices.Clone(rp.rip.Notes)
-	for i := range part {
-		part[i].Bass = false
+	// heard by pitch and onset, where the lines miss the bass; the same a tone
+	// up is heard under the transposition searched, and not on that clock
+	moved, up, part := filepath.Join(dir, "moved.mid"), filepath.Join(dir, "up.mid"), slices.Clone(rp.rip.Notes)
+	for _, file := range []string{moved, up} {
+		for i := range part {
+			part[i].Bass = false
+			if file == up {
+				part[i].MIDI += 2
+			}
+		}
+		var smf bytes.Buffer
+		if err := audio.WriteMIDI(&smf, part, nil, s.bpm, audio.Meter{}); err != nil {
+			t.Fatal(err)
+		}
+		os.WriteFile(file, smf.Bytes(), 0o644)
 	}
-	var smf bytes.Buffer
-	if err := audio.WriteMIDI(&smf, part, nil, s.bpm, audio.Meter{}); err != nil {
-		t.Fatal(err)
-	}
-	os.WriteFile(moved, smf.Bytes(), 0o644)
 	out.Reset()
-	runOrFatal(t, s, &out, fmt.Sprintf("truth loop %s timed\n! truth loop %s soon\n", moved, moved))
-	every := fmt.Sprintf("given on the recording's own clock: no map fitted, no transposition tried\nnotes  %d heard as given, given %d, loop %d, F1 1.000: by pitch and onset", n, n, n)
-	if !strings.Contains(out.String(), every) || !strings.Contains(out.String(), "bass only loop:") {
-		t.Errorf("a truth filed on other lines, want %q over lines that miss the bass:\n%s", every, out.String())
+	runOrFatal(t, s, &out, fmt.Sprintf("truth loop %s timed\n! truth loop %s soon\ntruth loop %s\ntruth loop %s timed\n", moved, moved, up, up))
+	every := fmt.Sprintf("notes  %d heard as given, given %d, loop %d, F1 1.000: by pitch and onset", n, n, n)
+	timed := "given on the recording's own clock: no map fitted, no transposition tried\n"
+	if strings.Count(out.String(), timed+every) != 1 || !strings.Contains(out.String(), "bass only loop:") {
+		t.Errorf("a truth filed on other lines, want %q once, over lines that miss the bass:\n%s", timed+every, out.String())
+	}
+	if strings.Count(out.String(), every) != 2 || !strings.Contains(out.String(), "given, transposed -2: ") {
+		t.Errorf("a truth a tone up, want every note heard transposed -2 and not on the recording's clock:\n%s", out.String())
 	}
 	// one line of the song on its own: the instruments named after the file
 	runOrFatal(t, s, &out, fmt.Sprintf("! song loop %s nothing\nsong loop %s kick\n", song, song))

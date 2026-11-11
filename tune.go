@@ -1325,8 +1325,8 @@ func readPitch(file string) ([]pitchTrack, error) {
 		tracks = []pitchTrack{{}}
 		for i, r := range rows {
 			sec, err1 := strconv.ParseFloat(strings.TrimSpace(r[0]), 64)
-			hz, err2 := strconv.ParseFloat(strings.TrimSpace(r[min(1, len(r)-1)]), 64)
-			if (err1 != nil || err2 != nil || len(r) < 2) && i > 0 {
+			hz, err2 := strconv.ParseFloat(strings.TrimSpace(r[len(r)-1]), 64)
+			if len(r) != 2 || (err1 != nil || err2 != nil) && i > 0 {
 				return nil, fmt.Errorf("%s: row %d: want seconds and Hz", file, i+1)
 			} else if err1 == nil && err2 == nil {
 				tracks[0].sec, tracks[0].hz = append(tracks[0].sec, sec), append(tracks[0].hz, hz)

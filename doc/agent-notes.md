@@ -64,6 +64,21 @@ proves wrong or that a document now states, and link the document instead.
   shadow before they change it, since a command mutates an entry in place and
   marks it after. A write to `byName` or `order` that skips them is one undo
   cannot see, and it then restores a stale order.
+- **A save's source is the file at the document's provenance, read at the
+  save** (`authored`): never the target, so `save <kind> <other>` carries the
+  macros and comments there, and never kept from the load, so undo restores a
+  path and no bytes. With none to read, or over a file `Marshal` wrote, the
+  library's save gives `Marshal`'s bytes, so a document stapes made is written
+  out in full through any load and save, as before. The sound save passes the
+  root's `include` too: left out, the author's line is deleted.
+- A test of a document stapes made passes with no source at all, so each
+  save's source is held by an authored document alone: the patterns' by
+  `TestASavedDocumentIsStillItsAuthors`, the sounds' and their `include` by
+  `TestADocumentSavedElsewhereCarriesItsMacrosAndComments`. To see that what
+  stapes made saves as it did before a change, run one `.slab` (render, rip,
+  compress, save, load, edit, save) through a binary of each tree, headless
+  with an empty `XDG_CONFIG_HOME` and `-config-dir`: the rip and the default
+  fit repeat, so the files `cmp` equal, ten seconds a run.
 
 ## Songs and the TUI
 

@@ -60,6 +60,16 @@ search path's first folder, where vif reads it next run. `-config-music` and
 directory; `-config-dir` names the root alone, so the search path holds vif's
 folder whatever it names.
 
+A save writes the document over the text of the file it came from, read when
+the save runs (`SavePatternFile`, `SaveSoundsFile`, the library's
+[Documents](https://github.com/lixenwraith/audio#documents)): the file's
+`[macros]`, its own comments and the comment above each entry stay, every entry
+is written anew, an invocation of those macros where one expands to it, and a
+save to another file carries them there. A comment inside an entry is lost, and
+a document with no file behind it, made in the session, read from a MIDI file
+or seeded by `builtin`, is written out in full, as `write`'s one entry is
+([todo](todo.md#keep-what-a-save-still-loses)).
+
 A user `sounds.toml` may `include` files inside its own directory, which vif,
 its `-check` and stapes resolve alike, so a file stapes saves with its includes
 is what play loads.

@@ -145,6 +145,17 @@ proves wrong or that a document now states, and link the document instead.
 - **`live`'s CPU is the process's** (`syscall.Getrusage`): the transformer
   runs a model across the cores, so the time a call takes is not what it
   cost. The mixer's and a screen's are in it; measure with the music stopped.
+- **The ear's short wait shows in the drums, not the notes.** Through 12a and
+  32a, audio's `FrontEnd.Ahead` at half a second leaves every pitched head as
+  the whole recording's (they are the notes model's, whose reach it still
+  waits) and moves the frame model's: the onset by 15 to 20% of its rms, the
+  drums by 30%, a reading by nearly 1 at worst. The stream's notes count the
+  same under both waits, so count its kicks and snares a bar.
+- **A thread's evidence is random weights.** A cloud container holds no
+  trained weights and no recordings. After threads merge, `live` over a few
+  recordings through the installed pair, the offline rip's note counts against
+  the last reading and the two `corpus` digests take minutes and say whether
+  the merge holds on what the rip is for.
 
 - Write a truth from a score or a MIDI file, never from memory: a remembered
   Billie Jean riff had its first note an octave low, the synthesizer's doubling
@@ -292,6 +303,10 @@ proves wrong or that a document now states, and link the document instead.
   moves, so a corpus without the word is byte for byte what it was: a new label
   field stays out of the file where it is unset. A voice with a vibrato of its
   own (the vocal focus's) moves without the word, and its labels gain the list.
+- A `midi` corpus holds glides without the word: a MIDI file's pitch bend is a
+  step's `bend`, which the engine plays, so such a note lists its `cents`.
+  Labels written before the cents head call it steady: in corpus 17's first
+  24 loops one event of 3,486, the frames byte for byte the same.
 - A `corpus <dir> from` loop is known by its `source`, the CSV's
   `audio_filename`: the set may move, but an entry renamed joins as new. A clap
   in a test file is a hit for a song, not for `truth`.
@@ -429,11 +444,11 @@ proves wrong or that a document now states, and link the document instead.
   `strike_hold` 0.3 hears so much that every seed's pool betters it.
 - The live rip's notes are the offline rip's (95 in a hundred over twelve
   recordings through 12a and 32a) and its bars are not: tempo, meter and phase
-  hold from the first six bars, so the two agreed on three recordings. It costs
-  three times the offline rip, each model run three times over where the ear's
-  half-second steps overlap (`vif/tmp/audit2/live-v0140`); the exact GELU is
-  29% of either, and offline the notes model, not the frame model, is the
-  larger share (47% against 37%).
+  hold from the first six bars, so the two agree on three to five recordings,
+  whatever the ear waits. It cost three times the offline rip while each
+  model ran three times over the ear's overlapping half-second steps, and
+  costs 1.4 times since each frame runs once (`live`, one core: 0.24 s a
+  second of audio against 0.17).
 - A tool that names its corpus in its source dies with the corpus: the edge
   probe read corpus 16, deleted a day later. Take the corpus, the checkpoint
   and the first loop as arguments.

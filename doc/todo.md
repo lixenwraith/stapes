@@ -236,11 +236,19 @@ rip holds, then as many as were heard, through the song and the game.
 measures it against the offline rip of the same recording, the measurement the
 Android app's microphone mode (vif's todo) is judged by ([Rip design
 §7](rip-design.md#7-plan)). What is left:
-- The measure through the trained models on real recordings: no weights or
-  recordings were where the verb was written. A scratch tool through 12a and
-  32a on twelve recordings read 95 in a hundred of the offline rip's notes and
-  its bar grid on three, tempo, meter and phase being held from the first six
-  bars, at three times the offline cost; `live` is to say the same.
+- Measured through 12a and 32a on twelve recordings: the stream has 95 in a
+  hundred of the offline rip's notes (2,721 of 2,850) and its bar grid on
+  three or four, tempo, meter and phase being held from the first six bars,
+  as a scratch tool read before each frame ran once; a bar freezes 6 to 8 s
+  behind its end, the first ones 11 to 17 s in; a second of audio costs it
+  0.24 s of a core, 1.4 times the offline rip, where it cost three times. Not
+  measured: `pace`, and a phone.
+- The wait. The ear waits the frame model's reach, 2.97 s, so the stream's
+  frames are the offline rip's; audio's `FrontEnd.Ahead` waits less and no
+  verb sets it. Half a second leaves the notes where they are and lands the
+  bar grid on five of the twelve, and moves the drums ([Rip design
+  §7](rip-design.md#7-plan)). A pitched note needs the notes model's 0.53 s
+  alone: each model's frames at its own reach is audio's todo.
 - The lines. On a loop of the bank through the analysis the stream has 79 of
   the offline rip's 80 notes and every bar line, but 18 of the melody
   register's 48 on the line the offline rip files them on (47 as one
@@ -254,11 +262,10 @@ Android app's microphone mode (vif's todo) is judged by ([Rip design
 - The stream's own reads (`Frames`, `Open`) are for the view; `live` does not
   ask for them, so a recording does not yet check them through a trained
   model.
-- Decided since the audit: a forward that runs each frame once brings the
-  stream's cost to the offline rip's; then a recording is read in sections,
-  tempo, meter, phase and key decided a part at a time and again at every bar
-  until two decisions agree, nothing carried across a boundary between two
-  different parts of a song.
+- Next, since the bar grid waits on it and not on the ear: a recording is
+  read in sections, tempo, meter, phase and key decided a part at a time and
+  again at every bar until two decisions agree, nothing carried across a
+  boundary between two different parts of a song.
 
 ### Close the rip's loop
 

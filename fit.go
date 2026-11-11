@@ -80,9 +80,10 @@ func cmdFit(s *Session, a []string) error {
 
 // cmdNotes lists a rip's transcript, the notes as heard before the grid, each
 // with the bar and step it fell on, its pitch as the key's degree with any
-// accidental, its length, loudness and support, and a melody-register note's
-// brightness where it was measured, the header counting where it was not, so a
-// listener checks the rip by eye; or writes it to a MIDI file at the rip's tempo.
+// accidental, its length, loudness and support, a melody-register note's
+// brightness where it was measured, the header counting where it was not, and
+// the wave and the sure family of a note told its voice, so a listener checks
+// the rip by eye; or writes it to a MIDI file at the rip's tempo.
 func cmdNotes(s *Session, a []string) error {
 	rp, ok := s.rips[a[0]]
 	if !ok {
@@ -170,7 +171,14 @@ func cmdNotes(s *Session, a []string) error {
 		if n.Bend != 0 {
 			bend = fmt.Sprintf(", bend %+.2f from %.2f", n.Bend, n.BendAt)
 		}
-		fmt.Fprintf(s.out, "%-6s %7.3fs %-20s %-4s degree %d%s octave %d, %.1f step(s) at %.2f%s%s%s\n", line, n.Start, where, noteName(n.MIDI), deg, marks[acc+2], oct, (n.End-n.Start)/span, n.Vel, support(n), bright, bend)
+		voice := ""
+		if v := n.Voice; v != nil {
+			voice = ", wave " + v.Wave
+			if v.Family != "" {
+				voice += ", family " + v.Family
+			}
+		}
+		fmt.Fprintf(s.out, "%-6s %7.3fs %-20s %-4s degree %d%s octave %d, %.1f step(s) at %.2f%s%s%s%s\n", line, n.Start, where, noteName(n.MIDI), deg, marks[acc+2], oct, (n.End-n.Start)/span, n.Vel, support(n), bright, bend, voice)
 	}
 	return nil
 }

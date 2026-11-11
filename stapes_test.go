@@ -3721,28 +3721,27 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 	}
 }
 
-// TestBenchGradesTheFrontEnds: bench renders fresh loops, clean and augmented,
-// and grades the analysis on both
-func TestBenchGradesTheFrontEnds(t *testing.T) {
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, "bench 1 2\n")
-	if !strings.Contains(out.String(), "analysis on 1 clean loop(s)") || !strings.Contains(out.String(), "analysis on 1 augmented loop(s)") {
-		t.Errorf("bench graded:\n%s", out.String())
-	}
-}
-
-// TestBenchVerboseListsEveryLoop: bench ... verbose lists a line per loop it
-// rendered, clean and augmented, and then the three worst by total
-func TestBenchVerboseListsEveryLoop(t *testing.T) {
+// TestBenchGradesEachMeterAndListsEveryLoop: bench renders fresh loops, clean
+// and augmented, and grades the analysis on both; meters grades each meter's
+// loops apart, with the rips that read the meter; verbose lists a line per loop
+// with its meter, and then the three worst by total
+func TestBenchGradesEachMeterAndListsEveryLoop(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
 	const loops = 2
-	runOrFatal(t, s, &out, fmt.Sprintf("bench %d 2 verbose\n", loops))
+	runOrFatal(t, s, &out, fmt.Sprintf("bench %d 3 meters verbose\n", loops)) // the seed's first loop is 6/8
+	said := out.String()
+	for _, row := range []string{"analysis on 2 clean loop(s): ", "analysis on 2 augmented loop(s): ", "  in 6/8, 1 loop(s): ", "  in 4/4, 1 loop(s): ", ", its bar in "} {
+		if !strings.Contains(said, row) {
+			t.Errorf("no %q in what bench graded:\n%s", row, said)
+		}
+	}
+	if !regexp.MustCompile(`(?m)^loop +0 +96 bpm 6/8 `).MatchString(said) {
+		t.Errorf("no loop listed with its meter:\n%s", said)
+	}
 	var listed, worst int
-	for _, l := range strings.Split(out.String(), "\n") {
+	for _, l := range strings.Split(said, "\n") {
 		switch {
 		case strings.HasPrefix(l, "loop "):
 			listed++
@@ -3751,7 +3750,7 @@ func TestBenchVerboseListsEveryLoop(t *testing.T) {
 		}
 	}
 	if listed != 2*loops || worst != 3 {
-		t.Errorf("%d loop(s) listed and %d worst, want %d and 3:\n%s", listed, worst, 2*loops, out.String())
+		t.Errorf("%d loop(s) listed and %d worst, want %d and 3:\n%s", listed, worst, 2*loops, said)
 	}
 }
 
@@ -3911,18 +3910,6 @@ func TestACorpusOfMetersLabelsItsBars(t *testing.T) {
 	}
 	if drums && !slices.Contains(kicks, at) {
 		t.Errorf("no kick at frame %d, the second bar line of 6/8: kicks at %v", at, kicks)
-	}
-}
-
-// TestBenchGradesEachMeter: bench ... meters grades each meter's loops apart,
-// with the rips that read the meter, and verbose names each loop's meter
-func TestBenchGradesEachMeter(t *testing.T) {
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, "bench 1 3 meters verbose\n") // the seed's first loop is 6/8
-	if !strings.Contains(out.String(), "  in 6/8, 1 loop(s): ") || !strings.Contains(out.String(), ", its bar in ") || !regexp.MustCompile(`(?m)^loop +0 +96 bpm 6/8 `).MatchString(out.String()) {
-		t.Errorf("bench by meter:\n%s", out.String())
 	}
 }
 

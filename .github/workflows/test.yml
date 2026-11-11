@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Vet, test and build
+  build:
+    name: Vet and build
     runs-on: ubuntu-latest
 
     steps:
@@ -29,15 +29,42 @@ jobs:
     - name: gofmt -l
       run: out=$(gofmt -l .); [ -z "$out" ] || { echo "$out"; exit 1; }
 
-    - name: Run tests with race detector
-      # The suite renders and hears music; under the detector on a busy runner it
-      # nears go test's ten-minute default.
-      run: go test -race -timeout 20m ./...
-      env:
-        # Halt on the first race; its report prints beside the failing package.
-        GORACE: "halt_on_error=1"
-
     - name: Build for FreeBSD and Android
       run: |
         CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build ./...
         CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build ./...
+
+  race:
+    name: Race tests, share ${{ matrix.share }} of ${{ strategy.job-total }}
+    runs-on: ubuntu-latest
+    strategy:
+      # A share that fails leaves the others to report theirs
+      fail-fast: false
+      matrix:
+        share: [ 1, 2, 3, 4, 5, 6 ]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+
+    - name: Run a share of the tests with race detector
+      # The suite renders and hears music, half an hour of it under the detector
+      # on one runner. Every job lists the tests and deals them alike, heaviest
+      # first to the lightest share, and runs its own; a test weighs what
+      # .github/race-seconds.txt gives it, or a second.
+      shell: bash
+      run: |
+        tests=$(go test -race -list . ./... | grep -E '^(Test|Example|Fuzz)' |
+          awk '/^#/ { next } NR == FNR { sec[$2] = $1; next } { print ($1 in sec ? sec[$1] : 1), $1 }' .github/race-seconds.txt - |
+          LC_ALL=C sort -k1,1nr -k2,2 |
+          awk -v share=${{ matrix.share }} -v of=${{ strategy.job-total }} '{ m = 1; for (i = 2; i <= of; i++) if (load[i] < load[m]) m = i; load[m] += $1 } m == share { print $2 }' |
+          paste -sd '|' -)
+        go test -race -timeout 20m -run "^($tests)\$" ./...
+      env:
+        # Halt on the first race; its report prints beside the failing package.
+        GORACE: "halt_on_error=1"

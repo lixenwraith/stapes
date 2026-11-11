@@ -14,7 +14,7 @@ Go as `go.mod` names it; the release is built with cgo off:
 
 - `make release`: a stripped, trimmed `bin/stapes`; `make dev` one with the race detector.
 - `make install`, `make uninstall`: the binary, the licence and the docs under `PREFIX` (`/usr/local`, or `~/.local` for a user who cannot write `/usr/local/bin`); uninstall keeps the root.
-- `make test`, `make verify`: the race suite, which renders and hears music, then vet, `gofmt` and the FreeBSD and Android builds.
+- `make test`, `make verify`: the race suite, which renders and hears music for twenty minutes on four cores (CI runs it as six jobs side by side), then vet, `gofmt` and the FreeBSD and Android builds.
 - `make venv`, `make smoke`: the trainer's Python with a CPU PyTorch, and the training path end to end at smoke scale in a temporary folder ([rip-train](tool/rip-train/README.md)).
 
 ## Architecture & Concepts

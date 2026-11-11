@@ -121,10 +121,10 @@ uninstall:
 	done; \
 	[ ! -d '$(STAPES_ROOT)' ] || echo "keep    $(STAPES_ROOT) (settings, rip parameters and model)"
 
-# The suite renders and hears music; under the race detector on a busy machine
-# it nears go test's ten-minute default.
+# The suite renders and hears music: twenty minutes under the race detector on
+# four cores, which CI splits over parallel jobs.
 test: check-go
-	$(GO) test -race -timeout 20m ./...
+	$(GO) test -race -timeout 60m ./...
 
 # verify is what CI runs: the race suite, vet, gofmt by the toolchain's own
 # gofmt, and the builds of the other hosts

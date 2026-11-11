@@ -23,6 +23,7 @@ DRUMS = 3
 WAVES = 5
 VOICE_GENES = 32
 FAMILIES = ("piano", "guitar", "voice", "bass", "strings", "winds", "synth", "drums", "unknown")  # RipFamilies, in its order
+NAMES = len(FAMILIES) - 1  # the families a note may be named: unknown is the absence of a name, the last
 
 HEADS = [("onset", 1), ("drums", DRUMS), ("pitch", PITCHES), ("voicing", 1), ("wave", WAVES), ("voice", VOICE_GENES), ("strike", PITCHES),
          ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES))]
@@ -256,6 +257,8 @@ class PitchNet(nn.Module):
         self.frame2 = nn.Conv1d(64, 64, 9, padding=8, dilation=2)
         sizes = dict(cfg.outputs)
         self.frame = nn.Linear(64, sum(sizes[k] for k in ("onset", "drums", "voicing", "wave", "voice")))
+        if "pitchfamily" in sizes:  # the share a family must reach over a note to name it; zero until a run measures one
+            self.register_buffer("sure", torch.zeros(()))
 
     def stack(self, x: torch.Tensor) -> torch.Tensor:
         """B T 2*(MEL_BANDS+1) -> B T STACK_CHANNELS*STACK_INPUTS: each plane by harmonic, each channel ending in the plane's scalar"""
@@ -297,11 +300,13 @@ class PitchNet(nn.Module):
 # are the per-pitch ones in the notes convolution's order, then the frame's
 CELLS_VERSION, CELLS_KIND = 5, 1
 # the per-pitch heads and the values each reads at a pitch; a new head adds a row.
-# cents is a pitch's offset from its cell's centre in semitones, then the log of the error it states
-CELL_HEADS = (("pitch", 1), ("strike", 1), ("release", 1), ("velocity", 1), ("cents", 2))
+# cents is a pitch's offset from its cell's centre in semitones, then the log of the error it states;
+# the three after it say what plays the pitch: a score for each family a note may be named, one for each wave, and the voice's genes
+CELL_HEADS = (("pitch", 1), ("strike", 1), ("release", 1), ("velocity", 1), ("cents", 2),
+              ("pitchfamily", NAMES), ("pitchwave", WAVES), ("pitchvoice", VOICE_GENES))
 FRAME_HEADS = ("onset", "drums", "voicing", "wave", "voice")
-# PitchNet's heads: those of HEADS in its order, what plays a note being the frame
-# model's to hear, then the per-pitch heads the frame model has none of
+# PitchNet's heads: those of HEADS in its order but the frame's family, which names
+# one note of the frame, then the per-pitch heads the frame model has none of
 PITCHNET_HEADS = [h for h in HEADS if h[0] in dict(CELL_HEADS) or h[0] in FRAME_HEADS] + \
     [(k, n * PITCHES) for k, n in CELL_HEADS if k not in dict(HEADS)]
 
@@ -354,6 +359,10 @@ def export(model: nn.Module, path: str) -> None:
         layers += [(f"long.{i}", n) for i, n in enumerate(model.long)]
         layers += [("cellout", model.notes), ("frame1", model.frame1), ("frame2", model.frame2), ("frameout", model.frame)]
         ts = [(f"{name}.{p}", getattr(m, p)) for name, m in layers for p in ("weight", "bias")]
+        if hasattr(model, "sure"):  # the measure is a frame head of no weights, its bias the measure: every frame states it
+            heads.append(("sure", 1))
+            ts[-2:] = [("frameout.weight", torch.cat([model.frame.weight, torch.zeros(1, model.frame.in_features)])),
+                       ("frameout.bias", torch.cat([model.frame.bias, model.sure[None]]))]
     else:
         body += struct.pack("<I", VERSION)
         body += struct.pack("<7I", cfg.inputs, cfg.channels, cfg.dim, cfg.heads, cfg.layers, cfg.ffn, cfg.window)

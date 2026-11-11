@@ -423,6 +423,39 @@ proves wrong or that a document now states, and link the document instead.
   `PITCHNET_HEADS`, since `--init` grows a model only from weights whose heads
   are the first of the new one's. The file's version holds while its header
   does; an older audio reads the heads it knows by name.
+- What plays each pitch is three more of those rows, and the trainer reads a
+  note from them as audio does (`said`, `noted` against `RipFrames.tell`):
+  the cells' say weighed by salience, over the cells among a frame's twelve
+  most salient (`VOICE_CELLS`, audio's `RipVoiceCells`). Change one side and
+  the held-out line no longer says what a rip will. The rules are tests with
+  no corpus: `python3 -m unittest discover tool/rip-train`, which CI, without
+  PyTorch, does not run.
+- A family's name is learned long after its sound: on 720 loops every held-out
+  note was a synth at step 500 and no piano or sung note was named at step
+  1,500, the bass at .43, while the wave and the genes moved from the start.
+  Six notes in ten of that corpus are synth's, each engine voice far from the
+  bank being one, so read a family's own share, never the total.
+- The heads of what plays a pitch teach the cells the decoders read. With the
+  gradient stopped at the cells they learn only the commonest name; at the
+  whole weight of the frame's like heads a 3,000-step run's strikes' F1 fell
+  from 0.328 to 0.278, at a quarter (`PLAYS`) to 0.301. Before changing that
+  weight or those heads, run the same steps without them and read the
+  strikes: two such runs taught alike part by 0.012 on the starting draw alone.
+- Generated loops cannot judge a family's name. A piano or a guitar there is
+  an engine voice within 0.2 of a bank voice's genes among random ones on the
+  same waves, and each note given its octave's most common family, wave and
+  mean voice scores what a 3,000-step model does. Read names on recorded
+  families; a container run shows that the heads, the measure and the file
+  work, not how well they hear.
+- A notes model of a few thousand steps rips few notes at the shipped strike
+  thresholds. To see what a rip says of such a model's notes, set `strike`,
+  `strike_low` and `strike_again` in the root's `rip.toml` (0.5, 0.5, 0.8 on
+  three training loops here) and say so beside the numbers.
+- A weight file's constant can ride as a frame head of no weights (`sure`:
+  `export` appends a zero row to `frameout.weight` and the constant to its
+  bias), which no version of the file needs to know; `--init` and `average.py`
+  carry the model's buffer, and a run again on a finished checkpoint exports
+  its pick with a new `--sure`.
 - The cents head states its own error, and audio joins two cells where their
   readings agree within the errors stated (`oneFrequency`), with no factor on
   them: a head too sure of itself merges steps, and nothing downstream corrects

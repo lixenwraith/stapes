@@ -471,13 +471,13 @@ of either model into its file. `--shuffle <share>` and
 as are `--cell <n>`, the notes model's width (its channels at each cell, 32,
 which its weight file carries), and `--dip <share>`, the share of the channel's
 windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room
-hears. `--family-holdout <family>` leaves every loop that sounds a family out of
-the run, trained on and scored by neither, so a calibration run can set unknown's
-bar on how the model hears an instrument it never heard. A checkpoint from before
+hears. `--family-holdout <family>` tells no head a family's name: its notes stay
+in the run as sound, and a notes model's lines say what their surest name reaches,
+the measure a name must pass to be given (below). A checkpoint from before
 a setting existed loads with that setting's default, and `--init` takes one of the
 frame model from before the family head, or of the notes model from before the
-cents head: every weight carries over and the head's rows start fresh, though
-resuming one is refused.
+cents head or the heads of what plays each pitch: every weight carries over and
+the head's rows start fresh, though resuming one is refused.
 
 A notes model has a cents head: for each pitch, how far its sound sits from the
 cell's centre and the error it states for that, taught where a sound the labels
@@ -515,12 +515,51 @@ errors, with no margin on top. A head that knows nothing of a sound reads a medi
 25 cents off, so the line above is a head that has a loop's tuning and little of a
 glide's motion yet: it states as much there, and the decoder joins nothing on its word.
 
+A notes model says what plays each pitch: three more heads a cell, the family of
+the eight names, the wave and the 32 genes, taught at the cells one note alone
+sounds in ([Rip training](../../doc/rip-training.md) §5, §7 and §8). Audio reads
+them into each note's voice, and names a note's family only where its share over
+the note passes the measure the weight file carries. A run measures it by holding
+a family out and ships it with none held out:
+
+```bash
+python3 train.py --pitchnet ... --family-holdout guitar --out held.bin   # its held-out line: guitar's notes reach R
+python3 train.py --pitchnet ... --sure R --out ripnotes.bin              # every name taught, the measure carried
+```
+
+The held-out run's last lines give the reach; the shipped run prints what its file
+carries (`a family naming a note past a share of R`), and a file with no measure
+says so and names no note. `average.py --sure` gives a merge its measure; without
+it the merge carries the mean of its files'. On a held-out or validation line,
+after the cents:
+
+```
+families F of N notes (piano F of N, ...), F of the N under another, waves F, genes G off; guitar's N notes, held out, reach R, M at the median: P% of the others' notes pass it, Q% of them right
+```
+
+The share named their family is over the notes with a family to ask, read as
+audio reads a note: its cells' say over its frames, weighed by salience, at the
+cells among the frame's twelve most salient. `under another` is that share over
+the notes a higher note sounds over, where the frame's family head never looked;
+`waves` the share of the engine's notes given their wave; `genes` the RMS miss
+over a note's 32 genes. The held-out family's part gives the share its notes'
+surest name reaches at the 95th percentile of them, which is the measure, the
+median, how many of the other families' notes pass the measure and how many of
+those are named right: a measure most named notes fall under is a model that
+tells too little apart yet, and its file names few notes rather than wrong ones.
+
+The trainer's rules for what plays each pitch are tests of their own, with no
+corpus and in under a second: `python3 -m unittest discover tool/rip-train`.
+
 It writes the file's version 3, the channels after the inputs, which needs
 transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio
 refuses it, of one channel or two. `--pitchnet`'s file is version 5, a cell net
 with its long convolutions listed, which needs transformer v0.5.0 (audio v0.8.2);
 the cents head changes neither, being one more per-pitch head of two values, and
-an audio before v0.21.0 reads such a file's other heads and hears no glide.
+an audio before v0.21.0 reads such a file's other heads and hears no glide; nor
+do the heads of what plays each pitch and the measure, a frame head of one value
+whose weights are zero and whose bias is the measure, and an audio before v0.23.0
+reads such a file and tells no note's voice.
 A change to either side is a change to both: check a random model's outputs on
 a corpus loop from the two before trusting a trained file, as the module's
 [agent notes](https://github.com/lixenwraith/transformer/blob/main/doc/agent-notes.md)

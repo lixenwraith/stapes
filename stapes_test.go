@@ -1545,6 +1545,29 @@ validate all
 	}
 }
 
+// TestNotesListsWhatPlaysANote: a note told its voice is listed with its wave,
+// and with its family where the front end was sure of one; a note told none is
+// listed as before.
+func TestNotesListsWhatPlaysANote(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	s.rips["heard"] = &ripped{rip: &audio.Rip{BPM: 120, Notes: []audio.RipNote{
+		{Start: 0, End: 0.5, MIDI: 60, Vel: 0.8, Bright: audio.RipUnmeasured, Voice: &audio.RipVoice{Wave: "modal", Family: "piano"}},
+		{Start: 0.5, End: 1, MIDI: 64, Vel: 0.8, Bright: audio.RipUnmeasured, Voice: &audio.RipVoice{Wave: "saw"}},
+		{Start: 1, End: 1.5, MIDI: 40, Vel: 0.8, Bright: audio.RipUnmeasured, Bass: true},
+	}}}
+	runOrFatal(t, s, &out, "notes heard\n")
+	var ends []string
+	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n")[1:] {
+		_, end, _ := strings.Cut(line, " at 0.80")
+		ends = append(ends, end)
+	}
+	if want := []string{", wave modal, family piano", ", wave saw", ""}; !slices.Equal(ends, want) {
+		t.Errorf("notes listed %q after each note's loudness, want %q:\n%s", ends, want, out.String())
+	}
+}
+
 // TestLiveKeepsTheRipRipMakes: live feeds a recording to a stream in blocks and
 // says each bar as it freezes, some before the recording ends; the rip it keeps
 // under its name is the one rip makes of the recording, through the analysis and

@@ -37,6 +37,7 @@ def main() -> None:
     ap.add_argument("--pt", default="", help="the mean as a .pt, the next round's --init; none, only the weight file")
     ap.add_argument("--out", required=True, help="the mean as the weight file lixenwraith/transformer loads, as train.py's --out")
     ap.add_argument("--trim", type=float, default=0.0, help="share of the files whose highest and lowest values of each weight are dropped before the mean, under a half")
+    ap.add_argument("--sure", type=float, default=0.0, help="the share a family must pass over a note to name it, as train.py's --sure; without it the mean of the files' own")
     args = ap.parse_args()
     if not 0 <= args.trim < 0.5:
         ap.error("--trim is a share under a half")
@@ -55,6 +56,8 @@ def main() -> None:
     cut = int(args.trim * len(cks))
     model = ripmodel.build(ripmodel.Config(**cks[0]["cfg"]))
     model.load_state_dict(mean([ck["model"] for ck in cks], cut))
+    if args.sure and hasattr(model, "sure"):
+        model.sure.fill_(args.sure)
     if args.pt:
         torch.save({"model": model.state_dict(), "cfg": cks[0]["cfg"]}, args.pt)
     model.eval()

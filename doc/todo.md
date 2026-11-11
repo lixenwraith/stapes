@@ -245,16 +245,67 @@ where one is sure. `corpus` labels each event's family and, for the engine's
 notes, its wave and genes; the frame model has a family head a frame, which
 names the highest note alone (the bass on 2.6% of corpus 17's frames, so never
 a lower line) and is taught `unknown` on a third of them, every engine voice
-far from the bank. What remains: the heads a cell and their reading into a
-note; an engine voice far from the bank taught as `synth`, and no name where no
-family's posterior reaches what a family held out reaches (`--family-holdout`);
-real notes labelled by the fit, an instrument of NSynth's at a time; the frame
-model's planes as context to those heads, measured as a pair; and the round,
-judged on NSynth's held-out instruments by each family's recall a note and the
-rip's voice over the fit's distance (2.3 now), with E-GMD's kits and Billie
-Jean's kicks, clean and from the Pixel, unmoved. Then lines by voice: notes
-gathered by their voices and their continuity, first inside the three lines a
-rip holds, then as many as were heard, through the song and the game.
+far from the bank. Landed: the heads a cell, their targets and their reading
+into a note's voice ([Rip training §5, §7 and
+§8](rip-training.md#5-the-targets)), an engine voice far from the bank taught as
+`synth`, and no name where no family's share passes what a family held out
+reaches (`--family-holdout`, the measure the weight file carries). What
+remains: real notes labelled by the fit, an instrument of NSynth's at a time;
+the frame model's planes as context to those heads, measured as a pair; and the
+round, judged on NSynth's held-out instruments by each family's recall a note
+and the rip's voice over the fit's distance (2.3 now), with E-GMD's kits and
+Billie Jean's kicks, clean and from the Pixel, unmoved. Then lines by voice:
+notes gathered by their voices and their continuity, first inside the three
+lines a rip holds, then as many as were heard, through the song and the game.
+
+Left open by what landed, each with the option not taken:
+
+- The measure is one family's reach at one quantile (`SURE`, 0.95), and the
+  file that ships takes it from another run of its recipe (`--sure`), since a
+  run that teaches every name has no family left to measure with. It bounds
+  how often a family never taught is named, a note in twenty, and not how
+  often a name given is right: on 720 loops for 3,000 steps 2% of the taught
+  families' notes pass it and half of those are named right. Not taken:
+  each family held out in turn and the highest reach carried, a run a family;
+  and the reach of notes outside the eight families on a validation corpus,
+  NSynth's mallets and organs, which would measure the shipped run itself and
+  wants those notes in `--validate`'s list first.
+- A cell two events sound in is asked nothing, 4% of the sounding cells. Not
+  taken: asking it where the two are one voice, a twentieth of those, a second
+  rule for a fifth of a percent; and asking it both names, which a softmax
+  over the names cannot hold and a head of one name against the rest did not
+  earn on the held-out family.
+- An embedding with linear readouts in place of the heads: no better at any
+  width, short of the genes under 16 values, and its readouts need a place in
+  the weight file ([Rip training §7](rip-training.md#7-the-model)). It is the
+  way if audio must tell every pitch of a frame its voice, not twelve.
+- The measure rides in the weight file as a frame head of no weights, and a
+  measure a family would fit the same head at eight values. Not taken: named
+  constants in a version of the file after 5, which changes transformer's
+  format and loader; what brings them is a constant not the notes model's own
+  or one a caller needs before any frame is heard ([audio's
+  todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#carry-a-notes-voice-further)).
+- What plays a cell is taught at a quarter of the frame's like weights
+  (`PLAYS`), since its heads teach the channels the decoders read: on 720
+  loops for 3,000 steps the whole weight took the strikes' F1 from 0.328 to
+  0.278 and a quarter leaves 0.301, the heads all but as good ([Rip training
+  §8](rip-training.md#8-a-training-step)). Not taken: the heads read with the
+  gradient stopped at the cells, which costs the decoders nothing and teaches
+  the heads nothing; channels of the cells kept for what plays, or a layer
+  between the cells and those heads, which the weight file has no tensor for;
+  and a smaller weight still. A real round reads the strikes against a run
+  without the heads at equal steps before any of them.
+- A short run on generated loops teaches the names little past register:
+  families 0.551 against 0.563 by the octave's most common name, waves 0.456
+  against 0.427, the genes 0.218 off against 0.209 by the octave's mean voice,
+  and a piano, a guitar or a sung voice, engine voices near the bank's among
+  random ones, under 0.07 of their notes. The names want recorded families
+  (NSynth's) and a round's length. Not taken: weighing a name by its rarity,
+  which moves the shares the measure reads.
+- The lines count a note told on any frame: one never among a frame's twelve
+  most salient pitches is in no share, so the count of notes moves a little
+  with the model's salience from step to step.
+- `test_train.py` runs by hand: CI has no PyTorch.
 
 ### A live rip
 

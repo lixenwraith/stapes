@@ -282,6 +282,23 @@ Left open by what landed, each with the option not taken:
   format and loader; what brings them is a constant not the notes model's own
   or one a caller needs before any frame is heard ([audio's
   todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#carry-a-notes-voice-further)).
+- What plays a cell is taught at a quarter of the frame's like weights
+  (`PLAYS`), since its heads teach the channels the decoders read: on 720
+  loops for 3,000 steps the whole weight took the strikes' F1 from 0.328 to
+  0.278 and a quarter leaves 0.301, the heads all but as good ([Rip training
+  §8](rip-training.md#8-a-training-step)). Not taken: the heads read with the
+  gradient stopped at the cells, which costs the decoders nothing and teaches
+  the heads nothing; channels of the cells kept for what plays, or a layer
+  between the cells and those heads, which the weight file has no tensor for;
+  and a smaller weight still. A real round reads the strikes against a run
+  without the heads at equal steps before any of them.
+- A short run on generated loops teaches the names little past register:
+  families 0.551 against 0.563 by the octave's most common name, waves 0.456
+  against 0.427, the genes 0.218 off against 0.209 by the octave's mean voice,
+  and a piano, a guitar or a sung voice, engine voices near the bank's among
+  random ones, under 0.07 of their notes. The names want recorded families
+  (NSynth's) and a round's length. Not taken: weighing a name by its rarity,
+  which moves the shares the measure reads.
 - The lines count a note told on any frame: one never among a frame's twelve
   most salient pitches is in no share, so the count of notes moves a little
   with the model's salience from step to step.

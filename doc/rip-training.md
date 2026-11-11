@@ -558,8 +558,8 @@ genes. They are heads of their own, read straight off the cell's 32 channels as 
 head is, and not a small embedding with linear readouts. A linear embedding of E values under
 linear readouts is the same map from the channels held to rank E, so it can say no more than
 the heads; what it could give is fewer bytes a pitch in audio's frames. Read beside the heads
-on the same cells, 720 loops at step 1,500 with guitar's name held out, on the 80 loops held
-out:
+on the same cells, 720 loops at step 1,500 with guitar's name held out and what plays a cell
+at the whole weight (§8), on the 80 loops held out:
 
 ```
                   families   under another   waves   genes' miss   bytes a pitch
@@ -623,6 +623,30 @@ its best the stated error is the mean miss to expect of such a reading, which 63
 a Laplace's fall within; it is what audio's decoder widens a reading by before it
 calls two cells one frequency, with no factor on it. The decoders read the cents head
 too, but it does not join `decoders`: its loss is in semitones and no likelihood.
+
+What plays a cell is weighed as what plays the frame is, at a quarter of it (`PLAYS`).
+Its heads teach the channels the decoders read, and they have to: read with the gradient
+stopped at the cells they learn nothing past the commonest name, wave and voice, so the
+cells carry no timbre the decoders did not ask of them. At the whole weight the strikes
+pay. Each on §7's 720 loops for 3,000 steps with every family named, on the 80 held out:
+
+```
+                    decoders   strikes' F1   families   under another   waves   genes' miss
+no such heads        1.704       0.328
+the whole weight     1.733       0.278        0.571       0.568         0.474     0.214
+a quarter            1.680       0.301        0.551       0.533         0.456     0.218
+read, not taught     1.671       0.316        0.521       0.483         0.403     0.231
+by register alone                             0.563                     0.427     0.209
+```
+
+Two runs that teach the cells the same, the first and the fourth, part by 0.012 of the
+strikes' F1, which is what a draw of the starting weights moves. The last row is no model:
+each held-out note given the most common family and wave and the mean voice of its octave
+over the training loops' labels. A run this short on generated loops says little past it.
+The bass is named on four notes in ten and the rest are synth: a piano, a guitar or a sung
+voice here is an engine voice within 0.2 of a bank voice's genes among random ones on the
+same waves, and under 0.07 of their notes are named. The names want recorded families and
+a round's length (todo, "The instrument model").
 
 The held-out and validation lines say what the head reads, after the strikes' F1: the
 median miss, the median error stated and the share of readings whose miss is within

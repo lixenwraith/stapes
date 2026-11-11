@@ -423,6 +423,23 @@ proves wrong or that a document now states, and link the document instead.
   `PITCHNET_HEADS`, since `--init` grows a model only from weights whose heads
   are the first of the new one's. The file's version holds while its header
   does; an older audio reads the heads it knows by name.
+- What plays each pitch is three more of those rows, and the trainer reads a
+  note from them as audio does (`said`, `noted` against `RipFrames.tell`):
+  the cells' say weighed by salience, over the cells among a frame's twelve
+  most salient (`VOICE_CELLS`, audio's `RipVoiceCells`). Change one side and
+  the held-out line no longer says what a rip will. The rules are tests with
+  no corpus: `python3 -m unittest discover tool/rip-train`, which CI, without
+  PyTorch, does not run.
+- A family's name is learned long after its sound: on 720 loops every held-out
+  note was a synth at step 500 and no piano or sung note was named at step
+  1,500, the bass at .43, while the wave and the genes moved from the start.
+  Six notes in ten of that corpus are synth's, each engine voice far from the
+  bank being one, so read a family's own share, never the total.
+- A weight file's constant can ride as a frame head of no weights (`sure`:
+  `export` appends a zero row to `frameout.weight` and the constant to its
+  bias), which no version of the file needs to know; `--init` and `average.py`
+  carry the model's buffer, and a run again on a finished checkpoint exports
+  its pick with a new `--sure`.
 - The cents head states its own error, and audio joins two cells where their
   readings agree within the errors stated (`oneFrequency`), with no factor on
   them: a head too sure of itself merges steps, and nothing downstream corrects

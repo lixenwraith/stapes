@@ -555,7 +555,27 @@ a head with the values it reads at a pitch; the cents head reads two, the offset
 and the log of the error it states, and what plays the pitch is three heads: `pitchfamily`,
 a score for each of the eight names, `pitchwave`, one for each wave, and `pitchvoice`, the 32
 genes. They are heads of their own, read straight off the cell's 32 channels as every other
-head is.
+head is, and not a small embedding with linear readouts. A linear embedding of E values under
+linear readouts is the same map from the channels held to rank E, so it can say no more than
+the heads; what it could give is fewer bytes a pitch in audio's frames. Read beside the heads
+on the same cells, 720 loops at step 1,500 with guitar's name held out, on the 80 loops held
+out:
+
+```
+                  families   under another   waves   genes' miss   bytes a pitch
+heads of their own  0.655       0.604        0.462     0.222           45
+embedding of 16     0.654       0.603        0.466     0.226           16
+embedding of 8      0.659       0.615        0.453     0.237            8
+embedding of 4      0.655       0.603        0.462     0.251            4
+embedding of 2      0.590       0.509        0.283     0.290            2
+```
+
+Four values carry the family and the wave and no width under 16 the genes. Audio keeps the
+heads at twelve pitches a frame, 552 bytes; an embedding kept at every pitch costs that at 8
+wide with the genes 7% further off, and its readouts would be weights the file has no place
+for. A family head scored one name against the rest, in place of one among the eight, named
+as many notes right (0.656) and parted the held-out family's notes no better (their reach
+0.893 against 0.875), so the names share one softmax.
 
 ```
 input          B x T x 460              the two planes

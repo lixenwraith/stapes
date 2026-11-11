@@ -444,6 +444,13 @@ and the checkpoint earn their keep.
      posterior reaches what a family held out of training reaches. The frame
      model keeps the drums, the onsets and the beat, and is judged by what its
      raw planes add to a note's voice: its attack, its noise, the room.
+     Landed: the three heads a cell, taught where one note alone sounds in
+     it; `--family-holdout` a note, whose reach the weight file carries as
+     the measure; audio's reading of them at each frame's twelve most salient
+     pitches into every note's voice, and a line's voice as its notes' mean
+     ([Rip training §5 to §10](rip-training.md#5-the-targets)). Not yet: real
+     notes the fit has labelled, the frame model's planes as context, and a
+     round ([todo](todo.md#the-instrument-model)).
    - **Lines by voice.** Notes gather into lines by their voices and their
      continuity, a line opening when a voice enters and closing when it
      stops: first inside the three lines a rip holds today, then the rip, the
@@ -1017,6 +1024,15 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   the ninth pass. A note's strength is weighed against the register's
   reference, not raw: raw, it outweighed every other cue by a hundred times
   and the first parting followed loudness alone.
+- **What plays is said a pitch, and named only where a name is sure.** A head
+  a frame names one note of it, the highest, so the bass was asked on 2.6% of
+  a corpus's frames and a line under the melody never; and `unknown` taught as
+  a class was a third of the labels, every engine voice far from the bank. A
+  head a pitch says what plays each note, a line under another as the one
+  over it, and a voice of genes is what every note gets, a name being extra:
+  given where its share over the note passes what the notes of a family the
+  model was told no name of reach, a number a run reads off held-out notes
+  and no hand sets. `unknown` is then what is left, the absence of a name.
 - **Ground truth is a transcript corrected by hand; two rips are two
   witnesses.** The numbers so far grade the mix, not the melody; what the
   user hears as the lead has no number. `truth` scores a rip against notes

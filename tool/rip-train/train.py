@@ -8,14 +8,16 @@ Each loop's log-mel frames (loop_NNN.mel) are the input; its events
 (loop_NNN.json) become per-frame targets: an onset within a frame of any event,
 each drum's hits, the pitches sounding, whether any sounds, the wave and voice
 genes of the highest note sounding, the family playing it, each pitch within a
-frame of its strikes and of its releases, how hard each was struck, and where
-each pitch an engine voice plays sits from its cell's centre. Training crops
+frame of its strikes and of its releases, how hard each was struck, where each
+pitch an engine voice plays sits from its cell's centre, and what plays each
+pitch one note alone sounds in: its family, its wave and its genes. Training crops
 random windows of frames and builds their targets a window at a time, so memory
 holds the events rather than a row per frame.
 """
 from __future__ import annotations
 
 import argparse
+import array
 import json
 import math
 import os
@@ -56,6 +58,14 @@ class MelFile:
 
 GLIDE_SPAN = 50.0  # the cents a recorded note's pitch track spans before its readings count as gliding: half a cell
 
+# the genes of every voice the labels' notes are played by, a loop's voices in turn: a cell's target is a voice's row here
+GENES = array.array("f")
+
+
+def genes() -> np.ndarray:
+    """GENES as a row a voice"""
+    return np.frombuffer(GENES, np.float32).reshape(-1, ripmodel.VOICE_GENES)
+
 
 class Label:
     """A loop's events as arrays, its per-frame targets built a window at a time
@@ -72,14 +82,18 @@ class Label:
         self.vel = np.array([e.get("vel", -1) for e in ev], np.float32)
         self.wave = np.array([e.get("wave", -1) if e.get("voice") else -1 for e in ev], np.int8)
         self.family = np.array([e.get("family", -1) for e in ev], np.int8)
-        voices, index = [], {}  # a loop's notes share a few voices
-        self.voice = np.full(len(ev), -1, np.int32)
+        index = {}  # a loop's notes share a few voices
+        self.voice = np.full(len(ev), -1, np.int32)  # the voice's row of GENES
         for i, e in enumerate(ev):
             if e.get("voice"):
-                self.voice[i] = index.setdefault(tuple(e["voice"]), len(index))
-                if self.voice[i] == len(voices):
-                    voices.append(e["voice"])
-        self.voices = np.array(voices, np.float32).reshape(-1, manifest["voice_genes"])
+                key = tuple(e["voice"])
+                if key not in index:
+                    index[key] = len(GENES) // manifest["voice_genes"]
+                    GENES.extend(key)
+                self.voice[i] = index[key]
+        # the name a note's cells are asked: an engine voice far from the bank's is a synth, a recorded note of no family has none
+        unknown, synth = ripmodel.FAMILIES.index("unknown"), ripmodel.FAMILIES.index("synth")
+        self.name = np.where(self.family == unknown, np.where(self.voice >= 0, synth, -1), self.family).astype(np.int8)
         # a note that moves carries its cents from its pitch's cell centre at each frame; one that holds sits at the tuning.
         # A recording's note lists them where its pitch track places it, null, read as nan, at a frame it does not
         self.tuning = float(label.get("tuning", 0.0))
@@ -113,7 +127,9 @@ class Label:
         it, -1 where the corpus does not say. A note that moves sounds, is struck
         and is let go in the cell nearest its frequency at each frame. cents is
         each cell's offset in semitones from the sound nearest it within one, asked
-        where an engine voice plays that sound, moving where it is on a glide."""
+        where an engine voice plays that sound, moving where it is on a glide. A
+        cell one event alone sounds in is that event's (note), and says its name,
+        wave and voice; one two sound in says neither's, being the sound of both."""
         m, frames, w = self.manifest, self.frames, b - a
         pitches, min_midi = m["pitches"], m["min_midi"]
         onset = np.zeros(w, np.uint8)
@@ -129,6 +145,7 @@ class Label:
         cents = np.zeros((w, pitches), np.float32)
         near = np.full((w, pitches), np.inf, np.float32)  # how far from a cell's centre the sound it reports sits
         asked, moving = np.zeros((w, pitches), np.uint8), np.zeros((w, pitches), np.uint8)
+        sole = np.full((w, pitches), -1, np.int32)  # the event sounding in a cell, -2 where a second does
 
         def span(x, y):  # frames x to y of the loop, in the window
             x, y = max(x, a), min(y, b)
@@ -154,16 +171,16 @@ class Label:
             placed = np.full(len(rows), self.voice[i] >= 0)  # an engine voice plays where the label says; a recording only where it lists its cents
             if at < 0:
                 off, glides = np.full(len(rows), p + self.tuning / 100, np.float32), np.zeros(len(rows), bool)
-                if 0 <= p < pitches:
-                    pitch[rows, p] = 1
+                cell = np.full(len(rows), p)
             else:
                 c, glides = self.cents[at + x - t:at + x - t + len(rows)], self.moves[at + x - t:at + x - t + len(rows)]
                 placed = ~np.isnan(c)  # a frame that is not placed sounds in the note's own cell
                 off = p + np.nan_to_num(c) / 100
                 cell = np.rint(off).astype(np.int64)
-                ok = (cell >= 0) & (cell < pitches)
-                pitch[rows[ok], cell[ok]] = 1
                 first, last = (int(np.rint(p + np.nan_to_num(self.cents[at + k]) / 100)) for k in (0, end - t - 1))
+            ok = (cell >= 0) & (cell < pitches)
+            r, c = rows[ok], cell[ok]
+            pitch[r, c], sole[r, c] = 1, np.where(sole[r, c] == -1, i, -2)
             if 0 <= first < pitches:
                 strikes.append((t - a, first))
                 vels.append(self.vel[i])
@@ -182,13 +199,20 @@ class Label:
                 up = midi > top[seg]
                 top[seg][up], who[seg][up] = midi, i
         heard = who >= 0
-        wave[heard], voice[heard] = self.wave[who[heard]], self.voices[self.voice[who[heard]]]
+        wave[heard], voice[heard] = self.wave[who[heard]], genes()[self.voice[who[heard]]]
         family = np.full(w, -1, np.int64)
         family[whose >= 0] = self.family[whose[whose >= 0]]
+        one = sole >= 0
+
+        def of(a):  # an event's value at the cells it alone sounds in, -1 at the others
+            out = np.full(sole.shape, -1, a.dtype)
+            out[one] = a[sole[one]]
+            return out
         return {"onset": onset, "drums": drums, "pitch": pitch, "voicing": (pitch.sum(1) > 0).astype(np.uint8),
                 "wave": wave, "voice": voice, "voiced": (top >= 0).astype(np.uint8), "family": family,
                 "strikes": np.array(strikes, np.int32).reshape(-1, 2), "vels": np.array(vels, np.float32),
-                "releases": np.array(releases, np.int32).reshape(-1, 2), "cents": cents, "asked": asked, "moving": moving}
+                "releases": np.array(releases, np.int32).reshape(-1, 2), "cents": cents, "asked": asked, "moving": moving,
+                "note": np.where(one, sole, -1), "pitchfamily": of(self.name), "pitchwave": of(self.wave), "pitchvoice": of(self.voice)}
 
 
 # a family's index in ripmodel.FAMILIES whose loops the run leaves out, so a calibration run never hears it
@@ -281,7 +305,7 @@ def targets(mel, lab: Label, start: int, window: int, with_drums: bool = True) -
     def take(a, fill=0):
         return np.concatenate([a, np.full((pad,) + a.shape[1:], fill, a.dtype)]) if pad else a
     out = {k: take(t[k]) for k in ("onset", "drums", "pitch", "voicing", "voice", "voiced", "cents", "asked", "moving")}
-    out["wave"], out["family"] = take(t["wave"], -1), take(t["family"], -1)
+    out.update({k: take(t[k], -1) for k in ("wave", "family", "note", "pitchfamily", "pitchwave", "pitchvoice")})
     shape = (window, t["pitch"].shape[1])
     strike, release, velocity, heard = np.zeros(shape, np.uint8), np.zeros(shape, np.uint8), np.zeros(shape, np.float32), np.zeros(shape, np.uint8)
     for (f, p), v in zip(t["strikes"], t["vels"]):
@@ -309,7 +333,8 @@ def clip(mel, rng):
 
 def shuffled(pick, window: int, channels: int, rng, channel=None):
     """a window of summed chunks: notes keep their labels, a drum hit counts where it
-    stands out of the other clip, and what the frame's voice and family are goes unasked"""
+    stands out of the other clip, what the frame's voice and family are goes unasked,
+    and a cell says what plays it where one clip alone sounds in it"""
     total = window + WARM if channels > 1 else window
     through, noise = channel.draw(total, rng) if channel is not None else (1.0, np.zeros((total, ripmodel.MEL_BANDS)))
     es, outs = [], []
@@ -325,6 +350,8 @@ def shuffled(pick, window: int, channels: int, rng, channel=None):
         mine = (ta["asked"] > 0) & (tb["asked"] == 0) & (tb["pitch"] == 0)
         asked = mine | (tb["asked"] > 0) & (ta["asked"] == 0) & (ta["pitch"] == 0)
         out.update(asked=asked.astype(np.uint8), cents=np.where(mine, ta["cents"], tb["cents"]) * asked, moving=np.where(mine, ta["moving"], tb["moving"]) * asked)
+        out.update({k: np.where(tb["pitch"] == 0, ta[k], np.where(ta["pitch"] == 0, tb[k], -1)) for k in ("pitchfamily", "pitchwave", "pitchvoice")})
+        out["note"] = np.full_like(ta["note"], -1)  # a chunk's notes are no one loop's
         hiss = noise[at:at + CHUNK]
         hiss = np.concatenate([hiss, np.zeros((CHUNK - len(hiss), hiss.shape[1]))]) if len(hiss) < CHUNK else hiss
         for d, rest, lab, s in ((ea * through, eb * through + hiss, la, sa), (eb * through, ea * through + hiss, lb, sb)):
@@ -424,7 +451,7 @@ def bent(mel, lab, window: int, channels: int, over, rng, heard):
 def stack(samples):
     mels, tgs = zip(*samples)
     out = {k: torch.from_numpy(np.stack([t[k] for t in tgs])) for k in tgs[0]}
-    return torch.from_numpy(np.stack(mels)), {k: v if k in ("wave", "family") else v.float() for k, v in out.items()}
+    return torch.from_numpy(np.stack(mels)), {k: v if v.dtype in (torch.int8, torch.int32, torch.int64) else v.float() for k, v in out.items()}
 
 
 def batch(draw, window: int, size: int, rng: random.Random, channels: int, channel=None, share: float = 0.0, pick=None, shuffle: float = 0.0, bend: float = 0.0):
@@ -473,6 +500,11 @@ def struck(logits: torch.Tensor, strike: torch.Tensor, valid: torch.Tensor, low:
 # the readings a cents head is scored over: of a cell its sound is on a glide in, of one it holds its pitch in, and of the
 # cell beside a sound; and of a sounding cell the label does not place, where only the error stated can be told
 CENTS_KINDS = ("gliding", "steady", "beside", "unplaced")
+
+
+def cells(y: torch.Tensor, cfg, name: str) -> torch.Tensor:
+    """a per-pitch head's scores, [..., pitches, values]"""
+    return y[..., cfg.slice(name)].unflatten(-1, (-1, ripmodel.PITCHES)).transpose(-1, -2)
 
 
 def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None = None) -> dict:
@@ -567,9 +599,18 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
         # the error the head states is a Laplace's scale fitted to the miss as it
         # stands: the miss is held fixed, so stating an error moves no offset
         out["spread"] = ((miss.detach().clamp(min=CENTS_GRAIN) * torch.exp(-spread) + spread) * asked).sum() / n
+    if "pitchfamily" in dict(cfg.outputs):  # what plays each cell, asked where one note alone sounds in it
+        for name in ("pitchfamily", "pitchwave"):
+            at = (t[name] >= 0) & (valid[..., None] > 0)
+            out[name] = F.cross_entropy(cells(y, cfg, name)[at], t[name][at].long(), reduction="sum") / at.sum().clamp(min=1)
+        at = (t["pitchvoice"] >= 0) & (valid[..., None] > 0)
+        want = torch.from_numpy(genes()[t["pitchvoice"][at].cpu().numpy()]).to(y.device)
+        out["pitchvoice"] = ((torch.sigmoid(cells(y, cfg, "pitchvoice")[at]) - want) ** 2).mean(-1).sum() / at.sum().clamp(min=1)
+    # what plays a cell is weighed as what plays the frame is
     out["total"] = (out["onset"] + out["drums"] + out["pitch"] + 0.5 * out["voicing"] + out["strike"] + out["release"]
                     + 2.0 * out["velocity"] + 0.5 * out["wave"] + 2.0 * out["voice"] + 0.5 * out.get("family", 0.0)
-                    + 2.0 * out.get("cents", 0.0) + SPREAD * out.get("spread", 0.0))
+                    + 2.0 * out.get("cents", 0.0) + SPREAD * out.get("spread", 0.0)
+                    + 0.5 * out.get("pitchfamily", 0.0) + 0.5 * out.get("pitchwave", 0.0) + 2.0 * out.get("pitchvoice", 0.0))
     return out
 
 

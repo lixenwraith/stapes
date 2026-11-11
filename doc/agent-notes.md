@@ -48,7 +48,7 @@ proves wrong or that a document now states, and link the document instead.
 
 - The suite takes 81 s plain and 20 minutes under the race detector on four
   cores, 31 on CI's runner, which is 1.6 times slower. A test that renders or
-  hears audio runs 12 to 18 times slower raced, and 85% of that CPU is the
+  hears audio runs 9 to 18 times slower raced, and 85% of that CPU is the
   detector watching one goroutine's arithmetic; a light test costs 0.65 s
   raced, a session's start and stop.
 - CI races the suite as six jobs (`.github/workflows/test.yml`): each lists the

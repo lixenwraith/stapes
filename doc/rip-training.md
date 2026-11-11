@@ -612,7 +612,8 @@ spread:   miss / e + log e where asked, e the error the head states and miss the
           offset's absolute error held fixed: a Laplace's scale fitted to it
 
 total    = onset + drums + pitch + 0.5 voicing + strike + release + 2 velocity + 0.5 wave + 2 voice
-           + 0.5 family + 2 cents + 0.2 spread + 0.5 pitchfamily + 0.5 pitchwave + 2 pitchvoice
+           + 0.5 family + 2 cents + 0.2 spread
+           + 0.25 (0.5 pitchfamily + 0.5 pitchwave + 2 pitchvoice)
 decoders = onset + drums + pitch + 0.5 voicing + strike + release
 ```
 

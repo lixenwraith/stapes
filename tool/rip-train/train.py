@@ -611,6 +611,7 @@ DIP = 0.0  # the share of the channel's windows given a dip under the melody, as
 STRIKE_AGAIN = 1.0  # and a strike of a pitch still sounding, the most missed of all, by this much more
 CENTS_GRAIN = 0.001  # a label's cents are written to a tenth: a miss under it, in semitones, says no more
 SPREAD = 0.2  # the stated error's weight in the total: its own row of weights learns as fast as any, the layers under it less from it
+PLAYS = 0.25  # what plays a cell against what plays the frame: its heads teach the channels the decoders read, and at the whole weight the strikes are heard worse
 
 
 def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
@@ -662,11 +663,11 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
         at = (t["pitchvoice"] >= 0) & (valid[..., None] > 0)
         want = torch.from_numpy(genes()[t["pitchvoice"][at].cpu().numpy()]).to(y.device)
         out["pitchvoice"] = ((torch.sigmoid(cells(y, cfg, "pitchvoice")[at]) - want) ** 2).mean(-1).sum() / at.sum().clamp(min=1)
-    # what plays a cell is weighed as what plays the frame is
+    # what plays a cell is weighed as what plays the frame is, by PLAYS of it
     out["total"] = (out["onset"] + out["drums"] + out["pitch"] + 0.5 * out["voicing"] + out["strike"] + out["release"]
                     + 2.0 * out["velocity"] + 0.5 * out["wave"] + 2.0 * out["voice"] + 0.5 * out.get("family", 0.0)
                     + 2.0 * out.get("cents", 0.0) + SPREAD * out.get("spread", 0.0)
-                    + 0.5 * out.get("pitchfamily", 0.0) + 0.5 * out.get("pitchwave", 0.0) + 2.0 * out.get("pitchvoice", 0.0))
+                    + PLAYS * (0.5 * out.get("pitchfamily", 0.0) + 0.5 * out.get("pitchwave", 0.0) + 2.0 * out.get("pitchvoice", 0.0)))
     return out
 
 

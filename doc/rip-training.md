@@ -382,6 +382,18 @@ glide's pitch target walks the cells it crosses.
   those where the label's cents differ from the frame before or after. No pitch
   track holds a note still, so a recorded note's are every frame of a note whose
   track spans half a cell, 50 cents (`GLIDE_SPAN`), and none of a note under that.
+- `pitchfamily[p]`, `pitchwave[p]`, `pitchvoice[p]`: what plays the cell, the notes
+  model's alone: the family, the wave and the voice of the event that sounds in it,
+  asked where one event alone sounds in the cell, in each cell a note that moves
+  sounds in. A cell two events sound in asks nothing: its sound is both, and either's
+  name would be taught on the other's sound (4.0% of the sounding cells over 200 loops
+  of `aug gen glide`, a twentieth of them two notes of one voice). The family is one
+  of the eight names. An engine voice the corpus labelled `unknown` is `synth`. A
+  recorded note of no family or of none labelled asks no family, so `unknown` is never
+  taught: it is the absence of a name. A recorded note asks no wave and no voice. The
+  family held out (`--family-holdout`) asks no family here and in the frame's
+  `family`, its notes' sound, wave and voice asked as any. A voice is a row of one
+  table of the corpus's voices (`train.GENES`) and a cell's target that row's index.
 
 Frames 0 to 7 of loop 000, from its kick and hat at 0, its G3 (55) and its C3 (48):
 
@@ -397,11 +409,14 @@ strike   (frame 0, pitch 27, vel 0.662), (frame 0, pitch 20, vel 0.485), each on
 release  (frame 40, pitch 27), (frame 27, pitch 20)
 wave     1 on every frame: saw, from the highest note, G3
 family   8 on every frame: unknown, from the highest note, G3
+pitchfamily, pitchwave   6 and 1 at pitches 27 and 20 while each sounds alone: synth, as
+         an engine voice labelled unknown is, on a saw; nothing at pitch 27 from frame 27
+         to 40, where the G3 struck again sounds over the first
 cents    pitch 27 +0.496 and pitch 28 -0.504, pitch 20 +0.496 and pitch 21 -0.504: the tuning
 ```
 
 A shuffled window (§6) asks a cell its cents where one of its two clips alone sounds
-within a semitone of it.
+within a semitone of it, and what plays it where one of them alone sounds in it.
 
 A window running past a loop's end is padded with zero frames, which a `valid` mask
 leaves out of every loss.
@@ -531,12 +546,16 @@ offset    size  head       read as
 A file may lack the last 4 heads and still load: one without `family` hears no family.
 
 `--pitchnet` builds another model on the same heads but `family`, the frame model's to hear:
-convolutions only, the same weights at every pitch, 169,928 weights in all, 66 of them the
-cents head's. Its file is `ripnotes.bin` (§9). `--dilations 3,9,27` adds a residual 3x3 over
-the cells for each, its frames that far apart: each note head then hears half a second
-either way instead of 80 ms, 197,672 weights, about 1.5 times the compute. Its per-pitch
-heads are a table, `CELL_HEADS` in `ripmodel.py`, a row a head with the values it reads at a
-pitch; the cents head reads two, the offset in semitones and the log of the error it states.
+convolutions only, the same weights at every pitch, 171,413 weights in all, 66 of them the
+cents head's and 1,485 those of what plays each pitch. Its file is `ripnotes.bin` (§9).
+`--dilations 3,9,27` adds a residual 3x3 over the cells for each, its frames that far apart:
+each note head then hears half a second either way instead of 80 ms, 199,157 weights, about
+1.5 times the compute. Its per-pitch heads are a table, `CELL_HEADS` in `ripmodel.py`, a row
+a head with the values it reads at a pitch; the cents head reads two, the offset in semitones
+and the log of the error it states, and what plays the pitch is three heads: `pitchfamily`,
+a score for each of the eight names, `pitchwave`, one for each wave, and `pitchvoice`, the 32
+genes. They are heads of their own, read straight off the cell's 32 channels as every other
+head is.
 
 ```
 input          B x T x 460              the two planes
@@ -546,8 +565,9 @@ wide           B x 16 x T x 213         3x39, thirteen semitones, GELU
 cells          B x 32 x T x 71          7x3, stride 3 over features, one cell a semitone, GELU
 near           B x 32 x T x 71          7x3 with a residual, GELU
 long           B x 32 x T x 71          3x3 dilated in time, one each of --dilations, with a residual, GELU
-notes          B x 6 x T x 69           1x1: pitch, strike, release, velocity, and the cents head's two
-frame          B x T x 39               wide pooled to 16 regions plus the scalars, a 1D conv of 5
+notes          B x 51 x T x 69          1x1: pitch, strike, release, velocity, the cents head's two,
+                                        and the 8, 5 and 32 of what plays the pitch
+frame          B x T x 42               wide pooled to 16 regions plus the scalars, a 1D conv of 5
                                         and one of 9 dilated by 2, linear: the other heads
 ```
 
@@ -565,11 +585,14 @@ wave:     cross-entropy, on frames with a known voice
 voice:    squared error, on frames with a known voice
 family:   cross-entropy, on frames with a known family, the frame model's alone
 cents:    absolute error in semitones, where asked, the notes model's alone
+pitchfamily, pitchwave: cross-entropy over the eight names and over the waves, at the
+          cells asked, the notes model's alone
+pitchvoice: squared error over the genes, at the cells asked
 spread:   miss / e + log e where asked, e the error the head states and miss the
           offset's absolute error held fixed: a Laplace's scale fitted to it
 
 total    = onset + drums + pitch + 0.5 voicing + strike + release + 2 velocity + 0.5 wave + 2 voice
-           + 0.5 family + 2 cents + 0.2 spread
+           + 0.5 family + 2 cents + 0.2 spread + 0.5 pitchfamily + 0.5 pitchwave + 2 pitchvoice
 decoders = onset + drums + pitch + 0.5 voicing + strike + release
 ```
 
@@ -590,6 +613,24 @@ and a frame its track left `null`. A recording whose list names its pitch track 
 prints the first three rows as an engine loop does. 63% within is a head that states
 its misses' mean; a share well under it on the gliding readings is a head too sure
 of itself where the decoder leans on it.
+
+A notes model's lines then say what plays each note, read as audio reads it (§10): a
+note's family, wave and genes are its cells' say over the frames it sounds, each frame
+weighed by the pitch head's salience there, over the cells among the frame's
+`VOICE_CELLS` (12) most salient, which are the cells audio keeps. The line gives the
+share of the notes with a family asked whose highest share is theirs, by family, then
+that share over the notes another note sounds over, the share of the engine's notes
+whose wave is right, and the genes' miss, an RMS over the 32.
+
+`--family-holdout <family>` tells no head that family's name: its notes stay in the run,
+their sound, wave and voice taught, and neither the cells' head nor the frame's is asked
+their family. The line then gives what those notes reach: the highest share any name
+takes over each, at the `SURE` quantile (0.95) of them and at the median, and how many
+of the other families' notes pass that reach and how many of those are named right. That
+reach is the measure of where a name stops being sure: a note names a family in audio
+only past it. The run writes it into its weight file (§9), and `--sure <share>` gives it
+to a run of the same recipe that holds nothing out, as the model to ship has every
+family's name; a file of neither names no note.
 
 The last 400 loops are held out and scored every 1,000 steps, and the step with the best
 `decoders` score is what gets written, unless `--validate` names a corpus of recordings
@@ -677,11 +718,15 @@ checks its shape against its tensors.
 `--pitchnet` writes version 5, whose `kind` word after the version, 1, makes the model
 transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
 scalars, then the long convolutions' spacings, then the heads, the per-pitch ones first: pitch,
-strike, release, velocity and cents, then onset, drums, voicing, wave and voice. `cents` is
-138 numbers a frame, the 69 offsets then the 69 log errors, `cellout`'s fifth and sixth
-channels. The layout and the version are as they were: a file without the head lists four
-per-pitch heads and loads as before, its rip with no glides, and one with it loads in an
-audio before v0.21.0 too, which reads the heads it knows by name. The tensors are
+strike, release, velocity, cents, pitchfamily, pitchwave and pitchvoice, then onset, drums,
+voicing, wave, voice and sure. `cents` is 138 numbers a frame, the 69 offsets then the 69 log
+errors, `cellout`'s fifth and sixth channels; `pitchfamily` 552, `pitchwave` 345 and
+`pitchvoice` 2,208, a value's 69 pitches together, `cellout`'s next 45. `sure` is the measure
+of §8, written as a frame head of one value whose row of `frameout.weight` is zero and whose
+bias is the measure, so every frame states it and the format holds no new field. The layout
+and the version are as they were: a file without a head lists fewer and loads as before, its
+rip with no glides or with no note's voice, and one with them loads in an audio before
+v0.23.0 too, which reads the heads it knows by name and computes the rest unread. The tensors are
 `reduce`, `wide`, `cells`, `near.0`, `long.{i}`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
 `nn.Conv1d` or `nn.Linear` holds it. In the stapes root the file is `ripnotes.bin`.
 Beside `ripmodel.bin` it gives pitch, voicing, strike, release, velocity and cents, and the
@@ -694,7 +739,9 @@ a.pt` turns a `.pt` of either model into its file.
 their harmonic stack, built in Go as §4 builds it, takes the sigmoid of
 each head and fills `RipFrames`, the same fields the analysis fills, and from a cents
 head `Cents`, a hundred times each offset, and `CentsError`, a hundred times e to each
-log error. Loop 000 through
+log error. What plays each pitch it keeps at each frame's twelve most salient pitches
+alone, as bytes: the softmax of the family's and of the wave's scores and the sigmoid of
+the genes (`RipFrames.VoiceAt`, `Voices`), and the measure once (`Sure`). Loop 000 through
 12a, with a sure strike on frame 0 where the labels say kick, hihat, G3 and C3:
 
 ```

@@ -149,12 +149,29 @@ front-end seam. What remains, in the design's order:
    - A corpus scoop rises over its note's whole length, since a step's bend
      ends with its note: a scoop that settles early, as a singer's does, needs
      audio's step to glide to a share of its length (audio's todo).
-   - The labels know where an engine voice sits and not a recorded note:
-     `sampled` lines and `from` recordings ask the head nothing, and
-     `--validate` on recordings prints only the error it states there. The
-     trainer already reads a `cents` list on a recorded note; `corpus ... from`
-     writing one from a pitch track of the recording (vocadito's f0 files, or
-     pYIN on a solo line) would train and score the head on real singing.
+   - A recorded note is placed where its list's `pitch` column names the
+     recording's pitch track
+     ([Rip training §3](rip-training.md#a-recordings-pitch-track)), and
+     `--validate` then prints its gliding, steady and beside rows; left:
+     - The runs: GuitarSet's and vocadito's tracks into their corpora, the
+       cents head read on that playing, then trained on it (`--mix`), and the
+       labels pass over corpus 17.
+     - A collection with no pitch annotation (MusicNet, a phone take) stays
+       unplaced. A track estimated from the audio (pYIN on a solo line) was
+       not taken: its errors would be taught as the label.
+     - `sampled` lines still ask the head nothing: where an NSynth note sits
+       in its cell after its shift is not in its label.
+     - A recorded note's readings are gliding when its track spans half a
+       cell over the note. Not taken: the engine's rule, a frame unlike its
+       neighbour, which a tracker's jitter meets at every frame (258 of 258
+       readings of a jittered track, against 172 gliding and 86 steady by the
+       span), so the steady row would be empty; and a frame moving faster
+       than a rate, which would leave a scoop's settled frames steady, where
+       the span calls the whole note gliding, but needs a rate and a
+       smoothing set by hand. The rate is next if settled frames fill the
+       gliding row on real singing.
+     - Two strings holding one pitch at one onset, a unison, give both of the
+       score's notes the first string's contour.
 6. The decoder's and the parting's constants tuned against truths: `tune`
    searches `RipParams` over rendered loops whose truth is the render's; with
    `truth` files (rhythms, corrected transcripts, MIDI) on real recordings,

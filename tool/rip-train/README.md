@@ -290,9 +290,12 @@ To write your own:
 - **Real recordings.** One with the MIDI file it was played from is a loop of
   its own: `corpus <dir> from <list.csv> [split <name>] [hours <h>] [codec]`
   reads a CSV with `audio_filename` and `midi_filename` columns (and `split`
-  and `duration`, as E-GMD's metadata has them, and `family`, the family a
+  and `duration`, as E-GMD's metadata has them, `family`, the family a
   recording's notes are played by: GuitarSet's guitar, a singer's voice,
-  MusicNet's by its instrument labels, empty for a mix of families), and
+  MusicNet's by its instrument labels, empty for a mix of families, and
+  `pitch`, the recording's pitch track where its collection has one, a CSV of
+  seconds and Hz as vocadito's or GuitarSet's JAMS file, which places its notes
+  for the cents head: [Rip training](../../doc/rip-training.md) §3), and
   `train.py --mix <dir>:<share>` draws that share of the windows from it,
   labelled by the MIDI's notes, velocities and hits, a tom's or a cymbal's an
   onset of no drum, every hit the drums', the voices unknown, and `--over
@@ -396,18 +399,25 @@ resuming one is refused.
 A notes model has a cents head: for each pitch, how far its sound sits from the
 cell's centre and the error it states for that, taught where a sound the labels
 place lies within a semitone of the cell: an engine voice's note, from the loop's
-`tuning` and a moving note's `cents`, or any note that lists its `cents`
+`tuning` and a moving note's `cents`, or a recorded note that lists its `cents`,
+which one does where its list's `pitch` column names the recording's pitch track
 ([Rip training](../../doc/rip-training.md) §3, §5 and §8). `corpus ...
 glide` is the word that makes notes move: bends into the next note, scoops and
 vibratos. A corpus without it still teaches the head each loop's tuning; its labels
-written before `cents` take a voice that sways, the vocal focus's, for a steady one,
-so export that corpus again, its labels removed first. The held-out line and
+written before `cents` take a voice that sways, the vocal focus's, or a MIDI file's
+bent note for a steady one, so write that corpus's labels again: its line, which
+`pipeline.sh` keeps in `$CORPUS/corpus.slab`, with `labels` after it, which renders
+nothing and takes seconds. The held-out line and
 `--validate`'s say what the head reads, in cents, all the placed readings first,
 then those of a cell a glide is in, of a cell a pitch holds in, and of the cell
-beside a sound; of a sounding cell the labels do not place, a recording's, only
-the error it states (`unplaced 31.0 stated`), so a validation corpus of recordings
-shows how sure the head is of real sound and not how right. A small model's
-after 2,500 steps on 360 loops of a `glide` corpus:
+beside a sound; of a sounding cell the labels do not place, only the error it
+states (`unplaced 31.0 stated`). A recording with no pitch track is unplaced
+throughout, and shows how sure the head is of real sound and not how right. One
+whose list names its track prints the three rows as an engine loop does, a frame
+its track does not voice left unplaced; since no track holds a note still, a
+recorded note's readings are gliding where its track spans half a cell, 50 cents,
+over the note, and steady under that. A small model's after 2,500 steps on 360
+loops of a `glide` corpus:
 
 ```
 cents 14.5 off, 21.4 stated, 63% within; gliding 22.5 off, 25.1 stated, 54% within; steady 11.9 off, 19.3 stated, 69% within; beside 16.0 off, 22.8 stated, 59% within

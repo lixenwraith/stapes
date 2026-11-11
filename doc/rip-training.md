@@ -17,8 +17,8 @@ Where each part stands:
   `make_noise.py`, `corpus ... midi`, `--pitchnet` and its `ripnotes.bin`, `--shuffle`, `--extra`,
   `--cell`, `--dip`, `--ring`, `--bend`, `--dilations`, `--sung`, each event's family (`families`,
   the list's `family` cell, each note's program, every part of a file), the family head and
-  `--family-holdout`, `--validate`, `tune ... truth`, a moving note's `cents`, `corpus ... glide`
-  and the notes model's cents head.
+  `--family-holdout`, `--validate`, `tune ... truth`, a moving note's `cents`, `corpus ... glide`,
+  the notes model's cents head, `corpus ... labels` and a `from` list's `pitch` column.
 - **In no repository yet:** the phone take's scripts, which play, align and cut a
   recording of a known file, and the wide test's harness (vif's `tmp/round32`: `cmpn.sh`,
   `table.py`, the timed scorer) with the validation corpus's build (`tmp/audit/valbuild.py`).
@@ -125,10 +125,11 @@ An event's fields:
   step's bend and its voice's vibrato as the engine played them (audio's
   `VoiceDef.NoteCents`). A note that holds its pitch carries none, so a corpus of
   the bank's voices and patterns, which neither bend nor sway, is byte for byte what it
-  was before the field. Where a recorded note sits is not known and no verb writes
-  one's, though the trainer takes a list on any note.
+  was before the field. A recorded note lists them where its list names the
+  recording's pitch track, `null` at a frame the track does not place (a recording's
+  pitch track, below); where any other recorded note sits is not known.
 
-The five kinds of event in use, each from a real file:
+The six kinds of event in use, each from a real file but the last, a test's:
 
 ```
 a drum hit          {"frame":0,"end":0,"drum":0,"midi":0,"vel":0.987,"wave":-1,"family":7}
@@ -136,13 +137,14 @@ a note on a voice   {"frame":0,"end":40,"drum":-1,"midi":55,"vel":0.662,"wave":1
 a recorded note     {"frame":0,"end":40,"drum":-1,"midi":55,"vel":0.662,"wave":-1}
 a strike, no line   {"frame":23,"end":23,"drum":-1,"midi":0,"vel":0.787,"wave":-1}
 a note that moves   {"frame":0,"end":9,"drum":-1,"midi":52,"vel":0.506,"wave":2,"family":8,"voice":[...],"cents":[-35.9,-3.4,29.1,61.7,94.2,126.7,159.2,191.7,224.2]}
+a tracked note      {"frame":0,"end":43,"drum":-1,"midi":65,"vel":0.803,"wave":-1,"family":6,"cents":[0,0,0,null,0,null,0,0,0,0,0,0.6,3.1,5.5,...]}
 ```
 
-The last is from `corpus <dir> 24 4 aug gen glide nowav`, loop 003, tuned 35.9 cents
-flat: a broken chord's 52 bending three semitones into the 55 that follows, over the
-whole of its 104 ms, a quarter tone over 54 by its last frame. `glide` draws from two
-streams of its own, so a loop's patterns, key, voices and tuning are those the same
-line draws without it:
+The note that moves is from `corpus <dir> 24 4 aug gen glide nowav`, loop 003, tuned
+35.9 cents flat: a broken chord's 52 bending three semitones into the 55 that follows,
+over the whole of its 104 ms, a quarter tone over 54 by its last frame. `glide` draws
+from two streams of its own, so a loop's patterns, key, voices and tuning are those
+the same line draws without it:
 
 - A fifth of the generated notes bend into the note that follows them at once, when
   that is a fifth away or nearer, over their last 60 to 250 ms.
@@ -151,16 +153,19 @@ line draws without it:
 - Three in ten of a loop's oscillator voices take a vibrato of 4.5 to 7 Hz, 10 to 80
   cents either way, coming in over up to 0.4 s; a voice that has its own keeps it.
 
-A recorded note is one of NSynth's, so its voice is unknown. The last is a tom or a
-crash from E-GMD: `drum` -1 with `midi` 0 means something struck that no drum head or
-pitch owns. Loop 000 holds 110 events in 34 KB: 12 kicks, 12 snares, 28 hats, 58 notes.
-Its notes are unknown's: `aug` drove its lead. The last two lines are corpus 12's and
-E-GMD's, written before `family`, as every corpus below was: a loop of them labels no
-family until it is exported again, its label removed first since `corpus` keeps a
-labelled loop. The same seeds render the same frames, byte for byte over 24 loops of
-`corpus <dir> 24 4 aug gen` compared, and of those loops' frames 40% are synth's, 29%
-unknown's, 17% guitar's, 8% piano's, 4% bass's, 0.1% the drums', a hit sounding alone,
-and 1% have no event sounding.
+A recorded note is one of NSynth's, so its voice is unknown. The strike of no line is
+a tom or a crash from E-GMD: `drum` -1 with `midi` 0 means something struck that no
+drum head or pitch owns. The tracked note is a rendered voice's, its cents written out
+as a pitch track with one frame unvoiced and one a semitone and a half off, and read
+back; no collection's track is exported yet. Loop 000 holds 110 events in 34 KB: 12
+kicks, 12 snares, 28 hats, 58 notes. Its notes are unknown's: `aug` drove its lead.
+The recorded note and the strike are corpus 12's and E-GMD's, written before `family`,
+as every corpus below was: a loop of them labels no family until its line is run with
+`labels`, which writes the labels again and renders nothing (below), since `corpus`
+keeps a labelled loop. The same seeds render the same frames, byte for byte over 24
+loops of `corpus <dir> 24 4 aug gen` compared, and of those loops' frames 40% are
+synth's, 29% unknown's, 17% guitar's, 8% piano's, 4% bass's, 0.1% the drums', a hit
+sounding alone, and 1% have no event sounding.
 
 `corpus.json` names the layout for the whole folder:
 
@@ -200,6 +205,64 @@ its onset flux showed 147 recordings of 30 hits or more sitting a steady distanc
 their audio, 5.2% of the frames, the same across all of a performance's kits and with
 no drift over time. Labels 46 to 116 ms off were moved by that lag, and the 15 further
 off went in the corpus's `skip.txt`, a list of loop names the trainer leaves out.
+
+### Labels without a render
+
+A corpus's line with `labels` after it writes every `loop_NNN.json` of the line, and
+`corpus.json`, over those on disk, and renders nothing: each is what the line's export
+writes, byte for byte, and no `.mel` or WAV is touched. A field the labels gain
+reaches a corpus that way without its hours of render.
+
+- A loop's events are drawn and never heard: its patterns, key, tempo, meter, voices
+  and tuning come from the line's seeded streams, the same with audio and without.
+- A label takes one thing from the render, its length: `frames`, and with it the cut
+  of the events that start past the end. The pass reads it from the loop's `.mel`
+  header (§2), which must agree with the file's size. A loop with no frames whole on
+  disk is left as it is and counted, and `corpus.json` is then not written.
+- A `sampled` line's labels also say which recorded notes were loud enough to play
+  and where each was let go. The pass reads those recordings again from the NSynth
+  folder, their level and length only: none is shifted or mixed.
+- `part k/n` labels every n-th loop from the k-th, as it renders them, and leaves
+  `corpus.json` to a run without it.
+- A `from` line writes each recording's label again from the list: its family, its
+  MIDI file and its pitch track. The recording is known by the `source` of the
+  label on disk and its WAV is not read, so it may be gone; a label that does not
+  read stops the run, its recording being unknown then.
+- Over `corpus <dir> 2000 4 aug gen nowav codec dense` the export took 11 min 36 s
+  and the pass under a second (0.6 and 0.8 s), on four cores, the 2,000 labels and
+  `corpus.json` equal byte for byte.
+
+### A recording's pitch track
+
+A `from` list's `pitch` column names a recording's pitch track, a path from the
+list's folder as its other files are. An empty cell names none, and that recording
+is labelled as without the column, byte for byte. A track is a collection's
+annotation, never an estimate of the audio. Two forms, told apart by the file, a
+JAMS file being the one that opens with a brace:
+
+- A CSV of seconds and Hz for one voice, 0 Hz where nothing is voiced, under a
+  header or none: vocadito's F0 files. Every note of the recording is that voice's.
+- A JAMS file with a `pitch_contour` annotation for each string beside its
+  `note_midi` annotation, the two paired by their `data_source`, or by their order
+  where none is given: GuitarSet's. A note takes the contour of the string whose
+  `note_midi` annotation holds a note within half a semitone of its pitch sounding
+  at its onset, a frame's slack before it, the nearest onset when two strings do.
+  A note no string holds lists nothing.
+
+A tracked note lists `cents` as an engine's moving note does, from `frame` to `end`,
+in cents from its cell centre to a tenth:
+
+- Frame k is read at k x 256 / 22,050 s, on the line in semitones between the
+  track's samples either side of it, or at the nearer one alone where the other is
+  unvoiced or missing.
+- A frame is `null` where the track does not voice it: its nearest sample is at 0
+  Hz, marked unvoiced, or further off than three quarters of the track's usual
+  step, which a missing sample is. It is `null` too where the track lies a semitone
+  or more from the note. A `null` frame asks the cents head nothing (§5).
+- A note the track places at no frame lists none, as a recorded note with no track.
+- The run says how many it placed: `6 of 8 note(s) placed by a pitch track`.
+
+A trainer from before the `null` stops on such a label or reads the frame as silent.
 
 ## 4. The input: two planes
 
@@ -310,8 +373,11 @@ glide's pitch target walks the cells it crosses.
   beside it on the side the sound leans to, so both cells at a boundary say where the
   sound is (cell k at +0.5 is cell k+1 at -0.5) and a cell lit by its neighbour's
   sound says so. A recorded note that lists none is unplaced, and its own cell is not
-  asked. `moving[p]` marks a glide's frames, where the label's cents differ from the
-  frame before or after, for the scores of §8.
+  asked; nor is a frame its pitch track left `null`, which sounds in the note's own
+  cell. `moving[p]` marks a glide's frames for the scores of §8. An engine note's are
+  those where the label's cents differ from the frame before or after. No pitch
+  track holds a note still, so a recorded note's are every frame of a note whose
+  track spans half a cell, 50 cents (`GLIDE_SPAN`), and none of a note under that.
 
 Frames 0 to 7 of loop 000, from its kick and hat at 0, its G3 (55) and its C3 (48):
 
@@ -515,9 +581,11 @@ median miss, the median error stated and the share of readings whose miss is wit
 the error stated for them, over every placed reading and then by kind (`CENTS_KINDS`):
 `gliding`, a cell its sound is on a glide in; `steady`, one it holds its pitch in;
 `beside`, the cell next to a sound; and `unplaced`, a sounding cell the label does not
-place, a recording's, where only the error stated can be told. 63% within is a head
-that states its misses' mean; a share well under it on the gliding readings is a head
-too sure of itself where the decoder leans on it.
+place, where only the error stated can be told: a recorded note with no pitch track,
+and a frame its track left `null`. A recording whose list names its pitch track (§3)
+prints the first three rows as an engine loop does. 63% within is a head that states
+its misses' mean; a share well under it on the gliding readings is a head too sure
+of itself where the decoder leans on it.
 
 The last 400 loops are held out and scored every 1,000 steps, and the step with the best
 `decoders` score is what gets written, unless `--validate` names a corpus of recordings

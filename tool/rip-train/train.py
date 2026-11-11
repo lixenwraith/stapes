@@ -54,6 +54,9 @@ class MelFile:
         return np.fromfile(self.path, dtype="<f4", count=n * self.bands, offset=8 + 4 * start * self.bands).reshape(n, self.bands)
 
 
+GLIDE_SPAN = 50.0  # the cents a recorded note's pitch track spans before its readings count as gliding: half a cell
+
+
 class Label:
     """A loop's events as arrays, its per-frame targets built a window at a time
     (window), so memory holds the events and not a row per frame: a corpus of
@@ -84,8 +87,11 @@ class Label:
         self.cents_at = np.array([at if len(c) else -1 for c, at in zip(lists, accumulate(map(len, lists), initial=0))], np.int64)
         self.cents = np.concatenate(lists) if lists else np.zeros(0, np.float32)
         self.moves = np.zeros(len(self.cents), bool)  # a glide's frames: where the cents differ from the frame before or after
-        for c, at in zip(lists, self.cents_at):
-            if len(c) > 1:
+        for i, (c, at) in enumerate(zip(lists, self.cents_at)):
+            heard = c[~np.isnan(c)]
+            if self.voice[i] < 0 and len(heard):  # a recording's: no track holds a note still, so every frame of one that spans GLIDE_SPAN
+                self.moves[at:at + len(c)] = heard.max() - heard.min() >= GLIDE_SPAN
+            elif len(c) > 1:
                 d = np.abs(np.diff(c)) > 0  # false beside a frame that is not placed
                 self.moves[at + 1:at + len(c)] |= d
                 self.moves[at:at + len(c) - 1] |= d

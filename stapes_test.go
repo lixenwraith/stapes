@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/lixenwraith/audio"
+	"github.com/lixenwraith/audio/bank"
 	"github.com/lixenwraith/audio/ripmodel"
 	"github.com/lixenwraith/terminal"
 	"github.com/lixenwraith/terminal/tui"
@@ -3258,5 +3259,99 @@ func TestADocumentSavedElsewhereCarriesItsMacrosAndComments(t *testing.T) {
 	}
 	if left, _ := os.ReadFile(file); string(left) != authoredSounds || s.sounds.src != other {
 		t.Errorf("the first file changed, or the document stayed at %s:\n%s", s.sounds.src, left)
+	}
+}
+
+// linesMoved counts each line a holds more often than b, and below zero each
+// it holds less often: what differs between two documents in whatever order
+// their entries stand.
+func linesMoved(a, b []byte) map[string]int {
+	moved := map[string]int{}
+	for _, l := range bytes.Split(a, []byte("\n")) {
+		moved[string(l)]++
+	}
+	for _, l := range bytes.Split(b, []byte("\n")) {
+		moved[string(l)]--
+	}
+	for l, n := range moved {
+		if n == 0 {
+			delete(moved, l)
+		}
+	}
+	return moved
+}
+
+// TestASeededPatternDocumentSavesAsTheBanksOwn: the patterns builtin seeds have
+// no file behind them, yet they save as the bank's own document: byte for byte
+// with nothing edited, in one line alone with one step moved, the file loading
+// to what the session holds. Once saved, that file is what a later save writes
+// over.
+func TestASeededPatternDocumentSavesAsTheBanksOwn(t *testing.T) {
+	own, err := bank.MusicTOML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	plain, file := filepath.Join(dir, "plain.toml"), filepath.Join(dir, "music.toml")
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("builtin pattern\nsave pattern %s\nbuiltin pattern\nset beat_driving.track.1.event.3.pos 7\nsave pattern %s\n", plain, file))
+	if got, _ := os.ReadFile(plain); !bytes.Equal(got, own) {
+		t.Errorf("seeded and saved with nothing edited: %d bytes, not the bank's %d as written", len(got), len(own))
+	}
+	saved, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	was, is := strings.Split(string(own), "\n"), strings.Split(string(saved), "\n")
+	differ := 0
+	for i := range min(len(was), len(is)) {
+		if was[i] != is[i] {
+			differ++
+		}
+	}
+	if len(is) != len(was) || differ != 1 {
+		t.Errorf("one step moved and saved: %d line(s) for the bank's %d, %d of them not the bank's", len(is), len(was), differ)
+	}
+	want, _ := audio.MarshalPatternFile(&audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
+	f, err := audio.LoadPatternFile(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := audio.MarshalPatternFile(f); !bytes.Equal(got, want) {
+		t.Errorf("the saved document loads to other definitions")
+	}
+	mine := []byte("# mine now\n")
+	writeFile(t, file, string(mine)+string(saved))
+	runOrFatal(t, s, &out, "save pattern\n")
+	if again, _ := os.ReadFile(file); !bytes.HasPrefix(again, mine) {
+		t.Errorf("a later save did not write over the file the first made:\n%.300s", again)
+	}
+}
+
+// TestTheBanksTextFollowsItsDocumentThroughUndo: a MIDI file read in place of
+// a seeded document has neither a file nor the bank behind it and saves as
+// audio.MarshalPatternFile writes; undo brings the seeded document back, and
+// the bank's text with it to save over.
+func TestTheBanksTextFollowsItsDocumentThroughUndo(t *testing.T) {
+	own, err := bank.MusicTOML()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	mid, read, back := filepath.Join(dir, "beat.mid"), filepath.Join(dir, "read.toml"), filepath.Join(dir, "back.toml")
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("builtin pattern\nwrite beat_driving %[1]s\nload %[1]s\nsave pattern %[2]s\n", mid, read))
+	want, _ := audio.MarshalPatternFile(&audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
+	if got, _ := os.ReadFile(read); !bytes.Equal(got, want) {
+		t.Fatalf("what replaced the seeded document saved over the bank's text:\n%.300s", got)
+	}
+	runOrFatal(t, s, &out, "undo\nsave pattern "+back+"\n")
+	got, _ := os.ReadFile(back)
+	if moved := linesMoved(own, got); len(got) == 0 || len(moved) != 0 {
+		t.Errorf("undo brought the patterns back without the bank's text: %d bytes for its %d, %d line(s) differ", len(got), len(own), len(moved))
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"time"
 
@@ -480,7 +481,9 @@ func (s *Session) patsModified() bool { return s.pats.modified || s.songs.modifi
 
 // seedBuiltinPatterns snapshots the registry, which Start filled from the shipped
 // bank plus the code-owned melody_gen. Def() allocates, so live mixer pointers are
-// untouched.
+// untouched. No file is behind the snapshot, so it is marked the bank's, whose
+// own document its save then writes over: byte for byte until an edit, which
+// is why it stands in the bank's order and not the registry's.
 func (s *Session) seedBuiltinPatterns() error {
 	var defs []*audio.PatternDef
 	for _, p := range audio.RegisteredPatterns() {
@@ -489,7 +492,20 @@ func (s *Session) seedBuiltinPatterns() error {
 		}
 		defs = append(defs, p.Def())
 	}
+	// The registry holds melody_gen first, by its fixed ID, where the bank writes
+	// it among its melodies; a pattern the bank does not name keeps its place
+	// after the bank's
+	if text, err := bank.MusicTOML(); err == nil {
+		if f, err := audio.LoadPatternFile(text); err == nil {
+			at := make(map[string]int, len(f.Pattern))
+			for i, p := range f.Pattern {
+				at[p.Name] = i - len(f.Pattern)
+			}
+			slices.SortStableFunc(defs, func(a, b *audio.PatternDef) int { return cmp.Compare(at[a.Name], at[b.Name]) })
+		}
+	}
 	s.pats.replaceAll(defs, "", false)
+	s.pats.bank = true
 	fmt.Fprintf(s.out, "%d registered pattern(s) seeded\n", len(defs))
 	return nil
 }
@@ -505,11 +521,16 @@ func saveFile(named, src, target string) (string, error) {
 	return file, os.MkdirAll(filepath.Dir(file), 0o755)
 }
 
-// authored is the file a document came from, read when its save runs, so the
-// macros and comments kept are the ones on disk and no bytes ride through
-// undo; nil, which saves as marshalled, with none to read
-func authored(src string) []byte {
-	data, err := os.ReadFile(src)
+// authored is the text a document came from, read when its save runs, so the
+// macros and comments kept are the ones there and no bytes ride through undo:
+// its file as it stands on disk, or the bank's own document for one seeded from
+// the bank that no file holds yet; nil, which saves as marshalled, with none
+func authored[T any](d *doc[T]) []byte {
+	if d.src == "" && d.bank {
+		data, _ := bank.MusicTOML()
+		return data
+	}
+	data, err := os.ReadFile(d.src)
 	if err != nil {
 		return nil
 	}
@@ -524,7 +545,7 @@ func (s *Session) saveSounds(named string) error {
 	// Name-shadow model: the root re-emits every sound and voice in the document.
 	// Includes still load first and are overridden per name, so reloading
 	// reproduces this document exactly while the include set is preserved.
-	data, err := audio.SaveSoundsFile(authored(s.sounds.src), &audio.SoundSpecFile{Include: s.sounds.include, Sound: s.sounds.all(), Voice: s.voices.all()})
+	data, err := audio.SaveSoundsFile(authored(s.sounds), &audio.SoundSpecFile{Include: s.sounds.include, Sound: s.sounds.all(), Voice: s.voices.all()})
 	if err != nil {
 		return err
 	}
@@ -546,7 +567,7 @@ func (s *Session) savePatterns(named string) error {
 	if err != nil {
 		return err
 	}
-	data, err := audio.SavePatternFile(authored(s.pats.src), &audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
+	data, err := audio.SavePatternFile(authored(s.pats), &audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
 	if err != nil {
 		return err
 	}

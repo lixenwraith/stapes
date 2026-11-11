@@ -23,6 +23,9 @@ type doc[T any] struct {
 	dirty   map[string]bool
 	src     string   // provenance for bare `save`
 	include []string // sound documents only; patterns have no include form
+	// bank is provenance with no file, pattern documents only: seeded from the
+	// bank, whose own text a save writes over until src names a file
+	bank bool
 
 	word     string // the kind, as undo counts it
 	nameOf   func(T) string
@@ -205,7 +208,7 @@ func (d *doc[T]) replaceAll(vs []T, src string, dirty bool) {
 	d.order = d.order[:0]
 	clear(d.byName)
 	clear(d.dirty)
-	d.src = src
+	d.src, d.bank = src, false // seedBuiltinPatterns marks its own after
 	for _, v := range vs {
 		d.put(v, dirty) // per-entry put latches modified when dirty…
 	}
@@ -234,6 +237,7 @@ type docEdit[T any] struct {
 	order   []string
 	src     string
 	include []string
+	bank    bool
 	srcSet  bool   // the edit replaced the document, provenance and all
 	applied uint64 // d.applied when the edit ended
 	names   []string
@@ -247,7 +251,7 @@ type prior[T any] struct {
 
 func (d *doc[T]) begin() *docEdit[T] {
 	if d.edit == nil {
-		d.edit = &docEdit[T]{d: d, order: slices.Clone(d.order), src: d.src,
+		d.edit = &docEdit[T]{d: d, order: slices.Clone(d.order), src: d.src, bank: d.bank,
 			include: slices.Clone(d.include), old: map[string]prior[T]{}}
 	}
 	return d.edit
@@ -315,7 +319,7 @@ func (e *docEdit[T]) undo() restored {
 	}
 	d.order = e.order
 	if e.srcSet {
-		d.src, d.include = e.src, e.include
+		d.src, d.include, d.bank = e.src, e.include, e.bank
 	}
 	d.modified = true
 	return r

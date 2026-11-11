@@ -71,6 +71,17 @@ proves wrong or that a document now states, and link the document instead.
   library's save gives `Marshal`'s bytes, so a document stapes made is written
   out in full through any load and save, as before. The sound save passes the
   root's `include` too: left out, the author's line is deleted.
+- **Patterns seeded from the built-ins carry `doc.bank`**, provenance with no
+  file: `seedBuiltinPatterns` sets it after `replaceAll`, which clears it for
+  anything else, and an edit records and restores it beside `src`, so undoing
+  a load brings it back. `src` cannot say it: the TUI reads `src` as a path or
+  none (`saveModified`, `openFiles`, `promptSaveHere`), and a seeded
+  document's first `^S` must still ask where. While `src` is empty the save
+  writes over `bank.MusicTOML()`; once a save names a file, the file wins. The
+  seed parses the bank's document for its order, 9.6 ms once: the registry
+  holds the code-owned `melody_gen` first, by its fixed ID, where the bank
+  writes it 29th, and only in the bank's order is a seeded document saved
+  with no edit the bank's bytes.
 - A test of a document stapes made passes with no source at all, so each
   save's source is held by an authored document alone: the patterns' by
   `TestASavedDocumentIsStillItsAuthors`, the sounds' and their `include` by

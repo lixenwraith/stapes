@@ -306,15 +306,14 @@ then names that folder.
 - Priority: P3
 - Affected files: `session.go`, the library's `bank` and `sound_load.go`
 
-`save` writes a document over the file it came from, so that file's macros and
-comments stay ([Stapes §2](stapes.md#2-its-files)). What it does not keep:
+`save` writes a document over the file it came from, and patterns seeded by
+`builtin` over the bank's own document, so the macros and comments there stay
+([Stapes §2](stapes.md#2-its-files)). What it does not keep:
 
-- A document seeded by `builtin`, as the TUI seeds an empty one at its start,
-  has no file behind it, so its save writes every note out: the bank's music,
-  62 KB in 3274 lines, as 172 KB in 15348. The smallest close for the music:
-  `audio/bank` exports the bytes of its `music.toml` and a seeded document's
-  save takes them as its source; the bank's sounds are three files, which one
-  source does not span.
+- A sound document seeded by `builtin`, as the TUI seeds an empty one at its
+  start, has no file behind it, so its save writes every sound out and no
+  comment: 17 KB in 1321 lines for the 19 KB in 964 of the bank's three files,
+  which one source does not span.
 - A sound document's root gains every entry its includes hold, written out
   among its own, since the root shadows them by name (`saveSounds`). The
   smallest close: the save leaves out an entry its includes load the same.

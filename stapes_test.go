@@ -1543,6 +1543,77 @@ validate all
 	}
 }
 
+// TestLiveKeepsTheRipRipMakes: live feeds a recording to a stream in blocks and
+// says each bar as it freezes, some before the recording ends; the rip it keeps
+// under its name is the one rip makes of the recording, through the analysis and
+// through a model alike, and the stream is measured against it
+func TestLiveKeepsTheRipRipMakes(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	loops, err := s.corpus(tuneOptions{loops: 1, bars: 8, seed: 1, tempos: []int{140}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	wav := filepath.Join(dir, "loop.wav")
+	writeWAV(t, wav, loops[0].audio)
+	cfg := ripmodel.Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+	m, err := transformer.NewRandom(cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fe, err := ripmodel.New(m, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ear := range []struct {
+		name string
+		fe   *ripmodel.FrontEnd
+	}{{"analysis", nil}, {"model", fe}} {
+		s.frontEnd = ear.fe
+		out.Reset()
+		a, b := ear.name+"_rip", ear.name+"_live"
+		runOrFatal(t, s, &out, fmt.Sprintf(`
+! live %[2]s %[4]s                    # no such recording
+! live %[1]s %[4]s block 0
+! live %[1]s %[4]s pace block
+rip %[1]s %[3]s
+! live %[1]s %[3]s                    # the names are taken
+live %[1]s %[4]s block 200
+`, wav, filepath.Join(dir, "missing.wav"), a, b))
+		said := out.String()
+		if got, want := s.rips[b], s.rips[a]; got == nil || !reflect.DeepEqual(got.rip, want.rip) || got.x == nil {
+			t.Fatalf("%s: live kept another rip than rip made, or no recording with it:\n%s", ear.name, said)
+		}
+		// bars freeze while the recording plays, each behind its end, before the rip is said
+		froze := regexp.MustCompile(`(?m)^bar (\d+) from \S+ froze at (\S+)s, (\S+)s behind its end: `).FindAllStringSubmatch(said, -1)
+		if len(froze) != len(s.rips[b].rip.Bars) && ear.fe == nil {
+			t.Errorf("%s: %d bar(s) said to freeze of the stream's:\n%s", ear.name, len(froze), said)
+		}
+		early := 0
+		for i, f := range froze {
+			at, _ := strconv.ParseFloat(f[2], 64)
+			behind, _ := strconv.ParseFloat(f[3], 64)
+			if f[1] != strconv.Itoa(i+1) || behind < 0 {
+				t.Errorf("%s: bar %s said %dth, %.2fs behind its end", ear.name, f[1], i+1, behind)
+			}
+			if at < float64(len(loops[0].audio))/audio.AudioSampleRate-1 {
+				early++
+			}
+		}
+		if ear.fe == nil && early == 0 || strings.Index(said, "bar 1 from") > strings.LastIndex(said, "ripped ") {
+			t.Errorf("%s: %d bar(s) froze before the recording's last second, or after the rip was said:\n%s", ear.name, early, said)
+		}
+		for _, row := range []string{"live " + wav + ": the stream, fed blocks of 200 ms, against", "\nnotes  the stream has ", "\nbars   the stream's bar ", "\nread   the stream ", "\nfroze  the first ", "\ncpu    the stream took the process "} {
+			if !strings.Contains(said, row) {
+				t.Errorf("%s: no %q in the measure:\n%s", ear.name, row, said)
+			}
+		}
+	}
+}
+
 // TestRipPinsTheMeter: rip ... meter <n/d> reads a recording in bars of that
 // meter, which its patterns, its ripped line and the transport then carry; more
 // bars than a pattern of the meter holds, and a pin on a score, are refused

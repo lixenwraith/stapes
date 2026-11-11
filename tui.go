@@ -234,7 +234,7 @@ func (a *tuiApp) exec(line string) error {
 // longVerbs take seconds or minutes: a search, a render, a rip, a script. They
 // run on a goroutine of their own behind a working box, so the screen stays
 // alive and a key other than quit waits for them.
-var longVerbs = map[string]bool{"rip": true, "fit": true, "compress": true, "refine": true, "tune": true,
+var longVerbs = map[string]bool{"rip": true, "live": true, "fit": true, "compress": true, "refine": true, "tune": true,
 	"bench": true, "corpus": true, "render": true, "song": true, "run": true}
 
 // execQ runs without echoing the command — the keys would otherwise flood

@@ -3,7 +3,6 @@ package stapes
 import (
 	"cmp"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -23,12 +22,7 @@ func cmdPlay(s *Session, a []string) error {
 		vol = v
 	}
 	if strings.EqualFold(filepath.Ext(a[0]), ".wav") { // a recording, played as it is
-		f, err := os.Open(s.path(a[0]))
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		x, rate, err := audio.ReadWAV(f)
+		x, rate, err := s.readWAV(a[0])
 		if err != nil {
 			return err
 		}

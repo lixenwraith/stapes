@@ -1639,10 +1639,12 @@ live %[1]s %[4]s block 200
 	}
 }
 
-// TestRipPinsTheMeter: rip ... meter <n/d> reads a recording in bars of that
-// meter, which its patterns, its ripped line and the transport then carry; more
-// bars than a pattern of the meter holds, and a pin on a score, are refused
-func TestRipPinsTheMeter(t *testing.T) {
+// TestRipPinsTheMeterItsSongRipsBackIn: rip ... meter <n/d> reads a recording
+// in bars of that meter, which its patterns, its ripped line and the transport
+// then carry; more bars than a pattern of the meter holds, and a pin on a score,
+// are refused. The song compress makes of it is heard back on its own grid in
+// its meter, every bar line the rip's, where in 4/4 it shares one in three.
+func TestRipPinsTheMeterItsSongRipsBackIn(t *testing.T) {
 	dir := t.TempDir()
 	wav := filepath.Join(dir, "loop.wav")
 	writeWAV(t, wav, thumpLoop())
@@ -1659,18 +1661,7 @@ func TestRipPinsTheMeter(t *testing.T) {
 			t.Errorf("%s: %d steps of %q, want whole bars of 3/4", name, d.Steps, d.Meter)
 		}
 	}
-}
-
-// TestASongRipsBackInItsMeter: the song compress makes of a rip in 3/4 is heard
-// back on its own grid in its meter, every bar line shared with the rip's,
-// where heard back in 4/4 it shares one line in three
-func TestASongRipsBackInItsMeter(t *testing.T) {
-	wav := filepath.Join(t.TempDir(), "loop.wav")
-	writeWAV(t, wav, thumpLoop())
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, fmt.Sprintf("rip %s waltz 5 meter 3/4\ncompress waltz 20\n", wav))
+	runOrFatal(t, s, &out, "compress waltz 20\n")
 	d, ok := s.songs.get("waltz")
 	if !ok {
 		t.Fatalf("no song from compress:\n%s", out.String())

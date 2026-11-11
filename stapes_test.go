@@ -2453,6 +2453,23 @@ save pattern %s
 			}
 		}
 	}
+	// the bass filed with the melody, on the recording's clock: every note is
+	// heard by pitch and onset, where the lines miss the bass
+	moved, part := filepath.Join(dir, "moved.mid"), slices.Clone(rp.rip.Notes)
+	for i := range part {
+		part[i].Bass = false
+	}
+	var smf bytes.Buffer
+	if err := audio.WriteMIDI(&smf, part, nil, s.bpm, audio.Meter{}); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(moved, smf.Bytes(), 0o644)
+	out.Reset()
+	runOrFatal(t, s, &out, fmt.Sprintf("truth loop %s timed\n! truth loop %s soon\n", moved, moved))
+	every := fmt.Sprintf("given on the recording's own clock: no map fitted, no transposition tried\nnotes  %d heard as given, given %d, loop %d, F1 1.000: by pitch and onset", n, n, n)
+	if !strings.Contains(out.String(), every) || !strings.Contains(out.String(), "bass only loop:") {
+		t.Errorf("a truth filed on other lines, want %q over lines that miss the bass:\n%s", every, out.String())
+	}
 	// one line of the song on its own: the instruments named after the file
 	runOrFatal(t, s, &out, fmt.Sprintf("! song loop %s nothing\nsong loop %s kick\n", song, song))
 	if fi, err := os.Stat(song); err != nil || fi.Size() < 1000 {

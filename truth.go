@@ -25,21 +25,25 @@ func cmdAgree(s *Session, a []string) error {
 	if !ok {
 		return fmt.Errorf("%q: nothing ripped under that name this session (rip first)", a[1])
 	}
-	ag := audio.MatchNotes(ra.rip.Notes, rb.rip.Notes)
+	ag := audio.MatchNotes(ra.rip.Notes, rb.rip.Notes, false)
 	fmt.Fprintf(s.out, "%s against %s, %s transposed %+d: %s's seconds = %.3f × %s's %+.2f\n", a[0], a[1], a[1], ag.Shift, a[0], ag.Stretch, a[1], ag.Offset)
 	reportAgreement(s.out, ag, a[0], a[1], "heard by both")
 	return nil
 }
 
 // cmdTruth scores a rip's transcript against one given as text in the notes
-// verb's own form, corrected by hand or written out, or as a MIDI file, whose
-// drum channel scores the drums: how many of the notes and hits given the rip
-// heard, and how many it heard that were not given; a MIDI file's bars and a
-// JAMS file's beats, a truth of beats alone, score the rip's bar lines
+// verb's own form, or as a MIDI file, whose drum channel scores the drums:
+// the notes given it heard by pitch and onset, then line by line, and the hits;
+// a MIDI file's bars and a JAMS file's beats, a truth of beats alone, score its
+// bar lines. Timed, the truth's seconds are the recording's: no map is fitted.
 func cmdTruth(s *Session, a []string) error {
 	rp, ok := s.rips[a[0]]
 	if !ok {
 		return fmt.Errorf("%q: nothing ripped under that name this session (rip first)", a[0])
+	}
+	timed := len(a) > 2
+	if timed && a[2] != "timed" {
+		return fmt.Errorf("%q: want timed, for a truth whose seconds are the recording's, or nothing", a[2])
 	}
 	data, err := os.ReadFile(s.path(a[1]))
 	if err != nil {
@@ -70,8 +74,17 @@ func cmdTruth(s *Session, a []string) error {
 	// none as its hits did
 	var at func(float64) float64
 	if len(truth) > 0 {
-		ag := audio.MatchNotes(rp.rip.Notes, truth)
-		fmt.Fprintf(s.out, "%s against %d note(s) given, transposed %+d: the rip's seconds = %.3f × the given %+.2f\n", a[0], len(truth), ag.Shift, ag.Stretch, ag.Offset)
+		ag := audio.MatchNotes(rp.rip.Notes, truth, timed)
+		if timed {
+			fmt.Fprintf(s.out, "%s against %d note(s) given on the recording's own clock: no map fitted, no transposition tried\n", a[0], len(truth))
+		} else {
+			fmt.Fprintf(s.out, "%s against %d note(s) given, transposed %+d: the rip's seconds = %.3f × the given %+.2f\n", a[0], len(truth), ag.Shift, ag.Stretch, ag.Offset)
+		}
+		c, by := everyNote(ag), "by pitch and onset"
+		if ag.All.Rhythm {
+			by = "by onset, a rhythm giving no pitch"
+		}
+		fmt.Fprintf(s.out, "notes  %d heard as given, given %d, %s %d, F1 %.3f: %s, whatever line holds a note\n", c.hits, c.given, a[0], c.heard, c.f1(), by)
 		reportAgreement(s.out, ag, a[0], "given", "heard as given")
 		if slices.ContainsFunc(truth, func(n audio.RipNote) bool { return n.Further }) {
 			c := agreed(ag)

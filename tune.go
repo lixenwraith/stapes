@@ -1851,11 +1851,18 @@ type noteCount struct{ hits, given, heard int }
 
 // countNotes matches a rip's notes to a truth's as truth does, every note once
 func countNotes(heard, given []audio.RipNote) noteCount {
-	return agreed(audio.MatchNotes(heard, given))
+	return agreed(audio.MatchNotes(heard, given, false))
 }
 
-// agreed counts an agreement's notes, every note once: the melody register's
-// hits as one line or as its two lines apart, whichever is more, and the bass's
+// everyNote counts an agreement's notes by pitch and onset, whatever line holds
+// each: the count a search or a round is picked by
+func everyNote(ag audio.Agreement) noteCount {
+	return noteCount{ag.All.Matched, ag.All.B, ag.All.A}
+}
+
+// agreed counts an agreement's notes within their lines, every note once: the
+// melody register's hits as one line or as its two lines apart, whichever is
+// more, and the bass's
 func agreed(ag audio.Agreement) noteCount {
 	reg, bass := ag.Register, ag.Lines[2]
 	return noteCount{max(reg.Matched, ag.Lines[0].Matched+ag.Lines[1].Matched) + bass.Matched, reg.B + bass.B, reg.A + bass.A}

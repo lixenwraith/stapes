@@ -3942,63 +3942,47 @@ func TestLoadTellsAFileByWhatItIs(t *testing.T) {
 	}
 }
 
-// TestASoundDocumentMadeHereSavesAsMarshalled: the drums compress matched and
-// the voices rip fitted save byte for byte as audio.MarshalSoundsFile writes
-// them, to a new file and bare over it once loaded and changed, and load back
-// as they were saved.
-func TestASoundDocumentMadeHereSavesAsMarshalled(t *testing.T) {
+// TestDocumentsMadeHereSaveAsMarshalled: the drums compress matched and the
+// voices rip fitted, then the patterns and the song they leave, a step holding
+// a bend, save byte for byte as audio.MarshalSoundsFile and MarshalPatternFile
+// write them, to a new file and bare over it once loaded and changed, and load
+// back as they were saved.
+func TestDocumentsMadeHereSaveAsMarshalled(t *testing.T) {
 	dir := t.TempDir()
-	wav, file := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "sounds.toml")
+	wav, sounds, music := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "sounds.toml"), filepath.Join(dir, "music.toml")
 	writeWAV(t, wav, thumpLoop())
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	marshalled := func(when string) {
+	marshalled := func(file, when string) {
 		t.Helper()
 		want, err := audio.MarshalSoundsFile(&audio.SoundSpecFile{Include: s.sounds.include, Sound: s.sounds.all(), Voice: s.voices.all()})
+		if file == music {
+			want, err = audio.MarshalPatternFile(&audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
+		}
 		if got, rerr := os.ReadFile(file); err != nil || rerr != nil || !bytes.Equal(got, want) {
-			t.Fatalf("%s, the file is not the session as marshalled (%v, %v):\n%s", when, err, rerr, got)
+			t.Fatalf("%s, %s is not the session as marshalled (%v, %v):\n%s", when, filepath.Base(file), err, rerr, got)
 		}
 	}
-	runOrFatal(t, s, &out, fmt.Sprintf("rip %s loop\ncompress loop\nsave sound %s\n", wav, file))
+	runOrFatal(t, s, &out, fmt.Sprintf("rip %s loop\ncompress loop\nsave sound %s\n", wav, sounds))
 	if len(s.sounds.order) == 0 || len(s.voices.order) == 0 {
 		t.Fatalf("%d matched drum(s) and %d fitted voice(s) to save, want some of each:\n%s", len(s.sounds.order), len(s.voices.order), out.String())
 	}
-	marshalled("made here")
-	runOrFatal(t, s, &out, "load sound "+file+"\n")
-	marshalled("loaded back")
+	marshalled(sounds, "made here")
+	runOrFatal(t, s, &out, "load sound "+sounds+"\n")
+	marshalled(sounds, "loaded back")
 	runOrFatal(t, s, &out, "set "+s.voices.order[0]+".desc kept\nsave sound\n")
-	marshalled("changed and saved bare")
-}
-
-// TestAPatternDocumentMadeHereSavesAsMarshalled: the same for the patterns and
-// the song a rip and compress leave, a step of them holding a bend, as
-// audio.MarshalPatternFile writes them.
-func TestAPatternDocumentMadeHereSavesAsMarshalled(t *testing.T) {
-	dir := t.TempDir()
-	wav, file := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "music.toml")
-	writeWAV(t, wav, thumpLoop())
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	marshalled := func(when string) {
-		t.Helper()
-		want, err := audio.MarshalPatternFile(&audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
-		if got, rerr := os.ReadFile(file); err != nil || rerr != nil || !bytes.Equal(got, want) {
-			t.Fatalf("%s, the file is not the session as marshalled (%v, %v):\n%s", when, err, rerr, got)
-		}
-	}
-	runOrFatal(t, s, &out, fmt.Sprintf("rip %s loop\ncompress loop\n", wav))
+	marshalled(sounds, "changed and saved bare")
 	note := "loop_bass_1.track.0.event.0" // the first note heard, on either line
 	if s.pats.has("loop_melody_1") {
 		note = "loop_melody_1.track.0.event.0"
 	}
-	runOrFatal(t, s, &out, fmt.Sprintf("set %[1]s.bend 2\nset %[1]s.bend_at 0.5\nsave pattern %[2]s\n", note, file))
-	marshalled("made here")
-	runOrFatal(t, s, &out, "load pattern "+file+"\n")
-	marshalled("loaded back")
+	runOrFatal(t, s, &out, fmt.Sprintf("set %[1]s.bend 2\nset %[1]s.bend_at 0.5\nsave pattern %[2]s\n", note, music))
+	marshalled(music, "made here")
+	runOrFatal(t, s, &out, "load pattern "+music+"\n")
+	marshalled(music, "loaded back")
 	runOrFatal(t, s, &out, "set "+note+".vel 0.25\nsave pattern\n")
-	marshalled("changed and saved bare")
+	marshalled(music, "changed and saved bare")
 }
 
 // authoredMusic and authoredSounds stand in for documents a person wrote: a

@@ -41,7 +41,7 @@ jobs:
       # A share that fails leaves the others to report theirs
       fail-fast: false
       matrix:
-        share: [ 1, 2, 3, 4, 5, 6 ]
+        share: [ 1, 2, 3, 4, 5, 6, 7 ]
 
     steps:
     - name: Checkout code
@@ -53,10 +53,10 @@ jobs:
         go-version-file: go.mod
 
     - name: Run a share of the tests with race detector
-      # The suite renders and hears music, half an hour of it under the detector
-      # on one runner. Every job lists the tests and deals them alike, heaviest
-      # first to the lightest share, and runs its own; a test weighs what
-      # .github/race-seconds.txt gives it, or a second.
+      # The suite renders and hears music, over twenty minutes of it under the
+      # detector on one runner. Every job lists the tests and deals them alike,
+      # heaviest first to the lightest share, and runs its own; a test weighs
+      # what .github/race-seconds.txt gives it, or a second.
       shell: bash
       run: |
         tests=$(go test -race -list . ./... | grep -E '^(Test|Example|Fuzz)' |

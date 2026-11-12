@@ -121,7 +121,7 @@ uninstall:
 	done; \
 	[ ! -d '$(STAPES_ROOT)' ] || echo "keep    $(STAPES_ROOT) (settings, rip parameters and model)"
 
-# The suite renders and hears music: twenty minutes under the race detector on
+# The suite renders and hears music: sixteen minutes under the race detector on
 # four cores, which CI splits over parallel jobs.
 test: check-go
 	$(GO) test -race -timeout 60m ./...

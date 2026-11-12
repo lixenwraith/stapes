@@ -703,7 +703,7 @@ def losses(model: ripmodels.FrameModel, mel: torch.Tensor, t: dict) -> dict:
         logits = y[..., cfg.slice("family")].reshape(-1, len(ripmodels.FAMILIES))
         ce = F.cross_entropy(logits, t["family"].reshape(-1).clamp(min=0), reduction="none").reshape(asked.shape)
         out["family"] = (ce * asked).sum() / asked.sum().clamp(min=1)
-    if "beat" in dict(cfg.outputs):  # a beat weighs as a frame without one: audio sums the two heads' log-odds, a posterior's
+    if "beat" in dict(cfg.outputs):  # a beat weighs as a frame without one: audio reads each head's level as a posterior
         out["beat"] = bce("beat", t["beat"], 1.0, t["metered"] * valid)
         out["downbeat"] = bce("downbeat", t["downbeat"], 1.0, t["metered"] * valid)
     if "cents" in dict(cfg.outputs):  # the notes model's alone

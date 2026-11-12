@@ -250,10 +250,13 @@ list's `beats` column, the mask, the loss with no weight, each head's F1 on the
 lines ([Rip training §3, §5 and §8](rip-training.md#the-two-heads-on-a-small-run),
 [rip-train](../tool/rip-train/README.md#the-beat-and-the-bar-line)). One small
 run on rendered loops holds it together and no more: its heads read the bars of
-56 of 160 held-out loops right through v0.24.0, and of 85 through the decoders
-audio's branch `claude/audio-fixes` mended to read them by rank, as audio has
-since v0.24.1 (not read again on a tag), where the same weights' cues read 124.
-What is left is the reading on trained weights:
+56 of 160 held-out loops right through v0.24.0, and of 85 by rank, as audio read
+them from v0.24.1 to v0.25.0 (on its branch before the tag), where the same
+weights' cues read 124. On GuitarSet's 120 clips no round met, 40a's heads read
+24 right by rank and 39 through a plain tracker, where the same weights' cues
+read 32 and 12a's 37; since v0.25.2 audio reads the heads by level as that
+tracker does, the downbeat head beside the cues. What is left is the reading on
+trained weights:
 
 - **A round with the heads**, from the installed frame model through `--init`,
   on `meters` corpora and on recordings whose lists name their beats
@@ -269,9 +272,9 @@ What is left is the reading on trained weights:
   more bars right than its cues.
 - **What the small run says a round must change.** It was read twice: through
   audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
-  and through the decoders mended on audio's branch `claude/audio-fixes`,
-  which read the heads by rank, as audio has since v0.24.1, and leave a clip
-  they give no reading of to the cues. Mended, the heads' own grid stands on
+  and by rank, through the decoders of v0.24.1 to v0.25.0 on audio's branch
+  before the tag, which leave a clip they give no reading of to the cues;
+  v0.25.2's are not read on it. By rank, the heads' own grid stands on
   139 of the 160 loops and is right on 74, where the cues are right on 113 of
   those; the other 21 are the cues' rips, 11 right. In the order of what is
   left:
@@ -282,20 +285,21 @@ What is left is the reading on trained weights:
     drums 0.40, 0.48 and 0.47. Of the 65 loops still wrong on the heads' own
     grid, 44 count another note as the beat: 9 of 6/8's 14 with drums, 16 of
     4/4's 23 without. No decoder reads a level the head does not state:
-    mended, 14 loops of 4/4 are read as bars of four eighths, where v0.24.0
+    by rank, 14 loops of 4/4 are read as bars of four eighths, where v0.24.0
     read 2 so. The meter is to be heard before the beat is, and a model's
     reach is 2.97 s either side, a bar or two.
   - 4/4's line against its third beat, less than it first read. The
     generated beats kick on both; on the loops' own beats the line tops its
     bar's beats in 76 bars of a hundred with drums and three in 21, and the
-    line elsewhere is 7 loops of 71 mended, where it was 21 of 78. By rank
+    line elsewhere is 7 loops of 71 by rank, where it was 21 of 78. By rank
     on the right beats the downbeat head has the line in most bars of 123 of
     the 160 loops, 33 of the 53 without drums; the cues read 124 and 28
     right. So the downbeat head is near the cues once it has the beats.
   - A quiet downbeat head is no longer a round's to mend: it said 0.28 on a
-    drumless line, v0.24.0 took the longest bar offered for it, and by rank
-    it is read where it is right. What the drumless loops still want is the
-    first point, and recordings with their beats.
+    drumless line, v0.24.0 took the longest bar offered for it, by rank it
+    is read where it is right, and v0.25.2 weighs its sum at a place against
+    its own mean beat, which no scale moves. What the drumless loops still
+    want is the first point, and recordings with their beats.
 - Left open by what landed, each with the option not taken:
   - The two losses count once each in the total, beside ten heads' losses
     that sum to ten times theirs or more, and a bar line's mark is under 2

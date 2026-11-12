@@ -391,8 +391,8 @@ cross-entropy with no weight, in the score that picks the step
 
 A frame model has a beat and a downbeat head: whether a beat of the meter, its own
 note, and a bar line fall within a frame. Where a weight file has both, audio reads
-the tempo, the beats, the meter and the bar lines from them and none of the cues'
-rules decides ([audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording));
+them by their level as a plain tracker does, the tempo and the beats from the beat
+head and the bar lines from the downbeat head beside the cues' rules ([audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording));
 [Rip training](../../doc/rip-training.md) §3, §5 and §8 follow the labels, the
 targets and the loss.
 
@@ -405,8 +405,8 @@ targets and the loss.
   a corpus already exported. It is asked from its first listed beat to its last. A
   recording that names none is asked nothing, nor is a shuffled window or one
   `--over` lays drums under.
-- **The loss carries no positive weight**: audio reads the heads by rank, which
-  neither a weight nor a head's level moves.
+- **The loss carries no positive weight**: audio reads each head's level as a
+  posterior, which a weight on the marks would lift most where the head is unsure.
 - **A model from before the heads** starts a run through `--init`, which grows
   them, every other weight carried over; its own file still loads, its bars read
   by the cues. With `--probe` such a run trains the two heads' rows of the output
@@ -431,8 +431,8 @@ Its exported step reads `beats' F1 0.763, bar lines' 0.631` on the 160 loops hel
 out, 0.877 and 0.728 on those with drums and 0.535 and 0.359 on those without.
 Ripped through the file on audio v0.24.0, 56 of the 160 have their bars right with
 the heads, 124 with the same weights' heads left out and 109 through the analysis: a
-head this weak cost the bars, since v0.24.0 took its word alone; since v0.24.1 audio
-reads the heads by rank and leaves a clip they give no reading of to the cues ([Rip
+head this weak cost the bars, since v0.24.0 took its word alone; since v0.25.2 audio
+reads the heads beside the cues and leaves a clip they give no reading of to them ([Rip
 training §8](../../doc/rip-training.md#the-two-heads-on-a-small-run) has the table
 by meter and what the heads say under it). So read a round's bars with the heads
 and without before its file is installed. The heads are left out of a rip by a

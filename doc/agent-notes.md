@@ -657,10 +657,11 @@ proves wrong or that a document now states, and link the document instead.
   meters` read `beats' F1 0.763, bar lines' 0.631` held out, and through its
   file on audio v0.24.0, which took the heads' word alone, the bars of 56 of
   the 160 held-out loops were right with the heads, 124 with the same weights'
-  heads left out and 109 through the analysis. Since v0.24.1 the heads are
-  read by rank and a clip they give no reading of is the cues' (85 right on
-  audio's branch before the tag). Read a round's bars both ways before its
-  file is installed.
+  heads left out and 109 through the analysis; by rank, as v0.24.1 to v0.25.0
+  read them, 85. Ranks then cost 40a GuitarSet's bars (24 of 120 against a
+  plain tracker's 39), and since v0.25.2 audio reads the heads by level as that
+  tracker does, the downbeat head beside the cues. Read a round's bars both
+  ways before its file is installed.
 - The lines' F1 does not say which beats a head misses. Print what each head
   says within a frame of the loops' own beats by their place in the bar
   (`train.Label.beats`, the frame model over a whole loop): the downbeat head said

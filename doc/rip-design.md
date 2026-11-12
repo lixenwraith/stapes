@@ -82,10 +82,13 @@ flowchart TD
      pulses scored on the cues (the kick, the snare on the backbeats, the key's
      root in the bass, the chroma's change), the meter a choice among readings
      of the pulses, a pickup bar where sound leads into the first. Where the
-     frames carry the beat and the downbeat head, the beats are tracked on the
-     beat head and a line falls every bar's beats from the phase the downbeat
-     head marks highest in the most bars, every decision by the heads' ranks,
-     never their level, and a clip they give no reading of is the cues'. The
+     frames carry the beat and the downbeat head, they are read by their level
+     as a plain tracker reads them: the tempo is how the beat head repeats,
+     under the same prior, and the beats are tracked on it; a line falls every
+     bar's beats from the place where the downbeat head, summed over the whole
+     clip, stands highest over its mean beat, weighed beside the cues, which
+     decide where its margin is small. The meter and the pickup stay the
+     decoders' own, and a clip the heads give no reading of is the cues'. The
      key and each bar's chord come from the chroma, the hits from each drum's
      onsets, a drum the frame model is never sure of silent.
    - **The notes.** Where the front end hears each pitch struck, both
@@ -363,7 +366,7 @@ What is trained and what is only written, on 12 November 2026:
 
 - The frame model 12a and the notes model 32a are installed, and rounds at
   their own length are the next step for both.
-- No weights have the beat and downbeat heads.
+- The beat and downbeat heads are on 40a, a frame model not installed.
 - The heads of what plays each pitch were trained in round 38
   ([rounds](rip-rounds.md#rounds)), first as a probe on the notes model's held
   body (38a, 38b) and then with the body free (38c to 38e), and name only bass
@@ -469,14 +472,15 @@ What is trained and what is only written, on 12 November 2026:
      120 GuitarSet clips no round met, and of 58 with the truth's beats given: a
      guitar alone has no kick, no snare and no bass. Landed: a beat and a
      downbeat head on the frame model, read as §2 says (audio v0.24.0, by their
-     ranks since v0.24.1), and their trainer: a rendered loop's targets from its
-     own grid, a recording's from its list's `beats` column, a loss with no
-     weight on a beat, and each head's F1 on the lines ([Rip training §5 and
-     §8](rip-training.md#the-two-heads-on-a-small-run)). A small model on
-     rendered loops hears the beat where a drum marks it and the line less:
-     through v0.24.0 its heads read the bars of 56 of 160 held-out loops right
-     and the same weights' cues 124. No round is trained, and no file is
-     installed on its heads' word before they read more bars right than its cues
+     ranks from v0.24.1, by their level beside the cues since v0.25.2), and
+     their trainer: a rendered loop's targets from its own grid, a recording's
+     from its list's `beats` column, a loss with no weight on a beat, and each
+     head's F1 on the lines ([Rip training §5 and
+     §8](rip-training.md#the-two-heads-on-a-small-run)). 40a's heads read the
+     bars of 24 of the 120 through the ranks and 39 through a plain tracker,
+     where the same weights' cues read 32: the ranks lost what the heads hold,
+     and v0.25.2 reads them as that tracker does. No file is installed on its
+     heads' word before they read more bars right than its cues
      ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)).
    Then, each waiting on recordings, on a thread above or on a design agreed:
    - **The voice of every note.** Heard per pitch cell on the notes model, not

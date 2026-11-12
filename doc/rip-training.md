@@ -683,12 +683,13 @@ decoders = onset + drums + pitch + 0.5 voicing + strike + release + beat + downb
 ```
 
 The beat and the downbeat are the onset head's kind of loss with one difference: no
-weight. Audio reads the two by rank, never by level: a beat by how often the head is
-higher where a reading claims one than where it leaves one, a bar line by how many of
-a reading's bars it tops (audio §9), so neither a weight nor a head's level moves a
-decode. A frame of a mark and a frame outside one weigh the same, and a head that
-knows nothing says the share of frames a mark covers, 7% for the beat at 120 bpm and
-under 2% for a bar line of 4/4.
+weight. Audio reads the two by their level, as posteriors: the tempo from how the beat
+head repeats and the beats tracked on it, a bar line where the downbeat head summed by
+place stands highest over its mean beat, beside the cues (audio §9), so a weight on
+the marks, which lifts a head most where it is unsure, would move a decode. A frame
+of a mark and a frame outside one weigh the same, and a head that knows nothing says
+the share of frames a mark covers, 7% for the beat at 120 bpm and under 2% for a bar
+line of 4/4.
 
 The stated error learns from the offset's miss and never the other way: the miss
 enters `spread` with its gradient stopped, so stating an error moves no offset. At
@@ -781,8 +782,9 @@ all             160   0.763   0.631     56   124     109        95   135     133
 
 The heads are learned where a drum marks them, and v0.24.0's decoders, which took the
 heads' word alone, read fewer bars right through this model than the cues do through
-the same weights; since v0.24.1 audio reads the heads by rank and leaves a clip they
-give no reading of to the cues, and these loops are not read through it here
+the same weights. Audio read the heads by rank from v0.24.1, and since v0.25.2 by their
+level beside the cues, as a plain tracker does, a clip they give no reading of left to
+the cues; these loops are read through neither here
 ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)). What stands under
 it is what the heads say within a frame of the loops' own beats, a mean over the
 held-out loops with each one's first and last bar left out:
@@ -947,8 +949,8 @@ log error. What plays each pitch it keeps at each frame's twelve most salient pi
 alone, as bytes: the softmax of the family's and of the wave's scores and the sigmoid of
 the genes (`RipFrames.VoiceAt`, `Voices`), and the measure once (`Sure`). A frame model's
 beat and downbeat heads fill `RipFrames.Beat` and `Downbeat`, and where the frames carry
-both, the tempo, the beats, the meter and the bar lines are read from them and none of
-the cues' rules decides ([audio
+both, the tempo and the beats are read from the beat head and the bar lines from the
+downbeat head beside the cues' rules ([audio
 §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). Loop 000 through
 12a, with a sure strike on frame 0 where the labels say kick, hihat, G3 and C3:
 

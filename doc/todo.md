@@ -530,13 +530,17 @@ reset that keeps them.
 - Affected files: `stapes_test.go`, `.github/workflows/test.yml`,
   `.github/race-seconds.txt`
 
-The suite takes half an hour under the race detector on CI's runner, which the
-workflow splits over six jobs of five minutes of tests each
+The suite takes sixteen minutes under the race detector on four cores, up to
+twenty-five on a CI runner, which the workflow splits over seven jobs, each
+about as long as the heaviest test
 ([agent notes](agent-notes.md#the-race-suite-and-ci)). What is left:
 
-- Tests that repeat a rip, a corpus or a search another test makes are to be
-  collapsed and their iterations cut. The weights are then measured again and
-  the jobs counted again, since a job is no shorter than the heaviest test.
+- The three heaviest tests are 37% of it and set the shortest a job can be:
+  the fitted and refined song 129 s, the judge 120 s, `live` 97 s. Each runs
+  what its rule takes at the least. The refinement's every judge renders and
+  hears the whole song; the judge test's time is the rip's accounting
+  (`RipFrames.account`, 72% of it plain), which only audio shortens; `live`
+  hears twelve seconds through two ears, each a stream and two rips.
 - Two splits were weighed and not taken, since each takes tests from the
   detector. Racing the light tests alone and running every test plain: the 27
   tests that render or hear audio for half a second skip under `-short`, and

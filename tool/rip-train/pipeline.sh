@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The rip model's training pipeline: corpus, train, bench and install, or all four
+# The frame model's training pipeline: corpus, train, bench and install, or all four
 # in order; shard and merge run a training round over several workers. Run from
 # the stapes checkout; every knob is an environment variable, and the README is the
 # guide.
@@ -120,9 +120,9 @@ install() {
 	echo "== installed $OUT as $ROOT/ripframe.bin; stapes' rip hears with it, remove the file to hear with the analysis"
 	if [ -n "$NOTES" ]; then
 		cp "$NOTES" "$ROOT/ripnotes.bin"
-		echo "== installed $NOTES as $ROOT/ripnotes.bin; it gives the notes, remove the file to take them from the model"
+		echo "== installed $NOTES as $ROOT/ripnotes.bin; it gives the notes, remove the file to take them from the frame model"
 	elif [ -f "$ROOT/ripnotes.bin" ]; then
-		echo "== $ROOT/ripnotes.bin still gives the notes; remove it to take them from the model"
+		echo "== $ROOT/ripnotes.bin still gives the notes; remove it to take them from the frame model"
 	fi
 }
 

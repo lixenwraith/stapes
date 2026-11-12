@@ -40,6 +40,7 @@ type tuneOptions struct {
 	seed                           uint64
 	aug, gen                       bool
 	glide                          bool           // a share of the generated notes bend into the next or scoop, and of the voices sway
+	bare                           bool           // gen leaves the free slot empty: its accompaniment is the texture of a song
 	meters                         bool           // a third of the loops in 3/4 or 6/8, every part generated in it
 	nowav                          bool           // an export keeps the frames and the labels only
 	codec                          bool           // an export sends a third of its loops through a lossy codec and back
@@ -206,7 +207,7 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 				slot int
 				make func(*rand.Rand, int, audio.Meter) *audio.Pattern
 			}{{0, genBeat}, {1, genMelody}, {2, genAccompaniment}, {3, genBass}} {
-				if grng.Float64() >= 0.6 && (!other || g.slot == 2) {
+				if grng.Float64() >= 0.6 && (!other || g.slot == 2) || o.bare && g.slot == 2 {
 					continue
 				}
 				p := g.make(grng, degrees, meter)
@@ -976,6 +977,8 @@ func cmdCorpus(s *Session, a []string) error {
 			o.gen = true
 		case a[n-1] == "glide":
 			o.glide = true
+		case a[n-1] == "bare":
+			o.bare = true
 		case a[n-1] == "meters":
 			o.meters = true
 		case a[n-1] == "nowav":
@@ -1706,6 +1709,9 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	}
 	if o.glide {
 		how += ", a share of the generated notes bending into the next or scooping and of the voices swaying"
+	}
+	if o.bare {
+		how += ", the free slot bare"
 	}
 	if o.meters {
 		how += fmt.Sprintf(", %d in 3/4 or 6/8 with every part generated", metered)

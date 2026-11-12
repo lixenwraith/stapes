@@ -742,6 +742,7 @@ def shape(cfg) -> str:
 
 
 def main() -> None:
+    global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT, EVEN_GLIDES, PLAYS
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--corpus", required=True, help="directory stapes' corpus verb wrote")
     ap.add_argument("--mix", default="", help="another corpus and the share of windows drawn from it, dir:share, such as recordings with their MIDI files (corpus <dir> from <list>)")
@@ -766,6 +767,7 @@ def main() -> None:
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
     ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
+    ap.add_argument("--plays", type=float, default=PLAYS, help="the weight of the heads of what plays each pitch in the total, against what plays the frame: a quarter by default")
     ap.add_argument("--probe", action="store_true", help="a notes model's heads of what plays each pitch, or a frame model's beat and downbeat heads, trained alone from --init's weights, every other weight held as it was: a notes model carries no cents head, so its file rips as its start, and a frame model's other heads say what its start's did; the last step is exported")
     ap.add_argument("--even-glides", action="store_true", help="the cents head's gliding readings weigh as much as the rest in its loss wherever a batch holds both")
     ap.add_argument("--dip", type=float, default=0.0, help="the share of the channel's windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room hears")
@@ -784,8 +786,7 @@ def main() -> None:
     ap.add_argument("--validate", default="", help="a corpus of recordings (corpus <dir> from <list>) cut into fixed windows and scored every --every steps; the step that scores best on it is what --out gets, in place of the held-out loops' best: by the decoders' loss, a notes model by its strikes' F1 at the decoder's bars")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
-    global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT, EVEN_GLIDES
-    RING, STRIKE_POS, STRIKE_AGAIN, DIP, EVEN_GLIDES = args.ring, args.strike_weight, args.again_weight, args.dip, args.even_glides
+    RING, STRIKE_POS, STRIKE_AGAIN, DIP, EVEN_GLIDES, PLAYS = args.ring, args.strike_weight, args.again_weight, args.dip, args.even_glides, args.plays
     FAMILY_HOLDOUT = ripmodel.FAMILIES.index(args.family_holdout) if args.family_holdout else None
 
     torch.manual_seed(args.seed)

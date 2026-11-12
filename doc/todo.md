@@ -266,7 +266,10 @@ What is left is the reading on trained weights:
   same weights' heads left out, and what [audio's
   todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#hear-the-beat-and-the-bar-line-on-trained-weights)
   leaves to them. A file is installed with its heads only where they read
-  more bars right than its cues.
+  more bars right than its cues. The installed model is from before the family
+  head too, which the file lists before the two: the round grows it unasked
+  (`--family-unasked`), and the frame model's next round teaches it, a family
+  asked only of a note an instrument played.
 - **What the small run says a round must change.** It was read twice: through
   audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
   and through the decoders mended on audio's branch `claude/audio-fixes`,

@@ -414,7 +414,10 @@ targets and the loss.
   model's probe holds it ([below](#parity)), so the file's other heads say what
   the start's did and its rip with the two left out is the start's, and the last
   step is exported. A fine-tune without it moves the heads the decoders already
-  read.
+  read. A model from before the family head too grows it with them, since the
+  file lists it before the two, and `--family-unasked` asks it nothing: no term
+  in the loss and its rows of the output layer zero from the first step to the
+  last, so every frame's shares are even and the file says nothing there.
 - **The lines** give `beats' F1` and `bar lines'`, or `no beat or bar line asked`.
 
 The path at a size four cores train in 42 minutes, which shows that it holds

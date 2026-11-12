@@ -465,9 +465,9 @@ wave     1 on every frame: saw, from the highest note, G3
 family   8 on every frame: unknown, from the highest note, G3
 beat     1 1 0 0 0 0 0 0     a quarter at 96 bpm is 53.83 frames: 0, 54, 108, 161, ...
 downbeat 1 1 0 0 0 0 0 0     a bar is 215.31: 0, 215, 431, 646; the end's line, 861, is not asked
-pitchfamily, pitchwave   6 and 1 at pitches 27 and 20 while each sounds alone: synth, as
-         an engine voice labelled unknown is, on a saw; nothing at pitch 27 from frame 27
-         to 40, where the G3 struck again sounds over the first
+pitchfamily, pitchwave   none and 1 at pitches 27 and 20 while each sounds alone: the engine
+         rendered them, so no family, on a saw; nothing at pitch 27 from frame 27 to 40,
+         where the G3 struck again sounds over the first
 cents    pitch 27 +0.496 and pitch 28 -0.504, pitch 20 +0.496 and pitch 21 -0.504: the tuning
 ```
 

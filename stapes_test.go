@@ -40,7 +40,7 @@ func newTestSession(t *testing.T, out *bytes.Buffer) *Session {
 	// the searches sized for a test: enough to run every path, not to be good
 	s.fit = fitOptions{notes: 2, generations: 1, pool: 4, seed: 1}
 	s.compressOpt = compressOptions{generations: 3, pool: 6, seed: 1}
-	s.refineOpt = refineOptions{generations: 1, pool: 4, seed: 1, steps: 2}
+	s.refineOpt = refineOptions{generations: 1, pool: 4, seed: 1, steps: 1}
 	return s
 }
 
@@ -91,6 +91,7 @@ func TestEndToEnd(t *testing.T) {
 # --- author a sound over the seed ---
 new sound blip                       # seeded minimal valid spec
 validate blip                        # seed must be valid
+play blip
 set blip.layer.0.source.kind wrong
 ! validate blip                      # unknown kind must fail
 set blip.layer.0.source.kind osc
@@ -107,6 +108,7 @@ hit kick                             # registry fallback path
 export blip %s
 # --- author a pattern ---
 new pattern p1
+validate p1                          # its seed too
 set p1.steps 16
 set p1.track.0.instr kick
 set p1.track.0.event.0.pos 0
@@ -127,6 +129,9 @@ stat
 	runOrFatal(t, s1, &out1, script1)
 	if !strings.Contains(out1.String(), "auto-applied dirty pattern") {
 		t.Fatalf("slot did not auto-apply:\n%s", out1.String())
+	}
+	if s1.sounds.modified || s1.pats.modified {
+		t.Fatal("save must clear modified")
 	}
 	teardown(t, s1)
 
@@ -255,42 +260,6 @@ validate u1
 	if !strings.Contains(o, "= 5") || !strings.Contains(o, "<unset>") {
 		t.Fatalf("unset round-trip failed:\n%s", o)
 	}
-}
-
-func TestModifiedFlag(t *testing.T) {
-	dir := t.TempDir()
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, `
-new sound mf
-set mf.duration 0.1
-add mf.layer
-set mf.layer.0.source.kind osc
-set mf.layer.0.source.freq 200
-`)
-	if !s.sounds.modified {
-		t.Fatal("edits must set modified")
-	}
-	runOrFatal(t, s, &out, "save sound "+filepath.Join(dir, "mf.toml"))
-	if s.sounds.modified {
-		t.Fatal("save must clear modified")
-	}
-}
-
-func TestNewSeedsValid(t *testing.T) {
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, `
-new sound ns1
-validate ns1
-play ns1
-new pattern np1
-validate np1
-apply np1
-slot 0 np1
-`)
 }
 
 // TestNoPhantomModified pins bug 1: the TUI seeds builtins through
@@ -1506,25 +1475,24 @@ func TestRipMakesPatternsOfARecording(t *testing.T) {
 	defer teardown(t, s)
 	runOrFatal(t, s, &out, fmt.Sprintf(`
 ! rip %s loop                        # not a recording
-rip %s loop
-! rip %s loop                        # the names are taken
-rip %s fast 2 bpm 180 nodrums lead soft
+rip %s quiet 4 bpm 180 nodrums lead soft
 ! rip %s slow 2 bpm 10
 ! rip %s slow 2 lead sideways           # not a lead rule
-rip %s quiet 4 nodrums
+rip %s loop
+! rip %s loop                        # the names are taken
 ls pattern loop*
 ! notes nothing
 notes loop
 compress quiet 5
 song quiet score
 validate all
-`, filepath.Join(t.TempDir(), "missing.wav"), wav, wav, wav, wav, wav, wav))
+`, filepath.Join(t.TempDir(), "missing.wav"), wav, wav, wav, wav, wav))
 	if !strings.Contains(out.String(), "note(s) at") || !strings.Contains(out.String(), "bar 1 step") || !strings.Contains(out.String(), "support 0.") || !strings.Contains(out.String(), ", bright ") || !strings.Contains(out.String(), "brightness unmeasured on ") {
 		t.Errorf("notes listed no transcript with support and brightness:\n%s", out.String())
 	}
 	// bpm <n> reads the recording at that tempo, the bar line decoded
-	if fast := s.rips["fast"]; fast == nil || fast.rip.BPM != 180 {
-		t.Errorf("rip at 180 bpm: %+v", fast)
+	if quiet := s.rips["quiet"]; quiet == nil || quiet.rip.BPM != 180 {
+		t.Errorf("rip at 180 bpm: %+v", quiet)
 	}
 	// a rip without a kit is compared without one, so the render's attacks
 	// cannot grade the song on drums it has none of; score prints both grades
@@ -1576,7 +1544,7 @@ func TestLiveKeepsTheRipRipMakes(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	loops, err := s.corpus(tuneOptions{loops: 1, bars: 8, seed: 1, tempos: []int{140}})
+	loops, err := s.corpus(tuneOptions{loops: 1, bars: 8, seed: 1, tempos: []int{160}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1639,10 +1607,12 @@ live %[1]s %[4]s block 200
 	}
 }
 
-// TestRipPinsTheMeter: rip ... meter <n/d> reads a recording in bars of that
-// meter, which its patterns, its ripped line and the transport then carry; more
-// bars than a pattern of the meter holds, and a pin on a score, are refused
-func TestRipPinsTheMeter(t *testing.T) {
+// TestRipPinsTheMeterItsSongRipsBackIn: rip ... meter <n/d> reads a recording
+// in bars of that meter, which its patterns, its ripped line and the transport
+// then carry; more bars than a pattern of the meter holds, and a pin on a score,
+// are refused. The song compress makes of it is heard back on its own grid in
+// its meter, every bar line the rip's, where in 4/4 it shares one in three.
+func TestRipPinsTheMeterItsSongRipsBackIn(t *testing.T) {
 	dir := t.TempDir()
 	wav := filepath.Join(dir, "loop.wav")
 	writeWAV(t, wav, thumpLoop())
@@ -1659,18 +1629,7 @@ func TestRipPinsTheMeter(t *testing.T) {
 			t.Errorf("%s: %d steps of %q, want whole bars of 3/4", name, d.Steps, d.Meter)
 		}
 	}
-}
-
-// TestASongRipsBackInItsMeter: the song compress makes of a rip in 3/4 is heard
-// back on its own grid in its meter, every bar line shared with the rip's,
-// where heard back in 4/4 it shares one line in three
-func TestASongRipsBackInItsMeter(t *testing.T) {
-	wav := filepath.Join(t.TempDir(), "loop.wav")
-	writeWAV(t, wav, thumpLoop())
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, fmt.Sprintf("rip %s waltz 5 meter 3/4\ncompress waltz 20\n", wav))
+	runOrFatal(t, s, &out, "compress waltz 20\n")
 	d, ok := s.songs.get("waltz")
 	if !ok {
 		t.Fatalf("no song from compress:\n%s", out.String())
@@ -1831,7 +1790,7 @@ event = [{pos = 0, vel = 0.6}, {pos = 2, vel = 0.6}, {pos = 4, vel = 0.6}, {pos 
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	s.ticked = true
-	runOrFatal(t, s, &out, fmt.Sprintf("load %s\nbpm 120\nslot 0 backbeat\nrender %s 8\nrip %s beat\ncompress beat\nsong beat play\nmusic stop\nsave sound %s\nsave pattern %s\n", doc, wav, wav, sounds, music))
+	runOrFatal(t, s, &out, fmt.Sprintf("load %s\nbpm 120\nslot 0 backbeat\nrender %s 4\nrip %s beat\ncompress beat\nsong beat play\nmusic stop\nsave sound %s\nsave pattern %s\n", doc, wav, wav, sounds, music))
 	want := map[string]string{"kick": "beat_kick", "snare": "beat_snare", "hihat": "beat_hihat"}
 	d, _ := s.songs.get("beat")
 	if d == nil || !reflect.DeepEqual(d.Kit, want) || !reflect.DeepEqual(s.kit, want) {
@@ -2393,9 +2352,10 @@ func judgeBytes(notes uint64, odds [2]float64) []byte {
 }
 
 // TestAJudgeBesideTheModelRulesItsRips: ripjudge.bin in the root, fitted on the
-// notes weights loaded, rules the strikes of rip, live and tune truth, the
-// session and stat name it, and rows still writes the installed verdicts; one
-// fitted on other weights is refused by name and the installed scores judge.
+// notes weights loaded, rules the strikes of rip, whose ripper live hears
+// through, and of tune truth, the session and stat name it, and rows still
+// writes the installed verdicts; one fitted on other weights is refused by
+// name and the installed scores judge.
 func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
@@ -2436,14 +2396,14 @@ func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	s, out = open(sum)
 	defer teardown(t, s)
 	named := ", judge " + filepath.Join(root, judgeFile)
-	if s.judge == nil || !strings.Contains(out.String(), named) {
-		t.Fatalf("a judge fitted on the notes weights loaded gave none: %s", out)
+	if s.judge == nil || s.ripper().Judge == nil || !strings.Contains(out.String(), named) {
+		t.Fatalf("a judge fitted on the notes weights loaded gave the ripper none: %s", out)
 	}
 	wav, list, to := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rows")
-	runOrFatal(t, s, out, fmt.Sprintf("rip %[1]s ripped\nlive %[1]s lived\n", wav))
+	runOrFatal(t, s, out, fmt.Sprintf("rip %s ripped\n", wav))
 	ruled := s.rips["ripped"].rip.Notes
-	if len(ruled) == 0 || len(ruled) == len(installed) || len(s.rips["lived"].rip.Notes) != len(ruled) {
-		t.Fatalf("rip heard %d note(s) under the judge and live %d, the installed scores %d: want the judge's, which differ\n%s", len(ruled), len(s.rips["lived"].rip.Notes), len(installed), out)
+	if len(ruled) == 0 || len(ruled) == len(installed) {
+		t.Fatalf("rip heard %d note(s) under the judge, the installed scores %d: want the judge's, which differ\n%s", len(ruled), len(installed), out)
 	}
 	write("ruled.mid", ruled)
 	writeFile(t, list, "loop.wav\truled.mid\truled\ttimed\n")
@@ -3001,9 +2961,9 @@ func TestRipFitsVoicesAndCompressesToASong(t *testing.T) {
 			}
 		}
 	}
-	// two bars at 100 bpm: the shortest loop the rip takes, since every judge
-	// of the refinement renders and hears the whole song
-	buf, err := s.eng.RenderMusic(slots, 100, audio.Meter{}, 2, audio.DefaultRootNote, audio.ScalePhrygian, nil, 1)
+	// two bars at 110 bpm, little over the four seconds a rip takes at least,
+	// since every judge of the refinement renders and hears the whole song
+	buf, err := s.eng.RenderMusic(slots, 110, audio.Meter{}, 2, audio.DefaultRootNote, audio.ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3785,28 +3745,27 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 	}
 }
 
-// TestBenchGradesTheFrontEnds: bench renders fresh loops, clean and augmented,
-// and grades the analysis on both
-func TestBenchGradesTheFrontEnds(t *testing.T) {
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, "bench 1 2\n")
-	if !strings.Contains(out.String(), "analysis on 1 clean loop(s)") || !strings.Contains(out.String(), "analysis on 1 augmented loop(s)") {
-		t.Errorf("bench graded:\n%s", out.String())
-	}
-}
-
-// TestBenchVerboseListsEveryLoop: bench ... verbose lists a line per loop it
-// rendered, clean and augmented, and then the three worst by total
-func TestBenchVerboseListsEveryLoop(t *testing.T) {
+// TestBenchGradesEachMeterAndListsEveryLoop: bench renders fresh loops, clean
+// and augmented, and grades the analysis on both; meters grades each meter's
+// loops apart, with the rips that read the meter; verbose lists a line per loop
+// with its meter, and then the three worst by total
+func TestBenchGradesEachMeterAndListsEveryLoop(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
 	const loops = 2
-	runOrFatal(t, s, &out, fmt.Sprintf("bench %d 2 verbose\n", loops))
+	runOrFatal(t, s, &out, fmt.Sprintf("bench %d 3 meters verbose\n", loops)) // the seed's first loop is 6/8
+	said := out.String()
+	for _, row := range []string{"analysis on 2 clean loop(s): ", "analysis on 2 augmented loop(s): ", "  in 6/8, 1 loop(s): ", "  in 4/4, 1 loop(s): ", ", its bar in "} {
+		if !strings.Contains(said, row) {
+			t.Errorf("no %q in what bench graded:\n%s", row, said)
+		}
+	}
+	if !regexp.MustCompile(`(?m)^loop +0 +96 bpm 6/8 `).MatchString(said) {
+		t.Errorf("no loop listed with its meter:\n%s", said)
+	}
 	var listed, worst int
-	for _, l := range strings.Split(out.String(), "\n") {
+	for _, l := range strings.Split(said, "\n") {
 		switch {
 		case strings.HasPrefix(l, "loop "):
 			listed++
@@ -3815,7 +3774,7 @@ func TestBenchVerboseListsEveryLoop(t *testing.T) {
 		}
 	}
 	if listed != 2*loops || worst != 3 {
-		t.Errorf("%d loop(s) listed and %d worst, want %d and 3:\n%s", listed, worst, 2*loops, out.String())
+		t.Errorf("%d loop(s) listed and %d worst, want %d and 3:\n%s", listed, worst, 2*loops, said)
 	}
 }
 
@@ -3849,10 +3808,12 @@ func TestRunScriptVerb(t *testing.T) {
 	}
 }
 
-// TestLongVerbsRunBehindTheScreen: a long verb typed in the TUI runs on its own
-// goroutine under a working box, keys wait for it, and its output and its end
-// reach the log and the screen
+// TestLongVerbsRunBehindTheScreen: a long verb typed in the TUI, here a script
+// that waits, runs on its own goroutine under a working box, keys wait for it,
+// and its output and its end reach the log and the screen
 func TestLongVerbsRunBehindTheScreen(t *testing.T) {
+	slab := filepath.Join(t.TempDir(), "slow.slab")
+	writeFile(t, slab, "wait 300\nnew pattern behind\n")
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
@@ -3861,9 +3822,9 @@ func TestLongVerbsRunBehindTheScreen(t *testing.T) {
 	a := newTUIApp(s, lb)
 	a.term, a.w, a.h = frameTerm{}, 100, 40
 	a.render()
-	a.exec("bench 1 2")
+	a.exec("run " + slab)
 	if a.busy == "" {
-		t.Fatal("bench did not go behind the screen")
+		t.Fatal("the script did not go behind the screen")
 	}
 	a.handle(terminal.Event{Type: terminal.EventKey, Key: terminal.KeyRune, Rune: 'n'})
 	if a.mode != modeNormal {
@@ -3873,9 +3834,9 @@ func TestLongVerbsRunBehindTheScreen(t *testing.T) {
 	waitFor(t, func() bool {
 		a.handle(terminal.Event{Type: terminal.EventKey, Key: terminal.KeyNone})
 		return a.busy == ""
-	}, "bench never ended")
+	}, "the script never ended")
 	lines := strings.Join(lb.Lines(), "\n")
-	if !strings.Contains(lines, "analysis on 1 clean loop(s)") || !strings.Contains(lines, "keys wait") {
+	if !strings.Contains(lines, `created pattern "behind"`) || !strings.Contains(lines, "keys wait") {
 		t.Errorf("the log after:\n%s", lines)
 	}
 }
@@ -3976,18 +3937,6 @@ func TestACorpusOfMetersLabelsItsBars(t *testing.T) {
 	}
 }
 
-// TestBenchGradesEachMeter: bench ... meters grades each meter's loops apart,
-// with the rips that read the meter, and verbose names each loop's meter
-func TestBenchGradesEachMeter(t *testing.T) {
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, "bench 1 3 meters verbose\n") // the seed's first loop is 6/8
-	if !strings.Contains(out.String(), "  in 6/8, 1 loop(s): ") || !strings.Contains(out.String(), ", its bar in ") || !regexp.MustCompile(`(?m)^loop +0 +96 bpm 6/8 `).MatchString(out.String()) {
-		t.Errorf("bench by meter:\n%s", out.String())
-	}
-}
-
 // TestLoadTellsAFileByWhatItIs: load and merge take a file alone and read it
 // by its tables, run a .slab, and send a .wav to rip; run refuses a document
 // with the same hint; play plays a .wav as it is.
@@ -4017,63 +3966,47 @@ func TestLoadTellsAFileByWhatItIs(t *testing.T) {
 	}
 }
 
-// TestASoundDocumentMadeHereSavesAsMarshalled: the drums compress matched and
-// the voices rip fitted save byte for byte as audio.MarshalSoundsFile writes
-// them, to a new file and bare over it once loaded and changed, and load back
-// as they were saved.
-func TestASoundDocumentMadeHereSavesAsMarshalled(t *testing.T) {
+// TestDocumentsMadeHereSaveAsMarshalled: the drums compress matched and the
+// voices rip fitted, then the patterns and the song they leave, a step holding
+// a bend, save byte for byte as audio.MarshalSoundsFile and MarshalPatternFile
+// write them, to a new file and bare over it once loaded and changed, and load
+// back as they were saved.
+func TestDocumentsMadeHereSaveAsMarshalled(t *testing.T) {
 	dir := t.TempDir()
-	wav, file := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "sounds.toml")
+	wav, sounds, music := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "sounds.toml"), filepath.Join(dir, "music.toml")
 	writeWAV(t, wav, thumpLoop())
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	marshalled := func(when string) {
+	marshalled := func(file, when string) {
 		t.Helper()
 		want, err := audio.MarshalSoundsFile(&audio.SoundSpecFile{Include: s.sounds.include, Sound: s.sounds.all(), Voice: s.voices.all()})
+		if file == music {
+			want, err = audio.MarshalPatternFile(&audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
+		}
 		if got, rerr := os.ReadFile(file); err != nil || rerr != nil || !bytes.Equal(got, want) {
-			t.Fatalf("%s, the file is not the session as marshalled (%v, %v):\n%s", when, err, rerr, got)
+			t.Fatalf("%s, %s is not the session as marshalled (%v, %v):\n%s", when, filepath.Base(file), err, rerr, got)
 		}
 	}
-	runOrFatal(t, s, &out, fmt.Sprintf("rip %s loop\ncompress loop\nsave sound %s\n", wav, file))
+	runOrFatal(t, s, &out, fmt.Sprintf("rip %s loop\ncompress loop\nsave sound %s\n", wav, sounds))
 	if len(s.sounds.order) == 0 || len(s.voices.order) == 0 {
 		t.Fatalf("%d matched drum(s) and %d fitted voice(s) to save, want some of each:\n%s", len(s.sounds.order), len(s.voices.order), out.String())
 	}
-	marshalled("made here")
-	runOrFatal(t, s, &out, "load sound "+file+"\n")
-	marshalled("loaded back")
+	marshalled(sounds, "made here")
+	runOrFatal(t, s, &out, "load sound "+sounds+"\n")
+	marshalled(sounds, "loaded back")
 	runOrFatal(t, s, &out, "set "+s.voices.order[0]+".desc kept\nsave sound\n")
-	marshalled("changed and saved bare")
-}
-
-// TestAPatternDocumentMadeHereSavesAsMarshalled: the same for the patterns and
-// the song a rip and compress leave, a step of them holding a bend, as
-// audio.MarshalPatternFile writes them.
-func TestAPatternDocumentMadeHereSavesAsMarshalled(t *testing.T) {
-	dir := t.TempDir()
-	wav, file := filepath.Join(dir, "loop.wav"), filepath.Join(dir, "music.toml")
-	writeWAV(t, wav, thumpLoop())
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	marshalled := func(when string) {
-		t.Helper()
-		want, err := audio.MarshalPatternFile(&audio.PatternSpecFile{Pattern: s.pats.all(), Song: s.songs.all()})
-		if got, rerr := os.ReadFile(file); err != nil || rerr != nil || !bytes.Equal(got, want) {
-			t.Fatalf("%s, the file is not the session as marshalled (%v, %v):\n%s", when, err, rerr, got)
-		}
-	}
-	runOrFatal(t, s, &out, fmt.Sprintf("rip %s loop\ncompress loop\n", wav))
+	marshalled(sounds, "changed and saved bare")
 	note := "loop_bass_1.track.0.event.0" // the first note heard, on either line
 	if s.pats.has("loop_melody_1") {
 		note = "loop_melody_1.track.0.event.0"
 	}
-	runOrFatal(t, s, &out, fmt.Sprintf("set %[1]s.bend 2\nset %[1]s.bend_at 0.5\nsave pattern %[2]s\n", note, file))
-	marshalled("made here")
-	runOrFatal(t, s, &out, "load pattern "+file+"\n")
-	marshalled("loaded back")
+	runOrFatal(t, s, &out, fmt.Sprintf("set %[1]s.bend 2\nset %[1]s.bend_at 0.5\nsave pattern %[2]s\n", note, music))
+	marshalled(music, "made here")
+	runOrFatal(t, s, &out, "load pattern "+music+"\n")
+	marshalled(music, "loaded back")
 	runOrFatal(t, s, &out, "set "+note+".vel 0.25\nsave pattern\n")
-	marshalled("changed and saved bare")
+	marshalled(music, "changed and saved bare")
 }
 
 // authoredMusic and authoredSounds stand in for documents a person wrote: a

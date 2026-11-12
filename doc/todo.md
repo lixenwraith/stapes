@@ -44,7 +44,9 @@ front-end seam. What remains, in the design's order:
    recordings the user plays or owns with their scores, so neither a model
    nor a tuned set learns the synthesizer. Public sets with aligned MIDI
    (MAESTRO's piano, Slakh's rendered multitracks, GuitarSet, URMP) fit the
-   same loader.
+   same loader. MusicNet's labels are snapped to the strike peaks; a note left
+   unsnapped (`"snap": false`) is still to be masked out of the strike loss and
+   the strikes' F1, its pitch's target within eight frames of the label.
 2. The model's pitch: on 20000 loops over 20000 steps the held-out decoders'
    loss was still falling (1.04) and the fourth run passed the analysis on
    augmented loops (0.51 against 0.48) on its drums while losing clean loops
@@ -216,7 +218,11 @@ front-end seam. What remains, in the design's order:
    ([a judge](../tool/rip-train/README.md#a-judge)). Left:
    - The fit: licensed collections, renders and the engine's mixes, never a
      full track, read with a collection left out, singing reported and never
-     a gate; and a bass line under drums when recordings are in the fit.
+     a gate; and a bass line under drums when recordings are in the fit. The
+     first, on 32a's rows, passed with each collection left out and is not
+     installed: on Billie Jean it reports as many low notes with eight fewer
+     right, and on vocadito the fit holding everything reports 400 notes for
+     742, which the row's next version, with the note's voice, is for.
    - `bench` grades the model under the installed scores whatever the root
      holds, as a round is benched before a judge is fitted on its weights.
      Once a judge is accepted it should grade what `rip` hears.
@@ -525,13 +531,17 @@ reset that keeps them.
 - Affected files: `stapes_test.go`, `.github/workflows/test.yml`,
   `.github/race-seconds.txt`
 
-The suite takes half an hour under the race detector on CI's runner, which the
-workflow splits over six jobs of five minutes of tests each
+The suite takes sixteen minutes under the race detector on four cores, up to
+twenty-five on a CI runner, which the workflow splits over seven jobs, each
+about as long as the heaviest test
 ([agent notes](agent-notes.md#the-race-suite-and-ci)). What is left:
 
-- Tests that repeat a rip, a corpus or a search another test makes are to be
-  collapsed and their iterations cut. The weights are then measured again and
-  the jobs counted again, since a job is no shorter than the heaviest test.
+- The three heaviest tests are 37% of it and set the shortest a job can be:
+  the fitted and refined song 129 s, the judge 120 s, `live` 97 s. Each runs
+  what its rule takes at the least. The refinement's every judge renders and
+  hears the whole song; the judge test's time is the rip's accounting
+  (`RipFrames.account`, 72% of it plain), which only audio shortens; `live`
+  hears twelve seconds through two ears, each a stream and two rips.
 - Two splits were weighed and not taken, since each takes tests from the
   detector. Racing the light tests alone and running every test plain: the 27
   tests that render or hear audio for half a second skip under `-short`, and

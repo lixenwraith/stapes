@@ -920,11 +920,11 @@ bar of a line), through audio v0.25.0:
 - So by [the rule](#reading-a-candidate) neither is installed: the heads lose bars, and
   the body gains on kits alone and loses under a mix. R3's probe from 40a's last step,
   hearing real kits under a mix and recordings with no drums, gained under a mix and
-  left the beats where they were (rip-rounds, 43a to 44c). The heads hold
-  more than audio's decode takes: a plain tracker (the tempo from the beat head's
+  left the beats where they were (rip-rounds, 43a to 44c). The heads held more than
+  v0.25.0's decode took: a plain tracker (the tempo from the beat head's
   autocorrelation, the beats by dynamic programming, the line by the downbeat head's
-  vote over the clip) gets 39 of the 120 clips' bars right from them, where the decode
-  gets 24 and 12a's cues 37.
+  vote over the clip) got 39 of the 120 clips' bars right from them, where that decode
+  got 24 and 12a's cues 37; audio reads them so since v0.25.2.
 
 ## 9. The weight file
 

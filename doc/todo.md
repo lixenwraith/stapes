@@ -271,12 +271,10 @@ trained weights:
   leaves to them, read by [the rule](rip-training.md#reading-a-candidate). Run
   as R2 (39a, 40a; [Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)):
   the heads lose bars beyond chance; the body gains on real kits alone and
-  loses under a mix, which the round never heard. Neither is installed. A
-  plain tracker reads 39 of the 120 clips' bars right from 40a's heads where
-  audio's decode reads 24, so mending the decode is audio's. R3's probes from
-  40a (43a, 44b, 44c) moved drums under a mix and not the beats. Left: the
-  frame model trained again from no weights on what these rounds taught
-  (stapes#49), its bars read through audio's mended decode.
+  loses under a mix, which the round never heard. Neither is installed. R3's
+  probes from 40a (43a, 44b, 44c) moved drums under a mix and not the beats.
+  Left: the frame model trained again from no weights on what these rounds
+  taught (stapes#49), its bars read through audio v0.25.2's decode.
 - **What the small run says a round must change.** It was read twice: through
   audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
   and by rank, through the decoders of v0.24.1 to v0.25.0 on audio's branch

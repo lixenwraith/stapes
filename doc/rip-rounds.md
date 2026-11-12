@@ -258,6 +258,12 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 - 32a's 22 tensors stay bit for bit, and 38a's file, with 38b's measure, rips as 32a does.
 - The names are poor. On NSynth's held-out instruments 38a names bass (1,627 right of 4,695 notes past the measure) and almost no synth (75 of 11,420), and no piano, guitar, strings, winds or voice. Waves .564 right, genes .202 off. 32a's frozen cells keep the bass and the synths apart from the rest and nothing a linear reading can name.
 
+**38c, 38d, 38e** (12 November, the voices with the body free)
+- The probe's runs with every weight training and a fresh cents head: 38c at the voice heads' quarter weight, 38d the same with the guitar held out (measure .732), 38e at full weight (`--plays 1`), read for names alone.
+- None names well: on NSynth's held-out instruments 38c and 38e name bass (.86 and .88 of its notes) and the synths (.87, .88), piano and guitar under .01, strings and winds none. 38e names solo singing (VocalSet) .96 and solo guitar (GuitarSet) .02, solo piano (MusicNet) .004.
+- Not starved: a batch asks 21.6 piano notes, 23.7 guitar, 25.2 bass. The names conflict: an engine voice far from the bank is asked `synth`, 41% of the asked cells, so a modal sound is asked piano, bass or synth and a string sound guitar or synth. Singing, named one way in every corpus, is the family named.
+- 38c under a judge of its own fitted on the fit list and the engine's mixes is level with 32a under one of the same sources (mean of nine .761 against .763), short on the clean take (.823 against .840).
+
 ## Decoder changes that moved scores without training
 
 - Audio v0.5.1 reads low notes by strikes, the old bass line only where no strike sounds. 22a to .784, .680 to .758; 24a to .821, .661 to .750. Much of the gap to Basic Pitch under E4 was the decoder.

@@ -250,8 +250,9 @@ list's `beats` column, the mask, the loss with no weight, each head's F1 on the
 lines ([Rip training §3, §5 and §8](rip-training.md#the-two-heads-on-a-small-run),
 [rip-train](../tool/rip-train/README.md#the-beat-and-the-bar-line)). One small
 run on rendered loops holds it together and no more: its heads read the bars of
-56 of 160 held-out loops right, and of 85 through the decoders as audio's
-branch `claude/audio-fixes` mends them, where the same weights' cues read 124.
+56 of 160 held-out loops right through v0.24.0, and of 85 through the decoders
+audio's branch `claude/audio-fixes` mended to read them by rank, as audio has
+since v0.24.1 (not read again on a tag), where the same weights' cues read 124.
 What is left is the reading on trained weights:
 
 - **A round with the heads**, from the installed frame model through `--init`,
@@ -269,10 +270,11 @@ What is left is the reading on trained weights:
 - **What the small run says a round must change.** It was read twice: through
   audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
   and through the decoders mended on audio's branch `claude/audio-fixes`,
-  which read the heads by rank and leave a clip they give no reading of to
-  the cues. Mended, the heads' own grid stands on 139 of the 160 loops and is
-  right on 74, where the cues are right on 113 of those; the other 21 are
-  the cues' rips, 11 right. In the order of what is left:
+  which read the heads by rank, as audio has since v0.24.1, and leave a clip
+  they give no reading of to the cues. Mended, the heads' own grid stands on
+  139 of the 160 loops and is right on 74, where the cues are right on 113 of
+  those; the other 21 are the cues' rips, 11 right. In the order of what is
+  left:
   - Which note is the beat. The beat head marks an eighth that holds an
     onset about alike whatever the meter. With drums it says 0.16 halfway
     between 4/4's beats and 0.31 between 3/4's, where no beat is, and 0.30

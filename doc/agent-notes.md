@@ -248,8 +248,9 @@ proves wrong or that a document now states, and link the document instead.
   `tune ... truth` count by pitch and onset (`Agreement.All`); `truth`'s rows
   by line, its `every part` row and the wide table still count within lines.
 - A truth on the recording's own clock (GuitarSet's) needs no time map, and
-  the matcher's, fitted from its in-line pairs, costs it: strummed guitar by
-  pitch and onset reads .72 through the map and .79 without. Say `timed`, to
+  the matcher's costs it: strummed guitar by pitch and onset read .72 through
+  audio v0.14.0's map and .79 without. The map has held a steady tempo since
+  v0.24.2, unread on guitar. Say `timed`, to
   `truth` or as a list line's fourth field; a timed truth's drum hits still
   pass through `MatchHits`' own map.
 - The voice a model hears for a line is the fit's first seed, no more: modal at
@@ -459,7 +460,7 @@ proves wrong or that a document now states, and link the document instead.
   list of any length, and `--bend` sways a window's tempo.
 - Baselines for a change that must not move the corpus or the bench, taken at
   v0.18.0 on audio v0.21.0 with an empty root and `XDG_CONFIG_HOME`, and
-  unmoved at v0.22.0 on audio v0.24.0: `corpus
+  unmoved at v0.22.0 on audio v0.24.0 and at v0.23.0 on v0.24.2: `corpus
   <dir> 24 4 aug gen nowav` hashes `1c86cc77...e2b4` over 49 files; `bench 12
   4` reads the analysis at 0.453 clean (tempo 0.83 bars 0.90 drums 0.43
   melody 0.17 bass 0.25) and 0.425 augmented (0.83 0.90 0.43 0.13 0.11), and
@@ -637,19 +638,22 @@ proves wrong or that a document now states, and link the document instead.
   that the path holds and nothing of a judge's worth: the loops left out are
   the fit's own kind under another seed, and the model reports a seventh of
   the truth's notes.
-- **A weak beat or downbeat head costs the bars: audio takes its word alone.**
+- **A weak beat or downbeat head costs the bars where audio takes its word.**
   A width-128 frame model after 5,000 steps on `corpus <dir> 1600 12 gen
   meters` read `beats' F1 0.763, bar lines' 0.631` held out, and through its
-  file the bars of 56 of the 160 held-out loops were right with the heads, 124
-  with the same weights' heads left out and 109 through the analysis. Read a
-  round's bars both ways before its file is installed.
+  file on audio v0.24.0, which took the heads' word alone, the bars of 56 of
+  the 160 held-out loops were right with the heads, 124 with the same weights'
+  heads left out and 109 through the analysis. Since v0.24.1 the heads are
+  read by rank and a clip they give no reading of is the cues' (85 right on
+  audio's branch before the tag). Read a round's bars both ways before its
+  file is installed.
 - The lines' F1 does not say which beats a head misses. Print what each head
   says within a frame of the loops' own beats by their place in the bar
   (`train.Label.beats`, the model over a whole loop): the downbeat head said
   0.73 on one and 0.44 on three of 4/4 with drums, the generated beats kicking
-  on both, and 0.28 on a line without drums, where audio then picks the
+  on both, and 0.28 on a line without drums, where v0.24.0 picked the
   longest bar offered; the beat head 0.30 on 6/8's eighths between its dotted
-  quarters, so audio kept the felt beat.
+  quarters, so v0.24.0 kept the felt beat.
 - A model's heads are left out of a rip through the same weights by a
   `RipFrontEnd` that wraps `ripmodel`'s and sets the frames' `Beat` and
   `Downbeat` nil, in a scratch module on audio's tag over `Ripper` and

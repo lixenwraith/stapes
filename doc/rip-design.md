@@ -440,17 +440,18 @@ and the checkpoint earn their keep.
    - **The beat and the bar line heard.** The cues' rules read the bars of 37
      of 120 GuitarSet clips no round met, and of 58 with the truth's beats
      given: a guitar alone has no kick, no snare and no bass. Landed: a beat
-     and a downbeat head on the frame model, which audio's decoders read as
-     posteriors in the cues' place where a file has both (v0.24.0), and their
-     trainer: a rendered loop's targets from its own grid, a recording's from
-     its list's `beats` column, a loss with no weight on a beat, and each
-     head's F1 on the lines ([Rip training §5 and
+     and a downbeat head on the frame model, which audio's decoders read in
+     the cues' place where a file has both (v0.24.0), by their ranks since
+     v0.24.1, which leave a clip the heads give no reading of to the cues,
+     and their trainer: a rendered loop's targets from its own grid, a
+     recording's from its list's `beats` column, a loss with no weight on a
+     beat, and each head's F1 on the lines ([Rip training §5 and
      §8](rip-training.md#the-two-heads-on-a-small-run)). A small model on
      rendered loops hears the beat where a drum marks it and the line less:
-     its heads read the bars of 56 of 160 held-out loops right and the same
-     weights' cues 124. No round is trained, and no file is installed on its
-     heads' word before they read more bars right than its cues
-     ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)).
+     through v0.24.0 its heads read the bars of 56 of 160 held-out loops right
+     and the same weights' cues 124. No round is trained, and no file is
+     installed on its heads' word before they read more bars right than its
+     cues ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)).
    Then, each waiting on recordings, on a thread above or on a design agreed:
    - **The voice of every note.** Heard per pitch cell on the notes model, not
      per frame: a family, a wave and the genes of what plays that pitch,

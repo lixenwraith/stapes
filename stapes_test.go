@@ -855,6 +855,8 @@ func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	dir := t.TempDir()
+	// a model saved as the trainer's export writes it: a notes model's sure head,
+	// frameout's last row, zero, and the checksum written again
 	save := func(name string, cfg transformer.Config) {
 		m, err := transformer.NewRandom(cfg, 1)
 		if err != nil {
@@ -864,7 +866,16 @@ func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 		if err := m.Save(&b); err != nil {
 			t.Fatal(err)
 		}
-		writeFile(t, filepath.Join(dir, name), b.String())
+		data, le := b.Bytes(), binary.LittleEndian
+		if slices.ContainsFunc(cfg.Outputs, func(h transformer.Head) bool { return h.Name == ripmodel.HeadSure }) {
+			at := bytes.Index(data, []byte("frameout.weight")) + len("frameout.weight") // then its rank, 2, and its dims
+			rows, cols := int(le.Uint32(data[at+1:])), int(le.Uint32(data[at+5:]))
+			clear(data[at+9+4*(rows-1)*cols : at+9+4*rows*cols])
+			h := fnv.New64a()
+			h.Write(data[:len(data)-8])
+			le.PutUint64(data[len(data)-8:], h.Sum64())
+		}
+		writeFile(t, filepath.Join(dir, name), string(data))
 	}
 	open := func() (*Session, *bytes.Buffer) {
 		files, err := ResolveFiles(dir, "", "")

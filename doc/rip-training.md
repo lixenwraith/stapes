@@ -682,12 +682,12 @@ decoders = onset + drums + pitch + 0.5 voicing + strike + release + beat + downb
 ```
 
 The beat and the downbeat are the onset head's kind of loss with one difference: no
-weight. Audio reads the two as posteriors and sums their log-odds, over the beats of
-a bar for its lines and over a class of frames for the beat the head marks, with no
-threshold between (audio §9). A positive weight w would move every such sum by its
-count times log w, and favour short bars by log w a line. So a frame of a mark and a
-frame outside one weigh the same, and a head that knows nothing says the share of
-frames a mark covers, 7% for the beat at 120 bpm and under 2% for a bar line of 4/4.
+weight. Audio reads the two by rank, never by level: a beat by how often the head is
+higher where a reading claims one than where it leaves one, a bar line by how many of
+a reading's bars it tops (audio §9), so neither a weight nor a head's level moves a
+decode. A frame of a mark and a frame outside one weigh the same, and a head that
+knows nothing says the share of frames a mark covers, 7% for the beat at 120 bpm and
+under 2% for a bar line of 4/4.
 
 The stated error learns from the offset's miss and never the other way: the miss
 enters `spread` with its gradient stopped, so stating an error moves no offset. At
@@ -757,7 +757,8 @@ The step exported, 4,500, on the held-out loops:
 step 4500 held-out 1.801, decoders 0.987, beats' F1 0.763, bar lines' 0.631 (onset 0.305 drums 0.041 pitch 0.285 voicing 0.072 strike 0.083 release 0.096 velocity 0.030 wave 0.655 voice 0.029 family 0.738 beat 0.107 downbeat 0.034) (best)
 ```
 
-Then each held-out loop ripped through the exported file three ways: with the heads;
+Then each held-out loop ripped through the exported file three ways, on audio v0.24.0:
+with the heads;
 with the same weights' heads left out, the frames' `Beat` and `Downbeat` set nil so
 the cues decide; and through the analysis. A loop's bars are right when the rip's
 bar is the loop's length within a tenth and nine in ten of the loop's lines have a
@@ -777,22 +778,24 @@ Beside them, each head's F1 over those loops, as the line counts it:
 all             160   0.763   0.631     56   124     109        95   135     133
 ```
 
-The heads are learned where a drum marks them, and audio's decoders, which take the
+The heads are learned where a drum marks them, and v0.24.0's decoders, which took the
 heads' word alone, read fewer bars right through this model than the cues do through
-the same weights. What stands under it is what the heads say within a frame of the
-loops' own beats, a mean over the held-out loops with each one's first and last bar
-left out:
+the same weights; since v0.24.1 audio reads the heads by rank and leaves a clip they
+give no reading of to the cues, and these loops are not read through it here
+([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)). What stands under
+it is what the heads say within a frame of the loops' own beats, a mean over the
+held-out loops with each one's first and last bar left out:
 
 - **4/4 with drums.** The generated beats kick on one and three, and the downbeat head
   says 0.73 on one, 0.44 on three and 0.08 on two and four: three is over a half in
   42 bars of a hundred. Of the 38 loops wrong, 21 have the bar's length and the line
   elsewhere, and 15 read a bar of six beats.
 - **No drums.** The downbeat head says 0.28 on a 4/4 loop's lines and 0.09 on its
-  other beats, and a head that says little scores the longest bar offered highest: 23
-  of the 34 read a bar longer than the loop's, and none is right.
+  other beats, and v0.24.0 scored the longest bar offered highest for a head that says
+  little: 23 of the 34 read a bar longer than the loop's, and none is right.
 - **6/8.** With drums the downbeat head is at its best here and in 3/4, where a bar
   has one kick: 0.78 on one and 0.03 elsewhere. The beat head says 0.98 and 0.87 on
-  the two dotted quarters and 0.30 on the eighths between, so audio's `level` keeps
+  the two dotted quarters and 0.30 on the eighths between, so v0.24.0's `level` kept
   the dotted quarter as the beat, and four of them are read as one bar, two bars
   long: 9 of the 14 with drums.
 

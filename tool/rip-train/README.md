@@ -404,8 +404,8 @@ targets and the loss.
   a corpus already exported. It is asked from its first listed beat to its last. A
   recording that names none is asked nothing, nor is a shuffled window or one
   `--over` lays drums under.
-- **The loss carries no positive weight**, and is to be given none: audio sums the
-  heads' log-odds as a posterior's, and a weight would favour short bars.
+- **The loss carries no positive weight**: audio reads the heads by rank, which
+  neither a weight nor a head's level moves.
 - **A model from before the heads** starts a run through `--init`, which grows
   them, every other weight carried over; its own file still loads, its bars read
   by the cues. With `--probe` such a run trains the two heads' rows of the output
@@ -428,9 +428,10 @@ python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripframe.bin"
 
 Its exported step reads `beats' F1 0.763, bar lines' 0.631` on the 160 loops held
 out, 0.877 and 0.728 on those with drums and 0.535 and 0.359 on those without.
-Ripped through the file, 56 of the 160 have their bars right with the heads, 124
-with the same weights' heads left out and 109 through the analysis: a head this
-weak costs the bars, since audio takes its word alone ([Rip
+Ripped through the file on audio v0.24.0, 56 of the 160 have their bars right with
+the heads, 124 with the same weights' heads left out and 109 through the analysis: a
+head this weak cost the bars, since v0.24.0 took its word alone; since v0.24.1 audio
+reads the heads by rank and leaves a clip they give no reading of to the cues ([Rip
 training §8](../../doc/rip-training.md#the-two-heads-on-a-small-run) has the table
 by meter and what the heads say under it). So read a round's bars with the heads
 and without before its file is installed. The heads are left out of a rip by a

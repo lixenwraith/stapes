@@ -224,6 +224,72 @@ front-end seam. What remains, in the design's order:
     steady grid), measured there and then drawn in `corpus`, judged as any
     corpus change, a pair. No round may learn it from a track.
 
+### Teach the frame model the beat and the bar line
+
+- Priority: P1
+- Affected files: `tool/rip-train` (`train.py`, `ripmodel.py`, README),
+  `tune.go` (`corpusFrom`, `corpusRecording`, `corpusLoop`), `go.mod`,
+  `doc/rip-training.md`, `doc/rip-design.md`
+
+The library reads a beat and a downbeat head where a frame model has them
+([Audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording),
+audio's branch `claude/lucid-faraday-02tgdd`: tempo, beats and bar lines from
+the heads, held on frames built by hand). Nothing of the trainer's side is
+written. The cues measured through the installed models on 120 GuitarSet
+clips no round met: bars right on 37, 58 under perfect beats. What is left,
+in the order it builds:
+
+- **The heads.** `("beat", 1), ("downbeat", 1)` after `family` in
+  `ripmodel.HEADS`, as audio's `Spec` lists them. `--init` grows a model from
+  one without them by the code that grew the family head; a test holds it
+  (`--lr 0`, one step, the checkpoints compared).
+- **A rendered loop's targets, derived in `Label`** so no rendered corpus
+  changes a byte. A label holds `bpm`, `bars` and `meter` (absent for 4/4): a
+  sixteenth is `44100 * 60 // (bpm * 4)` samples, whole, a beat `16 / den` of
+  them, the meter's own note (an eighth in 6/8, six to the bar, as audio's
+  `Rip.Beats` lists them), a line every `num` beats from frame 0, each frame
+  `int(steps * step / (256 / 22050) + 0.5)` as `exportCorpus` rounds an
+  event's. To check before trusting it, over `aug`, `codec`, `midi`, `meters`
+  and `glide` corpora: every event's frame is on that step grid, and the last
+  line falls within a frame of the `.mel`'s length.
+- **A recording's, from its list.** A `beats` column of a `from` list names
+  the file a recording's beats are read from, as `pitch` names its track: a
+  JAMS file (`audio.ReadJAMSBeats`, GuitarSet's) or a MIDI file whose bars are
+  the recording's (`MIDIScore.Beats` on the recording's clock, E-GMD's own).
+  `corpusLoop` gains `beats` and `downbeats`, frames, left out where the cell
+  is empty, so that label is byte for byte what it was; `labels` then writes
+  them into a corpus already exported.
+- **Where nothing is asked.** A mask a frame: a rendered loop to a frame
+  short of its end's line, a recording between its first and last listed
+  beat, and none of a `--shuffle` window, a window `--over` lays drums under,
+  or the padding past a loop's end. `--bend` takes the targets nearest along
+  its curve as it takes the others, so they sway with it.
+- **The loss** is the onset head's kind, binary cross-entropy on a target a
+  frame either side, with no positive weight: audio's decoders read the heads
+  as posteriors, and a weight w would favour short bars by log w a line. Both
+  join `total` and `decoders`.
+- **The scores.** Each head's F1 at its peaks on the held-out and
+  `--validate` lines, as the strikes' is (`struck`, at a bar of a half).
+- **Tests**, one a rule, on labels built by hand (no trainer test exists yet:
+  a `test_train.py` beside it): the targets of a loop in 4/4, 3/4 and 6/8; a
+  window that sways; a spliced window asked nothing; a recording's beats and
+  one with none; the heads grown by `--init`.
+- **The run that is its evidence.** `corpus <dir> N 12 gen meters` (three
+  generated loops in ten have no drums), a small frame model on a CPU for a
+  few thousand steps, each head's held-out F1, then through the exported
+  weights the bars of the held-out loops against their own lines, with the
+  heads and with the same weights' heads left out, 4/4, 3/4 and 6/8 apart and
+  the drumless loops apart. Loops of 4 or 8 bars read 4/4 alone through the
+  cues, which need over 24 beats.
+- **`go.mod`** at audio's tag (v0.22.0 if it merges first), `go.sum`'s two
+  lines computed from audio's tree ([agent notes](agent-notes.md#toolchain));
+  CI cannot pass before the tag exists. `corpus <dir> 24 4 aug gen nowav` must
+  still hash `1c86cc77...e2b4` over its 49 files, as it does at v0.18.0.
+- **Then, on trained weights:** the 120 clips, the Für Elise takes and the
+  stream's twelve recordings, and what [audio's
+  todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#hear-the-beat-and-the-bar-line-on-trained-weights)
+  leaves to them.
+
 ### The instrument model
 
 - Priority: P1

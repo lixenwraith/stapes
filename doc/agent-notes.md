@@ -355,6 +355,21 @@ proves wrong or that a document now states, and link the document instead.
   line, and a snare's fixed modes move the melody's key: the bench's clean bass
   rests on three loops of twelve, which a kick of the old 42 Hz glide restored.
 
+- A frame model's heads are a prefix of audio's `Spec`, unlike a notes model's,
+  which audio reads by name: an audio from before a head refuses a frame
+  model's file that has it ("model has 12 heads, want 10"). Take the audio tag
+  that knows a new head before installing weights trained with it; weights
+  without it load in either.
+- Baselines for a change that must not move the corpus or the bench, taken at
+  v0.18.0 on audio v0.21.0 with an empty root and `XDG_CONFIG_HOME`: `corpus
+  <dir> 24 4 aug gen nowav` hashes `1c86cc77...e2b4` over 49 files; `bench 12
+  4` reads the analysis at 0.453 clean (tempo 0.83 bars 0.90 drums 0.43
+  melody 0.17 bass 0.25) and 0.425 augmented (0.83 0.90 0.43 0.13 0.11), and
+  `bench 24 16 meters` at 0.491 and 0.428, the meter read in 19, 1 and 2 of
+  the 19, 2 and 3 loops in 4/4, 3/4 and 6/8. Audio's tempo bound at 240 bpm
+  moved none of those lines, and no pick of 48 loops of `corpus <dir> 48 8 aug
+  gen meters` lay under it.
+
 ## Training rounds
 
 - A training round runs from its own copy of the tree: `pipeline.sh` runs

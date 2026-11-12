@@ -192,6 +192,14 @@ proves wrong or that a document now states, and link the document instead.
   recordings through the installed pair, the offline rip's note counts against
   the last reading and the two `corpus` digests take minutes and say whether
   the merge holds on what the rip is for.
+- **An installed root must rename its frame model's file to `ripframe.bin`.**
+  A root from before v0.23.0 holds `ripmodel.bin`, which stapes names at the
+  start ("frame model: ripmodel.bin is now ripframe.bin, so rename ...") and
+  never loads, so the rip hears with the analysis, the notes model and the
+  judge unread, until it is renamed: Lixen's root and any `-config-dir` a
+  recipe names. The archived names under `weights/` keep theirs.
+  `pipeline.sh`'s checkpoint is `ripframe.pt`, so a round stopped under the
+  old name resumes with `CHECKPOINT=` naming its file.
 
 - Write a truth from a score or a MIDI file, never from memory: a remembered
   Billie Jean riff had its first note an octave low, the synthesizer's doubling
@@ -200,7 +208,7 @@ proves wrong or that a document now states, and link the document instead.
   origin and the intro have 83 notes each, where five notes move F1 by 0.06.
 - The test loop scores 0.98 under `DefaultRipParams` and loops of the shipped bank
   0.51 (`CompareRips.Total`): busy drum lanes whose chance hits count as misses,
-  several tracks a slot and melodies under chord changes are where the model falls
+  several tracks a slot and melodies under chord changes are where the rip falls
   short, not the thresholds. `tune 4` over 12 four-bar loops took 36 s on four
   cores and reached 0.59; a set tuned on renders alone pushes `tightness` and
   `kick_share` to their range's ends, which a recording with tempo drift would
@@ -241,8 +249,9 @@ proves wrong or that a document now states, and link the document instead.
   `tune ... truth` count by pitch and onset (`Agreement.All`); `truth`'s rows
   by line, its `every part` row and the wide table still count within lines.
 - A truth on the recording's own clock (GuitarSet's) needs no time map, and
-  the matcher's, fitted from its in-line pairs, costs it: strummed guitar by
-  pitch and onset reads .72 through the map and .79 without. Say `timed`, to
+  the matcher's costs it: strummed guitar by pitch and onset read .72 through
+  audio v0.14.0's map and .79 without. The map has held a steady tempo since
+  v0.24.2, unread on guitar. Say `timed`, to
   `truth` or as a list line's fourth field; a timed truth's drum hits still
   pass through `MatchHits`' own map.
 - The voice a model hears for a line is the fit's first seed, no more: modal at
@@ -252,7 +261,7 @@ proves wrong or that a document now states, and link the document instead.
   recordings Lixen heard the fit was the nearer every time, so `rip` fits every
   line. The distance favours a sparse, dark voice (modal for 32 of the 37, a
   singer and a reed among them): a change to it wants ears again.
-- A miss is rarely a note the model never heard: on strummed guitar 78% of the
+- A miss is rarely a note the notes model never heard: on strummed guitar 78% of the
   notes the rip misses have a strike over `strike` at their pitch within four
   frames. No bar or rule returns them at a fair price, though: `strike_again`
   at .7 brought back 44 for 130 more reported, the partial and within-a-tone
@@ -306,8 +315,8 @@ proves wrong or that a document now states, and link the document instead.
 - **A test's judge is `judgeBytes`**, a unit a layer whose hidden layers give
   0 and whose output's bias is the logit of the odds named, so a stage rules
   every row alike. It must name the notes weights: a test model's checksum is
-  its file's last eight bytes, which `ripmodel.Load` keeps as `NotesSum`; a
-  front end built by `ripmodel.New` has 0 there.
+  its file's last eight bytes, which `ripmodels.Load` keeps as `NotesSum`; a
+  front end built by `ripmodels.New` has 0 there.
 - **The trainer's judge and audio's are held together by their odds.**
   `judge.py` repeats byte for byte on CPU (three fits of one directory wrote
   one file), and on audio's own rows of six left-out loops, 1,869 strikes,
@@ -364,7 +373,7 @@ proves wrong or that a document now states, and link the document instead.
 - `bench` grades the analysis as it is today, so a run's numbers compare only
   with the analysis benched beside them: the seventh pass moved the analysis
   from 0.47 to 0.49 on clean loops, and the fourth model run's 0.45 and 0.51
-  stand against that, not against the third run's table. The model's corpus
+  stand against that, not against the third run's table. The frame model's corpus
   is rendered at A440, so nothing it saw was detuned; a recording off the
   standard is a recording it was never shown, whatever its held-out loss.
 - `corpus ... glide` draws its bends and scoops from one stream and its
@@ -431,9 +440,9 @@ proves wrong or that a document now states, and link the document instead.
   line, and a snare's fixed modes move the melody's key: the bench's clean bass
   rests on three loops of twelve, which a kick of the old 42 Hz glide restored.
 
-- A frame model's heads are a prefix of audio's `Spec`, unlike a notes model's,
+- A frame model's heads are a prefix of audio's `FrameSpec`, unlike a notes model's,
   which audio reads by name: an audio from before a head refuses a frame
-  model's file that has it ("model has 12 heads, want 10"). Take the audio tag
+  model's file that has it ("frame model has 12 heads, want 10"). Take the audio tag
   that knows a new head before installing weights trained with it; weights
   without it load in either.
 - **A rendered loop's beats are in no label: the trainer derives them** from
@@ -452,7 +461,7 @@ proves wrong or that a document now states, and link the document instead.
   list of any length, and `--bend` sways a window's tempo.
 - Baselines for a change that must not move the corpus or the bench, taken at
   v0.18.0 on audio v0.21.0 with an empty root and `XDG_CONFIG_HOME`, and
-  unmoved at v0.22.0 on audio v0.24.0: `corpus
+  unmoved at v0.22.0 on audio v0.24.0 and at v0.23.0 on v0.24.2: `corpus
   <dir> 24 4 aug gen nowav` hashes `1c86cc77...e2b4` over 49 files; `bench 12
   4` reads the analysis at 0.453 clean (tempo 0.83 bars 0.90 drums 0.43
   melody 0.17 bass 0.25) and 0.425 augmented (0.83 0.90 0.43 0.13 0.11), and
@@ -473,7 +482,7 @@ proves wrong or that a document now states, and link the document instead.
   0.530 pooled at 8b's, 0.650 at its own), and pin them in the root's
   `rip.toml` beside the weights. Compare rounds on one tree's bench loops.
 - With strikes the melody register never reaches the pair decoder, so
-  `second_voice` and `cross` move no note on the model path, while the bass
+  `second_voice` and `cross` move no note on the models' path, while the bass
   line's own path reads `jump`, `switch` and `retrigger`: `modelGenes` is what
   audio v0.9.0's decoders read; check it against a new decoder. A candidate of
   `tune ... truth` pays the decoders alone, and the accounting stage
@@ -486,7 +495,7 @@ proves wrong or that a document now states, and link the document instead.
   pedal) compete with the strike head for the shared layers. Keep them, their
   loader and their round-trip test.
 - A notes model's per-pitch heads are rows of two tables, `CELL_HEADS` in
-  `ripmodel.py` and audio's `notesHeads`: a new head adds a row to each, with
+  `ripmodels.py` and audio's `notesHeads`: a new head adds a row to each, with
   the values it reads at a pitch, and goes after the others in
   `PITCHNET_HEADS`, since `--init` grows a model only from weights whose heads
   are the first of the new one's. The file's version holds while its header
@@ -522,7 +531,7 @@ proves wrong or that a document now states, and link the document instead.
 - A weight file's constant can ride as a frame head of no weights (`sure`:
   `export` appends a zero row to `frameout.weight` and the constant to its
   bias), which no version of the file needs to know; `--init` and `average.py`
-  carry the model's buffer, and a run again on a finished checkpoint exports
+  carry the notes model's buffer, and a run again on a finished checkpoint exports
   its pick with a new `--sure`.
 - The cents head states its own error, and audio joins two cells where their
   readings agree within the errors stated (`oneFrequency`), with no factor on
@@ -558,7 +567,7 @@ proves wrong or that a document now states, and link the document instead.
   loss, and prefer more loops to more steps.
 - A `.pt`'s held-out loss, a merge's or any checkpoint's, is read without
   training: `train.load_corpus`, `train.validation` over the last `--holdout`
-  loops and `train.evaluate` in a scratch script, the model built from the
+  loops and `train.evaluate` in a scratch script, the network built from the
   file's `cfg`. `--steps 0` scores nothing, since the score runs in the loop. A
   `pip install --user` torch is not seen under `python3 -I`, which drops the
   user's site directory.
@@ -587,7 +596,7 @@ proves wrong or that a document now states, and link the document instead.
 - A checkpoint scores a third lower on recordings it trained on: 24b and 33b
   mixed in GuitarSet's player 04 and the 19 MusicNet pieces before those became
   `~/ripcorpus-val`, and 33b's validation loss reads 2.16 against 2.9 to 3.3.
-- `ripmodel.features` over a whole long recording overflows: its PCEN average
+- `ripmodels.features` over a whole long recording overflows: its PCEN average
   is one running sum over growing weights, past float64 near 24,000 frames
   (284 s), and every frame after is NaN under a RuntimeWarning alone. Hear a
   long recording in chunks with the trainer's 128 frames before each; a
@@ -602,8 +611,8 @@ proves wrong or that a document now states, and link the document instead.
   (six rendered recordings, 356 s, at full-size random weights and 2 by 1: 16.4
   s and 36 CPU-seconds the first run, 6.8 and 6.5 the second; 180 kB of frames
   a second of recording). A file's name holds the recording's and the weight
-  files' checksums, not the model's code: clear the folder after a change to
-  `ripmodel` or the transformer.
+  files' checksums, not the models' code: clear the folder after a change to
+  `ripmodels` or the transformer.
 - Scored within lines over a list of guitar alone, its first run silenced the
   bass line (`strike_low` to .99): its own score rose .608 to .670 and solo
   guitar .06 by pitch and onset, while the renders, the clean take, the phones
@@ -640,23 +649,26 @@ proves wrong or that a document now states, and link the document instead.
   and `truth ... timed` over the 40 left out, against their labels written as
   transcripts (nine seconds a loop, most of it the voices' fit). It shows
   that the path holds and nothing of a judge's worth: the loops left out are
-  the fit's own kind under another seed, and the model reports a seventh of
+  the fit's own kind under another seed, and the notes model reports a seventh of
   the truth's notes.
-- **A weak beat or downbeat head costs the bars: audio takes its word alone.**
+- **A weak beat or downbeat head costs the bars where audio takes its word.**
   A width-128 frame model after 5,000 steps on `corpus <dir> 1600 12 gen
   meters` read `beats' F1 0.763, bar lines' 0.631` held out, and through its
-  file the bars of 56 of the 160 held-out loops were right with the heads, 124
-  with the same weights' heads left out and 109 through the analysis. Read a
-  round's bars both ways before its file is installed.
+  file on audio v0.24.0, which took the heads' word alone, the bars of 56 of
+  the 160 held-out loops were right with the heads, 124 with the same weights'
+  heads left out and 109 through the analysis. Since v0.24.1 the heads are
+  read by rank and a clip they give no reading of is the cues' (85 right on
+  audio's branch before the tag). Read a round's bars both ways before its
+  file is installed.
 - The lines' F1 does not say which beats a head misses. Print what each head
   says within a frame of the loops' own beats by their place in the bar
-  (`train.Label.beats`, the model over a whole loop): the downbeat head said
+  (`train.Label.beats`, the frame model over a whole loop): the downbeat head said
   0.73 on one and 0.44 on three of 4/4 with drums, the generated beats kicking
-  on both, and 0.28 on a line without drums, where audio then picks the
+  on both, and 0.28 on a line without drums, where v0.24.0 picked the
   longest bar offered; the beat head 0.30 on 6/8's eighths between its dotted
-  quarters, so audio kept the felt beat.
+  quarters, so v0.24.0 kept the felt beat.
 - A model's heads are left out of a rip through the same weights by a
-  `RipFrontEnd` that wraps `ripmodel`'s and sets the frames' `Beat` and
+  `RipFrontEnd` that wraps `ripmodels`' and sets the frames' `Beat` and
   `Downbeat` nil, in a scratch module on audio's tag over `Ripper` and
   `MatchBars`, the truth the loop's own grid with its end's line left out; or
   by the same step exported with the output layer's last two rows cut, which

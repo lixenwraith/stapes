@@ -67,7 +67,7 @@ func cmdRows(s *Session, a []string) error {
 		}
 	}
 	if s.frontEnd == nil {
-		return fmt.Errorf("rows reads a strike's row off the model's heads, and no %s is loaded", modelFile)
+		return fmt.Errorf("rows reads a strike's row off the models' heads, and no %s is loaded", frameFile)
 	}
 	return s.rows(s.path(a[0]), s.path(a[2]), o, s.frontEnd, s.frontEnd.NotesSum)
 }

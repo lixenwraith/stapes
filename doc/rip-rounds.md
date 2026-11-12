@@ -1,7 +1,7 @@
-# Rip model: corpora and rounds
+# The rip's models: corpora and rounds
 
 Every corpus and training round so far, what each was for and what came of it. How
-the data and the model work byte by byte is in `rip-training.md`, the reasoning in
+the data and the models work byte by byte is in `rip-training.md`, the reasoning in
 `rip-design.md`. A score here is pooled F1 of notes over the test recordings: clean, then
 from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 
@@ -267,7 +267,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 ## Decoder changes that moved scores without training
 
 - Audio v0.5.1 reads low notes by strikes, the old bass line only where no strike sounds. 22a to .784, .680 to .758; 24a to .821, .661 to .750. Much of the gap to Basic Pitch under E4 was the decoder.
-- Audio v0.5.1 also keeps a drum silent when the model is never sure of it, and gives each register one lasting voice.
+- Audio v0.5.1 also keeps a drum silent when the frame model is never sure of it, and gives each register one lasting voice.
 - Audio v0.7.0 holds the notes to the recording (the accounting stage). 25a to .825, .650 to .769 at its bars; Für Elise on the renders up .03 to .06, on phones up .01 to .02.
 
 ## What has held up

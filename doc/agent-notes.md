@@ -415,7 +415,12 @@ proves wrong or that a document now states, and link the document instead.
   strike head peaks within a frame of the label on 98% of a rendered loop's
   strikes, 80% of GuitarSet's (a frame early) and 36% of MusicNet's, spread
   over 80 ms either way (`vif/tmp/audit2/offsets.py`), so a strike target a
-  frame wide teaches MusicNet's jitter and a loss there measures it.
+  frame wide teaches MusicNet's jitter and a loss there measures it. Snapped to
+  32a's peaks, models outside its line find 80 to 88% within a frame; a rendered
+  loop's exact labels would only take on 32a's frame of play, so only MusicNet
+  is snapped (`vif/tmp/round37/tools/snap.py`).
+- `part k/n` counts k from 0: `part 4/4` is refused, and the pass with no part
+  then renders that quarter's loops itself, on one core.
 - A drum change is benched piece by piece without editing the tree:
   `stapes -config-sounds piece.toml -s bench.slab` overrides one sound of the
   built-in kit. The analysis hears a kick still ringing at 50 to 60 Hz as the bass
@@ -508,6 +513,12 @@ proves wrong or that a document now states, and link the document instead.
   63% is a head that states its mean miss, and the gliding readings are the
   ones the decoder leans on. Weighting the miss by the stated error, or a
   margin in the decoder, would put a number set by hand back in the rule.
+- A fine-tune reads as a loss under the installed scores, which were set with the
+  start's heads in hand: 37d, 32a's recipe and a cents head, scored its strikes
+  above 32a's on the validation corpus (.523 against .515) and lost the clean
+  take by .03 and the phones by up to .045. Read each model under a judge fitted
+  on its own rows. Two runs that `--validate` on `~/ripcorpus-val37` do not fit
+  beside a desktop on 30 GB: its 2,506 windows hold 5 GiB in each.
 - A training loss that keeps falling says nothing about fresh loops: 12000
   steps on 300 loops reached 0.31 and benched worse than 3000 steps on 120,
   each loop seen three hundred times. `train.py` holds a tenth of the loops

@@ -22,7 +22,7 @@ import (
 
 	"github.com/lixenwraith/audio"
 	"github.com/lixenwraith/audio/bank"
-	"github.com/lixenwraith/audio/ripmodel"
+	"github.com/lixenwraith/audio/ripmodels"
 	"github.com/lixenwraith/toml"
 )
 
@@ -60,7 +60,7 @@ type Session struct {
 	// ripframe.bin holds, with its notes model, nil for the package's own analysis
 	rip      audio.RipParams
 	ripSrc   string
-	frontEnd *ripmodel.FrontEnd
+	frontEnd *ripmodels.FrontEnd
 	earSum   string // the checksum of the weight files frontEnd loaded, which names the frames tune truth keeps
 	// judge rules the model's strikes in the installed scores' place: the root's
 	// ripjudge.bin, fitted on the notes weights loaded; nil for the installed scores
@@ -360,13 +360,13 @@ func (s *Session) loadModel(file, notes string) error {
 	if notes != "" {
 		nd, err := os.ReadFile(notes)
 		if err != nil {
-			return fmt.Errorf("notes model: %w", err) // as ripmodel.Load names its own
+			return fmt.Errorf("notes model: %w", err) // as ripmodels.Load names its own
 		}
 		both := sha256.Sum256(nd)
 		sum = sha256.Sum256(append(sum[:], both[:]...))
 		n = bytes.NewReader(nd)
 	}
-	fe, err := ripmodel.Load(bytes.NewReader(data), n)
+	fe, err := ripmodels.Load(bytes.NewReader(data), n)
 	if err != nil {
 		return err
 	}
@@ -392,7 +392,7 @@ func (s *Session) loadJudge(file string) error {
 // ear names each model the front end loaded with its file and its weights, and
 // the judge of its strikes
 func (s *Session) ear() string {
-	e := fmt.Sprintf("the frame model %s (%d weights)", s.files.model, s.frontEnd.Model.Parameters())
+	e := fmt.Sprintf("the frame model %s (%d weights)", s.files.model, s.frontEnd.Frame.Parameters())
 	if n := s.frontEnd.Notes; n != nil {
 		e += fmt.Sprintf(", the notes model %s (%d weights)", s.files.notes, n.Parameters())
 	}

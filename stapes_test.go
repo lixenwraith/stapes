@@ -22,7 +22,7 @@ import (
 
 	"github.com/lixenwraith/audio"
 	"github.com/lixenwraith/audio/bank"
-	"github.com/lixenwraith/audio/ripmodel"
+	"github.com/lixenwraith/audio/ripmodels"
 	"github.com/lixenwraith/terminal"
 	"github.com/lixenwraith/terminal/tui"
 	"github.com/lixenwraith/transformer"
@@ -867,7 +867,7 @@ func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 			t.Fatal(err)
 		}
 		data, le := b.Bytes(), binary.LittleEndian
-		if slices.ContainsFunc(cfg.Outputs, func(h transformer.Head) bool { return h.Name == ripmodel.HeadSure }) {
+		if slices.ContainsFunc(cfg.Outputs, func(h transformer.Head) bool { return h.Name == ripmodels.HeadSure }) {
 			at := bytes.Index(data, []byte("frameout.weight")) + len("frameout.weight") // then its rank, 2, and its dims
 			rows, cols := int(le.Uint32(data[at+1:])), int(le.Uint32(data[at+5:]))
 			clear(data[at+9+4*(rows-1)*cols : at+9+4*rows*cols])
@@ -889,7 +889,7 @@ func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 		}
 		return s, &out
 	}
-	notes := ripmodel.NotesSpec()
+	notes := ripmodels.NotesSpec()
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	save(notesFile, notes)
 	s, out := open()
@@ -898,7 +898,7 @@ func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 	}
 	teardown(t, s)
 
-	model := ripmodel.Spec()
+	model := ripmodels.FrameSpec()
 	model.Dim, model.Heads, model.Layers, model.FFN = 8, 2, 1, 8
 	save(modelFile, model)
 	s, out = open()
@@ -921,7 +921,7 @@ func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 func TestAFrameModelUnderItsOldNameIsNamedNotLoaded(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -1597,19 +1597,19 @@ func TestLiveKeepsTheRipRipMakes(t *testing.T) {
 	dir := t.TempDir()
 	wav := filepath.Join(dir, "loop.wav")
 	writeWAV(t, wav, loops[0].audio)
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fe, err := ripmodel.New(m, nil)
+	fe, err := ripmodels.New(m, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, ear := range []struct {
 		name string
-		fe   *ripmodel.FrontEnd
+		fe   *ripmodels.FrontEnd
 	}{{"analysis", nil}, {"model", fe}} {
 		s.frontEnd = ear.fe
 		out.Reset()
@@ -2158,13 +2158,13 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	writeFile(t, list, "loop.wav\tloop.mid\n")
 	// a model too small to hear well, from a start that takes a strike whose
 	// pitch hardly sounds: the sets near it hear fewer notes that were not played
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fe, err := ripmodel.New(m, nil)
+	fe, err := ripmodels.New(m, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2214,7 +2214,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 
 // truthFixture is a rendered loop as loop.wav in a new folder and a model too
 // small to hear well, with the notes its rip of that file holds under p
-func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmodel.FrontEnd, heard func(audio.RipParams) []audio.RipNote, write func(name string, notes []audio.RipNote)) {
+func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmodels.FrontEnd, heard func(audio.RipParams) []audio.RipNote, write func(name string, notes []audio.RipNote)) {
 	t.Helper()
 	loops, err := s.corpus(tuneOptions{loops: 2, bars: 2, seed: 1})
 	if err != nil {
@@ -2222,13 +2222,13 @@ func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmod
 	}
 	dir = t.TempDir()
 	writeWAV(t, filepath.Join(dir, "loop.wav"), loops[1].audio)
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, seed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fe, err = ripmodel.New(m, nil); err != nil {
+	if fe, err = ripmodels.New(m, nil); err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.Open(filepath.Join(dir, "loop.wav"))
@@ -2314,7 +2314,7 @@ func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
 func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	open := func(seed uint64) (*Session, *bytes.Buffer) {
-		cfg := ripmodel.Spec()
+		cfg := ripmodels.FrameSpec()
 		cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 		m, err := transformer.NewRandom(cfg, seed)
 		if err != nil {
@@ -2405,7 +2405,7 @@ func judgeBytes(notes uint64, odds [2]float64) []byte {
 func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -2579,13 +2579,13 @@ func TestRowsReadACorpusThatKeptItsAudio(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.frontEnd, err = ripmodel.New(m, nil); err != nil {
+	if s.frontEnd, err = ripmodels.New(m, nil); err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()

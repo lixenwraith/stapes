@@ -18,171 +18,188 @@ below closes.
 ## 2. Stages
 
 Stages 1 to 3, and the renders, distances and grouping the later stages call,
-are the audio library's ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)); stapes
-joins them in its searches: the voice fit, the dictionary's matching and the
-refinement.
+are the audio library's ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording));
+stapes loads the rip's models from its root, runs the searches and drives the
+stream.
 
 ```mermaid
-flowchart LR
-    A["recording"] --> B["features: log-mel frames"]
-    B --> C["front end: analysis or ripmodels"]
-    C --> D["decoders: tempo, beats, bars, key, hits, notes"]
-    D --> E["voices: genes per note, clustered, fitted"]
-    E --> F["patterns: dictionary, matching, compression"]
-    F --> G["engine render"]
-    G --> H["compare with the recording"]
-    H --> E
+flowchart TD
+    rec["recording"] --> mel["log-mel frames"]
+    mel --> frame["frame model, ripframe.bin"] --> frames["RipFrames"]
+    mel --> notes["notes model, ripnotes.bin"] --> frames
+    rec --> ana["analysis, with no ripframe.bin"] --> frames
+    subgraph decoders
+        grid["tempo, beats, bar lines, key, hits"]
+        lines["notes, two melody lines, bass"] --> acc["accounting, voices"]
+    end
+    frames --> grid & lines
+    judge["judge, ripjudge.bin"] -.-> acc
+    grid & acc --> rip["Rip"]
+    rip --> search["searches: voice fit, matching, refine, tune"]
+    search --> song["voices, patterns, song"] --> render["engine render"]
+    render -- "against the recording" --> search
+    search -. "tune: rip.toml" .-> decoders
 ```
 
-1. **Features** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `MelFrames` makes the log-mel frames a model hears: the rip's own
-   grid, 22.05 kHz, 93 ms windows every 11.6 ms, 229 bands from 30 Hz up, under a
-   semitone apart from A3, the
-   recording's peak at one. The frame model reads each band on a true logarithm, in dB
-   over a floor 80 dB down less the frame's mean, and the mean as one more input:
-   a frame's loudness apart from a level-free shape, the cepstrum's amplitude
-   normalization, so a phrase 20 dB softer reaches it as clearly (`log1p(100 ×
-   energy)`, the frames' stored form, kept 0.3% of a loud note's contrast for
-   notes 18 dB down, the log 59%). The built-in analysis works from the same
-   spectrogram, split into a harmonic and a percussive part by medians. Features
-   are computed in Go on both sides of training, so the models see in stapes
-   exactly what they saw in the trainer.
-2. **Front end** (`RipFrontEnd`, [library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). It hears a recording into `RipFrames`: the
-   strength of any onset, of each drum's, each pitch's salience, each register's
-   chroma, and, from a model, the wave and voice genes the note under each frame
-   is played with and how surely each pitch is struck there. Two front ends fill it: `analysis`, the package's signal
-   processing, and `ripmodels`: a transformer over the mel frames for the onsets,
-   the drums, the wave and voice genes and, since audio v0.11.0, the family
-   playing the highest note (`RipFrames.Family`, nine families with unknown,
-   which no decoder reads yet), and beside it the notes model, a cell net over
-   the harmonic stack (`NotesSpec`, the trainer's PitchNet) that gives the
-   pitch, voicing, strike, release and velocity heads when the root holds
-   `ripnotes.bin`. The seam is the frames, so the decoders never know which
-   heard.
-3. **Decoders** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). Classical, shared, cheap and explainable: tempo by
-   autocorrelation under a prior, beats by dynamic programming, the bar line by
-   the kick, the snare on two and four, the key's root in the bass and the
-   chroma's change, the key and chords by chroma, hits by peak picking, notes by a
-   Viterbi path through the salience, cut and quantized to the grid with the
-   notes' median lag against the beats taken out, the recording's tuning read
-   first so the pitch table sits where its notes do, a pickup bar opened before
-   the first full bar when sound leads into it, the bass
-   register's salience from a window four times the rip's and the rip's own
-   together (the long one's semitones at 110 Hz, the short one's onsets), the
-   melody register as two lines at once, a hidden path over pairs of pitches
-   where each line pays its own costs of moving and of starting or ending, no
-   pair a unison, a semitone or a harmonic interval apart, and the first line
-   paying `cross` a frame to be the quieter, so it is the line the ear follows
-   and the second the one under it, through a crossing or a rest shorter than
-   changing places would cost; the second line's notes are kept above a share
-   of the register's strength. The decoder follows the louder line, and the
-   lead is often the softer, so the notes are parted again into two lines by
-   what a line keeps, its pitch from note to note, the length of its notes,
-   their strength and no two at once, and the lead is the line a rule names,
-   the busier by default (`Ripper.Lead`). From a front end that hears
-   each pitch struck, the melody register's notes are read from the strikes
-   instead: a note starts where its pitch's strike peaks over `strike`, as hard
-   as the models heard it struck, and lasts while its salience holds, until the
-   models hear it let go over `release` or until it is struck again over
-   `strike_again`, any number at once, so the notes a pedal leaves ringing do
-   not hide the next one struck, which a path through the salience, preferring
-   what sounds strongest, stays on; the lines are parted from them as before.
-   A pitch let go rings on as far as this goes: while its salience holds only
-   the higher bar starts it again. A new note's attack sets off strikes on the
-   pitches still ringing, weaker
-   ones across the register and as sure as its own a semitone or a tone away,
-   so a ringing pitch is renewed only over the higher bar and by the surest
-   strike within a tone. A strike starts no note when its pitch
-   never sounds strongly (`strike_hold` of the reference within the shortest
-   note), when a stronger strike in the register within two frames sits an
-   octave, a twelfth or two octaves under it (a partial of that note), or when
-   it follows the pitch's last within `strike_gap`. The bass is decoded up to A3, over
-   the melody's lowest rows, which count for three quarters against the bass
-   rows' own reference; a reached note the bass line does not continue, its
-   nearest other bass note more than an octave away, is not the bass's, and a
-   note both registers hear goes to the line it continues, the one whose
-   nearest other note is nearer in pitch, the bass when they tie. The notes
-   are then held to the recording (the library's accounting, [library
-   §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)):
-   each note's harmonics read off the frames and fitted together, one
-   template a pitch and one activation a note, and the sound at its first
-   partials remembered through its start, so a note whose sound the
-   others account for goes, a pitch struck again under its own ring told
-   from the ring by the step its memory reads, and a strike the rules
-   dropped comes back where the kept notes leave its sound unexplained, by
-   a score set on graded recordings. `RipParams`
-   holds their thresholds as data a search tunes (`tune`).
-4. **Voices.** Each note carries the genes the front end heard it played with
-   (`VoiceDef.Genes`, thirty-two parameters in [0, 1] on perceptual scales, and a
-   wave class); a register's notes average into one voice. A register the front
-   end heard no voice for, every register under the built-in analysis, gets one
-   fitted by analysis-by-synthesis (stapes' `rip`, and `fit` again with more
-   generations): the rip's transcript (`Rip.Notes`) gives the register's longest
-   and loudest notes, the engine renders a candidate voice at each note's pitch,
-   loudness and length at the recording's tuning (`RenderNoteAt`), the render's
-   mel frames are compared with the recording's around the note (`MelDistance`), and a search over the
-   thirty-two genes and the wave, seeded with every registered voice and run
-   under an adaptive step with its evaluations cached, closes the distance. The
-   recording around a note holds the other voices too, so the fit is to the mix
-   there; a trained front end narrows that. The melody register's second line
-   gets a voice of its own (`Rip.UnderVoice`), fitted to its notes alone, so a
-   violin under a pluck is not played through the pluck's voice. Next, notes
-   cluster by their genes into as many voices as a line has. The models
-   propose; the engine disposes.
-5. **Patterns and the dictionary.** Notes and hits fall into bars. `rip` writes
-   windows of up to four bars as patterns, the estimate heard first; `compress`
-   writes the dictionary: per part (beat, melody, bass) the bars that stand for
-   the others, each a pattern of one bar (`<name>_<part>_a`, `_b`, ...), and the
-   song, which bar plays which at the recording's tempo, key and tuning
-   (`SongDef`, a `[[song]]` in the pattern document). Matching assigns each bar to a member: today by `BarDistance`, the
-   steps two bars do not share over the steps either has, a hit by drum and step
-   and a note by step and pitch, an accidental keeping a note off the key; next by reconstruction, the rip of the
-   member's render against the bar's.
+1. **Features.** `MelFrames` makes the log-mel frames the models hear, on the
+   rip's own grid: 22.05 kHz, 93 ms windows every 11.6 ms, 229 bands from 30 Hz
+   up, under a semitone apart from A3. The frame model reads each band in dB
+   over a floor 80 dB down less the frame's mean, and the mean, so a phrase 20
+   dB softer reaches it as clearly, and from a file of two channels each band's
+   PCEN too; the notes model reads both planes as a harmonic stack, each
+   harmonic a channel shifted onto its pitch's bin. `corpus` writes the frames
+   in Go and the trainer reads them as audio does (`ripmodels.features`), so
+   the models hear in stapes what they heard in the trainer.
+2. **Front end** (`RipFrontEnd`). It hears a recording into `RipFrames`, the
+   seam: per frame the strength of any onset and of each drum's, each pitch's
+   salience, each register's chroma, and the models' planes below. The decoders
+   read the frames alone, so none knows which front end heard. The rip's three
+   models are files in stapes' root:
+   - the frame model, `ripframe.bin` (`ripmodels.FrameSpec`, §3): a
+     transformer over the mel frames, its heads the onsets, the drums, the wave
+     and voice genes a frame, the family of the highest note
+     (`RipFrames.Family`, which no decoder reads yet), and whether a beat and a
+     bar line fall on the frame (`Beat`, `Downbeat`); alone, each pitch's
+     salience, strike, release and velocity too;
+   - the notes model, `ripnotes.bin` (`ripmodels.NotesSpec`, the trainer's
+     PitchNet), read only beside a frame model: a cell net over the harmonic
+     stack, the same weights at every pitch, its heads each pitch's salience,
+     strike, release, velocity and cents (`Cents`, `CentsError`) and what plays
+     it, a family, a wave and genes kept at each frame's twelve most salient
+     pitches (`VoiceAt`, `Voices`);
+   - the judge, `ripjudge.bin` (`audio.LoadRipJudge`): a small network a stage
+     over a strike's row, ruling which strikes are notes in the installed
+     scores' place, loaded only beside a frame model and refused beside notes
+     weights it was not fitted on.
+
+   With no `ripframe.bin`, or where the models fail to load, the built-in
+   analysis listens: a harmonic and a percussive part split by medians, each
+   drum's onsets from its band, each pitch's salience from its partials, and
+   no strike, voice, beat or bar line.
+3. **Decoders**, over the frames alone:
+   - **The grid.** The tempo by autocorrelation under a prior, the beats by
+     dynamic programming over the onsets, the bar lines by a path over the
+     pulses scored on the cues (the kick, the snare on the backbeats, the key's
+     root in the bass, the chroma's change), the meter a choice among readings
+     of the pulses, a pickup bar where sound leads into the first. Where the
+     frames carry the beat and the downbeat head, the beats are tracked on the
+     beat head and a line falls every bar's beats from the phase the downbeat
+     head marks highest in the most bars, every decision by the heads' ranks,
+     never their level, and a clip they give no reading of is the cues'. The
+     key and each bar's chord come from the chroma, the hits from each drum's
+     onsets, a drum the frame model is never sure of silent.
+   - **The notes.** Where the front end hears each pitch struck, both
+     registers' notes start where a strike peaks over `strike` (`strike_low`
+     under E3), as hard as it was struck, and last while the pitch sounds or
+     until it is let go, any number at once; a strike starts none where its
+     pitch never sounds, where it is a stronger strike's partial, within
+     `strike_gap` of the pitch's last, or under `strike_again` on a pitch still
+     ringing, and the bass line's own path adds notes where no strike sounds.
+     With the cents head a note's sound is followed frame by frame across
+     cells (`glides`): two cells naming one frequency within the errors the
+     head states are one sound, a step that lands cuts it, and a glide stays
+     one note with its bend. Without strikes, as from the analysis, the notes
+     are paths through the salience, the melody register as two lines at once
+     and the bass up to A3.
+   - **The lines.** The melody register's notes are parted into two by what a
+     line keeps, its pitch from note to note, its notes' length and strength
+     and no two at once (`streams`), the lead the line a rule names, the busier
+     by default (`Ripper.Lead`); a note both registers hear goes to the line
+     it continues.
+   - **The accounting** (`account`, under strikes). Each note's harmonics are
+     read off the frames and fitted together, one template a pitch and one
+     activation a note, its first partials remembered through its start, so a
+     note the others explain goes and a strike the rules dropped comes back
+     where its sound is its own: by the installed scores, logistic ones set on
+     graded recordings, or by a judge, a reported note staying and a strike
+     over a half that started none coming back where its odds reach a half.
+     With no judge the rip is the installed scores', byte for byte.
+   - **The voices.** Each note is told its voice (`tell`) from what the notes
+     model says plays its pitch over the frames it sounds, a wave, genes and a
+     family where its share passes the measure the weight file carries, and a
+     line's voice is its notes' mean by length. Without those heads a
+     register's voice is the frame model's genes over its notes, one over the
+     melody's two lines; the analysis hears none.
+   - **The thresholds** (`RipParams`) are the root's `rip.toml` or the built-in
+     set, and `tune` searches them: all (`RipGeneRanges`) through the analysis,
+     scored by `CompareRips` against what rendered loops should rip to
+     (`ExpectedRip`), or, `tune ... truth`, the strike and path thresholds
+     (`modelGenes`) through the loaded models and judge, scored by the mean
+     over a truth list's conditions of the F1 by pitch and onset (`MatchNotes`:
+     a note pairs one of its pitch within 0.1 s of its place, under a time map
+     that holds a steady tempo or, `timed`, as given, the most pairs there
+     are), a set that takes more than its guard from any condition refused. A
+     set that beats the current one goes to `rip.toml`.
+4. **Voices.** `rip` fits each line's voice to the recording, and `fit` again
+   at the generations asked: its thirty-two genes and wave, seeded with the
+   voice the front end heard and every registered one, scored by the mel
+   distance between the recording around the line's longest and loudest notes
+   and the candidate playing them at their pitch, loudness and length at the
+   recording's tuning (`RenderNoteAt`, `MelDistance`, `fitDistance`), its level
+   set after to the recording's there. The melody's second line gets one of its
+   own (`Rip.UnderVoice`). The recording around a note holds the other voices
+   too, so the fit is to the mix there: the models propose, the engine
+   disposes.
+5. **Patterns and the dictionary.** Notes and hits fall into bars on the
+   sixteenth grid. `rip` writes windows of up to four bars as patterns, the
+   estimate heard first; `compress` writes the dictionary, per part (beat,
+   melody, bass) the bars that stand for the others, each a one-bar pattern
+   (`<name>_<part>_a`, `_b`, ...), and the song, which bar plays which at the
+   recording's tempo, key and tuning, on drums matched to its own (`SongDef`, a
+   `[[song]]` in the pattern document; `Rip.Kit`). A bar is matched to a member
+   by `BarDistance`, the steps two bars do not share over the steps either
+   has, a hit by drum and step and a note by step and pitch, its accidental
+   included.
 6. **Compression.** Bars within a threshold of one another merge into one
-   member: a few per cent of their steps in the notes, 40 in the beat, where a
-   rip's errors are scattered hits and a drummer's change is many at once. The
+   member: 5% of their steps in the notes, 40% in the beat, where a rip's
+   errors are scattered hits and a drummer's change is many at once. The
    mechanical pass runs first (`Cluster`: each bar its own group, the two
-   nearest groups merged by their mean distance while it holds within the
-   threshold, the medoid standing for each), then a search over the assignment
-   refines it: a genome of each bar's representative under
-   `CategoricalPerturbator`, scored by the representatives in use, heavily by
-   any bar farther from its own than the threshold and lightly by the mean
-   distance, seeded with the mechanical answer and taken only when better. On
-   the sample recording the search rarely beats the greedy pass under this
-   distance; it earns its place when the distance is reconstruction, which is
-   why it is there.
-7. **The loop.** The song is rendered (`RenderTimeline`) and ripped back on its
-   own grid (`Ripper.Grid`: the tempo and the downbeat pinned, the decoders of
-   both skipped, `Ripper.Meter` the song's), since the tempo decoder hears a
-   clean render of sixteenth-dense patterns a metrical level away as readily as
-   the recording (the sample's 86 bpm came back as 115) and the bar-line decoder
-   a beat late when the render's downbeat carries no kick; that rip is compared
-   with the recording's (`CompareRips`), and the score `compress` prints is how
-   much of the rip survives as the song, drums, melody and bass apart: a
-   grade of the fitted voices and the dictionary, with those decoders graded
-   by `tune`.
-   `refine` then moves the voices and the steps in turn, judged not by that
-   rip-back, which cannot see the rip's own mistakes (a note misheard in the
-   recording is misheard the same way in the render), but by `Fidelity`: the
-   render and the recording heard through one front end (`Ripper.Sound`), their
-   pitch salience, log-mel bands and onset strength compared bar by bar on each
-   one's own beats. The voices are searched by the genetic engine; the steps
-   are swept, each tried a semitone and an octave either way, the recording's
-   strongest pitch at its step, a step earlier and later, longer and shorter,
-   and silent, judged on the bars that play its pattern, the best move kept
-   when it gains, since a move touches one note's frames in a thousand and a
-   search over every step's genes at once saw nothing of it in its budget;
-   then a step a line leaves empty tries that strongest pitch, the one way in
-   for a note the rip missed; a round is one search and one sweep, until a
-   round gains nothing. Next, the models hearing the render too, so
-   its voice estimate of the render against its estimate of the recording is a
-   second, cheaper distance for the voice search.
+   nearest merged by their mean distance while it holds within the threshold,
+   the medoid standing for each), then a search over the assignment
+   (`refineAssignment`): each bar's member, seeded with the mechanical answer
+   and taken only when better, scored by the members in use, heavily by a bar
+   farther from its own than the threshold and lightly by the mean distance.
+   It rarely beats the mechanical pass under this distance, and is there for
+   a distance by reconstruction.
+7. **The loop.** `compress` renders the song (`AudioEngine.RenderBars`, at its
+   tuning on its kit) and rips the render back with its tempo, its downbeat at
+   the start and its meter pinned (`songRipper`), so the score is of the hits
+   and the notes, not of the tempo and bar-line decoders: that rip against the
+   recording's (`CompareRips`) is how much of the rip survives as the song,
+   drums, melody and bass apart. `refine` then moves the voices and the steps
+   in turn, judged by `Fidelity`, since a rip-back cannot see the rip's own
+   mistakes: the render and the recording heard through one front end
+   (`Ripper.Sound`), their pitch salience, mel bands and onset strength
+   compared bar by bar on each one's own beats. Each line's voice is searched,
+   seeded with the voice in hand and every registered one and held within a
+   tenth of its distance from the recording's notes as the fit measures it
+   (`refineDrift`); each step is swept through a semitone and an octave either
+   way, the recording's strongest pitch there, a step either way, longer,
+   shorter and silent, judged on the bars that play its pattern
+   (`songJudgeBars`), and an empty step tries that pitch, the way in for a note
+   the rip missed. Rounds of both run until one gains under 0.005.
+
+The voice fit, the matching, `refine`'s voices and `tune` run on
+`lixenwraith/genetic` (§6 lists what it gave them); `refine`'s steps are swept.
+
+**The stream** (`RipStream`) follows a recording as it plays: blocks of samples
+go in and the front end's ear hears each frame once. The models' ear
+(`FrontEnd.Ear`) runs each frame through each model once (`transformer`'s
+`Stream`) and gives the frames in half-second steps once those a model reads
+after them are in, the frame model's reach, 2.97 s, or `FrontEnd.Ahead` where
+shorter, never under the notes model's reach; the analysis's ear gives them a
+third of a second behind the sound. Once the beats tracked fill six bars of
+4/4, the first bars are decoded as offline and their tempo, meter and key held;
+each later bar is decoded on from the last frozen line and freezes once two
+follow it (`Bars`). `Close` freezes the rest and adds the voices and the drums'
+tone; `Final` rips the whole recording offline. `live` drives a stream over a
+file, takes its `Final` rip as `rip` takes one and measures the stream by it.
 
 The output is a sound document of voices, a pattern document of patterns and the
-song, which bar plays which at what tempo and in what key. The song is the form
-the engine lacked, the conductor placing patterns by tier, not by bar; stapes
-plays one through the live sequencer (`song <name> play`), each bar's patterns
-scheduled to land on its bar line while the one before plays, and renders one
-offline (`song <name> <file.wav>`).
+song, which bar plays which at what tempo and in what key, the form the engine
+lacked: stapes plays one through the live sequencer, each bar's patterns landing
+on its bar line (`song <name> play`), and renders one offline (`song <name>
+<file.wav>`).
 
 ## 3. Learning
 
@@ -251,35 +268,30 @@ offline (`song <name> <file.wav>`).
   for the run that sets unknown's bar; and `tune ... truth <list>` searches
   the decoders' thresholds against real recordings' truths through the loaded
   model, each heard once, writing the `rip.toml` that ships beside the weights.
-- **The frame model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodels.FrameSpec`: 230 inputs (229 bands and the level), width 256, eight heads of 32,
-  four layers, feed-forward 1024, a window of 64 frames either side, 3.3
-  million weights (13.2 MB), four times the first five runs' width 128 and four
-  heads, and 3.7 million (14.9 MB) with the three convolutions the rounds since
-  11a put before the input layer; heads for the onset, the three drums, the
-  sixty-nine pitches, voicing, the five waves, the thirty-two genes, the
-  sixty-nine pitches struck, let go, and how hard each was struck, the family
-  of the highest note, and whether a beat and a bar line fall on the frame,
-  from which a rip reads its tempo, meter and bars where a file has both. Attention
-  carries ALiBi biases, a
-  slope per head on the frame distance, so the frame model has no positions to learn
-  and generalises past the training window. A file may put convolutions over
+- **The frame model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodels.FrameSpec`: 230 inputs
+  (229 bands and the level), width 256, eight heads of 32, four layers,
+  feed-forward 1024, a window of 64 frames either side, 3.3 million weights
+  (13.2 MB), four times the first five runs' width 128 and four heads, and 3.7
+  million (14.9 MB) with the three convolutions the rounds since 11a put before
+  the input layer; its heads are §2's, of three drums, sixty-nine pitches, five
+  waves, thirty-two genes and nine families. Attention carries ALiBi biases, a
+  slope per head on the frame distance, so it has no positions to learn and
+  generalises past the training window. A file may put convolutions over
   frames and bands before the input layer, each pooled over the bands
-  (`transformer.Conv`), and split the layers into towers over the shared input
+  (`transformer.Conv`), split the layers into towers over the shared input
   layer, each computing a run of the heads (`transformer.Tower`), so the drums
-  need not share the pitch's layers, and give the frame model a second input
-  channel (`transformer.Config.Channels`): each band's PCEN and their mean,
-  in which what a room or a microphone holds steady fades and a strike stands
-  out at any level. `tool/rip-train` is its PyTorch
-  twin and writes the weight file `lixenwraith/transformer` loads
+  need not share the pitch's layers, and read a second channel
+  (`transformer.Config.Channels`): each band's PCEN and their mean, in which
+  what a room or a microphone holds steady fades and a strike stands out at
+  any level. `tool/rip-train` is its PyTorch twin and writes the weight file
+  `lixenwraith/transformer` loads
   ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md));
   the instructions are its README, and [Rip training](rip-training.md) follows
   the data byte by byte from a loop's frames to the weight file.
 - **Inference** is pure Go, float32, no CGO, the same on every host to float32
   rounding. A three-minute song is 15500 frames, 26 GFLOP a layer at the
   default width: 70 seconds on one core of a 2017 laptop's i7-7700HQ, against
-  20 at width 128, and the width and depth are the file's to choose. The analysis stays the
-  default front end: stapes hears with the frame model when its root holds
-  `ripframe.bin`.
+  20 at width 128, and the width and depth are the file's to choose.
 
 ## 4. Layout
 
@@ -346,6 +358,22 @@ reconstruction-scored matching that renders per candidate, where `Memoize`
 and the checkpoint earn their keep.
 
 ## 7. Plan
+
+What is trained and what is only written, on 12 November 2026:
+
+- The frame model 12a and the notes model 32a are installed, and rounds at
+  their own length are the next step for both.
+- No weights have the beat and downbeat heads.
+- The heads of what plays each pitch were trained in round 38
+  ([rounds](rip-rounds.md#rounds)), first as a probe on the notes model's held
+  body (38a, 38b) and then with the body free (38c to 38e), and name only bass
+  and synth on NSynth's held-out instruments (.86 to .88 of their notes with
+  the body free, piano and guitar under .01, strings and winds none), because
+  an engine voice is asked a family by the name it was drawn under: one far
+  from the bank is asked `synth`, 41% of the asked cells, while solo singing,
+  named one way in every corpus, is named on .96 of its notes (38e). Nothing of
+  it is installed.
+- The judge had a first fit read that day, not installed.
 
 1. Done, through thirteen passes on the sample: the analysis and the decoders;
    parameters as data and their search; the offline render, the truth and the
@@ -437,21 +465,19 @@ and the checkpoint earn their keep.
      three tenths of their rms: on Billie Jean from the Pixel the stream's
      kicks or snares then differ in 10 of 19 bars. So the reach is the
      default.
-   - **The beat and the bar line heard.** The cues' rules read the bars of 37
-     of 120 GuitarSet clips no round met, and of 58 with the truth's beats
-     given: a guitar alone has no kick, no snare and no bass. Landed: a beat
-     and a downbeat head on the frame model, which audio's decoders read in
-     the cues' place where a file has both (v0.24.0), by their ranks since
-     v0.24.1, which leave a clip the heads give no reading of to the cues,
-     and their trainer: a rendered loop's targets from its own grid, a
-     recording's from its list's `beats` column, a loss with no weight on a
-     beat, and each head's F1 on the lines ([Rip training §5 and
+   - **The beat and the bar line heard.** The cues' rules read the bars of 37 of
+     120 GuitarSet clips no round met, and of 58 with the truth's beats given: a
+     guitar alone has no kick, no snare and no bass. Landed: a beat and a
+     downbeat head on the frame model, read as §2 says (audio v0.24.0, by their
+     ranks since v0.24.1), and their trainer: a rendered loop's targets from its
+     own grid, a recording's from its list's `beats` column, a loss with no
+     weight on a beat, and each head's F1 on the lines ([Rip training §5 and
      §8](rip-training.md#the-two-heads-on-a-small-run)). A small model on
      rendered loops hears the beat where a drum marks it and the line less:
      through v0.24.0 its heads read the bars of 56 of 160 held-out loops right
      and the same weights' cues 124. No round is trained, and no file is
-     installed on its heads' word before they read more bars right than its
-     cues ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)).
+     installed on its heads' word before they read more bars right than its cues
+     ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)).
    Then, each waiting on recordings, on a thread above or on a design agreed:
    - **The voice of every note.** Heard per pitch cell on the notes model, not
      per frame: a family, a wave and the genes of what plays that pitch,
@@ -467,7 +493,8 @@ and the checkpoint earn their keep.
      pitches into every note's voice, and a line's voice as its notes' mean
      ([Rip training §5 to §10](rip-training.md#5-the-targets)). Not yet: real
      notes the fit has labelled, the frame model's planes as context, and a
-     round ([todo](todo.md#the-instrument-model)).
+     round at the notes model's own length
+     ([todo](todo.md#the-instrument-model)).
    - **Lines by voice.** Notes gather into lines by their voices and their
      continuity, a line opening when a voice enters and closing when it
      stops: first inside the three lines a rip holds today, then the rip, the
@@ -610,10 +637,10 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   training loss down to 0.31 and the pitch head's to 0.15: worse on fresh
   loops than the first run and than the analysis. `bench 12 4`, whose loops
   now carry generated parts: the analysis 0.47 on clean loops (tempo 0.75,
-  bars 0.75, drums 0.52, melody 0.17, bass 0.39) and 0.46 augmented; the
+  bars 0.75, drums 0.52, melody 0.17, bass 0.39) and 0.46 augmented; the frame
   model 0.40 (0.67, 0.71, 0.50, 0.11, 0.18) and 0.38 (0.58, 0.73, 0.53, 0.07,
-  0.13). Each loop was seen about three hundred times: the frame model learned the
-  corpus, not the music. The trainer now holds loops out, scores them as it
+  0.13). Each loop was seen about three hundred times: the frame model learned
+  the corpus, not the music. The trainer now holds loops out, scores them as it
   goes and exports the step whose decoder heads scored best on them; the
   number that matters is the held-out loss, not the training loss, and `bench`
   after it. A 6000-step run with thirty loops held out showed the held-out
@@ -916,7 +943,7 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   over 0.95 (`strike_again`), the threshold came down to 0.8: pooled over the
   three recordings, F1 0.674 against round nine's 0.604 (precision 0.749
   against 0.548, recall 0.613 against 0.672) and the analysis's 0.633, the
-  model past it for the first time; Für Elise alone 0.680. The bench stays
+  frame model past it for the first time; Für Elise alone 0.680. The bench stays
   0.491 clean, its augmented melody falling from 0.09 to 0.06; a bar of 0.90
   keeps the bench whole (0.498, 0.403) at 0.646 pooled. Listening to that
   clip found a ringing B4 renewed by the attack of a C5 a semitone up (0.98
@@ -1005,11 +1032,11 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
 - **The score is the rip of the render.** A song is as good as the rip it rips
   back to; the same `CompareRips` grades a parameter set, a model and a
   compression, so their numbers compare.
-- **The judge is the recording itself.** The rip-back is blind to the rip's
-  own errors, so a search on it polishes a wrong transcript; `refine` judges a
-  render by `Fidelity`, its frames against the recording's through one front
-  end, so a wrong note costs what the ear hears, and the rip-back stays the
-  number that compares across passes.
+- **The render is heard against the recording itself.** The rip-back is blind
+  to the rip's own errors, so a search on it polishes a wrong transcript;
+  `refine` judges a render by `Fidelity`, its frames against the recording's
+  through one front end, so a wrong note costs what the ear hears, and the
+  rip-back stays the number that compares across passes.
 - **Accidentals, not a chromatic scale.** A step keeps its degree in the key
   and carries the semitones left as `acc`, so the harmony, the chord following
   and the editor's rows keep their meaning while a transcript loses no note.
@@ -1048,8 +1075,8 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   head a pitch says what plays each note, a line under another as the one
   over it, and a voice of genes is what every note gets, a name being extra:
   given where its share over the note passes what the notes of a family the
-  model was told no name of reach, a number a run reads off held-out notes
-  and no hand sets. `unknown` is then what is left, the absence of a name.
+  notes model was told no name of reach, a number a run reads off held-out
+  notes and no hand sets. `unknown` is then what is left, the absence of a name.
 - **Ground truth is a transcript corrected by hand; two rips are two
   witnesses.** The numbers so far grade the mix, not the melody; what the
   user hears as the lead has no number. `truth` scores a rip against notes

@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import random
 import struct
 import sys
 import tempfile
@@ -200,25 +201,56 @@ class TheBeatAndTheBarLine(unittest.TestCase):
     def test_a_rendered_loop_is_asked_the_beats_and_lines_of_its_grid(self):
         """A loop's beats are its meter's own note, a quarter in 4/4 and 3/4 and an eighth in 6/8, on the frames its
         tempo's sixteenth of whole samples rounds to (6,615 at 100 bpm, 12.92 frames), a bar line every bar's beats
-        from frame 0, each marked a frame either side; a window takes its share of them."""
+        from frame 0, each marked a frame either side and asked to a frame short of the mark of the end's line,
+        which no sound gives; a window takes its share of them."""
         quarters, eighths = [0, 52, 103, 155, 207, 258, 310, 362], [0, 26, 52, 78, 103, 129, 155, 181, 207, 233, 258, 284]
-        for meter, frames, beats, lines in ((None, 414, quarters, [0, 207]), ("3/4", 311, quarters[:6], [0, 155]), ("6/8", 311, eighths, [0, 155])):
+        for meter, frames, beats, lines, end in ((None, 414, quarters, [0, 207], 413), ("3/4", 311, quarters[:6], [0, 155], 310), ("6/8", 311, eighths, [0, 155], 310)):
             with self.subTest(meter=meter):
                 lab = label([], frames, bpm=100, bars=2, **({"meter": meter} if meter else {}))
                 t = lab.window(0, frames)
                 self.assertEqual(t["beat"].tolist(), marks(frames, beats))
                 self.assertEqual(t["downbeat"].tolist(), marks(frames, lines))
+                self.assertEqual(t["metered"].tolist(), [1] * (end - 1) + [0] * (frames - end + 1))
                 part = lab.window(52, 155)
-                self.assertEqual([part[k].tolist() for k in ("beat", "downbeat")], [t[k][52:155].tolist() for k in ("beat", "downbeat")])
+                for k in ("beat", "downbeat", "metered"):
+                    self.assertEqual(part[k].tolist(), t[k][52:155].tolist())
 
     def test_a_recording_is_asked_the_beats_its_label_lists(self):
         """A recording's beats and bar lines are those its label lists, as its list's beats file gave them, in any
-        order; one whose label lists none has neither."""
+        order, asked from its first beat's mark to its last's and nowhere else; one whose label lists none is asked
+        nothing."""
         listed = label([note(0, 10, 60, "guitar")], 200, source="a.wav", beats=[155, 26, 69, 112], downbeats=[69]).window(0, 200)
         self.assertEqual(listed["beat"].tolist(), marks(200, [26, 69, 112, 155]))
         self.assertEqual(listed["downbeat"].tolist(), marks(200, [69]))
+        self.assertEqual(listed["metered"].tolist(), [0] * 25 + [1] * (157 - 25) + [0] * (200 - 157))
         none = label([note(0, 10, 60, "guitar")], 200, source="b.wav").window(0, 200)
-        self.assertEqual([int(none[k].sum()) for k in ("beat", "downbeat")], [0, 0])
+        self.assertEqual([int(none[k].sum()) for k in ("beat", "downbeat", "metered")], [0, 0, 0])
+
+    def test_a_bent_window_sways_its_beats_with_its_hits(self):
+        """A window read along a tempo that sways takes the beat and the bar line nearest along its curve, as it
+        takes every target: each stays on the hit it fell on, and the beats stand no steady grid apart."""
+        frames, kick, hat = 1654, 0, 2  # eight bars of 4/4 at 100 bpm, a hat on every beat and a kick on every line
+        grid = label([], frames, bpm=100, bars=8)
+        hits = [{"frame": f, "end": f, "drum": hat, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]} for f in grid.beats.tolist()]
+        hits += [{**h, "drum": kick} for h in hits[::4]]
+        _, t = train.bent(Frames(frames), label(hits, frames, bpm=100, bars=8), 512, 1, None, random.Random(2), None)
+        asked = t["metered"] > 0
+        self.assertGreater(int(asked.sum()), 400)
+        self.assertEqual(t["beat"][asked].tolist(), t["drums"][asked, hat].tolist())
+        self.assertEqual(t["downbeat"][asked].tolist(), t["drums"][asked, kick].tolist())
+        apart = np.diff(np.flatnonzero(np.diff(t["beat"].astype(int)) == 1))  # from one mark's first frame to the next's
+        self.assertFalse(set(apart.tolist()) <= {51, 52}, apart)
+
+    def test_a_window_with_no_grid_of_its_own_is_asked_no_beat(self):
+        """A window spliced of two clips and one real drums are laid under hold hits of another grid, and the padding
+        past a loop's end holds none: each asks the beat and the bar line nothing, where a plain window asks its loop's."""
+        frames, rng = 414, random.Random(1)  # two bars of 4/4 at 100 bpm, the end's line at frame 413
+        mel, lab = Frames(frames), label([{"frame": 52, "end": 52, "drum": 0, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]}], frames, bpm=100, bars=2)
+        _, spliced = train.shuffled(lambda: (mel, lab), 256, 1, rng)
+        _, laid = train.sample(mel, lab, 0, 256, 1, (mel, lab, 0.0), rng)
+        _, plain = train.sample(mel, lab, 200, 256, 1)
+        self.assertEqual([int(t["metered"].sum()) for t in (spliced, laid)], [0, 0])
+        self.assertEqual(plain["metered"].tolist(), [1] * (412 - 200) + [0] * (256 - 212))
 
     def test_init_grows_the_heads_and_carries_every_other_weight(self):
         """A frame model from before the beat and downbeat heads starts a run through --init: every weight carries

@@ -99,15 +99,17 @@ class Label:
                 d = np.abs(np.diff(c)) > 0  # false beside a frame that is not placed
                 self.moves[at + 1:at + len(c)] |= d
                 self.moves[at:at + len(c) - 1] |= d
-        # a rendered loop's beats are its grid's: a sixteenth of whole samples (audio's SamplesPerStep), a beat the meter's
-        # own note, a bar line every num beats from frame 0, each on the frame corpus rounds an event's to; close is the end's line.
-        # A recording's are those its list's beats file gave its label, and none where it named no file
+        # A recording's beats are those its list's beats file gave its label, asked from the first one's mark to the last one's:
+        # past them the list says nothing. A rendered loop's are its grid's: a sixteenth of whole samples (audio's
+        # SamplesPerStep), a beat the meter's own note, a bar line every num beats from frame 0, each on the frame corpus
+        # rounds an event's to, asked to a frame short of the mark of the end's line, a beat no sound gives
         self.beats, self.lines = (np.unique(np.asarray(label.get(k, []), np.int64)) for k in ("beats", "downbeats"))
+        self.metered = (int(self.beats[0]) - 1, int(self.beats[-1]) + 2) if len(self.beats) else (0, 0)
         if label.get("bpm"):
             num, den = (int(v) for v in label.get("meter", "4/4").split("/"))
             step = (44100 * 60 // (label["bpm"] * 4)) / 44100
             grid = np.array([int(k * (16 // den) * step / ripmodel.FRAME_SEC + 0.5) for k in range(label["bars"] * num + 1)])
-            self.beats, self.lines, self.close = grid[:-1], grid[:-1:num], int(grid[-1])
+            self.beats, self.lines, self.metered = grid[:-1], grid[:-1:num], (0, int(grid[-1]) - 1)
         self.order = np.argsort(self.t, kind="stable")
         self.sorted = self.t[self.order]
         # how far past its frame an event's targets reach
@@ -145,7 +147,8 @@ class Label:
             x, y = max(x, a), min(y, b)
             return slice(x - a, max(y, x) - a)
 
-        beat, downbeat = np.zeros(w, np.uint8), np.zeros(w, np.uint8)
+        beat, downbeat, metered = np.zeros(w, np.uint8), np.zeros(w, np.uint8), np.zeros(w, np.uint8)
+        metered[span(*self.metered)] = 1
         for marks, at in ((beat, self.beats), (downbeat, self.lines)):
             for t in at[np.searchsorted(at, a - 1):np.searchsorted(at, b, "right")].tolist():
                 marks[span(max(t - 1, 0), min(t + 2, frames))] = 1
@@ -211,7 +214,7 @@ class Label:
         if FAMILY_HOLDOUT is not None:  # the family held out is named to no head
             family[family == FAMILY_HOLDOUT], name[name == FAMILY_HOLDOUT] = -1, -1
         return {"onset": onset, "drums": drums, "pitch": pitch, "voicing": (pitch.sum(1) > 0).astype(np.uint8),
-                "wave": wave, "voice": voice, "voiced": (top >= 0).astype(np.uint8), "family": family, "beat": beat, "downbeat": downbeat,
+                "wave": wave, "voice": voice, "voiced": (top >= 0).astype(np.uint8), "family": family, "beat": beat, "downbeat": downbeat, "metered": metered,
                 "strikes": np.array(strikes, np.int32).reshape(-1, 2), "vels": np.array(vels, np.float32),
                 "releases": np.array(releases, np.int32).reshape(-1, 2), "cents": cents, "asked": asked, "moving": moving,
                 "note": np.where(one, sole, -1), "pitchfamily": name, "pitchwave": of(self.wave), "pitchvoice": of(self.voice)}
@@ -304,7 +307,7 @@ def targets(mel, lab: Label, start: int, window: int, with_drums: bool = True) -
 
     def take(a, fill=0):
         return np.concatenate([a, np.full((pad,) + a.shape[1:], fill, a.dtype)]) if pad else a
-    out = {k: take(t[k]) for k in ("onset", "drums", "pitch", "voicing", "voice", "voiced", "cents", "asked", "moving", "beat", "downbeat")}
+    out = {k: take(t[k]) for k in ("onset", "drums", "pitch", "voicing", "voice", "voiced", "cents", "asked", "moving", "beat", "downbeat", "metered")}
     out.update({k: take(t[k], -1) for k in ("wave", "family", "note", "pitchfamily", "pitchwave", "pitchvoice")})
     shape = (window, t["pitch"].shape[1])
     strike, release, velocity, heard = np.zeros(shape, np.uint8), np.zeros(shape, np.uint8), np.zeros(shape, np.float32), np.zeros(shape, np.uint8)
@@ -333,8 +336,8 @@ def clip(mel, rng):
 
 def shuffled(pick, window: int, channels: int, rng, channel=None):
     """a window of summed chunks: notes keep their labels, a drum hit counts where it
-    stands out of the other clip, what the frame's voice and family are goes unasked,
-    and a cell says what plays it where one clip alone sounds in it"""
+    stands out of the other clip, what the frame's voice and family are and where its
+    beats fall go unasked, and a cell says what plays it where one clip alone sounds in it"""
     total = window + WARM if channels > 1 else window
     through, noise = channel.draw(total, rng) if channel is not None else (1.0, np.zeros((total, ripmodel.MEL_BANDS)))
     es, outs = [], []
@@ -346,7 +349,7 @@ def shuffled(pick, window: int, channels: int, rng, channel=None):
         ta, tb = targets(ma, la, sa, CHUNK, False), targets(mb, lb, sb, CHUNK, False)
         out = {k: np.maximum(ta[k], tb[k]) for k in ("onset", "drums", "pitch", "voicing", "strike", "release", "velocity", "heard", "valid")}
         out.update(wave=np.full(CHUNK, -1, np.int64), family=np.full(CHUNK, -1, np.int64), voice=np.zeros_like(ta["voice"]), voiced=np.zeros_like(ta["voiced"]))
-        out.update(beat=np.zeros(CHUNK, np.uint8), downbeat=np.zeros(CHUNK, np.uint8))  # a splice of two clips has neither's grid
+        out.update({k: np.zeros(CHUNK, np.uint8) for k in ("beat", "downbeat", "metered")})  # a splice of two clips has neither's grid
         # a cell is asked its cents where one clip alone sounds within a semitone of it
         mine = (ta["asked"] > 0) & (tb["asked"] == 0) & (tb["pitch"] == 0)
         asked = mine | (tb["asked"] > 0) & (ta["asked"] == 0) & (ta["pitch"] == 0)
@@ -375,7 +378,8 @@ def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, r
     """the window of `window` frames from start: its features and targets, the
     frames past the loop's end padded with zeros and masked out; over is a recording
     of drums alone and its power against the loop's in dB, laid over the frames, its
-    hits that can be heard among the targets; channel is what a speaker and a phone do to them"""
+    hits that can be heard among the targets and its window asked no beat, the drums
+    keeping another grid; channel is what a speaker and a phone do to them"""
     out = targets(mel, lab, start, window)
     b = min(start + window, len(mel))
     pad = window - (b - start)
@@ -394,6 +398,7 @@ def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, r
         e = e * through + noise
     if over is not None:
         omel, olab, level = over
+        out["metered"][:] = 0
         first, n = start - a, min(len(omel), len(e))
         at, ofrom = rng.randrange(len(e) - n + 1), rng.randrange(len(omel) - n + 1)
         d = np.expm1(omel[ofrom:ofrom + n].astype(np.float64)) * through * 10 ** (level / 10) * loud / max(power(omel), 1e-9)

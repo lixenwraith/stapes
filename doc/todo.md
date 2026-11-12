@@ -270,13 +270,10 @@ What is left is the reading on trained weights:
   the heads lose bars beyond chance; the body gains on real kits alone and
   loses under a mix, which the round never heard. Neither is installed. A
   plain tracker reads 39 of the 120 clips' bars right from 40a's heads where
-  audio's decode reads 24, so mending the decode is audio's. Left: the next
-  round (R3) from 40a's last step, a probe of 3,000 steps first: real kits
-  under a mix (`--over`), recordings with no drums in it, real beats on more
-  than a tenth of the windows, the pick on real held-out material (GuitarSet's
-  60 val clips with their beats), the family head unasked as in R2. It runs at
-  full length if false kicks and snares under a mix fall by more than half,
-  the drums alone hold and the beat head gains on the unseen players.
+  audio's decode reads 24, so mending the decode is audio's. R3's probes from
+  40a (43a, 44b, 44c) moved drums under a mix and not the beats. Left: the
+  frame model trained again from no weights on what these rounds taught
+  (stapes#49), its bars read through audio's mended decode.
 - **What the small run says a round must change.** It was read twice: through
   audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
   and through the decoders mended on audio's branch `claude/audio-fixes`,

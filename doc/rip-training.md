@@ -911,8 +911,9 @@ bar of a line), through audio v0.25.0:
   cues, its lines are on 0.47, 0.34, 0.25 and 0.34 of the score's downbeats (clean,
   30 cm, Pixel, Galaxy) against 12a's 0.45, 0.21, 0.22 and 0.28.
 - So by [the rule](#reading-a-candidate) neither is installed: the heads lose bars, and
-  the body gains on kits alone and loses under a mix. 40a is the next round's start
-  (R3), which hears real kits under a mix and recordings with no drums. The heads hold
+  the body gains on kits alone and loses under a mix. R3's probe from 40a's last step,
+  hearing real kits under a mix and recordings with no drums, gained under a mix and
+  left the beats where they were (rip-rounds, 43a to 44c). The heads hold
   more than audio's decode takes: a plain tracker (the tempo from the beat head's
   autocorrelation, the beats by dynamic programming, the line by the downbeat head's
   vote over the clip) gets 39 of the 120 clips' bars right from them, where the decode

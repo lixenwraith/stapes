@@ -100,8 +100,9 @@ class Label:
                 self.moves[at + 1:at + len(c)] |= d
                 self.moves[at:at + len(c) - 1] |= d
         # a rendered loop's beats are its grid's: a sixteenth of whole samples (audio's SamplesPerStep), a beat the meter's
-        # own note, a bar line every num beats from frame 0, each on the frame corpus rounds an event's to; close is the end's line
-        self.beats = self.lines = np.zeros(0, np.int64)
+        # own note, a bar line every num beats from frame 0, each on the frame corpus rounds an event's to; close is the end's line.
+        # A recording's are those its list's beats file gave its label, and none where it named no file
+        self.beats, self.lines = (np.unique(np.asarray(label.get(k, []), np.int64)) for k in ("beats", "downbeats"))
         if label.get("bpm"):
             num, den = (int(v) for v in label.get("meter", "4/4").split("/"))
             step = (44100 * 60 // (label["bpm"] * 4)) / 44100

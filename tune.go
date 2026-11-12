@@ -930,6 +930,10 @@ type corpusLoop struct {
 	Tuning float64       `json:"tuning"` // cents off A440 the loop sounds at
 	Events []corpusEvent `json:"events"`
 	Source string        `json:"source,omitempty"` // the recording a loop was heard from
+	// a recording's beats and bar lines, in frames, where its list names them; a
+	// rendered loop's are its BPM, Bars and Meter's
+	Beats     []int `json:"beats,omitempty"`
+	Downbeats []int `json:"downbeats,omitempty"`
 }
 
 // notes is a label's notes as a truth on the loop's own clock
@@ -1055,9 +1059,9 @@ func parsePart(arg string) (part, parts int, err error) {
 
 // corpusFrom writes a corpus of recordings and the MIDI files they were played
 // from, one loop each, listed by a CSV with audio_filename and midi_filename
-// columns, and split, duration, family and pitch when present: the frames as heard,
-// the notes as the MIDI plays them, placed by the pitch track, the voices unknown. A
-// loop on disk is kept, known by its source; under labels its label is written over.
+// columns, and split, duration, family, pitch and beats when present: the frames as
+// heard, the notes as the MIDI plays them, placed by the pitch track, the voices unknown.
+// A loop on disk is kept, known by its source; under labels its label is written over.
 func (s *Session) corpusFrom(dir, list string, a []string) error {
 	split, hours, codec, labels := "", math.Inf(1), false, false
 	for len(a) > 0 {
@@ -1119,14 +1123,26 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		return err1 != nil && !labels || err2 != nil
 	})
 	missing := listed - len(rows)
-	pitch := func([]string) string { return "" }
-	if c, ok := col["pitch"]; ok {
+	// a column of files a recording may name, an empty cell none
+	named := func(name string) (func([]string) string, error) {
+		c, ok := col[name]
+		if !ok {
+			return func([]string) string { return "" }, nil
+		}
 		for _, r := range rows {
 			if _, err := os.Stat(at(r[c])); r[c] != "" && err != nil {
-				return fmt.Errorf("%s: pitch: %w", list, err)
+				return nil, fmt.Errorf("%s: %s: %w", list, name, err)
 			}
 		}
-		pitch = func(r []string) string { return r[c] }
+		return func(r []string) string { return r[c] }, nil
+	}
+	pitch, err := named("pitch")
+	if err != nil {
+		return err
+	}
+	beats, err := named("beats")
+	if err != nil {
+		return err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -1220,9 +1236,13 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 				if p := pitch(j.row); p != "" {
 					tracks, err = readPitch(at(p))
 				}
+				var grid [2][]float64
+				if b := beats(j.row); b != "" && err == nil {
+					grid[0], grid[1], err = readBeats(at(b))
+				}
 				n, sat := 0, 0
 				if err == nil {
-					n, sat, err = corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), j.score, tracks, coder, labels)
+					n, sat, err = corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), j.score, tracks, grid, coder, labels)
 				}
 				mu.Lock()
 				if !labels {
@@ -1268,9 +1288,9 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 // corpusRecording writes a recording's frames, through a codec when coder is
 // set, and its score as one loop, its frames and the notes its pitch tracks place
 // returned: a note by family, or its program's (programFamily) when family is -1,
-// a hit and a strike of no line (a tom, a crash: drum -1, midi 0) by the drums.
-// Under labels the frames on disk stand and say how long it is.
-func corpusRecording(base, wav, source string, family int, score *audio.MIDIScore, tracks []pitchTrack, coder *rand.Rand, labels bool) (int, int, error) {
+// a hit and a strike of no line (a tom, a crash: drum -1, midi 0) by the drums, and
+// grid's beats and bar lines. Under labels the frames on disk say how long it is.
+func corpusRecording(base, wav, source string, family int, score *audio.MIDIScore, tracks []pitchTrack, grid [2][]float64, coder *rand.Rand, labels bool) (int, int, error) {
 	frames, whole, placed := 0, false, 0
 	if labels {
 		if frames, whole = melLength(base + ".mel"); !whole {
@@ -1315,7 +1335,36 @@ func corpusRecording(base, wav, source string, family int, score *audio.MIDIScor
 		lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: h.Vel, Wave: -1, Family: familyIndex("drums")})
 	}
 	lab.Events = slices.DeleteFunc(lab.Events, func(e corpusEvent) bool { return e.Frame >= frames })
+	for i, to := range []*[]int{&lab.Beats, &lab.Downbeats} {
+		for _, sec := range grid[i] {
+			if f := frame(sec); sec >= 0 && f < frames {
+				*to = append(*to, f)
+			}
+		}
+	}
 	return frames, placed, writeJSON(base+".json", lab)
+}
+
+// readBeats reads a recording's beats and bar lines, in its own seconds, by what
+// their file is: a MIDI file's under its time signatures and tempo map, or a JAMS
+// file's beat_position annotation
+func readBeats(file string) (beats, downbeats []float64, err error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil, nil, err
+	}
+	if isMIDI(file) {
+		score, err := audio.ReadMIDI(bytes.NewReader(data))
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", file, err)
+		}
+		beats, downbeats = score.Beats(func(sec float64) float64 { return sec })
+		return beats, downbeats, nil
+	}
+	if beats, downbeats, err = audio.ReadJAMSBeats(bytes.NewReader(data)); err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", file, err)
+	}
+	return beats, downbeats, nil
 }
 
 // pitchTrack is a recording's pitch as its collection annotates it, one voice's

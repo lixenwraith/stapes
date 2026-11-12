@@ -211,6 +211,15 @@ class TheBeatAndTheBarLine(unittest.TestCase):
                 part = lab.window(52, 155)
                 self.assertEqual([part[k].tolist() for k in ("beat", "downbeat")], [t[k][52:155].tolist() for k in ("beat", "downbeat")])
 
+    def test_a_recording_is_asked_the_beats_its_label_lists(self):
+        """A recording's beats and bar lines are those its label lists, as its list's beats file gave them, in any
+        order; one whose label lists none has neither."""
+        listed = label([note(0, 10, 60, "guitar")], 200, source="a.wav", beats=[155, 26, 69, 112], downbeats=[69]).window(0, 200)
+        self.assertEqual(listed["beat"].tolist(), marks(200, [26, 69, 112, 155]))
+        self.assertEqual(listed["downbeat"].tolist(), marks(200, [69]))
+        none = label([note(0, 10, 60, "guitar")], 200, source="b.wav").window(0, 200)
+        self.assertEqual([int(none[k].sum()) for k in ("beat", "downbeat")], [0, 0])
+
     def test_init_grows_the_heads_and_carries_every_other_weight(self):
         """A frame model from before the beat and downbeat heads starts a run through --init: every weight carries
         over, the output layer's rows of the heads it had among them, the two heads' rows are new, and the weight

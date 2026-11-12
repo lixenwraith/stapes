@@ -335,8 +335,8 @@ names the highest note alone (the bass on 2.6% of corpus 17's frames, so never
 a lower line) and is taught `unknown` on a third of them, every engine voice
 far from the bank. Landed: the heads a cell, their targets and their reading
 into a note's voice ([Rip training §5, §7 and
-§8](rip-training.md#5-the-targets)), an engine voice far from the bank taught as
-`synth`, and no name where no family's share passes what a family held out
+§8](rip-training.md#5-the-targets)), a family asked only of a recorded note (an
+engine-rendered one asks its wave and genes alone), and no name where no family's share passes what a family held out
 reaches (`--family-holdout`, the measure the weight file carries). What
 remains: real notes labelled by the fit, an instrument of NSynth's at a time;
 the frame model's planes as context to those heads, measured as a pair; and the

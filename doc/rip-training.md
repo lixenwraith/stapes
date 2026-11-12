@@ -437,7 +437,12 @@ glide's pitch target walks the cells it crosses.
   sounds in. A cell two events sound in asks nothing: its sound is both, and either's
   name would be taught on the other's sound (4.0% of the sounding cells over 200 loops
   of `aug gen glide`, a twentieth of them two notes of one voice). The family is one
-  of the eight names. An engine voice the corpus labelled `unknown` is `synth`. A
+  of the eight names, asked only where an instrument stands behind the sound: a
+  recording's own instrument, a singer, a sampled note's family as its set gives it.
+  A note the engine rendered asks no family, its voice registered or drawn far from the
+  bank, by name or by a score's program: the family a corpus writes for it is the
+  registered voice's it was drawn under, within a reach of genes (`voiceFamily`), so two
+  redraws that sound alike carried different names. It asks its wave and its voice. A
   recorded note of no family or of none labelled asks no family, so `unknown` is never
   taught: it is the absence of a name. A recorded note asks no wave and no voice. The
   family held out (`--family-holdout`) asks no family here and in the frame's

@@ -81,9 +81,10 @@ class Label:
                     index[key] = len(GENES) // manifest["voice_genes"]
                     GENES.extend(key)
                 self.voice[i] = index[key]
-        # the name a note's cells are asked: an engine voice far from the bank's is a synth, a recorded note of no family has none
-        unknown, synth = ripmodels.FAMILIES.index("unknown"), ripmodels.FAMILIES.index("synth")
-        self.name = np.where(self.family == unknown, np.where(self.voice >= 0, synth, -1), self.family).astype(np.int8)
+        # the name a note's cells are asked: an instrument's, a recording's or a sampled note's family as its set gives it;
+        # a note the engine rendered has a wave and genes and no instrument, and is asked none (its wave and genes it is)
+        unknown = ripmodels.FAMILIES.index("unknown")
+        self.name = np.where((self.voice >= 0) | (self.family == unknown), -1, self.family).astype(np.int8)
         # a note that moves carries its cents from its pitch's cell centre at each frame; one that holds sits at the tuning.
         # A recording's note lists them where its pitch track places it, null, read as nan, at a frame it does not
         self.tuning = float(label.get("tuning", 0.0))

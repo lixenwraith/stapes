@@ -437,7 +437,12 @@ glide's pitch target walks the cells it crosses.
   sounds in. A cell two events sound in asks nothing: its sound is both, and either's
   name would be taught on the other's sound (4.0% of the sounding cells over 200 loops
   of `aug gen glide`, a twentieth of them two notes of one voice). The family is one
-  of the eight names. An engine voice the corpus labelled `unknown` is `synth`. A
+  of the eight names, asked only where an instrument stands behind the sound: a
+  recording's own instrument, a singer, a sampled note's family as its set gives it.
+  A note the engine rendered asks no family, its voice registered or drawn far from the
+  bank, by name or by a score's program: the family a corpus writes for it is the
+  registered voice's it was drawn under, within a reach of genes (`voiceFamily`), so two
+  redraws that sound alike carried different names. It asks its wave and its voice. A
   recorded note of no family or of none labelled asks no family, so `unknown` is never
   taught: it is the absence of a name. A recorded note asks no wave and no voice. The
   family held out (`--family-holdout`) asks no family here and in the frame's
@@ -460,9 +465,9 @@ wave     1 on every frame: saw, from the highest note, G3
 family   8 on every frame: unknown, from the highest note, G3
 beat     1 1 0 0 0 0 0 0     a quarter at 96 bpm is 53.83 frames: 0, 54, 108, 161, ...
 downbeat 1 1 0 0 0 0 0 0     a bar is 215.31: 0, 215, 431, 646; the end's line, 861, is not asked
-pitchfamily, pitchwave   6 and 1 at pitches 27 and 20 while each sounds alone: synth, as
-         an engine voice labelled unknown is, on a saw; nothing at pitch 27 from frame 27
-         to 40, where the G3 struck again sounds over the first
+pitchfamily, pitchwave   none and 1 at pitches 27 and 20 while each sounds alone: the engine
+         rendered them, so no family, on a saw; nothing at pitch 27 from frame 27 to 40,
+         where the G3 struck again sounds over the first
 cents    pitch 27 +0.496 and pitch 28 -0.504, pitch 20 +0.496 and pitch 21 -0.504: the tuning
 ```
 

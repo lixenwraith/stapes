@@ -339,9 +339,10 @@ names the highest note alone (the bass on 2.6% of corpus 17's frames, so never
 a lower line) and is taught `unknown` on a third of them, every engine voice
 far from the bank. Landed: the heads a cell, their targets and their reading
 into a note's voice ([Rip training §5, §7 and
-§8](rip-training.md#5-the-targets)), an engine voice far from the bank taught as
-`synth`, and no name where no family's share passes what a family held out
-reaches (`--family-holdout`, the measure the weight file carries). What
+§8](rip-training.md#5-the-targets)), a family asked only of a note an instrument
+played (one the engine rendered asks its wave and genes alone), and no name
+where no family's share passes what a family held out reaches
+(`--family-holdout`, the measure the weight file carries). What
 remains: real notes labelled by the fit, an instrument of NSynth's at a time;
 the frame model's planes as context to those heads, measured as a pair; and the
 round, judged on NSynth's held-out instruments by each family's recall a note
@@ -362,12 +363,17 @@ Left open by what landed, each with the option not taken:
   and the reach of notes outside the eight families on a validation corpus,
   NSynth's mallets and organs, which would measure the shipped run itself and
   wants those notes in `--validate`'s list first.
-- An engine voice far from the bank is asked `synth` whatever it sounds like,
-  41% of the asked cells, beside piano, bass and guitar for the same modal and
-  string sounds: with the body free and at full weight the heads named bass
-  and the synths alone, and solo singing, named one way everywhere, on 96% of
-  its notes. Not taken yet: an engine voice named by what it sounds nearest,
-  its wave and genes against the families', or asked nothing far from the bank.
+- A note the engine rendered is asked no family. Named by the registered voice
+  it was drawn under (`voiceFamily`), or `synth` far from the bank (41% of the
+  asked cells), one modal or string sound was asked two names, and with the
+  body free and at full weight the heads named bass and the synths alone, solo
+  singing, named one way everywhere, on 96% of its notes. Not taken: an engine
+  voice named by what it sounds nearest, its wave and genes against the
+  families'.
+- `Label.name` reads a note's genes as "the engine rendered it", which holds
+  while nothing else gives a note genes. A fit's wave and genes written into a
+  sampled note's label would cost that note its family: before that lands, a
+  label says whether its voice was rendered or fitted.
 - A cell two events sound in is asked nothing, 4% of the sounding cells. Not
   taken: asking it where the two are one voice, a twentieth of those, a second
   rule for a fifth of a percent; and asking it both names, which a softmax

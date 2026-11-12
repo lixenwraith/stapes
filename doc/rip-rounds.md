@@ -264,6 +264,13 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 - Not starved: a batch asks 21.6 piano notes, 23.7 guitar, 25.2 bass. The names conflict: an engine voice far from the bank is asked `synth`, 41% of the asked cells, so a modal sound is asked piano, bass or synth and a string sound guitar or synth. Singing, named one way in every corpus, is the family named.
 - 38c under a judge of its own fitted on the fit list and the engine's mixes is level with 32a under one of the same sources (mean of nine .761 against .763), short on the clean take (.823 against .840).
 
+**41c, 42a, 44a** (12 November, R1: the notes model under the rule)
+- The rule asks a family only of a note an instrument played: in 150 batches of R1's mix no cell of a note the engine rendered is asked one (0 of 1,353,333).
+- 41c (3,000 steps from 32a, R1's recipe): nothing is called synth any more; on NSynth's held-out instruments every family but bass (.94 sure) and singing is called piano at a top share near .35.
+- 42a (R1, 20,000 steps from 32a, `--validate` on val37): its names came with length (guitar .65, piano .35, voice .97, winds .20 of the validation's notes at its last step) while the validation's strikes' F1 fell from .499 at step 1,000, its pick, to .440. Under a judge of its own on the wide test it holds 32a's notes on the licensed sets: GuitarSet comp .755 to .767 at its pick and .778 at its last step, solo .927 to .939 and .922, MusicNet .736 to .728 and .735. Its file names nothing: the run that measures a name's share (42b) was held.
+- 44a (3,000 steps, the heads of what plays each pitch on 32a's held body): only the commonest names (NSynth's guitar .016, strings and winds none; val37's guitar 2.6%, piano 56%, voice 96%), so the names need a body of their own.
+- Not installed: the notes model is trained again from no weights (`claude/rip-round-48`).
+
 ## Decoder changes that moved scores without training
 
 - Audio v0.5.1 reads low notes by strikes, the old bass line only where no strike sounds. 22a to .784, .680 to .758; 24a to .821, .661 to .750. Much of the gap to Basic Pitch under E4 was the decoder.

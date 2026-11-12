@@ -553,13 +553,13 @@ proves wrong or that a document now states, and link the document instead.
 - A probe of a model's heads reads what its frozen cells already hold, and
   what the heads are asked bounds it as it bounds a free run: 32a's cells gave
   bass and the synths alone (38a), as did the body free (38c, 38e).
-- A name the corpus gives by a voice's genes is not one its sound says: an
-  engine voice far from the bank is asked `synth`, so modal and string sounds
-  are asked two names, and the heads of what plays each pitch, given plenty of
-  each family, named bass and the synths alone (38c, 38e) while naming solo
-  singing, which every corpus names one way, on 96% of its notes. Count a
-  name's cells by what plays them (`vif/tmp/round37/tools/askcount.py`) before
-  training for it.
+- A name the corpus gives by a voice's genes is not one its sound says: named
+  by the voice they were drawn under, or `synth` far from the bank, modal and
+  string sounds were asked two names, and the heads of what plays each pitch,
+  given plenty of each family, named bass and the synths alone (38c, 38e) while
+  naming solo singing, which every corpus names one way, on 96% of its notes;
+  so a note the engine rendered asks no family. Count a name's cells by family
+  and source (`vif/tmp/round37/tools/askcount2.py`) before training for it.
 - A training loss that keeps falling says nothing about fresh loops: 12000
   steps on 300 loops reached 0.31 and benched worse than 3000 steps on 120,
   each loop seen three hundred times. `train.py` holds a tenth of the loops

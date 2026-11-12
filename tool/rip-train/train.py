@@ -1,5 +1,5 @@
 """Train the rip's front end on a corpus stapes exported (`corpus <dir>`) and export the weights
-lixenwraith/transformer loads: python3 train.py --corpus corpus/ --out ripmodel.bin --steps 2000,
+lixenwraith/transformer loads: python3 train.py --corpus corpus/ --out ripframe.bin --steps 2000,
 and with --pitchnet the notes model's ripnotes.bin. A loop's log-mel frames (loop_NNN.mel) are the
 input and its label (loop_NNN.json) the per-frame targets doc/rip-training.md §5 lists, built for
 random windows as they are drawn, so memory holds the events rather than a row per frame.
@@ -747,7 +747,7 @@ def main() -> None:
     ap.add_argument("--mix", default="", help="another corpus and the share of windows drawn from it, dir:share, such as recordings with their MIDI files (corpus <dir> from <list>)")
     ap.add_argument("--over", default="", help="a corpus of drums alone and the share of windows that lay it over a loop with no drums of its own, dir:share, at -12 to +6 dB of its power against the loop's: real kits under the corpus's lines")
     ap.add_argument("--channel", default="", help="a noise bank and the share of windows heard through a small speaker, a room and a phone, file.npz:share")
-    ap.add_argument("--out", required=True, help="weight file to write, the root's ripmodel.bin for stapes to hear with")
+    ap.add_argument("--out", required=True, help="weight file to write, the root's ripframe.bin for stapes to hear with")
     ap.add_argument("--steps", type=int, default=2000)
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--window", type=int, default=512, help="frames per training window (11.6 ms each)")
@@ -772,7 +772,7 @@ def main() -> None:
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
     ap.add_argument("--extra", default="", help="more corpora and the share of windows drawn from each, dir:share, comma-separated")
-    ap.add_argument("--pitchnet", action="store_true", help="the notes model: convolutions only over the harmonic stack, the same weights at every pitch; --out is then ripnotes.bin, which stapes reads beside ripmodel.bin")
+    ap.add_argument("--pitchnet", action="store_true", help="the notes model: convolutions only over the harmonic stack, the same weights at every pitch; --out is then ripnotes.bin, which stapes reads beside ripframe.bin")
     ap.add_argument("--family-holdout", choices=ripmodel.FAMILIES, help="a family no head is told the name of: its notes are trained on as sound and scored as notes, and a notes model's lines print the share their surest name reaches, the measure of where a name stops being sure, which its weight file carries")
     ap.add_argument("--sure", type=float, default=0.0, help="the share a family must pass over a note to name it, as a --family-holdout run of the same recipe measured it, for a notes model's weight file to carry; without it the start's is kept, and with neither no family names a note")
     ap.add_argument("--seed", type=int, default=1)

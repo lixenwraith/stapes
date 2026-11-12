@@ -57,7 +57,7 @@ type Session struct {
 	files    Files
 	// rip is what rip listens with, the root's rip.toml when one holds it, and
 	// ripSrc that file, where tune writes; frontEnd is the model the root's
-	// ripmodel.bin holds, nil for the package's own analysis
+	// ripframe.bin holds, nil for the package's own analysis
 	rip      audio.RipParams
 	ripSrc   string
 	frontEnd *ripmodel.FrontEnd
@@ -90,7 +90,7 @@ const (
 	rootName     = "stapes" // the root's folder under os.UserConfigDir
 	settingsFile = "stapes.toml"
 	ripFile      = "rip.toml"
-	modelFile    = "ripmodel.bin"
+	modelFile    = "ripframe.bin"
 	notesFile    = "ripnotes.bin" // a notes model beside the model, which then gives the notes
 	judgeFile    = "ripjudge.bin" // a judge of the strikes beside the weights it was fitted on, which then rules them
 	musicFile    = "music.toml"

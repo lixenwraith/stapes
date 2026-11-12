@@ -929,7 +929,7 @@ rip with no glides or with no note's voice, and one with them loads in an audio 
 v0.23.0 too, which reads the heads it knows by name and computes the rest unread. The tensors are
 `reduce`, `wide`, `cells`, `near.0`, `long.{i}`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
 `nn.Conv1d` or `nn.Linear` holds it. In the stapes root the file is `ripnotes.bin`.
-Beside `ripmodel.bin` it gives pitch, voicing, strike, release, velocity and cents, and the
+Beside `ripframe.bin` it gives pitch, voicing, strike, release, velocity and cents, and the
 model keeps onset, drums, wave and voice. Alone it is unused. `average.py --out ripnotes.bin
 a.pt` turns a `.pt` of either model into its file.
 

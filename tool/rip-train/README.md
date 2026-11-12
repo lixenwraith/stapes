@@ -32,7 +32,7 @@ about.
    the built-in analysis and through the model, and scores each rip against the
    loop's expected rip. A model that scores under the analysis is not ready for
    a recording; a recording is judged by ear, with `rip`, `notes` and `song score`.
-4. **Data.** The weight file goes to the stapes root as `ripmodel.bin`, beside
+4. **Data.** The weight file goes to the stapes root as `ripframe.bin`, beside
    `rip.toml`; `rip` hears with it when it is there and with the analysis when
    it is not. A notes model's, `--pitchnet`'s, goes beside it as `ripnotes.bin`
    and gives the notes.
@@ -95,8 +95,8 @@ tool/rip-train/pipeline.sh install
 | `PCEN` | empty | `pcen`: a second input channel, each band's PCEN and their mean, `train.py`'s `--pcen`; a `CHECKPOINT` or `INIT` of the other channel count is refused |
 | `HOLDOUT`, `EVERY` | 200, 1000 | loops held out, and how often they are scored and a checkpoint written |
 | `VALIDATE` | empty | a corpus of recordings, `corpus <dir> from`'s, cut into fixed windows and scored every `EVERY` steps beside the held-out loops: its best score picks the step `OUT` gets, the decoders' loss or, for a notes model, its strikes' F1 at the decoder's bars, the held-out loss printed beside it, `train.py`'s `--validate`; empty for the held-out loops' pick |
-| `OUT`, `CHECKPOINT` | `$CORPUS/ripmodel.bin`, `$CORPUS/ripmodel.pt` | the weight file, and the checkpoint a stopped run resumes from |
-| `ROOT` | `~/.config/stapes` | the stapes root, under `$XDG_CONFIG_HOME` when that is set: `install` copies the weights into it as `ripmodel.bin`, and `bench` hears with its `rip.toml` |
+| `OUT`, `CHECKPOINT` | `$CORPUS/ripframe.bin`, `$CORPUS/ripmodel.pt` | the weight file, and the checkpoint a stopped run resumes from |
+| `ROOT` | `~/.config/stapes` | the stapes root, under `$XDG_CONFIG_HOME` when that is set: `install` copies the weights into it as `ripframe.bin`, and `bench` hears with its `rip.toml` |
 | `NOTES` | empty | a notes model's weight file, a `--pitchnet` run's `OUT`, which `bench` and `install` put beside `OUT` as `ripnotes.bin` |
 | `BENCH_LOOPS`, `BENCH_BARS` | 12, 4 | the fresh loops `bench` grades on |
 | `INIT`, `SHARD` | none, 0 | `shard`: the `.pt` the round starts from, and the worker's stream of windows; it writes `$CORPUS/shard$SHARD.pt` and `.bin` |
@@ -179,7 +179,7 @@ the result is an unbroken run's. On the laptop above the corpus takes 95
 minutes in four parts and the 40000 steps two hours on its GPU, about sixteen
 on its cores.
 
-`install` copies the weights into the stapes root (`ROOT`) as `ripmodel.bin`;
+`install` copies the weights into the stapes root (`ROOT`) as `ripframe.bin`;
 do it when the bench says the model beats the analysis on both
 lines, which the sixth run was the first to do, and judge it by ear on the
 recordings, whose truths still favour the analysis (Rip design §8). For
@@ -188,11 +188,11 @@ and `FFN`, with `LOOPS` and `STEPS` raised together, since a bigger model
 overfits a small corpus sooner; the held-out line every `EVERY` steps is the
 guide, and the run is done when it stops falling.
 
-**What to bring back.** `$CORPUS/ripmodel.bin` (the weights), `$CORPUS/ripmodel.pt`
+**What to bring back.** `$CORPUS/ripframe.bin` (the weights), `$CORPUS/ripmodel.pt`
 (the checkpoint, to resume or to start a round from), the training log with
 its held-out lines, the bench's two summary lines, and, if the recordings are
 to hand, `stapes -headless -config-dir <root> -s <recipe>` for each recording
-in `lixenwraith/scratch` with the weights installed in `<root>/ripmodel.bin`,
+in `lixenwraith/scratch` with the weights installed in `<root>/ripframe.bin`,
 whose `truth` lines against the rhythm are the number that matters.
 
 ## Training in parallel
@@ -347,11 +347,11 @@ dir=$HOME/.local/state/stapes/byhand   # outside the checkout: the corpus, the w
 mkdir -p "$dir/root"
 printf 'corpus corpus 20000 4 aug gen nowav\n' > "$dir/corpus.slab"   # read from the script's folder
 go run ./cmd/stapes -headless -s "$dir/corpus.slab"
-python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripmodel.bin" --steps 20000 --batch 8 --every 1000 --holdout 200 --checkpoint "$dir/ripmodel.pt"
+python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripframe.bin" --steps 20000 --batch 8 --every 1000 --holdout 200 --checkpoint "$dir/ripmodel.pt"
 printf 'bench 12 4\n' > "$dir/bench.slab"
-cp "$dir/ripmodel.bin" "$dir/root/ripmodel.bin"
+cp "$dir/ripframe.bin" "$dir/root/ripframe.bin"
 go run ./cmd/stapes -headless -config-dir "$dir/root" -s "$dir/bench.slab"
-mkdir -p ~/.config/stapes && cp "$dir/ripmodel.bin" ~/.config/stapes/ripmodel.bin
+mkdir -p ~/.config/stapes && cp "$dir/ripframe.bin" ~/.config/stapes/ripframe.bin
 ```
 
 `train.py` trains on `--batch` windows of `--window` frames (512, six seconds)
@@ -422,7 +422,7 @@ together and nothing of recordings:
 ```bash
 printf 'corpus corpus 1600 12 gen meters\n' > "$dir/corpus.slab"   # with its audio: the held-out loops are ripped
 go run ./cmd/stapes -headless -s "$dir/corpus.slab"
-python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripmodel.bin" --checkpoint "$dir/ripmodel.pt" \
+python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripframe.bin" --checkpoint "$dir/ripmodel.pt" \
     --steps 5000 --dim 128 --heads 4 --layers 4 --ffn 512 --pcen --holdout 160 --every 500
 ```
 
@@ -531,7 +531,7 @@ the order `lixenwraith/transformer` reads them, with an FNV-1a 64 trailer the
 loader checks ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)).
 `--pitchnet` builds the convolutions-only model of [Rip training](../../doc/rip-training.md)
 §7, and `--out` gets its weight file, `ripnotes.bin` in the stapes root, beside the
-`ripmodel.bin` it gives the notes for. `average.py --out ripnotes.bin a.pt` turns one `.pt`
+`ripframe.bin` it gives the notes for. `average.py --out ripnotes.bin a.pt` turns one `.pt`
 of either model into its file. `--shuffle <share>` and
 `--extra <dir>:<share>,...` are `train.py` flags with no `pipeline.sh` setting,
 as are `--cell <n>`, the notes model's width (its channels at each cell, 32,

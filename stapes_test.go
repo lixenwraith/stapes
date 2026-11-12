@@ -823,7 +823,7 @@ func writeFile(t *testing.T, file, data string) {
 }
 
 // TestTheRootHoldsSettingsAndTheRip: the stapes root, the user's or -config-dir's
-// alone, holds stapes.toml, rip.toml, ripmodel.bin and ripnotes.bin, flat; nothing of vif's root
+// alone, holds stapes.toml, rip.toml, ripframe.bin and ripnotes.bin, flat; nothing of vif's root
 // is read, and a key stapes.toml cannot hold is refused by name.
 func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 	base := t.TempDir()
@@ -837,7 +837,7 @@ func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 	writeFile(t, filepath.Join(base, vifAudio, ripFile), "[rip]\n")
 	f, err := ResolveFiles("", "", "")
 	if err != nil || f.buffer != 20*time.Millisecond || f.rip != filepath.Join(user, ripFile) || f.model != filepath.Join(user, modelFile) || f.notes != filepath.Join(user, notesFile) {
-		t.Fatalf("the user's root gave %+v, %v; want its buffer, rip.toml, ripmodel.bin and ripnotes.bin", f, err)
+		t.Fatalf("the user's root gave %+v, %v; want its buffer, rip.toml, ripframe.bin and ripnotes.bin", f, err)
 	}
 	dir := t.TempDir()
 	if f, err = ResolveFiles(dir, "", ""); err != nil || f.buffer != 0 || f.rip != "" || f.model != "" || f.notes != "" || f.ripTarget != filepath.Join(dir, ripFile) {
@@ -849,7 +849,7 @@ func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 	}
 }
 
-// TestTheNotesModelLoadsBesideTheModel: ripnotes.bin beside ripmodel.bin gives
+// TestTheNotesModelLoadsBesideTheModel: ripnotes.bin beside ripframe.bin gives
 // rip its notes, and the session and stat name both files; alone, it is named
 // and the analysis listens.
 func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {

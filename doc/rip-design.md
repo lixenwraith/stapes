@@ -279,7 +279,7 @@ offline (`song <name> <file.wav>`).
   default width: 70 seconds on one core of a 2017 laptop's i7-7700HQ, against
   20 at width 128, and the width and depth are the file's to choose. The analysis stays the
   default front end: stapes hears with the model when its root holds
-  `ripmodel.bin`.
+  `ripframe.bin`.
 
 ## 4. Layout
 

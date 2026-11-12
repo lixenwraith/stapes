@@ -44,10 +44,10 @@ The root is `-config-dir`, or else `os.UserConfigDir()` plus `stapes`
   engine's 50 ms when unset; a key it has no field for is refused by name;
 - `rip.toml`, the rip's parameters: what `rip` listens with when it is there,
   and where `tune` writes;
-- `ripmodel.bin`, the rip's learned front end: what `rip` hears with when it is
+- `ripframe.bin`, the rip's learned front end: what `rip` hears with when it is
   there, the built-in analysis when it is not
   ([rip-train](../tool/rip-train/README.md));
-- `ripnotes.bin`, the notes model: beside `ripmodel.bin` it gives the notes, the
+- `ripnotes.bin`, the notes model: beside `ripframe.bin` it gives the notes, the
   pitches and their strikes, releases and velocities, and alone it is unused;
 - `ripjudge.bin`, a judge of the strikes: beside the weights it was fitted on
   it rules which strikes are notes, in the installed scores' place, and beside
@@ -157,7 +157,7 @@ Over the library's rip (library
   offline rip's bar lines and beats as the truth, and the process's CPU over
   each (`getrusage`, so the mixer's and a screen's are in it).
 - `rip` listens with the root's `rip.toml` when one is there, and hears with
-  the root's `ripmodel.bin`, and the notes from its `ripnotes.bin` when that is
+  the root's `ripframe.bin`, and the notes from its `ripnotes.bin` when that is
   there, which `tool/rip-train` trains on loops stapes exports (`corpus`); `render` writes what the slots hold to a WAV through
   `RenderMusic`, so an estimate is heard without a device. The root's
   `ripjudge.bin` is the rip's judge (`Ripper.Judge`, loaded with

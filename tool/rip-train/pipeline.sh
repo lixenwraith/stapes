@@ -32,7 +32,7 @@ PCEN=${PCEN:-}                       # pcen: a second input channel, each band's
 HOLDOUT=${HOLDOUT:-200}              # loops held out, scored every EVERY steps
 EVERY=${EVERY:-1000}
 VALIDATE=${VALIDATE:-}               # a corpus of recordings (corpus <dir> from) whose best step OUT gets; empty for the held-out loops'
-OUT=${OUT:-$CORPUS/ripmodel.bin}       # the weight file
+OUT=${OUT:-$CORPUS/ripframe.bin}       # the weight file
 CHECKPOINT=${CHECKPOINT:-$CORPUS/ripmodel.pt}
 ROOT=${ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/stapes}   # the stapes root rip hears with
 NOTES=${NOTES:-}                     # a notes model's weight file, a --pitchnet run's OUT, bench and install put beside OUT as ripnotes.bin; empty for none
@@ -101,7 +101,7 @@ merge() {
 bench() {
 	local root
 	root=$(mktemp -d)
-	cp "$OUT" "$root/ripmodel.bin"
+	cp "$OUT" "$root/ripframe.bin"
 	if [ -n "$NOTES" ]; then cp "$NOTES" "$root/ripnotes.bin"; fi
 	if [ -f "$ROOT/rip.toml" ]; then cp "$ROOT/rip.toml" "$root/rip.toml"; fi
 	local slab="$root/bench.slab"
@@ -116,8 +116,8 @@ bench() {
 
 install() {
 	mkdir -p "$ROOT"
-	cp "$OUT" "$ROOT/ripmodel.bin"
-	echo "== installed $OUT as $ROOT/ripmodel.bin; stapes' rip hears with it, remove the file to hear with the analysis"
+	cp "$OUT" "$ROOT/ripframe.bin"
+	echo "== installed $OUT as $ROOT/ripframe.bin; stapes' rip hears with it, remove the file to hear with the analysis"
 	if [ -n "$NOTES" ]; then
 		cp "$NOTES" "$ROOT/ripnotes.bin"
 		echo "== installed $NOTES as $ROOT/ripnotes.bin; it gives the notes, remove the file to take them from the model"

@@ -213,9 +213,9 @@ def corpus(d, labels, frames=64):
             json.dump(lab, f)
 
 
-def run(*flags) -> str:
-    """one step of train.py at the smallest shape, and what it printed"""
-    argv = ["train.py", *flags, "--steps", "1", "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4"]
+def run(*flags, steps=1) -> str:
+    """steps of train.py at the smallest shape, and what it printed"""
+    argv = ["train.py", *flags, "--steps", str(steps), "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4"]
     with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as said:
         train.main()
     return said.getvalue()
@@ -367,6 +367,35 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         self.assertEqual([len(after["model"][k]) for k in ("out.weight", "out.bias")], [had + 2, had + 2])
         head = lambda name, size: struct.pack("<H", len(name)) + name.encode() + struct.pack("<I", size)
         self.assertIn(head("family", len(ripmodel.FAMILIES)) + head("beat", 1) + head("downbeat", 1) + struct.pack("<I", len(after["model"])), body)
+
+    def test_a_probe_trains_the_two_heads_alone_on_a_frame_model_held_as_it_was(self):
+        """--probe on a frame model started from one without the beat and downbeat heads trains those two heads' rows
+        of the output layer and holds the rest: after three steps every other weight is the start's, every other
+        head says bit for bit what the start's did, the two heads say something else, and the last step is exported."""
+        old = ripmodel.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodel.HEADS[:-2])
+        before = ripmodel.RipModel(old).state_dict()
+        with tempfile.TemporaryDirectory() as d:
+            at = lambda name: os.path.join(d, name)
+            corpus(d, [{"bpm": 100, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
+            torch.save({"model": before, "cfg": asdict(old)}, at("old.pt"))
+            run("--corpus", d, "--out", at("start.bin"), "--init", at("old.pt"), "--checkpoint", at("start.pt"), "--lr", "0")  # the start: the two rows as grown
+            said = run("--corpus", d, "--out", at("probed.bin"), "--init", at("old.pt"), "--checkpoint", at("probed.pt"), "--probe", "--lr", "0.01", steps=3)
+            start, probed = torch.load(at("start.pt")), torch.load(at("probed.pt"))
+        self.assertIn("a probe: exporting its last step, 3", said)
+        had = old.out_size
+        for k, v in before.items():
+            with self.subTest(tensor=k):
+                self.assertTrue(torch.equal(probed["model"][k][:had] if k.startswith("out.") else probed["model"][k], v))
+        frames = torch.randn(1, 40, ripmodel.INPUTS, generator=torch.Generator().manual_seed(1))
+        says = []
+        for ck in (start, probed):
+            model = ripmodel.RipModel(ripmodel.Config(**ck["cfg"]))
+            model.load_state_dict(ck["model"])
+            with torch.no_grad():
+                says.append(model.eval()(frames))
+        self.assertTrue(torch.equal(says[0][..., :had], says[1][..., :had]))
+        for k in (had, had + 1):
+            self.assertFalse(torch.equal(says[0][..., k], says[1][..., k]))
 
 
 if __name__ == "__main__":

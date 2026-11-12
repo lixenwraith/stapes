@@ -452,7 +452,7 @@ proves wrong or that a document now states, and link the document instead.
   list of any length, and `--bend` sways a window's tempo.
 - Baselines for a change that must not move the corpus or the bench, taken at
   v0.18.0 on audio v0.21.0 with an empty root and `XDG_CONFIG_HOME`, and
-  unmoved at v0.21.0 on audio v0.24.0: `corpus
+  unmoved at v0.22.0 on audio v0.24.0: `corpus
   <dir> 24 4 aug gen nowav` hashes `1c86cc77...e2b4` over 49 files; `bench 12
   4` reads the analysis at 0.453 clean (tempo 0.83 bars 0.90 drums 0.43
   melody 0.17 bass 0.25) and 0.425 augmented (0.83 0.90 0.43 0.13 0.11), and
@@ -654,3 +654,9 @@ proves wrong or that a document now states, and link the document instead.
 - That run's path takes an hour on four cores: the corpus with its audio 264 s
   in four parts (7.9 GB), 5,000 steps at 0.45 s and 30 s a held-out score of
   160 loops, 480 rips in three minutes over four processes.
+- A frame model's probe (`--probe` from a model without the beat and downbeat
+  heads) is checked on real weights by its held-out line and by a rip: the
+  other ten heads' losses print to the digit as the start's, and its file
+  ripped with the two heads left out is the start's row for row. It was run
+  only from a model cut from one trained with the heads, whose features hold
+  the beat already; what a probe reaches on the installed model is unmeasured.

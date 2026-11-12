@@ -255,7 +255,10 @@ left is the reading on trained weights:
 
 - **A round with the heads**, from the installed frame model through `--init`,
   on `meters` corpora and on recordings whose lists name their beats
-  (GuitarSet's JAMS files, E-GMD's own MIDI). Then the 120 GuitarSet clips no
+  (GuitarSet's JAMS files, E-GMD's own MIDI). `--probe` first: it trains the
+  two heads alone and cannot cost the heads the decoders read, and says
+  whether the installed model's features hold the beat at all; a fine-tune
+  only if they do not. Then the 120 GuitarSet clips no
   round met (37 right through the cues, 58 under perfect beats), the Für Elise
   takes and the stream's twelve recordings, each with the heads and with the
   same weights' heads left out, and what [audio's

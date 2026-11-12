@@ -640,20 +640,25 @@ PLAYS = 0.25  # what plays a cell against what plays the frame: its heads teach 
 
 
 def probe(model) -> callable:
-    """holds every weight of a notes model but the rows of the cell heads that say what plays each pitch: no other
-    weight takes a gradient, theirs is masked out of the cells' output layer, which holds every cell head, and the
-    function returned puts those rows back after a step, since AdamW's decay moves a row with no gradient"""
+    """holds every weight of a model but the rows of the heads a probe trains: a notes model's cell heads that say
+    what plays each pitch, a frame model's beat and downbeat. No other weight takes a gradient, theirs is masked
+    out of the output layer that holds them among the other heads, and the function returned puts the other rows
+    back after a step, since AdamW's decay moves a row with no gradient"""
     for p in model.parameters():
         p.requires_grad_(False)
+    if isinstance(model, ripmodel.PitchNet):
+        layer, heads, probed = model.notes, ripmodel.cell_heads(model.cfg), ("pitchfamily", "pitchwave", "pitchvoice")
+    else:
+        layer, heads, probed = model.out, model.cfg.outputs, ("beat", "downbeat")
     at, new = 0, []
-    for k, n in ripmodel.cell_heads(model.cfg):
-        if k in ("pitchfamily", "pitchwave", "pitchvoice"):
+    for k, n in heads:
+        if k in probed:
             new.append((at, at + n))
         at += n
-    mask = torch.zeros(at, device=model.notes.weight.device)
+    mask = torch.zeros(at, device=layer.weight.device)
     for a, b in new:
         mask[a:b] = 1
-    held = {t: t.detach().clone() for t in (model.notes.weight, model.notes.bias)}
+    held = {t: t.detach().clone() for t in (layer.weight, layer.bias)}
     for t in held:
         t.requires_grad_(True)
         t.register_hook(lambda g: g * mask.view(-1, *[1] * (g.dim() - 1)))
@@ -761,7 +766,7 @@ def main() -> None:
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
     ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
-    ap.add_argument("--probe", action="store_true", help="a notes model's heads of what plays each pitch trained alone from --init's weights, every other weight held as it was and no cents head, so the file rips as its start; the last step is exported")
+    ap.add_argument("--probe", action="store_true", help="a notes model's heads of what plays each pitch, or a frame model's beat and downbeat heads, trained alone from --init's weights, every other weight held as it was: a notes model carries no cents head, so its file rips as its start, and a frame model's other heads say what its start's did; the last step is exported")
     ap.add_argument("--even-glides", action="store_true", help="the cents head's gliding readings weigh as much as the rest in its loss wherever a batch holds both")
     ap.add_argument("--dip", type=float, default=0.0, help="the share of the channel's windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room hears")
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
@@ -791,6 +796,8 @@ def main() -> None:
     towers = [tuple(int(v) for v in t.split(":")) for t in args.towers.split(",") if t]
     if any(len(t) != 2 for t in towers) or towers and sum(h for _, h in towers) != len(ripmodel.HEADS):
         raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodel.HEADS)}")
+    if args.probe and towers and not args.pitchnet:
+        raise SystemExit("--probe with --towers: a model in towers lays its heads over several output layers, and a probe holds one")
     heads = [h for h in ripmodel.PITCHNET_HEADS if h[0] != "cents"] if args.probe else ripmodel.PITCHNET_HEADS  # a probe's file rips as its start
     heard = dict(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS, outputs=heads) if args.pitchnet else dict(channels=2 if args.pcen else 1)
     cfg = ripmodel.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,

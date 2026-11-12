@@ -408,7 +408,12 @@ targets and the loss.
   heads' log-odds as a posterior's, and a weight would favour short bars.
 - **A model from before the heads** starts a run through `--init`, which grows
   them, every other weight carried over; its own file still loads, its bars read
-  by the cues.
+  by the cues. With `--probe` such a run trains the two heads' rows of the output
+  layer alone: every other weight stays the start's bit for bit, as a notes
+  model's probe holds it ([below](#parity)), so the file's other heads say what
+  the start's did and its rip with the two left out is the start's, and the last
+  step is exported. A fine-tune without it moves the heads the decoders already
+  read.
 - **The lines** give `beats' F1` and `bar lines'`, or `no beat or bar line asked`.
 
 The path at a size four cores train in 42 minutes, which shows that it holds
@@ -595,7 +600,10 @@ other weight stays the start's bit for bit (the gradient is masked to the heads'
 of the cells' output layer, which holds every cell head, and the rest are put back
 after each step against AdamW's decay), the model carries no cents head, and the last
 step is exported, since no score that picks a step moves. Its file rips as its start's
-does, so only the new heads need reading.
+does, so only the new heads need reading. A frame model's probe trains its beat and
+downbeat heads the same way, the rows of its one output layer ([the beat and the bar
+line](#the-beat-and-the-bar-line)); a frame model in towers, whose heads lie over
+several output layers, is refused.
 
 The held-out run's last lines give the reach; the shipped run prints what its file
 carries (`a family naming a note past a share of R`), and a file with no measure

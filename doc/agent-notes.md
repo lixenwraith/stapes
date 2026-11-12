@@ -557,8 +557,6 @@ proves wrong or that a document now states, and link the document instead.
   singing, which every corpus names one way, on 96% of its notes. Count a
   name's cells by what plays them (`vif/tmp/round37/tools/askcount.py`) before
   training for it.
-- The trainer's tests run on the CPU (`CUDA_VISIBLE_DEVICES=`): on a machine
-  with CUDA 44 of them stop on a tensor on each device.
 - A training loss that keeps falling says nothing about fresh loops: 12000
   steps on 300 loops reached 0.31 and benched worse than 3000 steps on 120,
   each loop seen three hundred times. `train.py` holds a tenth of the loops

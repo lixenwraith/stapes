@@ -78,6 +78,18 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 - 320 real classical recordings, 33.7 hours, scores aligned with about 4% label errors; 10 more held out as a test.
 - Goal: real instruments in full recordings, piano most of all. No velocities.
 
+**MusicNet, snapped** (`~/ripcorpus-musicnet-snap`, `~/ripcorpus-val-mn-snap`, waiting)
+- Each note's onset moved to 32a's strongest strike peak at its pitch within eight frames, where that is over a half (81% of the training notes, a median three frames), else marked `"snap": false` (19%: Solo Flute 6% to String Sextet 50%). Two models outside 32a's line then find a note within a frame of its label on 80 to 88%, 36% before.
+- Goal: strikes MusicNet can teach and judge. The trainer's mask for an unsnapped note is still to come.
+
+**The glide pair** (`~/ripcorpus37-plain`, `~/ripcorpus37-glide`, waiting)
+- Corpus 17's line at seed 371, 2,000 loops each, without and with `glide`: the same loops but for the motion (765 of the glide corpus's loops move, 24% of their placed note frames), the last 200 of each held out of every run.
+- Goal: rounds 37a to 37d.
+
+**Validation** (`~/ripcorpus-val37`, in use)
+- 969 loops of about ten thousand notes each of guitar (GuitarSet's player 04), piano and an ensemble (snapped MusicNet validation pieces), voice (VocalSet's five test singers) and phone (the engine's loops recorded by two phones at 2 m); no round trained on any of them.
+- Goal: `--validate` with one condition a kind.
+
 ## Rounds
 
 **6**
@@ -235,6 +247,11 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 **Bass on phones** (8 November)
 - 32a's bass recall: clean .50 (91 of 182), 30 cm .03, Pixel .13, Galaxy .18. At the missed notes the pitch head hears the bass (median .65 to .82) but the strike head is weak (median .38 to .55): 24 to 47 sit between .7 and .9, which the bass's bar of .9 drops before the accounting judges them.
 - The phones at 2 m sit 15 dB down at 160 to 320 Hz against the clean take, 7 to 9 dB around it. That is 34d's dip.
+
+**37a, 37b, 37c, 37d** (11 November, the glides)
+- 32a fine-tuned 3,000 steps at rate 3e-4 on its recipe with the cents head, validated on `~/ripcorpus-val37`: 37a with the plain small corpus first among the extras at 0.6, 37b the glide one, 37c 37b with `--even-glides`, 37d with no small corpus.
+- The glide corpus taught the head a cent: gliding readings 18.2 off against 37a's 19.2 on the glide loops neither trained on (25 for a head that knows nothing), both too sure there (51% and 47% within). `--even-glides` made the head state its error (62%) and read 16.9 off, and split sung notes: vocadito .615 against .687, fragments 165 against 143.
+- Every arm lost to 32a on the clean take (.78 to .80 against .835), the phones and MusicNet (.675 to .696 against .711), 37d too, whose strikes scored above 32a's on the validation corpus (.523 against .515): under scores set with 32a's heads, a change to the heads reads as a loss. None installed.
 
 ## Decoder changes that moved scores without training
 

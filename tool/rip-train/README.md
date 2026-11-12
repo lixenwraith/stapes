@@ -514,6 +514,8 @@ it, since audio joins two cells only where their readings agree within the state
 errors, with no margin on top. A head that knows nothing of a sound reads a median
 25 cents off, so the line above is a head that has a loop's tuning and little of a
 glide's motion yet: it states as much there, and the decoder joins nothing on its word.
+`--even-glides` gives a batch's gliding readings half the cents loss and half the stated
+error's wherever it holds them beside steady ones, which outnumber them many times over.
 
 A notes model says what plays each pitch: three more heads a cell, the family of
 the eight names, the wave and the 32 genes, taught at the cells one note alone
@@ -526,6 +528,13 @@ a family out and ships it with none held out:
 python3 train.py --pitchnet ... --family-holdout guitar --out held.bin   # its held-out line: guitar's notes reach R
 python3 train.py --pitchnet ... --sure R --out ripnotes.bin              # every name taught, the measure carried
 ```
+
+`--probe` trains those three heads alone on the notes model `--init` gives: every
+other weight stays the start's bit for bit (the gradient is masked to the heads' rows
+of the cells' output layer, which holds every cell head, and the rest are put back
+after each step against AdamW's decay), the model carries no cents head, and the last
+step is exported, since no score that picks a step moves. Its file rips as its start's
+does, so only the new heads need reading.
 
 The held-out run's last lines give the reach; the shipped run prints what its file
 carries (`a family naming a note past a share of R`), and a file with no measure

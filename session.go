@@ -90,8 +90,8 @@ const (
 	rootName     = "stapes" // the root's folder under os.UserConfigDir
 	settingsFile = "stapes.toml"
 	ripFile      = "rip.toml"
-	modelFile    = "ripframe.bin"
-	oldModelFile = "ripmodel.bin" // modelFile's old name, which a root is told to rename and is never loaded from
+	frameFile    = "ripframe.bin"
+	oldFrameFile = "ripmodel.bin" // frameFile's old name, which a root is told to rename and is never loaded from
 	notesFile    = "ripnotes.bin" // a notes model beside the frame model, which then gives the notes
 	judgeFile    = "ripjudge.bin" // a judge of the strikes beside the weights it was fitted on, which then rules them
 	musicFile    = "music.toml"
@@ -107,9 +107,9 @@ const (
 type Files struct {
 	music, sounds             string // "" = the bank
 	rip                       string // "" = the built-in parameters
-	model                     string // "" = no frame model: the analysis listens
-	oldModel                  string // "" = no frame model under its old name, which is named and never loaded
-	notes                     string // "" = no notes model: the model gives the notes
+	frame                     string // "" = no frame model: the analysis listens
+	oldFrame                  string // "" = no frame model under its old name, which is named and never loaded
+	notes                     string // "" = no notes model: the frame model gives the notes
 	judge                     string // "" = no judge: the installed scores judge the strikes
 	musicTarget, soundsTarget string // "" = no search path
 	ripTarget                 string // "" = no root
@@ -151,9 +151,9 @@ func ResolveFiles(dir, music, sounds string) (Files, error) {
 	if root == "" {
 		return f, nil
 	}
-	f.rip, f.model, f.ripTarget = regular(filepath.Join(root, ripFile)), regular(filepath.Join(root, modelFile)), filepath.Join(root, ripFile)
+	f.rip, f.frame, f.ripTarget = regular(filepath.Join(root, ripFile)), regular(filepath.Join(root, frameFile)), filepath.Join(root, ripFile)
 	f.notes, f.judge = regular(filepath.Join(root, notesFile)), regular(filepath.Join(root, judgeFile))
-	f.oldModel = regular(filepath.Join(root, oldModelFile))
+	f.oldFrame = regular(filepath.Join(root, oldFrameFile))
 	file := filepath.Join(root, settingsFile)
 	data, err := os.ReadFile(file)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -284,7 +284,7 @@ func NewSession(o Options) (*Session, error) {
 			fmt.Fprintf(out, "rip params %s\n", f)
 		}
 	}
-	if f := files.model; f != "" {
+	if f := files.frame; f != "" {
 		if err := s.loadModel(f, files.notes); err != nil {
 			fmt.Fprintf(out, "frame model %s: %v (the analysis listens)\n", f, err)
 		} else {
@@ -295,10 +295,10 @@ func NewSession(o Options) (*Session, error) {
 			}
 			fmt.Fprintf(out, "rip hears with %s\n", s.ear())
 		}
-	} else if files.oldModel != "" {
-		fmt.Fprintf(out, "frame model: %s is now %s, so rename %s (the analysis listens)\n", oldModelFile, modelFile, files.oldModel)
+	} else if files.oldFrame != "" {
+		fmt.Fprintf(out, "frame model: %s is now %s, so rename %s (the analysis listens)\n", oldFrameFile, frameFile, files.oldFrame)
 	} else if files.notes != "" {
-		fmt.Fprintf(out, "notes model %s: no %s beside it (the analysis listens)\n", files.notes, modelFile)
+		fmt.Fprintf(out, "notes model %s: no %s beside it (the analysis listens)\n", files.notes, frameFile)
 	}
 	// A failed Start latches silent mode but the engine stays valid, and
 	// rendering is engine-independent: edit, validate and export all work
@@ -392,7 +392,7 @@ func (s *Session) loadJudge(file string) error {
 // ear names each model the front end loaded with its file and its weights, and
 // the judge of its strikes
 func (s *Session) ear() string {
-	e := fmt.Sprintf("the frame model %s (%d weights)", s.files.model, s.frontEnd.Frame.Parameters())
+	e := fmt.Sprintf("the frame model %s (%d weights)", s.files.frame, s.frontEnd.Frame.Parameters())
 	if n := s.frontEnd.Notes; n != nil {
 		e += fmt.Sprintf(", the notes model %s (%d weights)", s.files.notes, n.Parameters())
 	}

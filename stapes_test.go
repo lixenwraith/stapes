@@ -831,16 +831,16 @@ func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 	user := filepath.Join(base, rootName)
 	writeFile(t, filepath.Join(user, settingsFile), "[audio]\nbuffer_ms = 20\n")
 	writeFile(t, filepath.Join(user, ripFile), "[rip]\n")
-	writeFile(t, filepath.Join(user, modelFile), "weights")
+	writeFile(t, filepath.Join(user, frameFile), "weights")
 	writeFile(t, filepath.Join(user, notesFile), "weights")
 	writeFile(t, filepath.Join(base, "vif", "vif.toml"), "[audio]\nbuffer_ms = 30\n")
 	writeFile(t, filepath.Join(base, vifAudio, ripFile), "[rip]\n")
 	f, err := ResolveFiles("", "", "")
-	if err != nil || f.buffer != 20*time.Millisecond || f.rip != filepath.Join(user, ripFile) || f.model != filepath.Join(user, modelFile) || f.notes != filepath.Join(user, notesFile) {
+	if err != nil || f.buffer != 20*time.Millisecond || f.rip != filepath.Join(user, ripFile) || f.frame != filepath.Join(user, frameFile) || f.notes != filepath.Join(user, notesFile) {
 		t.Fatalf("the user's root gave %+v, %v; want its buffer, rip.toml, ripframe.bin and ripnotes.bin", f, err)
 	}
 	dir := t.TempDir()
-	if f, err = ResolveFiles(dir, "", ""); err != nil || f.buffer != 0 || f.rip != "" || f.model != "" || f.notes != "" || f.ripTarget != filepath.Join(dir, ripFile) {
+	if f, err = ResolveFiles(dir, "", ""); err != nil || f.buffer != 0 || f.rip != "" || f.frame != "" || f.notes != "" || f.ripTarget != filepath.Join(dir, ripFile) {
 		t.Fatalf("-config-dir gave %+v, %v; want that root alone", f, err)
 	}
 	writeFile(t, filepath.Join(dir, settingsFile), "[paths]\nroot = \"elsewhere\"\n")
@@ -849,10 +849,10 @@ func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 	}
 }
 
-// TestTheNotesModelLoadsBesideTheModel: ripnotes.bin beside ripframe.bin gives
+// TestTheNotesModelLoadsBesideTheFrameModel: ripnotes.bin beside ripframe.bin gives
 // rip its notes, and the session and stat name the frame model and the notes
 // model with their files; alone, it is named and the analysis listens.
-func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
+func TestTheNotesModelLoadsBesideTheFrameModel(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	dir := t.TempDir()
 	// a model saved as the trainer's export writes it: a notes model's sure head,
@@ -893,17 +893,17 @@ func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	save(notesFile, notes)
 	s, out := open()
-	if s.frontEnd != nil || !strings.Contains(out.String(), "no "+modelFile+" beside it") {
+	if s.frontEnd != nil || !strings.Contains(out.String(), "no "+frameFile+" beside it") {
 		t.Errorf("a notes model alone loaded %v: %s", s.frontEnd != nil, out)
 	}
 	teardown(t, s)
 
-	model := ripmodels.FrameSpec()
-	model.Dim, model.Heads, model.Layers, model.FFN = 8, 2, 1, 8
-	save(modelFile, model)
+	frame := ripmodels.FrameSpec()
+	frame.Dim, frame.Heads, frame.Layers, frame.FFN = 8, 2, 1, 8
+	save(frameFile, frame)
 	s, out = open()
 	defer teardown(t, s)
-	named := "the frame model " + filepath.Join(dir, modelFile) + " ("
+	named := "the frame model " + filepath.Join(dir, frameFile) + " ("
 	notesNamed := ", the notes model " + filepath.Join(dir, notesFile) + " ("
 	if s.frontEnd == nil || s.frontEnd.Notes == nil || !strings.Contains(out.String(), named) || !strings.Contains(out.String(), notesNamed) {
 		t.Fatalf("a model and a notes model gave notes %v: %s", s.frontEnd != nil && s.frontEnd.Notes != nil, out)
@@ -931,7 +931,7 @@ func TestAFrameModelUnderItsOldNameIsNamedNotLoaded(t *testing.T) {
 	if err := m.Save(&b); err != nil {
 		t.Fatal(err)
 	}
-	old := filepath.Join(root, oldModelFile)
+	old := filepath.Join(root, oldFrameFile)
 	writeFile(t, old, b.String())
 	files, err := ResolveFiles(root, "", "")
 	if err != nil {
@@ -943,9 +943,9 @@ func TestAFrameModelUnderItsOldNameIsNamedNotLoaded(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer teardown(t, s)
-	said := oldModelFile + " is now " + modelFile + ", so rename " + old + " (the analysis listens)"
+	said := oldFrameFile + " is now " + frameFile + ", so rename " + old + " (the analysis listens)"
 	if s.frontEnd != nil || !strings.Contains(out.String(), said) {
-		t.Errorf("a root holding %s alone loaded a model %v and said: %s", oldModelFile, s.frontEnd != nil, out.String())
+		t.Errorf("a root holding %s alone loaded a model %v and said: %s", oldFrameFile, s.frontEnd != nil, out.String())
 	}
 }
 
@@ -2131,7 +2131,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 ! tune truth %s guard 2
 ! tune truth %s frames
 `, list, list, list, list, list))
-	if !strings.Contains(out.String(), "no "+modelFile+" is loaded") {
+	if !strings.Contains(out.String(), "no "+frameFile+" is loaded") {
 		t.Errorf("no refusal for want of a model:\n%s", out.String())
 	}
 	// a loop the registered patterns render, its notes a MIDI truth
@@ -2325,7 +2325,7 @@ func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 			t.Fatal(err)
 		}
 		root := t.TempDir()
-		writeFile(t, filepath.Join(root, modelFile), b.String())
+		writeFile(t, filepath.Join(root, frameFile), b.String())
 		files, err := ResolveFiles(root, "", "")
 		if err != nil {
 			t.Fatal(err)
@@ -2415,7 +2415,7 @@ func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	if err := m.Save(&weights); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(root, modelFile), weights.String())
+	writeFile(t, filepath.Join(root, frameFile), weights.String())
 	sum := binary.LittleEndian.Uint64(weights.Bytes()[weights.Len()-8:])
 	open := func(notes uint64) (*Session, *bytes.Buffer) {
 		// a judge that keeps every reported note and returns no dropped strike
@@ -2515,7 +2515,7 @@ func TestRowsWritesEachStrikesRowAsTheRipReadIt(t *testing.T) {
 	dir, fe, heard, write := truthFixture(t, s, 1)
 	list, to := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rows")
 	runOrFatal(t, s, &out, fmt.Sprintf("! rows %[1]s from %[2]s\n! rows %[1]s %[2]s\n! rows %[1]s from %[2]s part 2/2\n! rows %[1]s from %[2]s frames\n", to, list))
-	if !strings.Contains(out.String(), "no "+modelFile+" is loaded") {
+	if !strings.Contains(out.String(), "no "+frameFile+" is loaded") {
 		t.Errorf("no refusal for want of a model:\n%s", out.String())
 	}
 	// the truth is what the rip hears, so the notes it kept are the right ones

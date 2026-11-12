@@ -129,10 +129,10 @@ Over the library's rip (library
   is eighth 146, `Meter.FeltTempo`); `rip ... bpm <n>`
   pins the tempo alone, `rip ... meter <n/d>` the meter (`Ripper.Meter`),
   `rip ... lead` names the rule that picks the melody (`Ripper.Lead`), and
-  `rip <file.mid> <name>` reads a MIDI file as a rip (`MIDIScore.Rip`). For each register the front end heard no voice for, `rip`
-  searches the voice's genes and wave for the nearest (`RenderNote`,
-  `MelDistance`), seeded with every registered voice; `fit` runs it again with
-  more generations.
+  `rip <file.mid> <name>` reads a MIDI file as a rip (`MIDIScore.Rip`). For
+  each line `rip` searches the voice's genes and wave for the nearest
+  (`RenderNoteAt`, `MelDistance`), seeded with the voice the front end heard
+  and every registered one; `fit` runs it again with more generations.
 - `agree` compares two rips of one piece (`MatchNotes`); `truth` scores a rip
   against notes given as text or a tapped rhythm (`ParseTranscript`) or a MIDI
   file (`truth <name> <file.mid>`), first every note as one line by pitch and

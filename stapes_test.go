@@ -850,8 +850,8 @@ func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 }
 
 // TestTheNotesModelLoadsBesideTheModel: ripnotes.bin beside ripframe.bin gives
-// rip its notes, and the session and stat name both files; alone, it is named
-// and the analysis listens.
+// rip its notes, and the session and stat name the frame model and the notes
+// model with their files; alone, it is named and the analysis listens.
 func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	dir := t.TempDir()
@@ -892,14 +892,15 @@ func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 	save(modelFile, model)
 	s, out = open()
 	defer teardown(t, s)
-	named := filepath.Join(dir, notesFile) + " ("
-	if s.frontEnd == nil || s.frontEnd.Notes == nil || !strings.Contains(out.String(), named) {
+	named := "the frame model " + filepath.Join(dir, modelFile) + " ("
+	notesNamed := ", the notes model " + filepath.Join(dir, notesFile) + " ("
+	if s.frontEnd == nil || s.frontEnd.Notes == nil || !strings.Contains(out.String(), named) || !strings.Contains(out.String(), notesNamed) {
 		t.Fatalf("a model and a notes model gave notes %v: %s", s.frontEnd != nil && s.frontEnd.Notes != nil, out)
 	}
 	out.Reset()
 	runOrFatal(t, s, out, "stat\n")
-	if !strings.Contains(out.String(), named) {
-		t.Errorf("stat names no notes model: %s", out)
+	if !strings.Contains(out.String(), named) || !strings.Contains(out.String(), notesNamed) {
+		t.Errorf("stat names not each model: %s", out)
 	}
 }
 
@@ -2387,7 +2388,7 @@ func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 		return s, &out
 	}
 	s, out := open(sum + 1)
-	if s.judge != nil || s.ripper().Judge != nil || !strings.Contains(out.String(), "rip judge "+filepath.Join(root, judgeFile)+": ") || !strings.Contains(out.String(), "the installed scores judge") {
+	if s.judge != nil || s.ripper().Judge != nil || !strings.Contains(out.String(), "judge "+filepath.Join(root, judgeFile)+": ") || !strings.Contains(out.String(), "the installed scores judge") {
 		t.Errorf("a judge fitted on other notes weights loaded %v: %s", s.judge != nil, out)
 	}
 	dir, _, heard, write := truthFixture(t, s, 1)
@@ -2395,7 +2396,7 @@ func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	teardown(t, s)
 	s, out = open(sum)
 	defer teardown(t, s)
-	named := ", judge " + filepath.Join(root, judgeFile)
+	named := ", the judge " + filepath.Join(root, judgeFile)
 	if s.judge == nil || s.ripper().Judge == nil || !strings.Contains(out.String(), named) {
 		t.Fatalf("a judge fitted on the notes weights loaded gave the ripper none: %s", out)
 	}

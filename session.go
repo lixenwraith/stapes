@@ -56,8 +56,8 @@ type Session struct {
 	startErr error
 	files    Files
 	// rip is what rip listens with, the root's rip.toml when one holds it, and
-	// ripSrc that file, where tune writes; frontEnd is the model the root's
-	// ripframe.bin holds, nil for the package's own analysis
+	// ripSrc that file, where tune writes; frontEnd is the frame model the root's
+	// ripframe.bin holds, with its notes model, nil for the package's own analysis
 	rip      audio.RipParams
 	ripSrc   string
 	frontEnd *ripmodel.FrontEnd
@@ -91,7 +91,7 @@ const (
 	settingsFile = "stapes.toml"
 	ripFile      = "rip.toml"
 	modelFile    = "ripframe.bin"
-	notesFile    = "ripnotes.bin" // a notes model beside the model, which then gives the notes
+	notesFile    = "ripnotes.bin" // a notes model beside the frame model, which then gives the notes
 	judgeFile    = "ripjudge.bin" // a judge of the strikes beside the weights it was fitted on, which then rules them
 	musicFile    = "music.toml"
 	soundsFile   = "sounds.toml"
@@ -106,7 +106,7 @@ const (
 type Files struct {
 	music, sounds             string // "" = the bank
 	rip                       string // "" = the built-in parameters
-	model                     string // "" = no model: the analysis listens
+	model                     string // "" = no frame model: the analysis listens
 	notes                     string // "" = no notes model: the model gives the notes
 	judge                     string // "" = no judge: the installed scores judge the strikes
 	musicTarget, soundsTarget string // "" = no search path
@@ -283,17 +283,17 @@ func NewSession(o Options) (*Session, error) {
 	}
 	if f := files.model; f != "" {
 		if err := s.loadModel(f, files.notes); err != nil {
-			fmt.Fprintf(out, "rip model %s: %v (the analysis listens)\n", f, err)
+			fmt.Fprintf(out, "frame model %s: %v (the analysis listens)\n", f, err)
 		} else {
 			if j := files.judge; j != "" {
 				if err := s.loadJudge(j); err != nil {
-					fmt.Fprintf(out, "rip judge %s: %v (the installed scores judge)\n", j, err)
+					fmt.Fprintf(out, "judge %s: %v (the installed scores judge)\n", j, err)
 				}
 			}
-			fmt.Fprintf(out, "rip model %s\n", s.ear())
+			fmt.Fprintf(out, "rip hears with %s\n", s.ear())
 		}
 	} else if files.notes != "" {
-		fmt.Fprintf(out, "rip notes %s: no %s beside it (the analysis listens)\n", files.notes, modelFile)
+		fmt.Fprintf(out, "notes model %s: no %s beside it (the analysis listens)\n", files.notes, modelFile)
 	}
 	// A failed Start latches silent mode but the engine stays valid, and
 	// rendering is engine-independent: edit, validate and export all work
@@ -355,7 +355,7 @@ func (s *Session) loadModel(file, notes string) error {
 	if notes != "" {
 		nd, err := os.ReadFile(notes)
 		if err != nil {
-			return err
+			return fmt.Errorf("notes model: %w", err) // as ripmodel.Load names its own
 		}
 		both := sha256.Sum256(nd)
 		sum = sha256.Sum256(append(sum[:], both[:]...))
@@ -384,15 +384,15 @@ func (s *Session) loadJudge(file string) error {
 	return nil
 }
 
-// ear names the weight files the front end loaded and their weights, and the
-// judge of its strikes
+// ear names each model the front end loaded with its file and its weights, and
+// the judge of its strikes
 func (s *Session) ear() string {
-	e := fmt.Sprintf("%s (%d weights)", s.files.model, s.frontEnd.Model.Parameters())
+	e := fmt.Sprintf("the frame model %s (%d weights)", s.files.model, s.frontEnd.Model.Parameters())
 	if n := s.frontEnd.Notes; n != nil {
-		e += fmt.Sprintf(", notes %s (%d weights)", s.files.notes, n.Parameters())
+		e += fmt.Sprintf(", the notes model %s (%d weights)", s.files.notes, n.Parameters())
 	}
 	if s.judge != nil {
-		e += ", judge " + s.files.judge
+		e += ", the judge " + s.files.judge
 	}
 	return e
 }

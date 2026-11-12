@@ -2879,6 +2879,71 @@ func TestACorpusFromTakesABatchAfterItsLoops(t *testing.T) {
 	}
 }
 
+// TestACorpusFromListsARecordingsBeats: a list's beats column names the file a
+// recording's beats are read from, a JAMS file's beat_position annotation or a
+// MIDI file's bars, and its label lists them and its bar lines in frames, those
+// past its end left out; a recording that names none is labelled as without the
+// column, byte for byte, and labels writes them into a corpus exported before.
+func TestACorpusFromListsARecordingsBeats(t *testing.T) {
+	dir := t.TempDir()
+	at := func(name string) string { return filepath.Join(dir, name) }
+	var notes []audio.RipNote
+	for b := range 6 { // quarters at 120 bpm, a bar and a half of 4/4, the sixth past the recording's 2.2 s
+		notes = append(notes, audio.RipNote{Start: 0.5 * float64(b), End: 0.5*float64(b) + 0.4, MIDI: 60, Vel: 0.8})
+	}
+	var mid bytes.Buffer
+	if err := audio.WriteMIDI(&mid, notes, nil, 120, audio.Meter{}); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, at("notes.mid"), mid.String())
+	jam := `{"annotations":[{"namespace":"tempo","data":[]},{"namespace":"beat_position","data":[`
+	for i, sec := range []float64{0.3, 0.8, 1.3, 1.8, 2.3} {
+		jam += fmt.Sprintf(`%s{"time":%g,"duration":0,"value":{"position":%d,"measure":%d,"num_beats":4,"beat_units":4}}`, strings.Repeat(",", min(i, 1)), sec, (i+3)%4+1, (i+3)/4)
+	}
+	writeFile(t, at("beats.jams"), jam+`]}]}`)
+	plain, listed := "audio_filename,midi_filename\n", "audio_filename,midi_filename,beats\n"
+	for name, beats := range map[string]string{"jams": "beats.jams", "midi": "notes.mid", "none": ""} {
+		writeWAV(t, at(name+".wav"), make([]float64, 22*audio.AudioSampleRate/10))
+		plain += name + ".wav,notes.mid\n"
+		listed += name + ".wav,notes.mid," + beats + "\n"
+	}
+	writeFile(t, at("plain.csv"), plain)
+	writeFile(t, at("list.csv"), listed)
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s\ncorpus %s from %s\n", at("before"), at("plain.csv"), at("with"), at("list.csv")))
+	labels := func(corpus string) map[string][]byte { // each recording's label
+		by := map[string][]byte{}
+		for i := range 3 {
+			data, _ := os.ReadFile(filepath.Join(at(corpus), fmt.Sprintf("loop_%03d.json", i)))
+			var l corpusLoop
+			if err := json.Unmarshal(data, &l); err != nil {
+				t.Fatalf("%s loop %d: %v", corpus, i, err)
+			}
+			by[l.Source] = data
+		}
+		return by
+	}
+	before, with := labels("before"), labels("with")
+	for source, want := range map[string][2][]int{"jams.wav": {{26, 69, 112, 155}, {69}}, "midi.wav": {{0, 43, 86, 129, 172}, {0, 172}}, "none.wav": {}} {
+		var l corpusLoop
+		json.Unmarshal(with[source], &l)
+		if !slices.Equal(l.Beats, want[0]) || !slices.Equal(l.Downbeats, want[1]) {
+			t.Errorf("%s of %d frame(s): beats %v and bar lines %v, want %v and %v", source, l.Frames, l.Beats, l.Downbeats, want[0], want[1])
+		}
+		if named := want[0] != nil; bytes.Equal(with[source], before[source]) == named || len(before[source]) == 0 || bytes.Contains(before[source], []byte("beats")) {
+			t.Errorf("%s is labelled\n%s\nand without the column\n%s", source, with[source], before[source])
+		}
+	}
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s labels\n", at("before"), at("list.csv")))
+	for source, got := range labels("before") {
+		if !bytes.Equal(got, with[source]) {
+			t.Errorf("labels wrote %s as\n%s\nwant the export's\n%s", source, got, with[source])
+		}
+	}
+}
+
 // TestRipFitsVoicesAndCompressesToASong is the second stage's rule: a rip of the
 // engine's own render fits a voice to each register it heard, compress matches
 // its bars to a dictionary of one-bar patterns and a song that plays them,

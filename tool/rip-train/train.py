@@ -1,18 +1,8 @@
-"""Train the rip's front end on a corpus stapes exported (`corpus <dir>`), and
-export the weights lixenwraith/transformer loads:
-
-    python3 train.py --corpus corpus/ --out ripmodel.bin --steps 2000
-    python3 train.py --corpus corpus/ --out ripnotes.bin --pitchnet ...   # the notes model
-
-Each loop's log-mel frames (loop_NNN.mel) are the input; its events
-(loop_NNN.json) become per-frame targets: an onset within a frame of any event,
-each drum's hits, the pitches sounding, whether any sounds, the wave and voice
-genes of the highest note sounding, the family playing it, each pitch within a
-frame of its strikes and of its releases, how hard each was struck, where each
-pitch an engine voice plays sits from its cell's centre, and what plays each
-pitch one note alone sounds in: its family, its wave and its genes. Training crops
-random windows of frames and builds their targets a window at a time, so memory
-holds the events rather than a row per frame.
+"""Train the rip's front end on a corpus stapes exported (`corpus <dir>`) and export the weights
+lixenwraith/transformer loads: python3 train.py --corpus corpus/ --out ripmodel.bin --steps 2000,
+and with --pitchnet the notes model's ripnotes.bin. A loop's log-mel frames (loop_NNN.mel) are the
+input and its label (loop_NNN.json) the per-frame targets doc/rip-training.md §5 lists, built for
+random windows as they are drawn, so memory holds the events rather than a row per frame.
 """
 from __future__ import annotations
 
@@ -109,6 +99,17 @@ class Label:
                 d = np.abs(np.diff(c)) > 0  # false beside a frame that is not placed
                 self.moves[at + 1:at + len(c)] |= d
                 self.moves[at:at + len(c) - 1] |= d
+        # A recording's beats are those its list's beats file gave its label, asked from the first one's mark to the last one's:
+        # past them the list says nothing. A rendered loop's are its grid's: a sixteenth of whole samples (audio's
+        # SamplesPerStep), a beat the meter's own note, a bar line every num beats from frame 0, each on the frame corpus
+        # rounds an event's to, asked to a frame short of the mark of the end's line, a beat no sound gives
+        self.beats, self.lines = (np.unique(np.asarray(label.get(k, []), np.int64)) for k in ("beats", "downbeats"))
+        self.metered = (int(self.beats[0]) - 1, int(self.beats[-1]) + 2) if len(self.beats) else (0, 0)
+        if label.get("bpm"):
+            num, den = (int(v) for v in label.get("meter", "4/4").split("/"))
+            step = (44100 * 60 // (label["bpm"] * 4)) / 44100
+            grid = np.array([int(k * (16 // den) * step / ripmodel.FRAME_SEC + 0.5) for k in range(label["bars"] * num + 1)])
+            self.beats, self.lines, self.metered = grid[:-1], grid[:-1:num], (0, int(grid[-1]) - 1)
         self.order = np.argsort(self.t, kind="stable")
         self.sorted = self.t[self.order]
         # how far past its frame an event's targets reach
@@ -121,15 +122,10 @@ class Label:
         return zip(self.t[i].tolist(), self.drum[i].tolist())
 
     def window(self, a: int, b: int, with_drums: bool = True) -> dict:
-        """Per-frame targets for frames a to b from the events; masks say where a
-        target counts. The yes-or-no ones are bytes until batch; the strikes and
-        releases are lists of (frame, pitch) from a, each strike's velocity beside
-        it, -1 where the corpus does not say. A note that moves sounds, is struck
-        and is let go in the cell nearest its frequency at each frame. cents is
-        each cell's offset in semitones from the sound nearest it within one, asked
-        where an engine voice plays that sound, moving where it is on a glide. A
-        cell one event alone sounds in is that event's (note), and says its name,
-        wave and voice; one two sound in says neither's, being the sound of both."""
+        """Per-frame targets for frames a to b, as doc/rip-training.md §5 lists them; masks say
+        where a target counts. The yes-or-no ones are bytes until batch; the strikes and
+        releases are lists of (frame, pitch) from a, each strike's velocity beside it, -1
+        where the corpus does not say. A beat and a bar line mark a frame either side."""
         m, frames, w = self.manifest, self.frames, b - a
         pitches, min_midi = m["pitches"], m["min_midi"]
         onset = np.zeros(w, np.uint8)
@@ -150,6 +146,12 @@ class Label:
         def span(x, y):  # frames x to y of the loop, in the window
             x, y = max(x, a), min(y, b)
             return slice(x - a, max(y, x) - a)
+
+        beat, downbeat, metered = np.zeros(w, np.uint8), np.zeros(w, np.uint8), np.zeros(w, np.uint8)
+        metered[span(*self.metered)] = 1
+        for marks, at in ((beat, self.beats), (downbeat, self.lines)):
+            for t in at[np.searchsorted(at, a - 1):np.searchsorted(at, b, "right")].tolist():
+                marks[span(max(t - 1, 0), min(t + 2, frames))] = 1
 
         lo, hi = np.searchsorted(self.sorted, a - self.reach), np.searchsorted(self.sorted, b + 1, "right")
         for i in np.sort(self.order[lo:hi]):  # in the label's order, which the voice a frame reports keeps
@@ -212,7 +214,7 @@ class Label:
         if FAMILY_HOLDOUT is not None:  # the family held out is named to no head
             family[family == FAMILY_HOLDOUT], name[name == FAMILY_HOLDOUT] = -1, -1
         return {"onset": onset, "drums": drums, "pitch": pitch, "voicing": (pitch.sum(1) > 0).astype(np.uint8),
-                "wave": wave, "voice": voice, "voiced": (top >= 0).astype(np.uint8), "family": family,
+                "wave": wave, "voice": voice, "voiced": (top >= 0).astype(np.uint8), "family": family, "beat": beat, "downbeat": downbeat, "metered": metered,
                 "strikes": np.array(strikes, np.int32).reshape(-1, 2), "vels": np.array(vels, np.float32),
                 "releases": np.array(releases, np.int32).reshape(-1, 2), "cents": cents, "asked": asked, "moving": moving,
                 "note": np.where(one, sole, -1), "pitchfamily": name, "pitchwave": of(self.wave), "pitchvoice": of(self.voice)}
@@ -305,7 +307,7 @@ def targets(mel, lab: Label, start: int, window: int, with_drums: bool = True) -
 
     def take(a, fill=0):
         return np.concatenate([a, np.full((pad,) + a.shape[1:], fill, a.dtype)]) if pad else a
-    out = {k: take(t[k]) for k in ("onset", "drums", "pitch", "voicing", "voice", "voiced", "cents", "asked", "moving")}
+    out = {k: take(t[k]) for k in ("onset", "drums", "pitch", "voicing", "voice", "voiced", "cents", "asked", "moving", "beat", "downbeat", "metered")}
     out.update({k: take(t[k], -1) for k in ("wave", "family", "note", "pitchfamily", "pitchwave", "pitchvoice")})
     shape = (window, t["pitch"].shape[1])
     strike, release, velocity, heard = np.zeros(shape, np.uint8), np.zeros(shape, np.uint8), np.zeros(shape, np.float32), np.zeros(shape, np.uint8)
@@ -334,8 +336,8 @@ def clip(mel, rng):
 
 def shuffled(pick, window: int, channels: int, rng, channel=None):
     """a window of summed chunks: notes keep their labels, a drum hit counts where it
-    stands out of the other clip, what the frame's voice and family are goes unasked,
-    and a cell says what plays it where one clip alone sounds in it"""
+    stands out of the other clip, what the frame's voice and family are and where its
+    beats fall go unasked, and a cell says what plays it where one clip alone sounds in it"""
     total = window + WARM if channels > 1 else window
     through, noise = channel.draw(total, rng) if channel is not None else (1.0, np.zeros((total, ripmodel.MEL_BANDS)))
     es, outs = [], []
@@ -347,6 +349,7 @@ def shuffled(pick, window: int, channels: int, rng, channel=None):
         ta, tb = targets(ma, la, sa, CHUNK, False), targets(mb, lb, sb, CHUNK, False)
         out = {k: np.maximum(ta[k], tb[k]) for k in ("onset", "drums", "pitch", "voicing", "strike", "release", "velocity", "heard", "valid")}
         out.update(wave=np.full(CHUNK, -1, np.int64), family=np.full(CHUNK, -1, np.int64), voice=np.zeros_like(ta["voice"]), voiced=np.zeros_like(ta["voiced"]))
+        out.update({k: np.zeros(CHUNK, np.uint8) for k in ("beat", "downbeat", "metered")})  # a splice of two clips has neither's grid
         # a cell is asked its cents where one clip alone sounds within a semitone of it
         mine = (ta["asked"] > 0) & (tb["asked"] == 0) & (tb["pitch"] == 0)
         asked = mine | (tb["asked"] > 0) & (ta["asked"] == 0) & (ta["pitch"] == 0)
@@ -375,7 +378,8 @@ def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, r
     """the window of `window` frames from start: its features and targets, the
     frames past the loop's end padded with zeros and masked out; over is a recording
     of drums alone and its power against the loop's in dB, laid over the frames, its
-    hits that can be heard among the targets; channel is what a speaker and a phone do to them"""
+    hits that can be heard among the targets and its window asked no beat, the drums
+    keeping another grid; channel is what a speaker and a phone do to them"""
     out = targets(mel, lab, start, window)
     b = min(start + window, len(mel))
     pad = window - (b - start)
@@ -394,6 +398,7 @@ def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, r
         e = e * through + noise
     if over is not None:
         omel, olab, level = over
+        out["metered"][:] = 0
         first, n = start - a, min(len(omel), len(e))
         at, ofrom = rng.randrange(len(e) - n + 1), rng.randrange(len(omel) - n + 1)
         d = np.expm1(omel[ofrom:ofrom + n].astype(np.float64)) * through * 10 ** (level / 10) * loud / max(power(omel), 1e-9)
@@ -489,17 +494,25 @@ def validation(loops, window: int, channels: int):
 # A notes model's strikes as the decoder reads them: a peak over the bar a strike starts a note at, the higher bar
 # under E3, right when a labelled strike of its pitch lies within STRIKE_REACH frames
 STRIKE_BARS, STRIKE_LOW, STRIKE_REACH = (0.7, 0.9), 52, 4
+BEAT_BAR = 0.5  # a frame model's beat and downbeat are posteriors: a peak is one the head calls likelier than not
 
 
-def struck(logits: torch.Tensor, strike: torch.Tensor, valid: torch.Tensor, low: int) -> torch.Tensor:
-    """a window's peaks right, peaks, labelled strikes heard and labelled strikes, from [frames, pitches] each"""
+def struck(logits: torch.Tensor, strike: torch.Tensor, valid: torch.Tensor, bar) -> torch.Tensor:
+    """a window's peaks right, peaks, labelled strikes heard and labelled strikes, from [frames, pitches]
+    each, a peak one at bar or over, a pitch's own or one for all: a beat's and a bar line's are counted so too"""
     p = torch.sigmoid(logits)
-    bar = torch.where(torch.arange(p.shape[1], device=p.device) < low, STRIKE_BARS[1], STRIKE_BARS[0])
     peak = (p >= bar) & (p >= F.max_pool1d(p.T[None], 5, 1, 2)[0].T) & (valid[:, None] > 0)
     first = (strike > 0) & (F.pad(strike[:-1], (0, 0, 1, 0)) == 0)  # a mark's first frame; the strike is the next
     onset = F.pad(first[:-1], (0, 0, 1, 0))
     near = lambda x: F.max_pool1d(x.float().T[None], 2 * STRIKE_REACH + 1, 1, STRIKE_REACH)[0].T > 0
     return torch.stack([(peak & near(onset)).sum(), peak.sum(), (onset & near(peak)).sum(), onset.sum()])
+
+
+def fscore(counts) -> float:
+    """the F1 of struck's four counts"""
+    right, peaks, heard, given = (float(c) for c in counts)
+    precision, recall = right / max(peaks, 1), heard / max(given, 1)
+    return 2 * precision * recall / max(precision + recall, 1e-9)
 
 
 # the readings a cents head is scored over: of a cell its sound is on a glide in, of one it holds its pitch in, and of the
@@ -551,15 +564,17 @@ def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
 
 
 def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None) -> dict:
-    """the mean of the losses over the held-out windows, the model's weights untouched;
-    with low, the first pitch over the strikes' low bar, the strikes' F1 beside them,
-    and what a cents head reads: over the readings the labels place and each kind,
-    the median miss and the median error it states, in cents, and the share within
-    the stated; nan where a label does not say; with notes, the windows' notes
-    (validation), what a model that says what plays each pitch heard them as (noted)"""
+    """the mean of the losses over fixed windows, the model's weights untouched; with low, the first
+    pitch over the strikes' low bar, the strikes' F1 and what a cents head reads, by kind the median
+    miss, the median error stated and the share within it; with notes, the windows' (validation), what
+    a model that says what plays each pitch heard them as (noted); and of a frame model with the heads
+    the beats' and the bar lines' F1 at their peaks, None and no loss of theirs where no frame is asked"""
     model.eval()
     sums: dict = {}
     counts = torch.zeros(4, dtype=torch.long, device=device)
+    bars = torch.where(torch.arange(ripmodel.PITCHES, device=device) < low, STRIKE_BARS[1], STRIKE_BARS[0]) if low is not None else None
+    timed = "beat" in dict(model.cfg.outputs)
+    beats, metered = torch.zeros(2, 4, dtype=torch.long, device=device), 0.0  # the two heads' peaks counted, and the frames asked
     read = []  # each asked reading's miss and stated error in cents, and its kind
     voiced = notes is not None and notes.shape[1] > 0 and "pitchfamily" in dict(model.cfg.outputs)
     # a note's cells' say summed by their weights, then the weights and those of the cells under a higher one sounding
@@ -570,11 +585,18 @@ def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None =
             l = losses(model, mel, t)
             for k, v in l.items():
                 sums[k] = sums.get(k, 0.0) + v.item()
-            if low is not None:
+            if low is not None or timed:
                 out = model(mel)
+            if timed:
+                on = t["valid"] * t["metered"]
+                metered += on.sum().item()
+                for k, name in enumerate(("beat", "downbeat")):
+                    for i in range(len(out)):
+                        beats[k] += struck(out[i][:, model.cfg.slice(name)], t[name][i][:, None], on[i], BEAT_BAR)
+            if low is not None:
                 y = out[..., model.cfg.slice("strike")]
                 for i in range(len(y)):
-                    counts += struck(y[i], t["strike"][i], t["valid"][i], low)
+                    counts += struck(y[i], t["strike"][i], t["valid"][i], bars)
                 if "cents" in dict(model.cfg.outputs):
                     place, spread = out[..., model.cfg.slice("cents")].chunk(2, -1)
                     placed = t["asked"] > 0
@@ -600,9 +622,11 @@ def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None =
                         (miss[at] <= stated[at]).float().mean().item() if name != CENTS_KINDS[3] else float("nan"))
                        for name, at in [("cents", kind < 3)] + [(k, kind == i) for i, k in enumerate(CENTS_KINDS)] if at.any()]
     if low is not None:
-        right, peaks, heard, given = (float(c) for c in counts)
-        precision, recall = right / max(peaks, 1), heard / max(given, 1)
-        out["struck"] = 2 * precision * recall / max(precision + recall, 1e-9)
+        out["struck"] = fscore(counts)
+    if timed:  # a corpus that lists no beat asks neither head, and a mean over no frame would read as a head never wrong
+        out["beats"] = tuple(fscore(c) for c in beats) if metered else None
+        if not metered:
+            out.pop("beat", None), out.pop("downbeat", None)
     return out
 
 
@@ -616,20 +640,25 @@ PLAYS = 0.25  # what plays a cell against what plays the frame: its heads teach 
 
 
 def probe(model) -> callable:
-    """holds every weight of a notes model but the rows of the cell heads that say what plays each pitch: no other
-    weight takes a gradient, theirs is masked out of the cells' output layer, which holds every cell head, and the
-    function returned puts those rows back after a step, since AdamW's decay moves a row with no gradient"""
+    """holds every weight of a model but the rows of the heads a probe trains: a notes model's cell heads that say
+    what plays each pitch, a frame model's beat and downbeat. No other weight takes a gradient, theirs is masked
+    out of the output layer that holds them among the other heads, and the function returned puts the other rows
+    back after a step, since AdamW's decay moves a row with no gradient"""
     for p in model.parameters():
         p.requires_grad_(False)
+    if isinstance(model, ripmodel.PitchNet):
+        layer, heads, probed = model.notes, ripmodel.cell_heads(model.cfg), ("pitchfamily", "pitchwave", "pitchvoice")
+    else:
+        layer, heads, probed = model.out, model.cfg.outputs, ("beat", "downbeat")
     at, new = 0, []
-    for k, n in ripmodel.cell_heads(model.cfg):
-        if k in ("pitchfamily", "pitchwave", "pitchvoice"):
+    for k, n in heads:
+        if k in probed:
             new.append((at, at + n))
         at += n
-    mask = torch.zeros(at, device=model.notes.weight.device)
+    mask = torch.zeros(at, device=layer.weight.device)
     for a, b in new:
         mask[a:b] = 1
-    held = {t: t.detach().clone() for t in (model.notes.weight, model.notes.bias)}
+    held = {t: t.detach().clone() for t in (layer.weight, layer.bias)}
     for t in held:
         t.requires_grad_(True)
         t.register_hook(lambda g: g * mask.view(-1, *[1] * (g.dim() - 1)))
@@ -645,11 +674,11 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
     y = model(mel)
     cfg = model.cfg
     valid = t["valid"]
-    def bce(name, target, pos_weight):
+    def bce(name, target, pos_weight, asked=valid):
         logits = y[..., cfg.slice(name)]
         target = target if target.dim() == 3 else target[..., None]
         l = F.binary_cross_entropy_with_logits(logits, target, pos_weight=torch.as_tensor(pos_weight, device=logits.device), reduction="none")
-        return (l.mean(-1) * valid).sum() / valid.sum().clamp(min=1)
+        return (l.mean(-1) * asked).sum() / asked.sum().clamp(min=1)
     out = {
         "onset": bce("onset", t["onset"], 8.0),
         "drums": bce("drums", t["drums"], 8.0),
@@ -674,6 +703,9 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
         logits = y[..., cfg.slice("family")].reshape(-1, len(ripmodel.FAMILIES))
         ce = F.cross_entropy(logits, t["family"].reshape(-1).clamp(min=0), reduction="none").reshape(asked.shape)
         out["family"] = (ce * asked).sum() / asked.sum().clamp(min=1)
+    if "beat" in dict(cfg.outputs):  # a beat weighs as a frame without one: audio sums the two heads' log-odds, a posterior's
+        out["beat"] = bce("beat", t["beat"], 1.0, t["metered"] * valid)
+        out["downbeat"] = bce("downbeat", t["downbeat"], 1.0, t["metered"] * valid)
     if "cents" in dict(cfg.outputs):  # the notes model's alone
         place, spread = y[..., cfg.slice("cents")].chunk(2, -1)
         asked = t["asked"] * valid[..., None]
@@ -698,6 +730,7 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
     # what plays a cell is weighed as what plays the frame is, by PLAYS of it
     out["total"] = (out["onset"] + out["drums"] + out["pitch"] + 0.5 * out["voicing"] + out["strike"] + out["release"]
                     + 2.0 * out["velocity"] + 0.5 * out["wave"] + 2.0 * out["voice"] + 0.5 * out.get("family", 0.0)
+                    + out.get("beat", 0.0) + out.get("downbeat", 0.0)
                     + 2.0 * out.get("cents", 0.0) + SPREAD * out.get("spread", 0.0)
                     + PLAYS * (0.5 * out.get("pitchfamily", 0.0) + 0.5 * out.get("pitchwave", 0.0) + 2.0 * out.get("pitchvoice", 0.0)))
     return out
@@ -723,7 +756,7 @@ def main() -> None:
     ap.add_argument("--layers", type=int, default=4)
     ap.add_argument("--heads", type=int, default=8)
     ap.add_argument("--ffn", type=int, default=1024)
-    ap.add_argument("--towers", default="", help="stacks of their own after the shared input, layers:heads each in the heads' order, comma-separated: 2:2,4:8 gives onset and drums two layers and the rest four")
+    ap.add_argument("--towers", default="", help="stacks of their own after the shared input, layers:heads each in the heads' order, comma-separated: 2:2,4:10 gives onset and drums two layers and the rest four")
     ap.add_argument("--convs", default="", help="convolutions before the input layer, channels x frames x features / pool each, comma-separated: 16x3x3/1,16x3x3/2,32x3x3/2")
     ap.add_argument("--attention-window", type=int, default=64, help="frames attended either side")
     ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
@@ -733,7 +766,7 @@ def main() -> None:
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
     ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
-    ap.add_argument("--probe", action="store_true", help="a notes model's heads of what plays each pitch trained alone from --init's weights, every other weight held as it was and no cents head, so the file rips as its start; the last step is exported")
+    ap.add_argument("--probe", action="store_true", help="a notes model's heads of what plays each pitch, or a frame model's beat and downbeat heads, trained alone from --init's weights, every other weight held as it was: a notes model carries no cents head, so its file rips as its start, and a frame model's other heads say what its start's did; the last step is exported")
     ap.add_argument("--even-glides", action="store_true", help="the cents head's gliding readings weigh as much as the rest in its loss wherever a batch holds both")
     ap.add_argument("--dip", type=float, default=0.0, help="the share of the channel's windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room hears")
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
@@ -763,6 +796,8 @@ def main() -> None:
     towers = [tuple(int(v) for v in t.split(":")) for t in args.towers.split(",") if t]
     if any(len(t) != 2 for t in towers) or towers and sum(h for _, h in towers) != len(ripmodel.HEADS):
         raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodel.HEADS)}")
+    if args.probe and towers and not args.pitchnet:
+        raise SystemExit("--probe with --towers: a model in towers lays its heads over several output layers, and a probe holds one")
     heads = [h for h in ripmodel.PITCHNET_HEADS if h[0] != "cents"] if args.probe else ripmodel.PITCHNET_HEADS  # a probe's file rips as its start
     heard = dict(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS, outputs=heads) if args.pitchnet else dict(channels=2 if args.pcen else 1)
     cfg = ripmodel.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,
@@ -773,8 +808,8 @@ def main() -> None:
     ck = torch.load(start, map_location=args.device) if start else None
     if ck is not None and "cfg" in ck:
         ck["cfg"] = {**asdict(ripmodel.Config()), **ck["cfg"]}  # a setting newer than the checkpoint takes the default it was built with
-    # a start from a model of the heads before the last added, such as the family:
-    # its weights carry over, the new heads' rows of the output layer start fresh
+    # a start from a model of the heads before the last added, such as the beat and
+    # the downbeat: its weights carry over, the new heads' rows of the output layer start fresh
     had = [tuple(h) for h in ck["cfg"]["outputs"]] if ck is not None and not resume and "cfg" in ck else []
     grown = 0 < len(had) < len(cfg.outputs) and had == list(cfg.outputs)[:len(had)] and \
         {k: v for k, v in ck["cfg"].items() if k != "outputs"} == {k: v for k, v in asdict(cfg).items() if k != "outputs"}
@@ -849,15 +884,18 @@ def main() -> None:
     low = STRIKE_LOW - manifest["min_midi"] if args.pitchnet else None
 
     def scored(name: str, mels, tgs, notes):
-        """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them;
-        a family held out sets the model's measure by its notes there"""
+        """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them, a frame
+        model's with its beats' and bar lines' F1; a family held out sets the model's measure by its notes there"""
         v = evaluate(model, mels, tgs, args.device, low, notes)
-        # the decoders read the onset, drum, pitch, voicing, strike and release
-        # heads; the wave, voice, velocity and family heads say how a note is
-        # played and by what, and memorize the corpus's, so they do not pick the step
-        v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"]
-        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read", "voices"))
+        # the decoders read the onset, drum, pitch, voicing, strike and release heads
+        # and a frame model's beat and downbeat; the wave, voice, velocity and family
+        # heads say how a note is played and by what, and memorize the corpus's, so
+        # they do not pick the step
+        v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"] + v.get("beat", 0.0) + v.get("downbeat", 0.0)
+        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read", "voices", "beats"))
         f1 = f", strikes' F1 {v['struck']:.3f}" if "struck" in v else ""
+        if "beats" in v:
+            f1 += ", beats' F1 {:.3f}, bar lines' {:.3f}".format(*v["beats"]) if v["beats"] else ", no beat or bar line asked"
         # the cents head: each kind of reading's median miss, the median error stated for it, and the share within the stated
         read = "".join(f"{'; ' if i else ', '}{k} " + (f"{stated:.1f} stated" if miss != miss else f"{miss:.1f} off, {stated:.1f} stated, {within:.0%} within")
                        for i, (k, miss, stated, within) in enumerate(v.get("read", [])))

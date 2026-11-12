@@ -241,68 +241,82 @@ front-end seam. What remains, in the design's order:
 ### Teach the frame model the beat and the bar line
 
 - Priority: P1
-- Affected files: `tool/rip-train` (`train.py`, `ripmodel.py`, README),
-  `tune.go` (`corpusFrom`, `corpusRecording`, `corpusLoop`), `go.mod`,
-  `doc/rip-training.md`, `doc/rip-design.md`
+- Affected files: `tool/rip-train` (`train.py`, README), `tune.go` (`corpus`),
+  `doc/rip-training.md`, the weights in the root
 
-The library reads a beat and a downbeat head where a frame model has them
-([Audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording),
-audio's branch `claude/lucid-faraday-02tgdd`: tempo, beats and bar lines from
-the heads, held on frames built by hand). Nothing of the trainer's side is
-written. The cues measured through the installed models on 120 GuitarSet
-clips no round met: bars right on 37, 58 under perfect beats. What is left,
-in the order it builds:
+The trainer's half is built on audio v0.24.0, which reads the two heads: the
+heads, a rendered loop's targets from its label and a recording's from its
+list's `beats` column, the mask, the loss with no weight, each head's F1 on the
+lines ([Rip training §3, §5 and §8](rip-training.md#the-two-heads-on-a-small-run),
+[rip-train](../tool/rip-train/README.md#the-beat-and-the-bar-line)). One small
+run on rendered loops holds it together and no more: its heads read the bars of
+56 of 160 held-out loops right, and of 85 through the decoders as audio's
+branch `claude/audio-fixes` mends them, where the same weights' cues read 124.
+What is left is the reading on trained weights:
 
-- **The heads.** `("beat", 1), ("downbeat", 1)` after `family` in
-  `ripmodel.HEADS`, as audio's `Spec` lists them. `--init` grows a model from
-  one without them by the code that grew the family head; a test holds it
-  (`--lr 0`, one step, the checkpoints compared).
-- **A rendered loop's targets, derived in `Label`** so no rendered corpus
-  changes a byte. A label holds `bpm`, `bars` and `meter` (absent for 4/4): a
-  sixteenth is `44100 * 60 // (bpm * 4)` samples, whole, a beat `16 / den` of
-  them, the meter's own note (an eighth in 6/8, six to the bar, as audio's
-  `Rip.Beats` lists them), a line every `num` beats from frame 0, each frame
-  `int(steps * step / (256 / 22050) + 0.5)` as `exportCorpus` rounds an
-  event's. To check before trusting it, over `aug`, `codec`, `midi`, `meters`
-  and `glide` corpora: every event's frame is on that step grid, and the last
-  line falls within a frame of the `.mel`'s length.
-- **A recording's, from its list.** A `beats` column of a `from` list names
-  the file a recording's beats are read from, as `pitch` names its track: a
-  JAMS file (`audio.ReadJAMSBeats`, GuitarSet's) or a MIDI file whose bars are
-  the recording's (`MIDIScore.Beats` on the recording's clock, E-GMD's own).
-  `corpusLoop` gains `beats` and `downbeats`, frames, left out where the cell
-  is empty, so that label is byte for byte what it was; `labels` then writes
-  them into a corpus already exported.
-- **Where nothing is asked.** A mask a frame: a rendered loop to a frame
-  short of its end's line, a recording between its first and last listed
-  beat, and none of a `--shuffle` window, a window `--over` lays drums under,
-  or the padding past a loop's end. `--bend` takes the targets nearest along
-  its curve as it takes the others, so they sway with it.
-- **The loss** is the onset head's kind, binary cross-entropy on a target a
-  frame either side, with no positive weight: audio's decoders read the heads
-  as posteriors, and a weight w would favour short bars by log w a line. Both
-  join `total` and `decoders`.
-- **The scores.** Each head's F1 at its peaks on the held-out and
-  `--validate` lines, as the strikes' is (`struck`, at a bar of a half).
-- **Tests**, one a rule, on labels built by hand (no trainer test exists yet:
-  a `test_train.py` beside it): the targets of a loop in 4/4, 3/4 and 6/8; a
-  window that sways; a spliced window asked nothing; a recording's beats and
-  one with none; the heads grown by `--init`.
-- **The run that is its evidence.** `corpus <dir> N 12 gen meters` (three
-  generated loops in ten have no drums), a small frame model on a CPU for a
-  few thousand steps, each head's held-out F1, then through the exported
-  weights the bars of the held-out loops against their own lines, with the
-  heads and with the same weights' heads left out, 4/4, 3/4 and 6/8 apart and
-  the drumless loops apart. Loops of 4 or 8 bars read 4/4 alone through the
-  cues, which need over 24 beats.
-- **`go.mod`** at audio's tag (v0.22.0 if it merges first), `go.sum`'s two
-  lines computed from audio's tree ([agent notes](agent-notes.md#toolchain));
-  CI cannot pass before the tag exists. `corpus <dir> 24 4 aug gen nowav` must
-  still hash `1c86cc77...e2b4` over its 49 files, as it does at v0.18.0.
-- **Then, on trained weights:** the 120 clips, the Für Elise takes and the
-  stream's twelve recordings, and what [audio's
+- **A round with the heads**, from the installed frame model through `--init`,
+  on `meters` corpora and on recordings whose lists name their beats
+  (GuitarSet's JAMS files, E-GMD's own MIDI). `--probe` first: it trains the
+  two heads alone and cannot cost the heads the decoders read, and says
+  whether the installed model's features hold the beat at all; a fine-tune
+  only if they do not. Then the 120 GuitarSet clips no
+  round met (37 right through the cues, 58 under perfect beats), the Für Elise
+  takes and the stream's twelve recordings, each with the heads and with the
+  same weights' heads left out, and what [audio's
   todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#hear-the-beat-and-the-bar-line-on-trained-weights)
-  leaves to them.
+  leaves to them. A file is installed with its heads only where they read
+  more bars right than its cues.
+- **What the small run says a round must change.** It was read twice: through
+  audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
+  and through the decoders mended on audio's branch `claude/audio-fixes`,
+  which read the heads by rank and leave a clip they give no reading of to
+  the cues. Mended, the heads' own grid stands on 139 of the 160 loops and is
+  right on 74, where the cues are right on 113 of those; the other 21 are
+  the cues' rips, 11 right. In the order of what is left:
+  - Which note is the beat. The beat head marks an eighth that holds an
+    onset about alike whatever the meter. With drums it says 0.16 halfway
+    between 4/4's beats and 0.31 between 3/4's, where no beat is, and 0.30
+    on 6/8's eighths between its dotted quarters, where one is; without
+    drums 0.40, 0.48 and 0.47. Of the 65 loops still wrong on the heads' own
+    grid, 44 count another note as the beat: 9 of 6/8's 14 with drums, 16 of
+    4/4's 23 without. No decoder reads a level the head does not state:
+    mended, 14 loops of 4/4 are read as bars of four eighths, where v0.24.0
+    read 2 so. The meter is to be heard before the beat is, and a model's
+    reach is 2.97 s either side, a bar or two.
+  - 4/4's line against its third beat, less than it first read. The
+    generated beats kick on both; on the loops' own beats the line tops its
+    bar's beats in 76 bars of a hundred with drums and three in 21, and the
+    line elsewhere is 7 loops of 71 mended, where it was 21 of 78. By rank
+    on the right beats the downbeat head has the line in most bars of 123 of
+    the 160 loops, 33 of the 53 without drums; the cues read 124 and 28
+    right. So the downbeat head is near the cues once it has the beats.
+  - A quiet downbeat head is no longer a round's to mend: it said 0.28 on a
+    drumless line, v0.24.0 took the longest bar offered for it, and by rank
+    it is read where it is right. What the drumless loops still want is the
+    first point, and recordings with their beats.
+- Left open by what landed, each with the option not taken:
+  - The two losses count once each in the total, beside ten heads' losses
+    that sum to ten times theirs or more, and a bar line's mark is under 2
+    frames in a hundred.
+    Not taken: a weight on the two losses whole, which leaves a posterior a
+    posterior and hands them more of the shared layers; it is the first
+    thing to try, as a pair of runs. Never a weight on the positive class.
+  - A recording is asked from its first listed beat's mark to its last's.
+    Not taken: the mask run on to where the next beat would fall, as a
+    rendered loop's runs to its end's line: a played tempo's next beat is a
+    guess, and a zero there could teach silence on a beat nobody listed. If
+    a round's heads fire in a recording's tail, the decay after its last
+    beat is the place to ask.
+  - A window `--over` lays drums under is asked nothing, though the drums'
+    own beats are known where their list names them. Not taken: asking the
+    drums' grid there, since the loop under them keeps another and which a
+    listener counts is not the label's to say.
+  - A corpus cycles six tempos, which its held-out loops share: a round wants
+    `tempos` over a list, or `--bend`, before its held-out F1 says anything
+    of a tempo it never met. `pipeline.sh` has no knob for `meters`.
+  - The F1 counts a peak right within four frames, the strikes' reach, 46 ms;
+    beat trackers are scored at 70 ms. Not taken: a reach of its own, a
+    number set by hand for a line audio does not read.
 
 ### The instrument model
 

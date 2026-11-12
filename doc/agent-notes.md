@@ -35,7 +35,11 @@ proves wrong or that a document now states, and link the document instead.
   again when the audio branch changes.
 - A cloud container holds no PyTorch: `make venv` installs the CPU build in
   two minutes, and `tool/rip-train/.venv/bin/python3` runs the trainer and
-  `judge.py` from then on.
+  `judge.py` from then on. Where the container cannot resolve
+  `download-r2.pytorch.org`, which the CPU index's links name, `make venv`
+  stops at the wheel: the index page lists each file with its sha256, the same
+  file is at `https://download.pytorch.org/whl/cpu/<file>`, and `pip install`
+  takes it from disk once `sha256sum` agrees, then `requirements.txt`.
 
 ## Tests that flake
 
@@ -432,8 +436,23 @@ proves wrong or that a document now states, and link the document instead.
   model's file that has it ("model has 12 heads, want 10"). Take the audio tag
   that knows a new head before installing weights trained with it; weights
   without it load in either.
+- **A rendered loop's beats are in no label: the trainer derives them** from
+  `bpm`, `bars` and `meter` (`train.Label`), by the arithmetic `exportCorpus`
+  lays an event with, a sixteenth of whole samples and each frame rounded
+  half up. A change to how a step is placed (a swing, a tempo that moves
+  inside a loop, a pickup before bar one) breaks the rule without a word and
+  no test sees it: redo its check, a scratch script over `aug`, `codec`,
+  `midi`, `dense`, `meters`, `glide` and `tempos` corpora that asks that every
+  event's frame is on its loop's sixteenths and the end's line within a frame
+  of the `.mel`'s length (0 of 24,810 events off, the line the last frame or
+  the one past it).
+- A corpus cycles six tempos (`tuneTempos`) and its last loops are the ones
+  held out, so a held-out loop's tempo was always trained on: a beat head's
+  held-out F1 says nothing of a tempo it never met. `tempos a,b,c` takes a
+  list of any length, and `--bend` sways a window's tempo.
 - Baselines for a change that must not move the corpus or the bench, taken at
-  v0.18.0 on audio v0.21.0 with an empty root and `XDG_CONFIG_HOME`: `corpus
+  v0.18.0 on audio v0.21.0 with an empty root and `XDG_CONFIG_HOME`, and
+  unmoved at v0.22.0 on audio v0.24.0: `corpus
   <dir> 24 4 aug gen nowav` hashes `1c86cc77...e2b4` over 49 files; `bench 12
   4` reads the analysis at 0.453 clean (tempo 0.83 bars 0.90 drums 0.43
   melody 0.17 bass 0.25) and 0.425 augmented (0.83 0.90 0.43 0.13 0.11), and
@@ -611,3 +630,33 @@ proves wrong or that a document now states, and link the document instead.
   that the path holds and nothing of a judge's worth: the loops left out are
   the fit's own kind under another seed, and the model reports a seventh of
   the truth's notes.
+- **A weak beat or downbeat head costs the bars: audio takes its word alone.**
+  A width-128 frame model after 5,000 steps on `corpus <dir> 1600 12 gen
+  meters` read `beats' F1 0.763, bar lines' 0.631` held out, and through its
+  file the bars of 56 of the 160 held-out loops were right with the heads, 124
+  with the same weights' heads left out and 109 through the analysis. Read a
+  round's bars both ways before its file is installed.
+- The lines' F1 does not say which beats a head misses. Print what each head
+  says within a frame of the loops' own beats by their place in the bar
+  (`train.Label.beats`, the model over a whole loop): the downbeat head said
+  0.73 on one and 0.44 on three of 4/4 with drums, the generated beats kicking
+  on both, and 0.28 on a line without drums, where audio then picks the
+  longest bar offered; the beat head 0.30 on 6/8's eighths between its dotted
+  quarters, so audio kept the felt beat.
+- A model's heads are left out of a rip through the same weights by a
+  `RipFrontEnd` that wraps `ripmodel`'s and sets the frames' `Beat` and
+  `Downbeat` nil, in a scratch module on audio's tag over `Ripper` and
+  `MatchBars`, the truth the loop's own grid with its end's line left out; or
+  by the same step exported with the output layer's last two rows cut, which
+  stapes benches. The two ripped row for row alike over 40 loops.
+  `BarScore.Phase` is a median folded into a bar, so half a bar off reads as
+  anything between: count `Downbeats`.
+- That run's path takes an hour on four cores: the corpus with its audio 264 s
+  in four parts (7.9 GB), 5,000 steps at 0.45 s and 30 s a held-out score of
+  160 loops, 480 rips in three minutes over four processes.
+- A frame model's probe (`--probe` from a model without the beat and downbeat
+  heads) is checked on real weights by its held-out line and by a rip: the
+  other ten heads' losses print to the digit as the start's, and its file
+  ripped with the two heads left out is the start's row for row. It was run
+  only from a model cut from one trained with the heads, whose features hold
+  the beat already; what a probe reaches on the installed model is unmeasured.

@@ -256,8 +256,10 @@ offline (`song <name> <file.wav>`).
   million weights (13.2 MB), four times the first five runs' width 128 and four
   heads, and 3.7 million (14.9 MB) with the three convolutions the rounds since
   11a put before the input layer; heads for the onset, the three drums, the
-  sixty-nine pitches, voicing, the five waves, the thirty-two genes, and the
-  sixty-nine pitches struck, let go, and how hard each was struck. Attention
+  sixty-nine pitches, voicing, the five waves, the thirty-two genes, the
+  sixty-nine pitches struck, let go, and how hard each was struck, the family
+  of the highest note, and whether a beat and a bar line fall on the frame,
+  from which a rip reads its tempo, meter and bars where a file has both. Attention
   carries ALiBi biases, a
   slope per head on the frame distance, so the model has no positions to learn
   and generalises past the training window. A file may put convolutions over
@@ -435,6 +437,20 @@ and the checkpoint earn their keep.
      three tenths of their rms: on Billie Jean from the Pixel the stream's
      kicks or snares then differ in 10 of 19 bars. So the reach is the
      default.
+   - **The beat and the bar line heard.** The cues' rules read the bars of 37
+     of 120 GuitarSet clips no round met, and of 58 with the truth's beats
+     given: a guitar alone has no kick, no snare and no bass. Landed: a beat
+     and a downbeat head on the frame model, which audio's decoders read as
+     posteriors in the cues' place where a file has both (v0.24.0), and their
+     trainer: a rendered loop's targets from its own grid, a recording's from
+     its list's `beats` column, a loss with no weight on a beat, and each
+     head's F1 on the lines ([Rip training §5 and
+     §8](rip-training.md#the-two-heads-on-a-small-run)). A small model on
+     rendered loops hears the beat where a drum marks it and the line less:
+     its heads read the bars of 56 of 160 held-out loops right and the same
+     weights' cues 124. No round is trained, and no file is installed on its
+     heads' word before they read more bars right than its cues
+     ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)).
    Then, each waiting on recordings, on a thread above or on a design agreed:
    - **The voice of every note.** Heard per pitch cell on the notes model, not
      per frame: a family, a wave and the genes of what plays that pitch,

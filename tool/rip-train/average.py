@@ -37,7 +37,7 @@ def main() -> None:
     ap.add_argument("--pt", default="", help="the mean as a .pt, the next round's --init; none, only the weight file")
     ap.add_argument("--out", required=True, help="the mean as the weight file lixenwraith/transformer loads, as train.py's --out")
     ap.add_argument("--trim", type=float, default=0.0, help="share of the files whose highest and lowest values of each weight are dropped before the mean, under a half")
-    ap.add_argument("--sure", type=float, default=0.0, help="the share a family must pass over a note to name it, as train.py's --sure; without it the mean of the files' own")
+    ap.add_argument("--sure", type=float, default=0.0, help="the share a family must pass over a note to name it, as train.py's --sure; without it the mean of the files' own, which all carry one or none do")
     args = ap.parse_args()
     if not 0 <= args.trim < 0.5:
         ap.error("--trim is a share under a half")
@@ -52,6 +52,12 @@ def main() -> None:
         diff = sorted(k for k in want.keys() | got.keys() if want.get(k) != got.get(k))
         if diff:
             raise SystemExit(f"{f}: {diff[0]} is {got.get(diff[0])}, {args.files[0]}'s {want.get(diff[0])}; a round's files share one shape")
+    # a file that measured no family's reach holds zero, which names no note: no measure, and none to average with one
+    measured = [f for f, ck in zip(args.files, cks) if float(ck["model"].get("sure", 0)) > 0]
+    if not args.sure and 0 < len(measured) < len(cks):
+        without = [f for f in args.files if f not in measured]
+        raise SystemExit(f"{', '.join(measured)} carry a measure of where a family's name is sure and {', '.join(without)} none, "
+                         "so their mean would be no run's measure: give the merge one with --sure")
 
     cut = int(args.trim * len(cks))
     model = ripmodel.build(ripmodel.Config(**cks[0]["cfg"]))

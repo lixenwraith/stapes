@@ -129,6 +129,9 @@ cores with anything else the machine does.
   drums ... pitch ... voicing ...)`, with `(best)` on the step `OUT` will get.
   With `VALIDATE` a `validation` line of the same form follows it and picks
   instead: its `(best)` is the step `OUT` gets, the held-out line's its own.
+  A frame model's lines give `beats' F1` and `bar lines'` after the decoders'
+  loss, each head's peaks over a half against the labelled beats within four
+  frames, or `no beat or bar line asked` over a corpus that lists none.
   A training loss that keeps falling after the held-out loss turns is the
   model learning the corpus by heart; more loops, not more steps, is the cure.
 - `bench` prints four lines: the analysis and the model, on clean and on
@@ -230,7 +233,12 @@ a fresh optimizer and a cosine schedule of its own, so each round is a warm
 restart, and the merge takes each shard's last step, not its best held-out one.
 `TRIM=0.1` drops each weight's highest and lowest tenth of the files before the
 mean, so a worker that diverged does not drag the rest; it counts whole files,
-rounded down, so under ten files it drops none.
+rounded down, so under ten files it drops none. A notes model's files carry the
+measure of where a family's name is sure ([below](#parity)), and the merge
+carries their mean when every file has one and none when none has. A file that
+never measured holds zero, which is no measure to average with one: a merge
+whose files disagree on having a measure is refused, the files named, unless
+`average.py --sure` gives it one.
 
 **Why independent seeds cannot be averaged.** A network's hidden units can be
 permuted, with the weights that read them, without changing what it computes,
@@ -295,7 +303,10 @@ To write your own:
   MusicNet's by its instrument labels, empty for a mix of families, and
   `pitch`, the recording's pitch track where its collection has one, a CSV of
   seconds and Hz as vocadito's or GuitarSet's JAMS file, which places its notes
-  for the cents head: [Rip training](../../doc/rip-training.md) §3), and
+  for the cents head, and `beats`, the file its beats and bar lines are read
+  from, GuitarSet's JAMS file or a MIDI file whose bars are the recording's
+  as E-GMD's, for the beat and downbeat heads: [Rip
+  training](../../doc/rip-training.md) §3), and
   `train.py --mix <dir>:<share>` draws that share of the windows from it,
   labelled by the MIDI's notes, velocities and hits, a tom's or a cymbal's an
   onset of no drum, every hit the drums', the voices unknown, and `--over
@@ -356,7 +367,7 @@ itself (`ripmodel.features`, derived from the stored frames), width 256, eight
 heads, four layers, feed-forward 1024, a
 window of 64 frames either side, 3.3 million weights. `--convs
 16x3x3/1,32x3x3/2` puts convolutions before the input layer, each its
-channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:8`
+channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:10`
 splits the layers into towers over the shared input layer, each its layers and
 the run of heads it computes in `ripmodel.HEADS` order: the onset and the drums
 on two layers, the rest on four. `--pcen` gives the model a second channel of
@@ -370,7 +381,62 @@ note's start and end) as weighted binary cross-entropy, voicing likewise, the
 wave as cross-entropy and the voice genes as squared error over frames a note
 sounds in, each strike's velocity as squared error where the corpus gives one,
 and the family of the highest note or hit sounding as cross-entropy where the
-corpus gives one, at half weight and outside the score that picks the step.
+corpus gives one, at half weight and outside the score that picks the step;
+and whether a beat of the meter and a bar line fall within a frame, as binary
+cross-entropy with no weight, in the score that picks the step
+([the beat and the bar line](#the-beat-and-the-bar-line)).
+
+## The beat and the bar line
+
+A frame model has a beat and a downbeat head: whether a beat of the meter, its own
+note, and a bar line fall within a frame. Where a weight file has both, audio reads
+the tempo, the beats, the meter and the bar lines from them and none of the cues'
+rules decides ([audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording));
+[Rip training](../../doc/rip-training.md) §3, §5 and §8 follow the labels, the
+targets and the loss.
+
+- **A rendered loop** needs nothing: its label's `bpm`, `bars` and `meter` are its
+  grid, so a corpus on disk teaches the heads as it stands. `corpus ... meters`
+  renders a third of the loops in 3/4 or 6/8.
+- **A recording** is asked where its list's `beats` column names the file its
+  beats are read from, a JAMS file's `beat_position` annotation or a MIDI file
+  whose bars are the recording's; the line with `labels` after it writes them into
+  a corpus already exported. It is asked from its first listed beat to its last. A
+  recording that names none is asked nothing, nor is a shuffled window or one
+  `--over` lays drums under.
+- **The loss carries no positive weight**, and is to be given none: audio sums the
+  heads' log-odds as a posterior's, and a weight would favour short bars.
+- **A model from before the heads** starts a run through `--init`, which grows
+  them, every other weight carried over; its own file still loads, its bars read
+  by the cues. With `--probe` such a run trains the two heads' rows of the output
+  layer alone: every other weight stays the start's bit for bit, as a notes
+  model's probe holds it ([below](#parity)), so the file's other heads say what
+  the start's did and its rip with the two left out is the start's, and the last
+  step is exported. A fine-tune without it moves the heads the decoders already
+  read.
+- **The lines** give `beats' F1` and `bar lines'`, or `no beat or bar line asked`.
+
+The path at a size four cores train in 42 minutes, which shows that it holds
+together and nothing of recordings:
+
+```bash
+printf 'corpus corpus 1600 12 gen meters\n' > "$dir/corpus.slab"   # with its audio: the held-out loops are ripped
+go run ./cmd/stapes -headless -s "$dir/corpus.slab"
+python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripmodel.bin" --checkpoint "$dir/ripmodel.pt" \
+    --steps 5000 --dim 128 --heads 4 --layers 4 --ffn 512 --pcen --holdout 160 --every 500
+```
+
+Its exported step reads `beats' F1 0.763, bar lines' 0.631` on the 160 loops held
+out, 0.877 and 0.728 on those with drums and 0.535 and 0.359 on those without.
+Ripped through the file, 56 of the 160 have their bars right with the heads, 124
+with the same weights' heads left out and 109 through the analysis: a head this
+weak costs the bars, since audio takes its word alone ([Rip
+training §8](../../doc/rip-training.md#the-two-heads-on-a-small-run) has the table
+by meter and what the heads say under it). So read a round's bars with the heads
+and without before its file is installed. The heads are left out of a rip by a
+`RipFrontEnd` that sets the frames' `Beat` and `Downbeat` nil, in a scratch
+program over audio's `Ripper` and `MatchBars`, or by a file of the same step
+exported with ten heads, which stapes itself then benches; the two rip alike.
 
 ## A judge
 
@@ -475,9 +541,9 @@ hears. `--family-holdout <family>` tells no head a family's name: its notes stay
 in the run as sound, and a notes model's lines say what their surest name reaches,
 the measure a name must pass to be given (below). A checkpoint from before
 a setting existed loads with that setting's default, and `--init` takes one of the
-frame model from before the family head, or of the notes model from before the
-cents head or the heads of what plays each pitch: every weight carries over and
-the head's rows start fresh, though resuming one is refused.
+frame model from before the family head or the beat and downbeat heads, or of the
+notes model from before the cents head or the heads of what plays each pitch: every
+weight carries over and the head's rows start fresh, though resuming one is refused.
 
 A notes model has a cents head: for each pitch, how far its sound sits from the
 cell's centre and the error it states for that, taught where a sound the labels
@@ -534,12 +600,17 @@ other weight stays the start's bit for bit (the gradient is masked to the heads'
 of the cells' output layer, which holds every cell head, and the rest are put back
 after each step against AdamW's decay), the model carries no cents head, and the last
 step is exported, since no score that picks a step moves. Its file rips as its start's
-does, so only the new heads need reading.
+does, so only the new heads need reading. A frame model's probe trains its beat and
+downbeat heads the same way, the rows of its one output layer ([the beat and the bar
+line](#the-beat-and-the-bar-line)); a frame model in towers, whose heads lie over
+several output layers, is refused.
 
 The held-out run's last lines give the reach; the shipped run prints what its file
 carries (`a family naming a note past a share of R`), and a file with no measure
 says so and names no note. `average.py --sure` gives a merge its measure; without
-it the merge carries the mean of its files'. On a held-out or validation line,
+it the merge carries the mean of its files' when each carries one, and refuses
+files of which only some do, since a file with none holds zero and would pull the
+mean under anything a run measured. On a held-out or validation line,
 after the cents:
 
 ```
@@ -557,12 +628,15 @@ median, how many of the other families' notes pass the measure and how many of
 those are named right: a measure most named notes fall under is a model that
 tells too little apart yet, and its file names few notes rather than wrong ones.
 
-The trainer's rules for what plays each pitch are tests of their own, with no
-corpus and in under a second: `python3 -m unittest discover tool/rip-train`.
+The trainer's rules for what plays each pitch and for the beat and the bar line
+are tests of their own, with no corpus and in two seconds: `python3 -m unittest
+discover tool/rip-train`.
 
 It writes the file's version 3, the channels after the inputs, which needs
 transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio
-refuses it, of one channel or two. `--pitchnet`'s file is version 5, a cell net
+refuses it, of one channel or two. A frame model's file lists the beat and
+downbeat heads, which needs audio v0.24.0: an older one refuses it by its count
+of heads, and one from before them still loads in any. `--pitchnet`'s file is version 5, a cell net
 with its long convolutions listed, which needs transformer v0.5.0 (audio v0.8.2);
 the cents head changes neither, being one more per-pitch head of two values, and
 an audio before v0.21.0 reads such a file's other heads and hears no glide; nor

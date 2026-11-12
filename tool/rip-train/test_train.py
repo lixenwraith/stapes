@@ -1,12 +1,20 @@
-"""The trainer's rules for what plays each pitch, each a test: python3 -m unittest discover tool/rip-train"""
+"""The trainer's rules, each a test: python3 -m unittest discover tool/rip-train"""
+import contextlib
+import io
+import json
 import os
+import random
 import struct
+import sys
 import tempfile
 import unittest
+from dataclasses import asdict
+from unittest import mock
 
 import numpy as np
 import torch
 
+import average
 import ripmodel
 import train
 
@@ -24,8 +32,8 @@ def note(frame, end, midi, family, genes=None, wave=-1, **more) -> dict:
     return {"frame": frame, "end": end, "drum": -1, "midi": midi, "vel": 0.8, "family": F[family], "wave": wave, **({"voice": genes} if genes else {}), **more}
 
 
-def label(events, frames=40) -> train.Label:
-    return train.Label({"events": events}, frames, MANIFEST)
+def label(events, frames=40, **more) -> train.Label:
+    return train.Label({"events": events, **more}, frames, MANIFEST)
 
 
 class Frames:
@@ -169,6 +177,225 @@ class WhatPlaysEachPitch(unittest.TestCase):
         self.assertEqual(tensors["frameout.weight"].shape, (frame, model.frame.in_features))
         self.assertEqual((float(np.abs(tensors["frameout.weight"][-1]).max()), float(tensors["frameout.bias"][-1])), (0.0, 0.75))
         self.assertEqual(tensors["cellout.weight"].shape[0], sum(n for _, n in heads[:8]) // p)
+
+    def test_a_merge_refuses_files_that_disagree_on_having_a_measure(self):
+        """A file that never measured holds zero, which is no measure: files that all carry one merge to their mean,
+        files of which only some do are refused by name, since the mean would be no run's, --sure gives such a merge
+        its measure, and a merge of files with none carries none."""
+        with tempfile.TemporaryDirectory() as d:
+            files, out = [os.path.join(d, name) for name in ("held.pt", "more.pt", "none.pt")], os.path.join(d, "out.bin")
+            for file, sure in zip(files, (0.2, 0.4, 0.0)):
+                model = ripmodel.PitchNet(CFG)
+                model.sure.fill_(sure)
+                torch.save({"model": model.state_dict(), "cfg": asdict(CFG)}, file)
+
+            def merged(*argv) -> float:
+                with mock.patch.object(sys, "argv", ["average.py", "--out", out, *argv]), contextlib.redirect_stdout(io.StringIO()):
+                    average.main()
+                with open(out, "rb") as f:
+                    return struct.unpack("<f", f.read()[-12:-8])[0]  # the last tensor's last value, under the checksum
+            self.assertAlmostEqual(merged(*files[:2]), 0.3, places=6)
+            with self.assertRaises(SystemExit) as refused:
+                merged(*files)
+            self.assertTrue(all(file in str(refused.exception) for file in files), refused.exception)
+            self.assertAlmostEqual(merged("--sure", "0.25", *files), 0.25, places=6)
+            self.assertEqual(merged(files[2]), 0.0)
+
+
+def corpus(d, labels, frames=64):
+    """a corpus on disk of loops of silence, a label each"""
+    with open(os.path.join(d, "corpus.json"), "w") as f:
+        json.dump({**MANIFEST, "loops": len(labels), "waves": ["sine", "saw", "square", "string", "modal"]}, f)
+    for i, lab in enumerate(labels):
+        with open(os.path.join(d, f"loop_{i:03d}.mel"), "wb") as f:
+            f.write(struct.pack("<II", frames, ripmodel.MEL_BANDS) + bytes(4 * frames * ripmodel.MEL_BANDS))
+        with open(os.path.join(d, f"loop_{i:03d}.json"), "w") as f:
+            json.dump(lab, f)
+
+
+def run(*flags, steps=1) -> str:
+    """steps of train.py at the smallest shape, and what it printed"""
+    argv = ["train.py", *flags, "--steps", str(steps), "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4"]
+    with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as said:
+        train.main()
+    return said.getvalue()
+
+
+def marks(frames, at) -> list:
+    """a target of frames frames marked a frame either side of each frame in at"""
+    out = np.zeros(frames, np.uint8)
+    for f in at:
+        out[max(f - 1, 0):f + 2] = 1
+    return out.tolist()
+
+
+class Heard(torch.nn.Module):
+    """a frame model that says what a test wrote into its scores"""
+
+    def __init__(self, frames):
+        super().__init__()
+        self.cfg = ripmodel.Config()
+        self.y = torch.full((1, frames, self.cfg.out_size), -9.0)
+
+    def forward(self, mel):
+        return self.y[:, :mel.shape[1]]
+
+
+class TheBeatAndTheBarLine(unittest.TestCase):
+    def test_a_rendered_loop_is_asked_the_beats_and_lines_of_its_grid(self):
+        """A loop's beats are its meter's own note, a quarter in 4/4 and 3/4 and an eighth in 6/8, on the frames its
+        tempo's sixteenth of whole samples rounds to (6,615 at 100 bpm, 12.92 frames), a bar line every bar's beats
+        from frame 0, each marked a frame either side and asked to a frame short of the mark of the end's line,
+        which no sound gives; a window takes its share of them."""
+        quarters, eighths = [0, 52, 103, 155, 207, 258, 310, 362], [0, 26, 52, 78, 103, 129, 155, 181, 207, 233, 258, 284]
+        for meter, frames, beats, lines, end in ((None, 414, quarters, [0, 207], 413), ("3/4", 311, quarters[:6], [0, 155], 310), ("6/8", 311, eighths, [0, 155], 310)):
+            with self.subTest(meter=meter):
+                lab = label([], frames, bpm=100, bars=2, **({"meter": meter} if meter else {}))
+                t = lab.window(0, frames)
+                self.assertEqual(t["beat"].tolist(), marks(frames, beats))
+                self.assertEqual(t["downbeat"].tolist(), marks(frames, lines))
+                self.assertEqual(t["metered"].tolist(), [1] * (end - 1) + [0] * (frames - end + 1))
+                part = lab.window(52, 155)
+                for k in ("beat", "downbeat", "metered"):
+                    self.assertEqual(part[k].tolist(), t[k][52:155].tolist())
+
+    def test_a_recording_is_asked_the_beats_its_label_lists(self):
+        """A recording's beats and bar lines are those its label lists, as its list's beats file gave them, in any
+        order, asked from its first beat's mark to its last's and nowhere else; one whose label lists none is asked
+        nothing."""
+        listed = label([note(0, 10, 60, "guitar")], 200, source="a.wav", beats=[155, 26, 69, 112], downbeats=[69]).window(0, 200)
+        self.assertEqual(listed["beat"].tolist(), marks(200, [26, 69, 112, 155]))
+        self.assertEqual(listed["downbeat"].tolist(), marks(200, [69]))
+        self.assertEqual(listed["metered"].tolist(), [0] * 25 + [1] * (157 - 25) + [0] * (200 - 157))
+        none = label([note(0, 10, 60, "guitar")], 200, source="b.wav").window(0, 200)
+        self.assertEqual([int(none[k].sum()) for k in ("beat", "downbeat", "metered")], [0, 0, 0])
+
+    def test_a_bent_window_sways_its_beats_with_its_hits(self):
+        """A window read along a tempo that sways takes the beat and the bar line nearest along its curve, as it
+        takes every target: each stays on the hit it fell on, and the beats stand no steady grid apart."""
+        frames, kick, hat = 1654, 0, 2  # eight bars of 4/4 at 100 bpm, a hat on every beat and a kick on every line
+        grid = label([], frames, bpm=100, bars=8)
+        hits = [{"frame": f, "end": f, "drum": hat, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]} for f in grid.beats.tolist()]
+        hits += [{**h, "drum": kick} for h in hits[::4]]
+        _, t = train.bent(Frames(frames), label(hits, frames, bpm=100, bars=8), 512, 1, None, random.Random(2), None)
+        asked = t["metered"] > 0
+        self.assertGreater(int(asked.sum()), 400)
+        self.assertEqual(t["beat"][asked].tolist(), t["drums"][asked, hat].tolist())
+        self.assertEqual(t["downbeat"][asked].tolist(), t["drums"][asked, kick].tolist())
+        apart = np.diff(np.flatnonzero(np.diff(t["beat"].astype(int)) == 1))  # from one mark's first frame to the next's
+        self.assertFalse(set(apart.tolist()) <= {51, 52}, apart)
+
+    def test_a_window_with_no_grid_of_its_own_is_asked_no_beat(self):
+        """A window spliced of two clips and one real drums are laid under hold hits of another grid, and the padding
+        past a loop's end holds none: each asks the beat and the bar line nothing, where a plain window asks its loop's."""
+        frames, rng = 414, random.Random(1)  # two bars of 4/4 at 100 bpm, the end's line at frame 413
+        mel, lab = Frames(frames), label([{"frame": 52, "end": 52, "drum": 0, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]}], frames, bpm=100, bars=2)
+        _, spliced = train.shuffled(lambda: (mel, lab), 256, 1, rng)
+        _, laid = train.sample(mel, lab, 0, 256, 1, (mel, lab, 0.0), rng)
+        _, plain = train.sample(mel, lab, 200, 256, 1)
+        self.assertEqual([int(t["metered"].sum()) for t in (spliced, laid)], [0, 0])
+        self.assertEqual(plain["metered"].tolist(), [1] * (412 - 200) + [0] * (256 - 212))
+
+    def test_the_two_heads_are_taught_as_posteriors(self):
+        """Each head's loss is cross-entropy over the frames asked, a beat weighing as a frame without one: a head
+        that says everywhere the share of those frames a beat marks scores that share's entropy, and no lower saying
+        more or less, which is what audio reads a posterior for. Both count whole in the total."""
+        frames = 414  # two bars of 4/4 at 100 bpm in a window of 512: 412 frames asked, 23 in a beat's mark and 5 in a line's
+        mels, tgs, _ = train.validation([(Frames(frames), label([], frames, bpm=100, bars=2))], 512, 1)
+        model = Heard(512)
+
+        def loss(beat, downbeat):
+            model.y[..., model.cfg.slice("beat")], model.y[..., model.cfg.slice("downbeat")] = beat, downbeat
+            return {k: v.item() for k, v in train.losses(model, mels[0], tgs[0]).items()}
+        entropy = lambda p: -(p * np.log(p) + (1 - p) * np.log(1 - p))
+        odds = lambda p: float(np.log(p / (1 - p)))
+        at = loss(odds(23 / 412), odds(5 / 412))
+        self.assertAlmostEqual(at["beat"], entropy(23 / 412), places=5)
+        self.assertAlmostEqual(at["downbeat"], entropy(5 / 412), places=5)
+        for nudge in (-0.2, 0.2):
+            off = loss(odds(23 / 412) + nudge, odds(5 / 412) + nudge)
+            self.assertGreater(off["beat"], at["beat"])
+            self.assertGreater(off["downbeat"], at["downbeat"])
+            self.assertAlmostEqual(off["total"] - at["total"], off["beat"] - at["beat"] + off["downbeat"] - at["downbeat"], places=5)
+
+    def test_a_line_scores_each_heads_peaks_and_says_where_none_is_asked(self):
+        """A held-out or validation line gives each head's F1 at its peaks over a half among the frames asked, a
+        peak right within four frames of a beat the labels give, as the strikes' is. Over a corpus that lists no
+        beat it says none is asked and gives neither head's loss, which over no frame would read as a perfect one."""
+        frames = 414  # two bars of 4/4 at 100 bpm: beats at 0, 52, 103, 155, 207, 258, 310 and 362, lines at 0 and 207
+        loop, recording = label([], frames, bpm=100, bars=2), label([note(0, 10, 60, "guitar")], frames, source="a.wav")
+        model = Heard(512)
+        beat, downbeat = model.cfg.slice("beat").start, model.cfg.slice("downbeat").start
+        model.y[0, [0, 54, 103, 155, 180, 258, 310, 413], beat] = 9.0  # six beats heard, one two frames late; one that is none; one past the frames asked
+        model.y[0, 362, beat] = -0.1  # and one under a half
+        model.y[0, 207, downbeat] = 9.0
+        v = train.evaluate(model, *train.validation([(Frames(frames), loop)], 512, 1)[:2], "cpu")
+        self.assertAlmostEqual(v["beats"][0], 2 * (6 / 7) * (6 / 8) / (6 / 7 + 6 / 8))
+        self.assertAlmostEqual(v["beats"][1], 2 * 1 * (1 / 2) / (1 + 1 / 2))
+        none = train.evaluate(model, *train.validation([(Frames(frames), recording)], 512, 1)[:2], "cpu")
+        self.assertEqual((none["beats"], "beat" in none, "downbeat" in none, "onset" in none), (None, False, False, True))
+        with tempfile.TemporaryDirectory() as d:
+            os.mkdir(os.path.join(d, "recordings"))
+            corpus(d, [{"bpm": 100, "bars": 1, "events": []}] * 2)
+            corpus(os.path.join(d, "recordings"), [{"source": "a.wav", "events": [note(0, 10, 60, "guitar")]}])
+            said = run("--corpus", d, "--out", os.path.join(d, "out.bin"), "--holdout", "1", "--validate", os.path.join(d, "recordings")).splitlines()
+        held, validation = (next(line for line in said if line.startswith(f"step 1 {name} ")) for name in ("held-out", "validation"))
+        self.assertRegex(held, r", beats' F1 \d\.\d{3}, bar lines' \d\.\d{3} \(.* beat \d\.\d{3} downbeat \d\.\d{3}\)")
+        self.assertIn(", no beat or bar line asked (", validation)
+        self.assertNotIn("beat ", validation.split("asked (")[1])
+
+    def test_init_grows_the_heads_and_carries_every_other_weight(self):
+        """A frame model from before the beat and downbeat heads starts a run through --init: every weight carries
+        over, the output layer's rows of the heads it had among them, the two heads' rows are new, and the weight
+        file lists them after the family."""
+        old = ripmodel.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodel.HEADS[:-2])
+        before = ripmodel.RipModel(old).state_dict()
+        with tempfile.TemporaryDirectory() as d:
+            at = lambda name: os.path.join(d, name)
+            corpus(d, [{"bpm": 120, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
+            torch.save({"model": before, "cfg": asdict(old)}, at("old.pt"))
+            said = run("--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--lr", "0")
+            after = torch.load(at("new.pt"))
+            with open(at("new.bin"), "rb") as f:
+                body = f.read()
+        self.assertIn("its heads but beat, downbeat, which start fresh", said)
+        self.assertEqual([tuple(h) for h in after["cfg"]["outputs"]], ripmodel.HEADS)
+        had = old.out_size
+        for k, v in before.items():
+            with self.subTest(tensor=k):
+                self.assertTrue(torch.equal(after["model"][k][:had] if k.startswith("out.") else after["model"][k], v))
+        self.assertEqual([len(after["model"][k]) for k in ("out.weight", "out.bias")], [had + 2, had + 2])
+        head = lambda name, size: struct.pack("<H", len(name)) + name.encode() + struct.pack("<I", size)
+        self.assertIn(head("family", len(ripmodel.FAMILIES)) + head("beat", 1) + head("downbeat", 1) + struct.pack("<I", len(after["model"])), body)
+
+    def test_a_probe_trains_the_two_heads_alone_on_a_frame_model_held_as_it_was(self):
+        """--probe on a frame model started from one without the beat and downbeat heads trains those two heads' rows
+        of the output layer and holds the rest: after three steps every other weight is the start's, every other
+        head says bit for bit what the start's did, the two heads say something else, and the last step is exported."""
+        old = ripmodel.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodel.HEADS[:-2])
+        before = ripmodel.RipModel(old).state_dict()
+        with tempfile.TemporaryDirectory() as d:
+            at = lambda name: os.path.join(d, name)
+            corpus(d, [{"bpm": 100, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
+            torch.save({"model": before, "cfg": asdict(old)}, at("old.pt"))
+            run("--corpus", d, "--out", at("start.bin"), "--init", at("old.pt"), "--checkpoint", at("start.pt"), "--lr", "0")  # the start: the two rows as grown
+            said = run("--corpus", d, "--out", at("probed.bin"), "--init", at("old.pt"), "--checkpoint", at("probed.pt"), "--probe", "--lr", "0.01", steps=3)
+            start, probed = torch.load(at("start.pt")), torch.load(at("probed.pt"))
+        self.assertIn("a probe: exporting its last step, 3", said)
+        had = old.out_size
+        for k, v in before.items():
+            with self.subTest(tensor=k):
+                self.assertTrue(torch.equal(probed["model"][k][:had] if k.startswith("out.") else probed["model"][k], v))
+        frames = torch.randn(1, 40, ripmodel.INPUTS, generator=torch.Generator().manual_seed(1))
+        says = []
+        for ck in (start, probed):
+            model = ripmodel.RipModel(ripmodel.Config(**ck["cfg"]))
+            model.load_state_dict(ck["model"])
+            with torch.no_grad():
+                says.append(model.eval()(frames))
+        self.assertTrue(torch.equal(says[0][..., :had], says[1][..., :had]))
+        for k in (had, had + 1):
+            self.assertFalse(torch.equal(says[0][..., k], says[1][..., k]))
 
 
 if __name__ == "__main__":

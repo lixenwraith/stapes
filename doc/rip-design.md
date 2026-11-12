@@ -25,7 +25,7 @@ refinement.
 ```mermaid
 flowchart LR
     A["recording"] --> B["features: log-mel frames"]
-    B --> C["front end: analysis or ripmodel"]
+    B --> C["front end: analysis or ripmodels"]
     C --> D["decoders: tempo, beats, bars, key, hits, notes"]
     D --> E["voices: genes per note, clustered, fitted"]
     E --> F["patterns: dictionary, matching, compression"]
@@ -50,7 +50,7 @@ flowchart LR
    strength of any onset, of each drum's, each pitch's salience, each register's
    chroma, and, from a model, the wave and voice genes the note under each frame
    is played with and how surely each pitch is struck there. Two front ends fill it: `analysis`, the package's signal
-   processing, and `ripmodel`: a transformer over the mel frames for the onsets,
+   processing, and `ripmodels`: a transformer over the mel frames for the onsets,
    the drums, the wave and voice genes and, since audio v0.11.0, the family
    playing the highest note (`RipFrames.Family`, nine families with unknown,
    which no decoder reads yet), and beside it the notes model, a cell net over
@@ -251,7 +251,7 @@ offline (`song <name> <file.wav>`).
   for the run that sets unknown's bar; and `tune ... truth <list>` searches
   the decoders' thresholds against real recordings' truths through the loaded
   model, each heard once, writing the `rip.toml` that ships beside the weights.
-- **Model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodel.Spec`: 230 inputs (229 bands and the level), width 256, eight heads of 32,
+- **The frame model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodels.FrameSpec`: 230 inputs (229 bands and the level), width 256, eight heads of 32,
   four layers, feed-forward 1024, a window of 64 frames either side, 3.3
   million weights (13.2 MB), four times the first five runs' width 128 and four
   heads, and 3.7 million (14.9 MB) with the three convolutions the rounds since
@@ -292,8 +292,8 @@ offline (`song <name> <file.wav>`).
   `ReadJAMSBeats`), `ReadMIDI` with every part's notes and programs, and the
   rip that follows a recording as it plays (`RipStream`). Imports only `toml`.
   The searches stay out of it, so it stands alone, a module of its own.
-- `lixenwraith/audio/ripmodel`: the learned front end, `Spec` and `Hear`.
-  Imports `audio` and `transformer`.
+- `lixenwraith/audio/ripmodels`: the learned front end, `FrameSpec`, `NotesSpec`
+  and `Hear`. Imports `audio` and `transformer`.
 - `lixenwraith/transformer`: inference over frames and the weight file, a
   module of its own. Standard library only.
 - `lixenwraith/genetic`: the searches, over `RipParams`, over voice genes and
@@ -349,7 +349,7 @@ and the checkpoint earn their keep.
 
 1. Done, through thirteen passes on the sample: the analysis and the decoders;
    parameters as data and their search; the offline render, the truth and the
-   score; the transformer, `ripmodel`, the corpus, the trainer and training in
+   score; the transformer, `ripmodels`, the corpus, the trainer and training in
    rounds across machines; the voice fit by analysis-by-synthesis; the
    dictionary, matching and compression; the song document, rendered offline,
    a line at a time, and conducted live; the augmented, detuned, saturated
@@ -569,7 +569,7 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   not the same as the one nearest the recording's spectrum; the ear decides
   between `bite_fit.wav` (the mel fit) and `bite_refined.wav` (the score fit).
 - The first training run: 120 augmented loops of four bars from the shipped
-  bank, `ripmodel.Spec` at 818 thousand weights, 3000 steps of batch 8 in twenty
+  bank, `ripmodels.FrameSpec` at 818 thousand weights, 3000 steps of batch 8 in twenty
   minutes on four CPU cores, the loss from 4.8 to 0.44 and the pitch head's
   still falling. `bench 12 4` on fresh loops, total then tempo, bars, drums,
   melody, bass: the analysis on clean loops 0.49 (0.75, 0.79, 0.51, 0.18,

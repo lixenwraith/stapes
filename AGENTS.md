@@ -69,7 +69,7 @@ it there in the same PR.
 - Per-kind data lives in one table indexed by its kind (`commands`, a row a verb);
   a new kind adds a row, never a switch or a parallel field.
 - The module imports nothing of vif: it stands on `lixenwraith/audio` (the
-  engine, `bank` and `ripmodel`), `lixenwraith/genetic`, `lixenwraith/terminal`,
+  engine, `bank` and `ripmodels`), `lixenwraith/genetic`, `lixenwraith/terminal`,
   `lixenwraith/color` and `lixenwraith/toml`. A change the engine or the searches
   need lands in that module, under its own rules, and stapes takes its tag. No
   file carries a build tag.

@@ -197,9 +197,9 @@ proves wrong or that a document now states, and link the document instead.
   start ("frame model: ripmodel.bin is now ripframe.bin, so rename ...") and
   never loads, so the rip hears with the analysis, the notes model and the
   judge unread, until it is renamed: Lixen's root and any `-config-dir` a
-  recipe names. The archived names under `weights/` and audio's package
-  `ripmodel` keep theirs. `pipeline.sh`'s checkpoint is `ripframe.pt`, so a
-  round stopped under the old name resumes with `CHECKPOINT=` naming its file.
+  recipe names. The archived names under `weights/` keep theirs.
+  `pipeline.sh`'s checkpoint is `ripframe.pt`, so a round stopped under the
+  old name resumes with `CHECKPOINT=` naming its file.
 
 - Write a truth from a score or a MIDI file, never from memory: a remembered
   Billie Jean riff had its first note an octave low, the synthesizer's doubling
@@ -315,8 +315,8 @@ proves wrong or that a document now states, and link the document instead.
 - **A test's judge is `judgeBytes`**, a unit a layer whose hidden layers give
   0 and whose output's bias is the logit of the odds named, so a stage rules
   every row alike. It must name the notes weights: a test model's checksum is
-  its file's last eight bytes, which `ripmodel.Load` keeps as `NotesSum`; a
-  front end built by `ripmodel.New` has 0 there.
+  its file's last eight bytes, which `ripmodels.Load` keeps as `NotesSum`; a
+  front end built by `ripmodels.New` has 0 there.
 - **The trainer's judge and audio's are held together by their odds.**
   `judge.py` repeats byte for byte on CPU (three fits of one directory wrote
   one file), and on audio's own rows of six left-out loops, 1,869 strikes,
@@ -440,9 +440,9 @@ proves wrong or that a document now states, and link the document instead.
   line, and a snare's fixed modes move the melody's key: the bench's clean bass
   rests on three loops of twelve, which a kick of the old 42 Hz glide restored.
 
-- A frame model's heads are a prefix of audio's `Spec`, unlike a notes model's,
+- A frame model's heads are a prefix of audio's `FrameSpec`, unlike a notes model's,
   which audio reads by name: an audio from before a head refuses a frame
-  model's file that has it ("model has 12 heads, want 10"). Take the audio tag
+  model's file that has it ("frame model has 12 heads, want 10"). Take the audio tag
   that knows a new head before installing weights trained with it; weights
   without it load in either.
 - **A rendered loop's beats are in no label: the trainer derives them** from
@@ -600,7 +600,7 @@ proves wrong or that a document now states, and link the document instead.
   s and 36 CPU-seconds the first run, 6.8 and 6.5 the second; 180 kB of frames
   a second of recording). A file's name holds the recording's and the weight
   files' checksums, not the models' code: clear the folder after a change to
-  `ripmodel` or the transformer.
+  `ripmodels` or the transformer.
 - Scored within lines over a list of guitar alone, its first run silenced the
   bass line (`strike_low` to .99): its own score rose .608 to .670 and solo
   guitar .06 by pitch and onset, while the renders, the clean take, the phones
@@ -656,7 +656,7 @@ proves wrong or that a document now states, and link the document instead.
   longest bar offered; the beat head 0.30 on 6/8's eighths between its dotted
   quarters, so v0.24.0 kept the felt beat.
 - A model's heads are left out of a rip through the same weights by a
-  `RipFrontEnd` that wraps `ripmodel`'s and sets the frames' `Beat` and
+  `RipFrontEnd` that wraps `ripmodels`' and sets the frames' `Beat` and
   `Downbeat` nil, in a scratch module on audio's tag over `Ripper` and
   `MatchBars`, the truth the loop's own grid with its end's line left out; or
   by the same step exported with the output layer's last two rows cut, which

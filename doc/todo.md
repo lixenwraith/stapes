@@ -23,7 +23,7 @@ on Android, which vif's app is to host.
 `RipSamples` ([Audio library
 §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)) reads tempo, bars, key,
 drums, melody and bass off a recording under `RipParams`, through the built-in
-analysis or `ripmodel`; [Rip design](rip-design.md) is the whole plan.
+analysis or `ripmodels`; [Rip design](rip-design.md) is the whole plan.
 The search over the parameters is in place (`tune`), as are the corpus the
 engine exports (`corpus`), the frame model and the notes model, their trainer
 (`tool/rip-train`) and the front-end seam. What remains, in the design's order:
@@ -324,7 +324,7 @@ What is left is the reading on trained weights:
 
 - Priority: P1
 - Affected files: `tune.go` (`corpus`), `tool/rip-train`, `lixenwraith/audio`
-  (`ripmodel`, `rip.go`)
+  (`ripmodels`, `rip.go`)
 
 What plays is heard per pitch, on the notes model, from the first round ([Rip
 design §7](rip-design.md#7-plan)): a family, a wave and the genes of each pitch

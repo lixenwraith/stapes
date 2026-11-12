@@ -1,4 +1,4 @@
-"""The rip's models as PyTorch builds them, the twin of lixenwraith/audio/ripmodel and
+"""The rip's models as PyTorch builds them, the twin of lixenwraith/audio/ripmodels and
 lixenwraith/transformer. The frame model, FrameModel: convolutions over the frames as an
 image, a linear input, pre-norm attention blocks with ALiBi biases over a window of frames,
 exact GELU feed-forwards, a final norm and one output layer whose slices are the heads;
@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# lixenwraith/audio/ripmodel.Spec, which a corpus manifest restates
+# lixenwraith/audio/ripmodels.FrameSpec, which a corpus manifest restates
 MEL_BANDS = 229
 INPUTS = MEL_BANDS + 1  # the bands over the frame's level, and the level
 PITCHES = 69
@@ -33,7 +33,7 @@ HEADS = [("onset", 1), ("drums", DRUMS), ("pitch", PITCHES), ("voicing", 1), ("w
 # the energy 80 dB under a full-scale sine's, where the model's logarithm floors
 FLOOR = 1e-8
 
-# PCEN, as lixenwraith/audio/ripmodel's constants
+# PCEN, as lixenwraith/audio/ripmodels' constants
 FRAME_SEC = 256 / 22050
 PCEN_TIME, PCEN_GAIN, PCEN_BIAS, PCEN_POWER, PCEN_EPS = 0.4, 0.98, 2.0, 0.5, 1e-6
 
@@ -63,7 +63,7 @@ def features(mel: np.ndarray, channels: int = 1) -> np.ndarray:
     each band's energy in dB over FLOOR less the frame's mean, and the mean itself,
     both over 80 dB, so a frame's loudness is one input and the bands are level-free;
     with two channels, each band's PCEN and their mean after them; as
-    lixenwraith/audio/ripmodel's features computes them"""
+    lixenwraith/audio/ripmodels' features computes them"""
     e = np.expm1(mel.astype(np.float64)) / 100
     db = 10 * np.log10(e + FLOOR)
     level = db.mean(axis=-1, keepdims=True)

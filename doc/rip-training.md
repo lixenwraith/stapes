@@ -605,7 +605,8 @@ offset    size  head       read as
 
 A file may lack the last 6 heads and still load: one without `family` hears no family,
 and one without `beat` and `downbeat` has its bars read by the cues' rules. An audio
-before v0.24.0 refuses a file that has the two, its heads being no prefix of its `Spec`'s.
+before v0.24.0 refuses a file that has the two, its heads being no prefix of the frame
+model's heads it knows.
 
 `--pitchnet` builds another model on the same heads but `family`, the frame model's to hear:
 convolutions only, the same weights at every pitch, 171,413 weights in all, 66 of them the
@@ -938,7 +939,7 @@ a.pt` turns a `.pt` of either model into its file.
 
 ## 10. Reading the models back
 
-`ripmodel.Hear` runs `Forward` over all of a recording's frames, and a notes model's over
+`ripmodels.Hear` runs `Forward` over all of a recording's frames, and a notes model's over
 their harmonic stack, built in Go as §4 builds it, takes the sigmoid of
 each head and fills `RipFrames`, the same fields the analysis fills, and from a cents
 head `Cents`, a hundred times each offset, and `CentsError`, a hundred times e to each

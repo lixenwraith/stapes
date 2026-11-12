@@ -2,8 +2,8 @@
 
 The trainer of the rip's models, the frame model and the notes model: PyTorch,
 outside the Go module, the twin of the two Go modules that run them. The audio
-module's `ripmodel`
-([`lixenwraith/audio/ripmodel`](https://github.com/lixenwraith/audio/tree/main/ripmodel))
+module's `ripmodels`
+([`lixenwraith/audio/ripmodels`](https://github.com/lixenwraith/audio/tree/main/ripmodels))
 is each model's shape, the features it hears and the heads the rip's decoders
 read; [`lixenwraith/transformer`](https://github.com/lixenwraith/transformer) is
 the forward pass it runs on and the weight file this writes
@@ -25,7 +25,7 @@ about.
    voice, the family it sounds as), and `corpus.json` naming the layout.
    Nothing is hand-labelled; the synthesizer is the ground truth, and the
    augmentation is what keeps the models from learning the synthesizer.
-2. **A frame model.** `train.py` trains `ripmodel.Spec` on random windows of the loops,
+2. **A frame model.** `train.py` trains `ripmodels.FrameSpec` on random windows of the loops,
    holds some loops out, scores them every so often and exports the step whose
    onset, drum, pitch and voicing heads score best on them, the heads the rip's
    decoders read.
@@ -334,7 +334,7 @@ To write your own:
   hears it; keep it beside the corpus, out of the checkout.
 - **The frame model's shape.** `--dim`, `--layers`, `--heads`, `--ffn` and
   `--attention-window` on `train.py` reshape it; the weight file carries the
-  shape, so `ripmodel` loads any of them as long as the inputs and heads are its.
+  shape, so `ripmodels` loads any of them as long as the inputs and heads are its.
   `pipeline.sh` passes `DIM`, `HEADS`, `LAYERS` and `FFN`; keep a head 32 wide
   (`DIM=384 HEADS=12 FFN=1536`). A checkpoint records its shape, and `train.py`
   refuses to resume or start from one of another, naming both.
@@ -362,7 +362,7 @@ with the best held-out step's weights, and resumes from the file when it
 exists, `--init` starts from a `.pt`'s weights alone (no optimizer state, step
 0), and `--shard-seed` moves the stream the windows are drawn from while
 `--seed` keeps the starting weights; `average.py --pt next.pt --out next.bin
-[--trim 0.1] a.pt b.pt ...` is the merge. The defaults are `ripmodel.Spec`:
+[--trim 0.1] a.pt b.pt ...` is the merge. The defaults are `ripmodels.FrameSpec`:
 230 inputs, the corpus's 229 bands in dB over the frame's mean and the mean
 itself (`ripmodels.features`, derived from the stored frames), width 256, eight
 heads, four layers, feed-forward 1024, a

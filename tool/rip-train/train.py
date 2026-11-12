@@ -615,6 +615,32 @@ SPREAD = 0.2  # the stated error's weight in the total: its own row of weights l
 PLAYS = 0.25  # what plays a cell against what plays the frame: its heads teach the channels the decoders read, and at the whole weight the strikes are heard worse
 
 
+def probe(model) -> callable:
+    """holds every weight of a notes model but the rows of the cell heads that say what plays each pitch: no other
+    weight takes a gradient, theirs is masked out of the cells' output layer, which holds every cell head, and the
+    function returned puts those rows back after a step, since AdamW's decay moves a row with no gradient"""
+    for p in model.parameters():
+        p.requires_grad_(False)
+    at, new = 0, []
+    for k, n in ripmodel.cell_heads(model.cfg):
+        if k in ("pitchfamily", "pitchwave", "pitchvoice"):
+            new.append((at, at + n))
+        at += n
+    mask = torch.zeros(at, device=model.notes.weight.device)
+    for a, b in new:
+        mask[a:b] = 1
+    held = {t: t.detach().clone() for t in (model.notes.weight, model.notes.bias)}
+    for t in held:
+        t.requires_grad_(True)
+        t.register_hook(lambda g: g * mask.view(-1, *[1] * (g.dim() - 1)))
+
+    def hold():
+        with torch.no_grad():
+            for t, was in held.items():
+                t[mask == 0] = was[mask == 0]
+    return hold
+
+
 def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
     y = model(mel)
     cfg = model.cfg
@@ -707,6 +733,7 @@ def main() -> None:
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
     ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
+    ap.add_argument("--probe", action="store_true", help="a notes model's heads of what plays each pitch trained alone from --init's weights, every other weight held as it was and no cents head, so the file rips as its start; the last step is exported")
     ap.add_argument("--even-glides", action="store_true", help="the cents head's gliding readings weigh as much as the rest in its loss wherever a batch holds both")
     ap.add_argument("--dip", type=float, default=0.0, help="the share of the channel's windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room hears")
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
@@ -736,7 +763,8 @@ def main() -> None:
     towers = [tuple(int(v) for v in t.split(":")) for t in args.towers.split(",") if t]
     if any(len(t) != 2 for t in towers) or towers and sum(h for _, h in towers) != len(ripmodel.HEADS):
         raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodel.HEADS)}")
-    heard = dict(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS, outputs=ripmodel.PITCHNET_HEADS) if args.pitchnet else dict(channels=2 if args.pcen else 1)
+    heads = [h for h in ripmodel.PITCHNET_HEADS if h[0] != "cents"] if args.probe else ripmodel.PITCHNET_HEADS  # a probe's file rips as its start
+    heard = dict(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS, outputs=heads) if args.pitchnet else dict(channels=2 if args.pcen else 1)
     cfg = ripmodel.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,
                           dilations=tuple(int(d) for d in filter(None, args.dilations.split(","))), cell=args.cell)
     planes = min(cfg.channels, 2)  # what the data loader makes; the model stacks them
@@ -808,6 +836,7 @@ def main() -> None:
         print(f"started from {args.init}")
     if args.sure and hasattr(model, "sure"):
         model.sure.fill_(args.sure)
+    hold = probe(model) if args.probe else None
     print(f"{sum(p.numel() for p in model.parameters())} weights, {len(loops)} loops, {sum(len(m) for m, _ in loops)} frames, {len(held)} held out in {len(val_mels)} windows")
     if recorded:
         print(f"{len(recorded)} recordings of {sum(len(m) for m, _ in recorded)} frames to validate on in {len(check_mels)} windows, from {args.validate}")
@@ -924,6 +953,8 @@ def main() -> None:
         l["total"].backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
+        if hold:
+            hold()
         step += 1
         if step % 20 == 0 or step == args.steps:
             parts = " ".join(f"{k} {v.item():.3f}" for k, v in l.items() if k != "total")
@@ -936,7 +967,9 @@ def main() -> None:
                 # so a resumed run, or one run again once done, still exports its pick
                 torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "step": step, "cfg": asdict(cfg),
                             "best": (best_loss, best_step, best_state), "validated": validated}, args.checkpoint)
-    if args.validate and validated[2] is not None:
+    if args.probe:
+        print(f"a probe: exporting its last step, {step}")
+    elif args.validate and validated[2] is not None:
         model.load_state_dict(validated[2])
         beside = f", held-out {validated[3]:.3f} there" if validated[3] is not None else ""
         what = f"strikes' F1 {-validated[0]:.3f}" if args.pitchnet else f"decoders' loss {validated[0]:.3f}"

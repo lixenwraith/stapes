@@ -214,8 +214,9 @@ def corpus(d, labels, frames=64):
 
 
 def run(*flags, steps=1) -> str:
-    """steps of train.py at the smallest shape, and what it printed"""
-    argv = ["train.py", *flags, "--steps", str(steps), "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4"]
+    """steps of train.py at the smallest shape, and what it printed; on the CPU whatever the machine has, as every
+    tensor a test builds is there"""
+    argv = ["train.py", *flags, "--steps", str(steps), "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4", "--device", "cpu"]
     with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as said:
         train.main()
     return said.getvalue()

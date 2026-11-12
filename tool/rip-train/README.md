@@ -631,8 +631,8 @@ those are named right: a measure most named notes fall under is a model that
 tells too little apart yet, and its file names few notes rather than wrong ones.
 
 The trainer's rules for what plays each pitch and for the beat and the bar line
-are tests of their own, with no corpus and in two seconds: `python3 -m unittest
-discover tool/rip-train`.
+are tests of their own, with no corpus and in two seconds, on the CPU whatever
+the machine has: `python3 -m unittest discover tool/rip-train`.
 
 It writes the file's version 3, the channels after the inputs, which needs
 transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio

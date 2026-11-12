@@ -797,8 +797,19 @@ left out:
   long: 9 of the 14 with drums.
 
 A rip through the file with its two heads cut (the same step exported with ten
-heads) is the wrapped front end's row for row, over 40 loops. What a round has to
-bring is in the [todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line).
+heads) is the wrapped front end's row for row, over 40 loops. Stapes' own `bench 48
+12 meters`, fresh loops of another seed, clean and augmented, which this model never
+heard, reads the two files and the analysis the same way round:
+
+```
+                      clean                           augmented
+the model's heads     0.449 (tempo 0.56 bars 0.66)    0.321 (tempo 0.44 bars 0.54)
+its heads cut         0.613 (tempo 0.94 bars 0.95)    0.504 (tempo 0.94 bars 0.94)
+the analysis          0.527 (tempo 0.88 bars 0.91)    0.459 (tempo 0.85 bars 0.93)
+```
+
+What a round has to bring is in the
+[todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line).
 
 A notes model's lines then say what plays each note, read as audio reads it (§10): a
 note's family, wave and genes are its cells' say over the frames it sounds, each frame

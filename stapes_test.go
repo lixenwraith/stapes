@@ -904,6 +904,40 @@ func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 	}
 }
 
+// TestAFrameModelUnderItsOldNameIsNamedNotLoaded: a root that holds ripmodel.bin
+// and no ripframe.bin says the file is to be renamed, loads nothing from it and
+// hears with the analysis.
+func TestAFrameModelUnderItsOldNameIsNamedNotLoaded(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	cfg := ripmodel.Spec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+	m, err := transformer.NewRandom(cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	if err := m.Save(&b); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(root, oldModelFile)
+	writeFile(t, old, b.String())
+	files, err := ResolveFiles(root, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	s, err := NewSession(Options{Backend: "null", Out: &out, Files: files})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer teardown(t, s)
+	said := oldModelFile + " is now " + modelFile + ", so rename " + old + " (the analysis listens)"
+	if s.frontEnd != nil || !strings.Contains(out.String(), said) {
+		t.Errorf("a root holding %s alone loaded a model %v and said: %s", oldModelFile, s.frontEnd != nil, out.String())
+	}
+}
+
 // TestDocumentsFollowTheSearchPath: the documents are found in vif's audio folder,
 // whatever the root, and save back there, an untitled one included, where vif reads
 // it next run; -config-music and -config-sounds name a document outright.

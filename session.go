@@ -91,6 +91,7 @@ const (
 	settingsFile = "stapes.toml"
 	ripFile      = "rip.toml"
 	modelFile    = "ripframe.bin"
+	oldModelFile = "ripmodel.bin" // modelFile's old name, which a root is told to rename and is never loaded from
 	notesFile    = "ripnotes.bin" // a notes model beside the frame model, which then gives the notes
 	judgeFile    = "ripjudge.bin" // a judge of the strikes beside the weights it was fitted on, which then rules them
 	musicFile    = "music.toml"
@@ -107,6 +108,7 @@ type Files struct {
 	music, sounds             string // "" = the bank
 	rip                       string // "" = the built-in parameters
 	model                     string // "" = no frame model: the analysis listens
+	oldModel                  string // "" = no frame model under its old name, which is named and never loaded
 	notes                     string // "" = no notes model: the model gives the notes
 	judge                     string // "" = no judge: the installed scores judge the strikes
 	musicTarget, soundsTarget string // "" = no search path
@@ -151,6 +153,7 @@ func ResolveFiles(dir, music, sounds string) (Files, error) {
 	}
 	f.rip, f.model, f.ripTarget = regular(filepath.Join(root, ripFile)), regular(filepath.Join(root, modelFile)), filepath.Join(root, ripFile)
 	f.notes, f.judge = regular(filepath.Join(root, notesFile)), regular(filepath.Join(root, judgeFile))
+	f.oldModel = regular(filepath.Join(root, oldModelFile))
 	file := filepath.Join(root, settingsFile)
 	data, err := os.ReadFile(file)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -292,6 +295,8 @@ func NewSession(o Options) (*Session, error) {
 			}
 			fmt.Fprintf(out, "rip hears with %s\n", s.ear())
 		}
+	} else if files.oldModel != "" {
+		fmt.Fprintf(out, "frame model: %s is now %s, so rename %s (the analysis listens)\n", oldModelFile, modelFile, files.oldModel)
 	} else if files.notes != "" {
 		fmt.Fprintf(out, "notes model %s: no %s beside it (the analysis listens)\n", files.notes, modelFile)
 	}

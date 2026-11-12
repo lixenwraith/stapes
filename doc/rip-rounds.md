@@ -264,6 +264,10 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 - Not starved: a batch asks 21.6 piano notes, 23.7 guitar, 25.2 bass. The names conflict: an engine voice far from the bank is asked `synth`, 41% of the asked cells, so a modal sound is asked piano, bass or synth and a string sound guitar or synth. Singing, named one way in every corpus, is the family named.
 - 38c under a judge of its own fitted on the fit list and the engine's mixes is level with 32a under one of the same sources (mean of nine .761 against .763), short on the clean take (.823 against .840).
 
+**39a, 40a** (12 November, R2: the frame model's beat and bar line, from 12a)
+- 12a's recipe with GuitarSet's training clips and E-GMD by their beats, the family head grown and asked nothing. 39a probed the two heads on 12a held (8,000 steps); 40a trained every weight for 40,000, its pick at 34,000.
+- On GuitarSet's 120 unseen clips the bars are right on 25 (39a's heads), 24 (40a's heads) and 32 (40a without them) against 37 through 12a's cues; the heads lose beyond chance (21 clips only 12a has right, 8 only 40a), the body holds (16 against 11) with 12a's notes. Not installed; 40a's body is a candidate without its heads once read on real drums, and 40a's last step starts the frame model's next round ([Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)).
+
 ## Decoder changes that moved scores without training
 
 - Audio v0.5.1 reads low notes by strikes, the old bass line only where no strike sounds. 22a to .784, .680 to .758; 24a to .821, .661 to .750. Much of the gap to Basic Pitch under E4 was the decoder.

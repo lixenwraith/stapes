@@ -265,11 +265,15 @@ What is left is the reading on trained weights:
   takes and the stream's twelve recordings, each with the heads and with the
   same weights' heads left out, and what [audio's
   todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#hear-the-beat-and-the-bar-line-on-trained-weights)
-  leaves to them. A file is installed with its heads only where they read
-  more bars right than its cues. The installed model is from before the family
-  head too, which the file lists before the two: the round grows it unasked
-  (`--family-unasked`), and the frame model's next round teaches it, a family
-  asked only of a note an instrument played.
+  leaves to them, read by [the rule](rip-training.md#reading-a-candidate). Run
+  as R2 (39a, 40a; [Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)):
+  the heads lose bars beyond chance and are not installed; the body holds and
+  is a candidate without them once read on real drums. Left: the next round
+  from 40a's last step, which validates on GuitarSet's 60 val clips with their
+  beats while it trains, the 60 test clips kept for the reading, and gives
+  real recordings far more than a fifth of its windows; its recipe is settled
+  first. Its family head, grown unasked in R2 (`--family-unasked`), is taught
+  there, a family asked only of a note an instrument played.
 - **What the small run says a round must change.** It was read twice: through
   audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
   and through the decoders mended on audio's branch `claude/audio-fixes`,

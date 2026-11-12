@@ -872,6 +872,42 @@ The checkpoint, a PyTorch `.pt`, holds `model`, `opt`, `step`, `cfg` (the shape,
 resumed run must match), `best` (the best held-out score, its step and its weights) and
 `validated` (the best validation score, its step, its weights and the held-out score there).
 
+### The two heads on 12a: the probe and the round
+
+R2 grew the two heads on 12a, the installed frame model, with its recipe (corpus 11 as
+11f, PCEN, the channel, its convolutions) and GuitarSet's 240 training clips and E-GMD
+by their beats at a tenth of the windows each. 12a has no family head, which the file
+lists before the two, so the round grew it too and asked it nothing (`--family-unasked`):
+its rows are zero and the file's family head is untaught. 39a probed the two heads on
+12a held, 8,000 steps; 40a trained every weight for 12a's 40,000, its pick at step
+34,000. On the 400 held-out loops of the engine and on GuitarSet's 120 val and test
+clips (players 04 and 05, which no round trained on; a clip's bars right when they are
+the truth's length within a tenth and 80% of its downbeats lie within an eighth of a
+bar of a line), through audio v0.25.0:
+
+```
+                       held-out loops       the 120 clips: bars right      only one side right
+                       beats    lines       all  strummed  solo            12a's cues  this
+12a, its cues            -        -          37     26      11                 -        -
+39a, the probe's heads  0.788    0.341       25     18       7                12        0
+40a, its heads          0.891    0.804       24     21       3                21        8
+40a, heads left out       -        -         32     28       4                16       11
+```
+
+- The heads learned the engine's loops and real guitar only weakly: read with no decoder
+  between, the K highest peaks of a head where the truth has K, the beat head places
+  47% of the unseen players' beats within 70 ms and the downbeat head 29%, against
+  70% and 51% on strummed clips the round trained on. They lose bars beyond chance.
+- 40a's body without its heads holds on bars (16 against 11 clips, which chance gives)
+  and its notes are 12a's on all 120 clips; it hears 53 drum hits on those guitar clips
+  where 12a hears 2,948, every one false. On the Für Elise takes, whose rips keep the
+  cues, its lines are on 0.47, 0.34, 0.25 and 0.34 of the score's downbeats (clean,
+  30 cm, Pixel, Galaxy) against 12a's 0.45, 0.21, 0.22 and 0.28.
+- So by [the rule](#reading-a-candidate) the heads are not installed, the body is a
+  candidate to install without them once it is read on real drums, and 40a's last step
+  starts the frame model's next round, which validates on GuitarSet's val clips with
+  their beats while it trains.
+
 ## 9. The weight file
 
 [Transformer's format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)
@@ -1092,6 +1128,33 @@ And 16b, which adds an E-GMD corpus:
 ```bash
 CORPUS=<corpus 11> PCEN=1 CHANNEL=<noise.npz>:0.5 OVER=<e-gmd corpus>:0.25 MIX=<e-gmd corpus>:0.1 STEPS=40000 HOLDOUT=400 EVERY=1000 CONVS=16x3x3/1,16x3x3/2,32x3x3/2 tool/rip-train/pipeline.sh train
 ```
+
+### Reading a candidate
+
+A round's file is read by what it can do, each on recordings no round trained on: notes
+(the mean over the truth-backed conditions of F1 by pitch and onset), drums (hits' F1 on
+real drum recordings, and false hits on recordings with none), bars (GuitarSet's unseen
+players' clips whose bars are right, the scored takes' downbeats on a line) and voices
+(notes named right on the solo sets). It is read with settings fitted for it, a judge on
+its own rows and thresholds tuned on its own heads, never through the installed model's.
+
+- Against what is installed each of the four holds, gains or loses, a difference
+  counting only beyond what chance gives: until each has a measured spread, the notes'
+  mean .01, any one condition .03, drums' F1 .02, and for clips the two-sided count of
+  those only one side has right.
+- Gains somewhere and holds elsewhere: installed. A part that gains is installed without
+  the part that does not, as a body without its new heads.
+- Gains somewhere and loses elsewhere: a trade, which goes to Lixen with the numbers and
+  a pair of excerpts; no rule drops it.
+- Gains nowhere: not installed and not thrown away. The model's next round starts from
+  its weights wherever they hold, and the round's record says what it taught.
+- A new head is read first as one more piece of evidence beside what the decoder already
+  uses, and replaces something only after that. A round validates while it trains on
+  real held-out recordings of what it teaches and picks its step there; held-out loops
+  of the engine say how well it learned the engine.
+
+A round's PR ends with a table by the four and one of: install, install this part, a
+trade for Lixen, the next round's start.
 
 ## 12. The scores
 

@@ -563,7 +563,7 @@ def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
     return out
 
 
-def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None) -> dict:
+def evaluate(model: ripmodel.FrameModel, mels, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None) -> dict:
     """the mean of the losses over fixed windows, the model's weights untouched; with low, the first
     pitch over the strikes' low bar, the strikes' F1 and what a cents head reads, by kind the median
     miss, the median error stated and the share within it; with notes, the windows' (validation), what
@@ -670,7 +670,7 @@ def probe(model) -> callable:
     return hold
 
 
-def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
+def losses(model: ripmodel.FrameModel, mel: torch.Tensor, t: dict) -> dict:
     y = model(mel)
     cfg = model.cfg
     valid = t["valid"]
@@ -844,7 +844,7 @@ def main() -> None:
         over_share = float(sh)
         assert over_manifest["mel_bands"] == ripmodel.MEL_BANDS
         drumless = [(m, l) for m, l in loops if not (l.drum >= 0).any()]
-    model = (ripmodel.PitchNet if args.pitchnet else ripmodel.RipModel)(cfg).to(args.device)
+    model = (ripmodel.PitchNet if args.pitchnet else ripmodel.FrameModel)(cfg).to(args.device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     step, best_loss, best_step, best_state = 0, float("inf"), 0, None
     validated = (float("inf"), 0, None, None)  # the best validation loss, its step, its weights and the held-out loss there

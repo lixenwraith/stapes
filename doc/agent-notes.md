@@ -197,8 +197,9 @@ proves wrong or that a document now states, and link the document instead.
   start ("frame model: ripmodel.bin is now ripframe.bin, so rename ...") and
   never loads, so the rip hears with the analysis, the notes model and the
   judge unread, until it is renamed: Lixen's root and any `-config-dir` a
-  recipe names. The archived names under `weights/`, audio's package
-  `ripmodel` and `pipeline.sh`'s checkpoint, `ripmodel.pt`, keep theirs.
+  recipe names. The archived names under `weights/` and audio's package
+  `ripmodel` keep theirs. `pipeline.sh`'s checkpoint is `ripframe.pt`, so a
+  round stopped under the old name resumes with `CHECKPOINT=` naming its file.
 
 - Write a truth from a score or a MIDI file, never from memory: a remembered
   Billie Jean riff had its first note an octave low, the synthesizer's doubling

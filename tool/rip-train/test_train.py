@@ -349,7 +349,7 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         over, the output layer's rows of the heads it had among them, the two heads' rows are new, and the weight
         file lists them after the family."""
         old = ripmodel.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodel.HEADS[:-2])
-        before = ripmodel.RipModel(old).state_dict()
+        before = ripmodel.FrameModel(old).state_dict()
         with tempfile.TemporaryDirectory() as d:
             at = lambda name: os.path.join(d, name)
             corpus(d, [{"bpm": 120, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
@@ -373,7 +373,7 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         of the output layer and holds the rest: after three steps every other weight is the start's, every other
         head says bit for bit what the start's did, the two heads say something else, and the last step is exported."""
         old = ripmodel.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodel.HEADS[:-2])
-        before = ripmodel.RipModel(old).state_dict()
+        before = ripmodel.FrameModel(old).state_dict()
         with tempfile.TemporaryDirectory() as d:
             at = lambda name: os.path.join(d, name)
             corpus(d, [{"bpm": 100, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
@@ -389,7 +389,7 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         frames = torch.randn(1, 40, ripmodel.INPUTS, generator=torch.Generator().manual_seed(1))
         says = []
         for ck in (start, probed):
-            model = ripmodel.RipModel(ripmodel.Config(**ck["cfg"]))
+            model = ripmodel.FrameModel(ripmodel.Config(**ck["cfg"]))
             model.load_state_dict(ck["model"])
             with torch.no_grad():
                 says.append(model.eval()(frames))

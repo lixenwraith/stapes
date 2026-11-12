@@ -95,7 +95,7 @@ tool/rip-train/pipeline.sh install
 | `PCEN` | empty | `pcen`: a second input channel, each band's PCEN and their mean, `train.py`'s `--pcen`; a `CHECKPOINT` or `INIT` of the other channel count is refused |
 | `HOLDOUT`, `EVERY` | 200, 1000 | loops held out, and how often they are scored and a checkpoint written |
 | `VALIDATE` | empty | a corpus of recordings, `corpus <dir> from`'s, cut into fixed windows and scored every `EVERY` steps beside the held-out loops: its best score picks the step `OUT` gets, the decoders' loss or, for a notes model, its strikes' F1 at the decoder's bars, the held-out loss printed beside it, `train.py`'s `--validate`; empty for the held-out loops' pick |
-| `OUT`, `CHECKPOINT` | `$CORPUS/ripframe.bin`, `$CORPUS/ripmodel.pt` | the weight file, and the checkpoint a stopped run resumes from |
+| `OUT`, `CHECKPOINT` | `$CORPUS/ripframe.bin`, `$CORPUS/ripframe.pt` | the weight file, and the checkpoint a stopped run resumes from |
 | `ROOT` | `~/.config/stapes` | the stapes root, under `$XDG_CONFIG_HOME` when that is set: `install` copies the weights into it as `ripframe.bin`, and `bench` hears with its `rip.toml` |
 | `NOTES` | empty | a notes model's weight file, a `--pitchnet` run's `OUT`, which `bench` and `install` put beside `OUT` as `ripnotes.bin` |
 | `BENCH_LOOPS`, `BENCH_BARS` | 12, 4 | the fresh loops `bench` grades on |
@@ -188,7 +188,7 @@ and `FFN`, with `LOOPS` and `STEPS` raised together, since a bigger model
 overfits a small corpus sooner; the held-out line every `EVERY` steps is the
 guide, and the run is done when it stops falling.
 
-**What to bring back.** `$CORPUS/ripframe.bin` (the weights), `$CORPUS/ripmodel.pt`
+**What to bring back.** `$CORPUS/ripframe.bin` (the weights), `$CORPUS/ripframe.pt`
 (the checkpoint, to resume or to start a round from), the training log with
 its held-out lines, the bench's two summary lines, and, if the recordings are
 to hand, `stapes -headless -config-dir <root> -s <recipe>` for each recording
@@ -347,7 +347,7 @@ dir=$HOME/.local/state/stapes/byhand   # outside the checkout: the corpus, the w
 mkdir -p "$dir/root"
 printf 'corpus corpus 20000 4 aug gen nowav\n' > "$dir/corpus.slab"   # read from the script's folder
 go run ./cmd/stapes -headless -s "$dir/corpus.slab"
-python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripframe.bin" --steps 20000 --batch 8 --every 1000 --holdout 200 --checkpoint "$dir/ripmodel.pt"
+python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripframe.bin" --steps 20000 --batch 8 --every 1000 --holdout 200 --checkpoint "$dir/ripframe.pt"
 printf 'bench 12 4\n' > "$dir/bench.slab"
 cp "$dir/ripframe.bin" "$dir/root/ripframe.bin"
 go run ./cmd/stapes -headless -config-dir "$dir/root" -s "$dir/bench.slab"
@@ -422,7 +422,7 @@ together and nothing of recordings:
 ```bash
 printf 'corpus corpus 1600 12 gen meters\n' > "$dir/corpus.slab"   # with its audio: the held-out loops are ripped
 go run ./cmd/stapes -headless -s "$dir/corpus.slab"
-python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripframe.bin" --checkpoint "$dir/ripmodel.pt" \
+python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripframe.bin" --checkpoint "$dir/ripframe.pt" \
     --steps 5000 --dim 128 --heads 4 --layers 4 --ffn 512 --pcen --holdout 160 --every 500
 ```
 

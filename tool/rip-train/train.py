@@ -691,7 +691,7 @@ def main() -> None:
     ap.add_argument("--layers", type=int, default=4)
     ap.add_argument("--heads", type=int, default=8)
     ap.add_argument("--ffn", type=int, default=1024)
-    ap.add_argument("--towers", default="", help="stacks of their own after the shared input, layers:heads each in the heads' order, comma-separated: 2:2,4:8 gives onset and drums two layers and the rest four")
+    ap.add_argument("--towers", default="", help="stacks of their own after the shared input, layers:heads each in the heads' order, comma-separated: 2:2,4:10 gives onset and drums two layers and the rest four")
     ap.add_argument("--convs", default="", help="convolutions before the input layer, channels x frames x features / pool each, comma-separated: 16x3x3/1,16x3x3/2,32x3x3/2")
     ap.add_argument("--attention-window", type=int, default=64, help="frames attended either side")
     ap.add_argument("--pcen", action="store_true", help="a second input channel, each band's PCEN")
@@ -738,8 +738,8 @@ def main() -> None:
     ck = torch.load(start, map_location=args.device) if start else None
     if ck is not None and "cfg" in ck:
         ck["cfg"] = {**asdict(ripmodel.Config()), **ck["cfg"]}  # a setting newer than the checkpoint takes the default it was built with
-    # a start from a model of the heads before the last added, such as the family:
-    # its weights carry over, the new heads' rows of the output layer start fresh
+    # a start from a model of the heads before the last added, such as the beat and
+    # the downbeat: its weights carry over, the new heads' rows of the output layer start fresh
     had = [tuple(h) for h in ck["cfg"]["outputs"]] if ck is not None and not resume and "cfg" in ck else []
     grown = 0 < len(had) < len(cfg.outputs) and had == list(cfg.outputs)[:len(had)] and \
         {k: v for k, v in ck["cfg"].items() if k != "outputs"} == {k: v for k, v in asdict(cfg).items() if k != "outputs"}

@@ -356,7 +356,7 @@ itself (`ripmodel.features`, derived from the stored frames), width 256, eight
 heads, four layers, feed-forward 1024, a
 window of 64 frames either side, 3.3 million weights. `--convs
 16x3x3/1,32x3x3/2` puts convolutions before the input layer, each its
-channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:8`
+channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:10`
 splits the layers into towers over the shared input layer, each its layers and
 the run of heads it computes in `ripmodel.HEADS` order: the onset and the drums
 on two layers, the rest on four. `--pcen` gives the model a second channel of

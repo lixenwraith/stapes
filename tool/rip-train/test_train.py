@@ -1,8 +1,14 @@
-"""The trainer's rules for what plays each pitch, each a test: python3 -m unittest discover tool/rip-train"""
+"""The trainer's rules, each a test: python3 -m unittest discover tool/rip-train"""
+import contextlib
+import io
+import json
 import os
 import struct
+import sys
 import tempfile
 import unittest
+from dataclasses import asdict
+from unittest import mock
 
 import numpy as np
 import torch
@@ -169,6 +175,46 @@ class WhatPlaysEachPitch(unittest.TestCase):
         self.assertEqual(tensors["frameout.weight"].shape, (frame, model.frame.in_features))
         self.assertEqual((float(np.abs(tensors["frameout.weight"][-1]).max()), float(tensors["frameout.bias"][-1])), (0.0, 0.75))
         self.assertEqual(tensors["cellout.weight"].shape[0], sum(n for _, n in heads[:8]) // p)
+
+
+def corpus(d, labels, frames=64):
+    """a corpus on disk of loops of silence, a label each"""
+    with open(os.path.join(d, "corpus.json"), "w") as f:
+        json.dump({**MANIFEST, "loops": len(labels), "waves": ["sine", "saw", "square", "string", "modal"]}, f)
+    for i, lab in enumerate(labels):
+        with open(os.path.join(d, f"loop_{i:03d}.mel"), "wb") as f:
+            f.write(struct.pack("<II", frames, ripmodel.MEL_BANDS) + bytes(4 * frames * ripmodel.MEL_BANDS))
+        with open(os.path.join(d, f"loop_{i:03d}.json"), "w") as f:
+            json.dump(lab, f)
+
+
+class TheBeatAndTheBarLine(unittest.TestCase):
+    def test_init_grows_the_heads_and_carries_every_other_weight(self):
+        """A frame model from before the beat and downbeat heads starts a run through --init: every weight carries
+        over, the output layer's rows of the heads it had among them, the two heads' rows are new, and the weight
+        file lists them after the family."""
+        old = ripmodel.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodel.HEADS[:-2])
+        before = ripmodel.RipModel(old).state_dict()
+        with tempfile.TemporaryDirectory() as d:
+            at = lambda name: os.path.join(d, name)
+            corpus(d, [{"bpm": 120, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
+            torch.save({"model": before, "cfg": asdict(old)}, at("old.pt"))
+            argv = ["train.py", "--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--lr", "0", "--steps", "1",
+                    "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4"]
+            with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as said:
+                train.main()
+            after = torch.load(at("new.pt"))
+            with open(at("new.bin"), "rb") as f:
+                body = f.read()
+        self.assertIn("its heads but beat, downbeat, which start fresh", said.getvalue())
+        self.assertEqual([tuple(h) for h in after["cfg"]["outputs"]], ripmodel.HEADS)
+        had = old.out_size
+        for k, v in before.items():
+            with self.subTest(tensor=k):
+                self.assertTrue(torch.equal(after["model"][k][:had] if k.startswith("out.") else after["model"][k], v))
+        self.assertEqual([len(after["model"][k]) for k in ("out.weight", "out.bias")], [had + 2, had + 2])
+        head = lambda name, size: struct.pack("<H", len(name)) + name.encode() + struct.pack("<I", size)
+        self.assertIn(head("family", len(ripmodel.FAMILIES)) + head("beat", 1) + head("downbeat", 1) + struct.pack("<I", len(after["model"])), body)
 
 
 if __name__ == "__main__":

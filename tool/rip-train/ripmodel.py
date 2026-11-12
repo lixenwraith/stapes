@@ -26,7 +26,7 @@ FAMILIES = ("piano", "guitar", "voice", "bass", "strings", "winds", "synth", "dr
 NAMES = len(FAMILIES) - 1  # the families a note may be named: unknown is the absence of a name, the last
 
 HEADS = [("onset", 1), ("drums", DRUMS), ("pitch", PITCHES), ("voicing", 1), ("wave", WAVES), ("voice", VOICE_GENES), ("strike", PITCHES),
-         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES))]
+         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1)]
 
 
 # the energy 80 dB under a full-scale sine's, where the model's logarithm floors

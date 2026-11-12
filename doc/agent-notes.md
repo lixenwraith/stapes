@@ -538,6 +538,9 @@ proves wrong or that a document now states, and link the document instead.
   take by .03 and the phones by up to .045. Read each model under a judge fitted
   on its own rows. Two runs that `--validate` on `~/ripcorpus-val37` do not fit
   beside a desktop on 30 GB: its 2,506 windows hold 5 GiB in each.
+- A probe of a model's heads reads what its frozen cells already hold: 32a's,
+  never taught a family, gave the three heads of what plays each pitch bass and
+  the synths alone (38a), so a voice wants the body trained with it.
 - A training loss that keeps falling says nothing about fresh loops: 12000
   steps on 300 loops reached 0.31 and benched worse than 3000 steps on 120,
   each loop seen three hundred times. `train.py` holds a tenth of the loops

@@ -208,7 +208,7 @@ proves wrong or that a document now states, and link the document instead.
   origin and the intro have 83 notes each, where five notes move F1 by 0.06.
 - The test loop scores 0.98 under `DefaultRipParams` and loops of the shipped bank
   0.51 (`CompareRips.Total`): busy drum lanes whose chance hits count as misses,
-  several tracks a slot and melodies under chord changes are where the model falls
+  several tracks a slot and melodies under chord changes are where the rip falls
   short, not the thresholds. `tune 4` over 12 four-bar loops took 36 s on four
   cores and reached 0.59; a set tuned on renders alone pushes `tightness` and
   `kick_share` to their range's ends, which a recording with tempo drift would
@@ -261,7 +261,7 @@ proves wrong or that a document now states, and link the document instead.
   recordings Lixen heard the fit was the nearer every time, so `rip` fits every
   line. The distance favours a sparse, dark voice (modal for 32 of the 37, a
   singer and a reed among them): a change to it wants ears again.
-- A miss is rarely a note the model never heard: on strummed guitar 78% of the
+- A miss is rarely a note the notes model never heard: on strummed guitar 78% of the
   notes the rip misses have a strike over `strike` at their pitch within four
   frames. No bar or rule returns them at a fair price, though: `strike_again`
   at .7 brought back 44 for 130 more reported, the partial and within-a-tone
@@ -373,7 +373,7 @@ proves wrong or that a document now states, and link the document instead.
 - `bench` grades the analysis as it is today, so a run's numbers compare only
   with the analysis benched beside them: the seventh pass moved the analysis
   from 0.47 to 0.49 on clean loops, and the fourth model run's 0.45 and 0.51
-  stand against that, not against the third run's table. The model's corpus
+  stand against that, not against the third run's table. The frame model's corpus
   is rendered at A440, so nothing it saw was detuned; a recording off the
   standard is a recording it was never shown, whatever its held-out loss.
 - `corpus ... glide` draws its bends and scoops from one stream and its
@@ -482,7 +482,7 @@ proves wrong or that a document now states, and link the document instead.
   0.530 pooled at 8b's, 0.650 at its own), and pin them in the root's
   `rip.toml` beside the weights. Compare rounds on one tree's bench loops.
 - With strikes the melody register never reaches the pair decoder, so
-  `second_voice` and `cross` move no note on the model path, while the bass
+  `second_voice` and `cross` move no note on the models' path, while the bass
   line's own path reads `jump`, `switch` and `retrigger`: `modelGenes` is what
   audio v0.9.0's decoders read; check it against a new decoder. A candidate of
   `tune ... truth` pays the decoders alone, and the accounting stage
@@ -531,7 +531,7 @@ proves wrong or that a document now states, and link the document instead.
 - A weight file's constant can ride as a frame head of no weights (`sure`:
   `export` appends a zero row to `frameout.weight` and the constant to its
   bias), which no version of the file needs to know; `--init` and `average.py`
-  carry the model's buffer, and a run again on a finished checkpoint exports
+  carry the notes model's buffer, and a run again on a finished checkpoint exports
   its pick with a new `--sure`.
 - The cents head states its own error, and audio joins two cells where their
   readings agree within the errors stated (`oneFrequency`), with no factor on
@@ -555,7 +555,7 @@ proves wrong or that a document now states, and link the document instead.
   loss, and prefer more loops to more steps.
 - A `.pt`'s held-out loss, a merge's or any checkpoint's, is read without
   training: `train.load_corpus`, `train.validation` over the last `--holdout`
-  loops and `train.evaluate` in a scratch script, the model built from the
+  loops and `train.evaluate` in a scratch script, the network built from the
   file's `cfg`. `--steps 0` scores nothing, since the score runs in the loop. A
   `pip install --user` torch is not seen under `python3 -I`, which drops the
   user's site directory.
@@ -599,7 +599,7 @@ proves wrong or that a document now states, and link the document instead.
   (six rendered recordings, 356 s, at full-size random weights and 2 by 1: 16.4
   s and 36 CPU-seconds the first run, 6.8 and 6.5 the second; 180 kB of frames
   a second of recording). A file's name holds the recording's and the weight
-  files' checksums, not the model's code: clear the folder after a change to
+  files' checksums, not the models' code: clear the folder after a change to
   `ripmodel` or the transformer.
 - Scored within lines over a list of guitar alone, its first run silenced the
   bass line (`strike_low` to .99): its own score rose .608 to .670 and solo
@@ -637,7 +637,7 @@ proves wrong or that a document now states, and link the document instead.
   and `truth ... timed` over the 40 left out, against their labels written as
   transcripts (nine seconds a loop, most of it the voices' fit). It shows
   that the path holds and nothing of a judge's worth: the loops left out are
-  the fit's own kind under another seed, and the model reports a seventh of
+  the fit's own kind under another seed, and the notes model reports a seventh of
   the truth's notes.
 - **A weak beat or downbeat head costs the bars where audio takes its word.**
   A width-128 frame model after 5,000 steps on `corpus <dir> 1600 12 gen
@@ -650,7 +650,7 @@ proves wrong or that a document now states, and link the document instead.
   file is installed.
 - The lines' F1 does not say which beats a head misses. Print what each head
   says within a frame of the loops' own beats by their place in the bar
-  (`train.Label.beats`, the model over a whole loop): the downbeat head said
+  (`train.Label.beats`, the frame model over a whole loop): the downbeat head said
   0.73 on one and 0.44 on three of 4/4 with drums, the generated beats kicking
   on both, and 0.28 on a line without drums, where v0.24.0 picked the
   longest bar offered; the beat head 0.30 on 6/8's eighths between its dotted

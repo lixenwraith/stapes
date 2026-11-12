@@ -179,13 +179,13 @@ Over the library's rip (library
   patterns across tempos and keys with `lixenwraith/genetic`'s generational
   engine, the current set seeding the pool, and writes a set that beats it
   ([todo](todo.md#tune-the-rip) for what the corpus still lacks). `tune ...
-  truth <list>` searches instead the thresholds the loaded model's decoders
+  truth <list>` searches instead the thresholds the loaded models' decoders
   read (`modelGenes`), the rest held, against real recordings, a line
   `wav<TAB>truth[<TAB>condition[<TAB>timed]]` each, by the mean over the
   conditions of each condition's F1 by pitch and onset (`conditionF1`), from a
   pool drawn near the current thresholds (`search`'s `near`); a set that takes
   more than `guard` from a condition's F1 at the start scores under zero
-  (`guarded`) and is never written. The model's `Hear` ignores `RipParams`, so
+  (`guarded`) and is never written. The front end's `Hear` ignores `RipParams`, so
   each recording is heard once (`heardOnce`) and a candidate pays the decoders
   alone; `frames <dir>` keeps what was heard between runs, a gob of the
   `RipFrames` named by the checksums of the recording and of the weight files
@@ -205,7 +205,7 @@ Over the library's rip (library
   only when it rises, each voice held within a tenth of its tonal floor, the
   fit's own distance from the recording's notes, so the score of the mix does not
   drift a voice into one that fills the mix.
-- `bench` grades the analysis and a loaded model on fresh renders, clean and
+- `bench` grades the analysis and the loaded models on fresh renders, clean and
   augmented (`corpus ... aug`), and with `meters` each meter apart, a third of
   the loops in 3/4 or 6/8 with every part generated in it, so the bars of a loop
   match its meter (`ExpectedRip`'s). With `sampled <dir>`, both play half of a loop's

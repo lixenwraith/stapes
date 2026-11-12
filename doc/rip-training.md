@@ -1,7 +1,7 @@
-# Rip model training: the data, byte by byte
+# Rip training: the data, byte by byte
 
-How a recording or a rendered loop becomes the numbers the rip's model trains on,
-and how the trained model reads back into the rip. Every sample below is real:
+How a recording or a rendered loop becomes the numbers the rip's models train on,
+and how the trained models read back into the rip. Every sample below is real:
 corpus 11's first loop and the weights of round 12a. The audio library holds the
 frames, the input planes and the heads; [transformer's
 format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md) is the
@@ -33,7 +33,7 @@ Where each part stands:
    planes (§4).
 4. A window's events and its loop's grid become per-frame targets for the 12 heads,
    and a notes model's cents head (§5).
-5. The model turns frames into 329 numbers a frame, and the losses train it (§7, §8).
+5. The frame model turns frames into 329 numbers a frame, and the losses train it (§7, §8).
 6. The best step is written as a weight file (§9).
 7. At a rip, Go computes the same planes, runs the file and hands the heads to the
    decoders (§10).
@@ -80,7 +80,7 @@ against a full-scale sine. The file holds energy only: with the phase gone, it c
 be played back exactly.
 
 Bands are about 14 Hz apart at A4, where a semitone is 26 Hz, and about 10 Hz apart at
-A2, where a semitone is 6.5 Hz. So the bottom octaves give the model less than one band
+A2, where a semitone is 6.5 Hz. So the bottom octaves give the models less than one band
 a semitone, and it must lean on upper partials there.
 
 ## 3. The labels: `loop_NNN.json` and `corpus.json`
@@ -302,7 +302,7 @@ alone (above). What the trainer asks of them is in §5.
 
 ## 4. The input: two planes
 
-The model reads a frame as two planes of 230 values each, laid end to end, 460 in all.
+The frame model reads a frame as two planes of 230 values each, laid end to end, 460 in all.
 Plane 1 is the band shape and the level:
 
 ```
@@ -313,7 +313,7 @@ plane1[b] = (db[b] - level) / 80
 plane1[229] = (level + 80) / 80
 ```
 
-A gain moves only `plane1[229]`, so a phrase 20 dB softer reaches the model with the
+A gain moves only `plane1[229]`, so a phrase 20 dB softer reaches the models with the
 same shape. Plane 2 is PCEN (per-channel energy normalization), each band over its own
 recent average, worked out per band from the frame's energy:
 
@@ -559,10 +559,10 @@ Draws from both are by length, since E-GMD's recordings run from 2 seconds to 10
 minutes: 521 of its first batch's 819 are shorter than a window but hold only 4.8% of
 its audio. Drawn by recording, they would be 64% of the windows.
 
-## 7. The model
+## 7. The models
 
-`tool/rip-train/ripmodels.py` builds it, and `transformer.Forward` computes the same
-numbers in Go. The shapes through a window, with B the batch:
+`tool/rip-train/ripmodels.py` builds the frame model, and `transformer.Forward` computes
+the same numbers in Go. The shapes through a window, with B the batch:
 
 ```
 input          B x 512 x 460
@@ -805,10 +805,10 @@ heads) is the wrapped front end's row for row, over 40 loops. Stapes' own `bench
 heard, reads the two files and the analysis the same way round:
 
 ```
-                      clean                           augmented
-the model's heads     0.449 (tempo 0.56 bars 0.66)    0.321 (tempo 0.44 bars 0.54)
-its heads cut         0.613 (tempo 0.94 bars 0.95)    0.504 (tempo 0.94 bars 0.94)
-the analysis          0.527 (tempo 0.88 bars 0.91)    0.459 (tempo 0.85 bars 0.93)
+                        clean                           augmented
+the frame model's heads 0.449 (tempo 0.56 bars 0.66)    0.321 (tempo 0.44 bars 0.54)
+its heads cut           0.613 (tempo 0.94 bars 0.95)    0.504 (tempo 0.94 bars 0.94)
+the analysis            0.527 (tempo 0.88 bars 0.91)    0.459 (tempo 0.85 bars 0.93)
 ```
 
 What a round has to bring is in the
@@ -829,7 +829,7 @@ takes over each, at the `SURE` quantile (0.95) of them and at the median, and ho
 of the other families' notes pass that reach and how many of those are named right. That
 reach is the measure of where a name stops being sure: a note names a family in audio
 only past it. The run writes it into its weight file (§9), and `--sure <share>` gives it
-to a run of the same recipe that holds nothing out, as the model to ship has every
+to a run of the same recipe that holds nothing out, as the notes model to ship has every
 family's name; a file of neither names no note.
 
 The last 400 loops are held out and scored every 1,000 steps, and the step with the best
@@ -918,7 +918,7 @@ The checksum catches damage, not tampering. A file only ever holds numbers, and 
 checks its shape against its tensors. A file written now lists twelve heads, `beat` and
 `downbeat` of one value each after `family`, and its `out.weight` is 329 x 256.
 
-`--pitchnet` writes version 5, whose `kind` word after the version, 1, makes the model
+`--pitchnet` writes version 5, whose `kind` word after the version, 1, makes the notes model
 transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
 scalars, then the long convolutions' spacings, then the heads, the per-pitch ones first: pitch,
 strike, release, velocity, cents, pitchfamily, pitchwave and pitchvoice, then onset, drums,
@@ -936,7 +936,7 @@ Beside the frame model's `ripframe.bin` it gives pitch, voicing, strike, release
 and cents, and the frame model keeps onset, drums, wave and voice. Alone it is unused. `average.py --out ripnotes.bin
 a.pt` turns a `.pt` of either model into its file.
 
-## 10. Reading the model back
+## 10. Reading the models back
 
 `ripmodel.Hear` runs `Forward` over all of a recording's frames, and a notes model's over
 their harmonic stack, built in Go as §4 builds it, takes the sigmoid of
@@ -1028,7 +1028,7 @@ drum loops on random kits, mixes darkened to 800 Hz, and 267 loops from the phon
   each take: clean 0.727 and 0.778, 30 cm 0.548 and 0.606, Pixel 0.608 and 0.614, Galaxy
   0.567 and 0.593. Its lead is Für Elise alone, 0.828 against 12a's 0.721, and it trained
   on real piano. Its own decoder on 12a's heads scores 0.619 clean against ours at 0.704,
-  so that gap is the model's.
+  so that gap is its model's.
 
 `--pitchnet` rounds run 20,000 steps at rate 1e-3 with the channel, `--over` and `--mix` of
 16b, decoded at strike 0.7, strike_again 0.9, release 0.9 and voicing 0.6. Their frame heads
@@ -1070,8 +1070,9 @@ vocadito, sung          0.539   0.616           0.634
 Basic Pitch's best per take is 0.778, 0.606, 0.614, 0.593. Under E4 the decoder was most of the
 gap: on rendered instruments E3 to D#4 went from 0.61-0.77 to 0.74-0.92 on 24a's weights.
 
-- **Weights shared across pitches** are 22a against 19a, the same stack fed to the model of
-  section 7 on 3.7M weights: 0.693, 0.604, 0.623, 0.638. The stack alone gains nothing.
+- **Weights shared across pitches** are 22a against 19a, the same stack fed to the frame
+  model of section 7 on 3.7M weights: 0.693, 0.604, 0.623, 0.638. The stack alone gains
+  nothing.
 - **Attention beside them** lost: both paths in one model of 3.4M weights scored 0.751, 0.678,
   0.721, 0.735, below 22a on every take and on seven rendered instruments, so notes get a
   model of their own and that path was not kept.

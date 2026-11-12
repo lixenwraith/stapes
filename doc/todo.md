@@ -25,8 +25,8 @@ on Android, which vif's app is to host.
 drums, melody and bass off a recording under `RipParams`, through the built-in
 analysis or `ripmodel`; [Rip design](rip-design.md) is the whole plan.
 The search over the parameters is in place (`tune`), as are the corpus the
-engine exports (`corpus`), the model, its trainer (`tool/rip-train`) and the
-front-end seam. What remains, in the design's order:
+engine exports (`corpus`), the frame model and the notes model, their trainer
+(`tool/rip-train`) and the front-end seam. What remains, in the design's order:
 
 1. A corpus beyond the shipped bank: `corpus ... aug gen` puts a room, a mix,
    saturation and a tuning off A440 behind each loop and draws beats,
@@ -47,7 +47,7 @@ front-end seam. What remains, in the design's order:
    same loader. MusicNet's labels are snapped to the strike peaks; a note left
    unsnapped (`"snap": false`) is still to be masked out of the strike loss and
    the strikes' F1, its pitch's target within eight frames of the label.
-2. The model's pitch: on 20000 loops over 20000 steps the held-out decoders'
+2. The frame model's pitch: on 20000 loops over 20000 steps the held-out decoders'
    loss was still falling (1.04) and the fourth run passed the analysis on
    augmented loops (0.51 against 0.48) on its drums while losing clean loops
    on tempo and both on pitch (melody 0.11 against 0.17); 300 loops
@@ -64,7 +64,7 @@ front-end seam. What remains, in the design's order:
    melodies (the origin's register 34 of 83 tapped notes against 50, Für
    Elise's 266 of 869 against 444). Round seven (229 bands, a corpus nearer
    a real mix, convolutions) and round eight (a strike head per pitch, an
-   input in dB against the frame's own level) brought the model level with or
+   input in dB against the frame's own level) brought the frame model level with or
    past the analysis on most of the recordings' lines and past it on the
    bench; the eighth's strike decoder hears nearly every note at a low
    threshold and five times too many, and at its best threshold (0.9) keeps a
@@ -97,7 +97,7 @@ front-end seam. What remains, in the design's order:
    budget. A vocal line is a line like any other to the rip; a
    voice has a vibrato and a vowel's formants now
    (`tool/rip-train/focus/vocal.toml` draws them), neither a gene, so the fit
-   and the model's voice head do not search them: genes for both once a
+   and the models' voice heads do not search them: genes for both once a
    corpus with them has trained, and a real vocal recording held out. Tonal
    round two's voices (a pizzicato bass whose thump the analysis takes for a
    kick at times, drifting saws) cost the analysis a little on clean loops
@@ -111,8 +111,8 @@ front-end seam. What remains, in the design's order:
    has the runs' numbers.
 3. A bass attack reads as a kick and a chord's attack as a snare in the analysis:
    a harmonic check on the hit (a percussive rise with a pitched tail is a note)
-   until the model takes the front end.
-4. Key changes within a recording are outside the model: a key per phrase (a
+   until the frame model takes the front end.
+4. Key changes within a recording are outside the rip: a key per phrase (a
    chromatic note is an accidental on its step now). Through the analysis two
    voices in one register are decoded together; from a model's strikes any
    number of notes sound at once, parted into two lines, so a chord's inner
@@ -183,9 +183,9 @@ front-end seam. What remains, in the design's order:
    hand. On the origin the rhythm truth has the lead at 17 of 25 notes, 8
    missed, 10 extra and 7 cut in two, the half notes among them: the cut half
    notes are the first thing to chase, note by note, with the `truth` listing
-   of which were cut. The model path's thresholds (`strike`, `strike_low`,
+   of which were cut. The models' thresholds (`strike`, `strike_low`,
    `strike_again`, `release`, `voicing`) were swept by hand per weight file;
-   `tune ... truth <list>` searches them through the model by pitch and
+   `tune ... truth <list>` searches them through the loaded models by pitch and
    onset, as the mean over its list's conditions under a guard, the frames
    kept between runs ([Rip design §7](rip-design.md#7-plan)). Left of it: the
    real validation list (`~/data/rip/val-list.tsv`, GuitarSet's player 04;
@@ -194,7 +194,7 @@ front-end seam. What remains, in the design's order:
    collections and renders a fit may hold and never a full track, and
    `timed` on GuitarSet's lines, before a run after every round writes a
    `rip.toml`; a timed truth's drum hits still pass through `MatchHits`' own
-   map; and kept frames outlive a change to the model's code, which their
+   map; and kept frames outlive a change to the models' code, which their
    names do not hold. A bar-phase score belongs beside it: the note scorer's
    time map never sees a bar line, and the rip's lines fall within an eighth
    of a bar of GuitarSet's downbeats on 72% of them after audio v0.8.9, 63%
@@ -223,7 +223,7 @@ front-end seam. What remains, in the design's order:
      installed: on Billie Jean it reports as many low notes with eight fewer
      right, and on vocadito the fit holding everything reports 400 notes for
      742, which the row's next version, with the note's voice, is for.
-   - `bench` grades the model under the installed scores whatever the root
+   - `bench` grades the loaded models under the installed scores whatever the root
      holds, as a round is benched before a judge is fitted on its weights.
      Once a judge is accepted it should grade what `rip` hears.
    - `rows` knows a recording by its audio's checksum, so a truth corrected
@@ -365,7 +365,7 @@ Left open by what landed, each with the option not taken:
   earn on the held-out family.
 - An embedding with linear readouts in place of the heads: no better at any
   width, short of the genes under 16 values, and its readouts need a place in
-  the weight file ([Rip training §7](rip-training.md#7-the-model)). It is the
+  the weight file ([Rip training §7](rip-training.md#7-the-models)). It is the
   way if audio must tell every pitch of a frame its voice, not twelve.
 - The measure rides in the weight file as a frame head of no weights, and a
   measure a family would fit the same head at eight values. Not taken: named
@@ -392,7 +392,7 @@ Left open by what landed, each with the option not taken:
   which moves the shares the measure reads.
 - The lines count a note told on any frame: one never among a frame's twelve
   most salient pitches is in no share, so the count of notes moves a little
-  with the model's salience from step to step.
+  with the notes model's salience from step to step.
 - `test_train.py` runs by hand: CI has no PyTorch.
 
 ### A live rip

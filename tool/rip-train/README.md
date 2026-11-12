@@ -1,13 +1,14 @@
 # rip-train
 
-The trainer of the rip's front-end model: PyTorch, outside the Go module, the
-twin of the two Go modules that run the model. The audio module's `ripmodel`
+The trainer of the rip's models, the frame model and the notes model: PyTorch,
+outside the Go module, the twin of the two Go modules that run them. The audio
+module's `ripmodel`
 ([`lixenwraith/audio/ripmodel`](https://github.com/lixenwraith/audio/tree/main/ripmodel))
-is the model's shape, the features it hears and the heads the rip's decoders
+is each model's shape, the features it hears and the heads the rip's decoders
 read; [`lixenwraith/transformer`](https://github.com/lixenwraith/transformer) is
 the forward pass it runs on and the weight file this writes
 ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)).
-Where the model stands in the pipeline, and why its features are made in Go, is
+Where the frame model stands in the pipeline, and why its features are made in Go, is
 in [Rip design](../../doc/rip-design.md) §2 and §3; the runs so far and their
 numbers are in its §8. [Rip training](../../doc/rip-training.md) follows the data
 byte by byte, from a loop's frames and labels through the inputs and targets to
@@ -23,13 +24,13 @@ about.
    (`loop_NNN.json`: frame, end, drum or MIDI note, the wave and genes of the
    voice, the family it sounds as), and `corpus.json` naming the layout.
    Nothing is hand-labelled; the synthesizer is the ground truth, and the
-   augmentation is what keeps the model from learning the synthesizer.
-2. **A model.** `train.py` trains `ripmodel.Spec` on random windows of the loops,
+   augmentation is what keeps the models from learning the synthesizer.
+2. **A frame model.** `train.py` trains `ripmodel.Spec` on random windows of the loops,
    holds some loops out, scores them every so often and exports the step whose
    onset, drum, pitch and voicing heads score best on them, the heads the rip's
    decoders read.
 3. **A grade.** Stapes' `bench` rips fresh loops, clean and augmented, through
-   the built-in analysis and through the model, and scores each rip against the
+   the built-in analysis and through the frame model, and scores each rip against the
    loop's expected rip. A model that scores under the analysis is not ready for
    a recording; a recording is judged by ear, with `rip`, `notes` and `song score`.
 4. **Data.** The weight file goes to the stapes root as `ripframe.bin`, beside
@@ -87,7 +88,7 @@ tool/rip-train/pipeline.sh install
 | `TEMPOS` | the default spread | `80-120` for six tempos over a range, `96,128,160` for a list; the sequencer's range is 80 to 200 |
 | `FOCUS` | none | a stapes script run before the corpus renders: the voices and patterns the loops draw from, see below |
 | `STEPS`, `BATCH` | 20000, 8 | training steps and windows a step |
-| `DIM`, `HEADS`, `LAYERS`, `FFN` | 256, 8, 4, 1024 | the model's width, attention heads, layers and feed-forward width, `train.py`'s `--dim`, `--heads`, `--layers` and `--ffn`; a `CHECKPOINT` or `INIT` of another shape is refused |
+| `DIM`, `HEADS`, `LAYERS`, `FFN` | 256, 8, 4, 1024 | the frame model's width, attention heads, layers and feed-forward width, `train.py`'s `--dim`, `--heads`, `--layers` and `--ffn`; a `CHECKPOINT` or `INIT` of another shape is refused |
 | `CONVS`, `TOWERS` | none | convolutions before the input layer, and towers of layers over it, each computing a run of the heads, `train.py`'s `--convs` and `--towers` |
 | `MIX` | empty | another corpus and the share of windows drawn from it, `dir:share`, such as recordings with their MIDI files (`corpus <dir> from`) |
 | `OVER` | empty | a corpus of drums alone and the share of windows that lay it over a loop with no drums of its own, `dir:share`, at -12 to +6 dB of the loop's power, a hit labelled only where it can be heard, `train.py`'s `--over` |
@@ -132,9 +133,9 @@ cores with anything else the machine does.
   A frame model's lines give `beats' F1` and `bar lines'` after the decoders'
   loss, each head's peaks over a half against the labelled beats within four
   frames, or `no beat or bar line asked` over a corpus that lists none.
-  A training loss that keeps falling after the held-out loss turns is the
+  A training loss that keeps falling after the held-out loss turns is a
   model learning the corpus by heart; more loops, not more steps, is the cure.
-- `bench` prints four lines: the analysis and the model, on clean and on
+- `bench` prints four lines: the analysis and the frame model, on clean and on
   augmented loops, each the mean score with its parts (tempo, bars, drums,
   melody, bass). The fourth run, on 20000 loops rendered at A440, stood at
   0.45 against the analysis's 0.49 clean and 0.51 against 0.48 augmented,
@@ -180,7 +181,7 @@ minutes in four parts and the 40000 steps two hours on its GPU, about sixteen
 on its cores.
 
 `install` copies the weights into the stapes root (`ROOT`) as `ripframe.bin`;
-do it when the bench says the model beats the analysis on both
+do it when the bench says the frame model beats the analysis on both
 lines, which the sixth run was the first to do, and judge it by ear on the
 recordings, whose truths still favour the analysis (Rip design §8). For
 another shape set `DIM`, `HEADS`, `LAYERS`
@@ -261,7 +262,7 @@ draws from the same bank). Two are in `focus/`:
 
 - **`focus/vocal.slab`: music with vocals.** A vocal is a line to the rip, pitch
   and onsets per frame, never words; nothing here transcribes lyrics, and the
-  model has no notion of them. What the model needs is lines that sound like
+  models have no notion of them. What the models need is lines that sound like
   voices among its loops, so the focus adds a sung-line voice and a choir pad
   (`focus/vocal.toml`) beside the shipped lead and bass; the generated melodies
   draw any tonal instrument, these among them, and the augmentation redraws
@@ -288,7 +289,7 @@ To write your own:
   (`[[pattern]]` with tracks of steps), and `gen` adds parts the bank never
   had. A bank that is all one genre makes a corpus of that genre; `gen` keeps
   it from being only that bank's few melodies. The rhythm patterns set the
-  drums the model learns.
+  drums the frame model learns.
 - **Tempos and keys.** `TEMPOS` sets the spread; the keys cycle the roots and
   scales the engine knows. A piece whose tempo the sequencer's range does not
   hold reads at a multiple: the origin recording near 74 bpm reads at 148.
@@ -331,7 +332,7 @@ To write your own:
   of a real room, which `python3 tool/rip-train/make_noise.py <quiet.wav>
   <out.npz>` builds from a 16-bit mono WAV of a room with no music, as a phone
   hears it; keep it beside the corpus, out of the checkout.
-- **The model's shape.** `--dim`, `--layers`, `--heads`, `--ffn` and
+- **The frame model's shape.** `--dim`, `--layers`, `--heads`, `--ffn` and
   `--attention-window` on `train.py` reshape it; the weight file carries the
   shape, so `ripmodel` loads any of them as long as the inputs and heads are its.
   `pipeline.sh` passes `DIM`, `HEADS`, `LAYERS` and `FFN`; keep a head 32 wide
@@ -370,7 +371,7 @@ window of 64 frames either side, 3.3 million weights. `--convs
 channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:10`
 splits the layers into towers over the shared input layer, each its layers and
 the run of heads it computes in `ripmodels.HEADS` order: the onset and the drums
-on two layers, the rest on four. `--pcen` gives the model a second channel of
+on two layers, the rest on four. `--pcen` gives the frame model a second channel of
 230 inputs: each band's PCEN, its energy over its own average of the last 0.4
 s, and their mean ([audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)),
 the first convolution taking the two as its channels. Since the average looks
@@ -524,7 +525,7 @@ python3 tool/rip-train/judge.py --rows "$dir/rows" --leave-out guitar --out "$di
 
 ## Parity
 
-The Go forward pass and this model agree to `float32` rounding: exact GELU,
+The Go forward pass and the frame model agree to `float32` rounding: exact GELU,
 layer norm with eps 1e-5, ALiBi slopes of 2^(-8h/H) per head on the frame
 distance, attention banded to the window, and the output layer's slices as the
 heads, in `ripmodels.HEADS` order. `export` writes the tensors by the names and in
@@ -599,8 +600,8 @@ python3 train.py --pitchnet ... --sure R --out ripnotes.bin              # every
 `--probe` trains those three heads alone on the notes model `--init` gives: every
 other weight stays the start's bit for bit (the gradient is masked to the heads' rows
 of the cells' output layer, which holds every cell head, and the rest are put back
-after each step against AdamW's decay), the model carries no cents head, and the last
-step is exported, since no score that picks a step moves. Its file rips as its start's
+after each step against AdamW's decay), the probed notes model carries no cents head,
+and the last step is exported, since no score that picks a step moves. Its file rips as its start's
 does, so only the new heads need reading. A frame model's probe trains its beat and
 downbeat heads the same way, the rows of its one output layer ([the beat and the bar
 line](#the-beat-and-the-bar-line)); a frame model in towers, whose heads lie over

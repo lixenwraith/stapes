@@ -14,6 +14,7 @@ from unittest import mock
 import numpy as np
 import torch
 
+import average
 import ripmodel
 import train
 
@@ -176,6 +177,29 @@ class WhatPlaysEachPitch(unittest.TestCase):
         self.assertEqual(tensors["frameout.weight"].shape, (frame, model.frame.in_features))
         self.assertEqual((float(np.abs(tensors["frameout.weight"][-1]).max()), float(tensors["frameout.bias"][-1])), (0.0, 0.75))
         self.assertEqual(tensors["cellout.weight"].shape[0], sum(n for _, n in heads[:8]) // p)
+
+    def test_a_merge_refuses_files_that_disagree_on_having_a_measure(self):
+        """A file that never measured holds zero, which is no measure: files that all carry one merge to their mean,
+        files of which only some do are refused by name, since the mean would be no run's, --sure gives such a merge
+        its measure, and a merge of files with none carries none."""
+        with tempfile.TemporaryDirectory() as d:
+            files, out = [os.path.join(d, name) for name in ("held.pt", "more.pt", "none.pt")], os.path.join(d, "out.bin")
+            for file, sure in zip(files, (0.2, 0.4, 0.0)):
+                model = ripmodel.PitchNet(CFG)
+                model.sure.fill_(sure)
+                torch.save({"model": model.state_dict(), "cfg": asdict(CFG)}, file)
+
+            def merged(*argv) -> float:
+                with mock.patch.object(sys, "argv", ["average.py", "--out", out, *argv]), contextlib.redirect_stdout(io.StringIO()):
+                    average.main()
+                with open(out, "rb") as f:
+                    return struct.unpack("<f", f.read()[-12:-8])[0]  # the last tensor's last value, under the checksum
+            self.assertAlmostEqual(merged(*files[:2]), 0.3, places=6)
+            with self.assertRaises(SystemExit) as refused:
+                merged(*files)
+            self.assertTrue(all(file in str(refused.exception) for file in files), refused.exception)
+            self.assertAlmostEqual(merged("--sure", "0.25", *files), 0.25, places=6)
+            self.assertEqual(merged(files[2]), 0.0)
 
 
 def corpus(d, labels, frames=64):

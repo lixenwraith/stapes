@@ -233,7 +233,12 @@ a fresh optimizer and a cosine schedule of its own, so each round is a warm
 restart, and the merge takes each shard's last step, not its best held-out one.
 `TRIM=0.1` drops each weight's highest and lowest tenth of the files before the
 mean, so a worker that diverged does not drag the rest; it counts whole files,
-rounded down, so under ten files it drops none.
+rounded down, so under ten files it drops none. A notes model's files carry the
+measure of where a family's name is sure ([below](#parity)), and the merge
+carries their mean when every file has one and none when none has. A file that
+never measured holds zero, which is no measure to average with one: a merge
+whose files disagree on having a measure is refused, the files named, unless
+`average.py --sure` gives it one.
 
 **Why independent seeds cannot be averaged.** A network's hidden units can be
 permuted, with the weights that read them, without changing what it computes,
@@ -595,7 +600,9 @@ does, so only the new heads need reading.
 The held-out run's last lines give the reach; the shipped run prints what its file
 carries (`a family naming a note past a share of R`), and a file with no measure
 says so and names no note. `average.py --sure` gives a merge its measure; without
-it the merge carries the mean of its files'. On a held-out or validation line,
+it the merge carries the mean of its files' when each carries one, and refuses
+files of which only some do, since a file with none holds zero and would pull the
+mean under anything a run measured. On a held-out or validation line,
 after the cents:
 
 ```

@@ -250,8 +250,9 @@ list's `beats` column, the mask, the loss with no weight, each head's F1 on the
 lines ([Rip training §3, §5 and §8](rip-training.md#the-two-heads-on-a-small-run),
 [rip-train](../tool/rip-train/README.md#the-beat-and-the-bar-line)). One small
 run on rendered loops holds it together and no more: its heads read the bars of
-56 of 160 held-out loops right, where the same weights' cues read 124. What is
-left is the reading on trained weights:
+56 of 160 held-out loops right, and of 85 through the decoders as audio's
+branch `claude/audio-fixes` mends them, where the same weights' cues read 124.
+What is left is the reading on trained weights:
 
 - **A round with the heads**, from the installed frame model through `--init`,
   on `meters` corpora and on recordings whose lists name their beats
@@ -265,19 +266,34 @@ left is the reading on trained weights:
   todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#hear-the-beat-and-the-bar-line-on-trained-weights)
   leaves to them. A file is installed with its heads only where they read
   more bars right than its cues.
-- **What the small run says a round must change**, each seen in the heads at
-  the loops' own beats ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)):
-  - 4/4's line against its third beat: the generated beats kick on both, and
-    the downbeat head says 0.73 and 0.44. A model's reach is 2.97 s either
-    side, a bar or two; what tells one from three, the bass's root and the
-    change of harmony the cues weigh, is to be learned or the corpus's beats
-    varied.
-  - A head that says little: without drums the downbeat head says 0.28 on a
-    line, and audio then scores the longest bar offered highest. It is
-    audio's to weigh a silent head (its todo, "a weak or a busy head"); here,
-    drumless loops in the corpus's share and recordings with their beats.
-  - 6/8's eighths: the beat head says 0.30 on the eighths between the dotted
-    quarters, so audio keeps the felt beat and reads four of them as a bar.
+- **What the small run says a round must change.** It was read twice: through
+  audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
+  and through the decoders mended on audio's branch `claude/audio-fixes`,
+  which read the heads by rank and leave a clip they give no reading of to
+  the cues. Mended, the heads' own grid stands on 139 of the 160 loops and is
+  right on 74, where the cues are right on 113 of those; the other 21 are
+  the cues' rips, 11 right. In the order of what is left:
+  - Which note is the beat. The beat head marks an eighth that holds an
+    onset about alike whatever the meter. With drums it says 0.16 halfway
+    between 4/4's beats and 0.31 between 3/4's, where no beat is, and 0.30
+    on 6/8's eighths between its dotted quarters, where one is; without
+    drums 0.40, 0.48 and 0.47. Of the 65 loops still wrong on the heads' own
+    grid, 44 count another note as the beat: 9 of 6/8's 14 with drums, 16 of
+    4/4's 23 without. No decoder reads a level the head does not state:
+    mended, 14 loops of 4/4 are read as bars of four eighths, where v0.24.0
+    read 2 so. The meter is to be heard before the beat is, and a model's
+    reach is 2.97 s either side, a bar or two.
+  - 4/4's line against its third beat, less than it first read. The
+    generated beats kick on both; on the loops' own beats the line tops its
+    bar's beats in 76 bars of a hundred with drums and three in 21, and the
+    line elsewhere is 7 loops of 71 mended, where it was 21 of 78. By rank
+    on the right beats the downbeat head has the line in most bars of 123 of
+    the 160 loops, 33 of the 53 without drums; the cues read 124 and 28
+    right. So the downbeat head is near the cues once it has the beats.
+  - A quiet downbeat head is no longer a round's to mend: it said 0.28 on a
+    drumless line, v0.24.0 took the longest bar offered for it, and by rank
+    it is read where it is right. What the drumless loops still want is the
+    first point, and recordings with their beats.
 - Left open by what landed, each with the option not taken:
   - The two losses count once each in the total, beside ten heads' losses
     that sum to ten times theirs or more, and a bar line's mark is under 2

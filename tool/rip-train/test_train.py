@@ -30,8 +30,8 @@ def note(frame, end, midi, family, genes=None, wave=-1, **more) -> dict:
     return {"frame": frame, "end": end, "drum": -1, "midi": midi, "vel": 0.8, "family": F[family], "wave": wave, **({"voice": genes} if genes else {}), **more}
 
 
-def label(events, frames=40) -> train.Label:
-    return train.Label({"events": events}, frames, MANIFEST)
+def label(events, frames=40, **more) -> train.Label:
+    return train.Label({"events": events, **more}, frames, MANIFEST)
 
 
 class Frames:
@@ -188,7 +188,29 @@ def corpus(d, labels, frames=64):
             json.dump(lab, f)
 
 
+def marks(frames, at) -> list:
+    """a target of frames frames marked a frame either side of each frame in at"""
+    out = np.zeros(frames, np.uint8)
+    for f in at:
+        out[max(f - 1, 0):f + 2] = 1
+    return out.tolist()
+
+
 class TheBeatAndTheBarLine(unittest.TestCase):
+    def test_a_rendered_loop_is_asked_the_beats_and_lines_of_its_grid(self):
+        """A loop's beats are its meter's own note, a quarter in 4/4 and 3/4 and an eighth in 6/8, on the frames its
+        tempo's sixteenth of whole samples rounds to (6,615 at 100 bpm, 12.92 frames), a bar line every bar's beats
+        from frame 0, each marked a frame either side; a window takes its share of them."""
+        quarters, eighths = [0, 52, 103, 155, 207, 258, 310, 362], [0, 26, 52, 78, 103, 129, 155, 181, 207, 233, 258, 284]
+        for meter, frames, beats, lines in ((None, 414, quarters, [0, 207]), ("3/4", 311, quarters[:6], [0, 155]), ("6/8", 311, eighths, [0, 155])):
+            with self.subTest(meter=meter):
+                lab = label([], frames, bpm=100, bars=2, **({"meter": meter} if meter else {}))
+                t = lab.window(0, frames)
+                self.assertEqual(t["beat"].tolist(), marks(frames, beats))
+                self.assertEqual(t["downbeat"].tolist(), marks(frames, lines))
+                part = lab.window(52, 155)
+                self.assertEqual([part[k].tolist() for k in ("beat", "downbeat")], [t[k][52:155].tolist() for k in ("beat", "downbeat")])
+
     def test_init_grows_the_heads_and_carries_every_other_weight(self):
         """A frame model from before the beat and downbeat heads starts a run through --init: every weight carries
         over, the output layer's rows of the heads it had among them, the two heads' rows are new, and the weight

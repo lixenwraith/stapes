@@ -267,16 +267,16 @@ What is left is the reading on trained weights:
   todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#hear-the-beat-and-the-bar-line-on-trained-weights)
   leaves to them, read by [the rule](rip-training.md#reading-a-candidate). Run
   as R2 (39a, 40a; [Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)):
-  the heads lose bars beyond chance and are not installed; the body without
-  them gains on real drums and hears more false hits in singing, a trade for
-  Lixen. Given the truth's beats the downbeat head names the downbeat on 89 of
-  the 120 clips (the cues 58), so the decoder's tempo and beats where no drum
-  plays come before another round. Left: the next round
-  from 40a's last step, which validates on GuitarSet's 60 val clips with their
-  beats while it trains, the 60 test clips kept for the reading, and gives
-  real recordings far more than a fifth of its windows; its recipe is settled
-  first. Its family head, grown unasked in R2 (`--family-unasked`), is taught
-  there, a family asked only of a note an instrument played.
+  the heads lose bars beyond chance; the body gains on real kits alone and
+  loses under a mix, which the round never heard. Neither is installed. A
+  plain tracker reads 39 of the 120 clips' bars right from 40a's heads where
+  audio's decode reads 24, so mending the decode is audio's. Left: the next
+  round (R3) from 40a's last step, a probe of 3,000 steps first: real kits
+  under a mix (`--over`), recordings with no drums in it, real beats on more
+  than a tenth of the windows, the pick on real held-out material (GuitarSet's
+  60 val clips with their beats), the family head unasked as in R2. It runs at
+  full length if false kicks and snares under a mix fall by more than half,
+  the drums alone hold and the beat head gains on the unseen players.
 - **What the small run says a round must change.** It was read twice: through
   audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
   and through the decoders mended on audio's branch `claude/audio-fixes`,

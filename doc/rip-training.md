@@ -902,18 +902,21 @@ bar of a line), through audio v0.25.0:
   and its notes are 12a's on all 120 clips. On 48 of E-GMD's test recordings (a hit
   right within 50 ms) its drums' F1 is .733 against 12a's .629 (kick .790 against .373,
   hihat .795 against .733, snare .565 against .606 at precision .447 against .800).
-  Where no drum plays it hears 53 hits on the guitar clips where 12a hears 2,948, but
-  315 on ten vocadito clips against 109: a drum's bar is relative to the recording's
-  loudest peak, so one sure false peak lets weak ones through. On the Für Elise takes, whose rips keep the
+  At an absolute bar of 0.7 on the planes it reads .845 there, where 12a falls to .560,
+  and hears a false hit a minute on the guitar clips. Under a mix it loses: on Billie
+  Jean's intro, clean, it hears 76 false kicks and 106 false snares where 12a hears 6
+  and 5 at the installed bar, still 6 and 31 at 0.7, and from the Pixel it finds 10 of
+  54 kicks where 12a finds 30 to 34; singing draws 95 false hits a minute against 33.
+  The round heard real kits alone, never under bass, synth and voice. On the Für Elise takes, whose rips keep the
   cues, its lines are on 0.47, 0.34, 0.25 and 0.34 of the score's downbeats (clean,
   30 cm, Pixel, Galaxy) against 12a's 0.45, 0.21, 0.22 and 0.28.
-- So by [the rule](#reading-a-candidate) the heads are not installed; the body without
-  them is a trade, drums gained against hits heard in singing, for Lixen with excerpts
-  (round 16b's gain on kits, dropped for Billie Jean's kicks from the Pixel, was the
-  same kind); and 40a's last step starts the frame model's next round. Given the
-  truth's beats the downbeat head names the downbeat on 89 of the 120 clips where the
-  cues name 58, so the bars' next work is the decoder's tempo and beats where no drum
-  plays.
+- So by [the rule](#reading-a-candidate) neither is installed: the heads lose bars, and
+  the body gains on kits alone and loses under a mix. 40a is the next round's start
+  (R3), which hears real kits under a mix and recordings with no drums. The heads hold
+  more than audio's decode takes: a plain tracker (the tempo from the beat head's
+  autocorrelation, the beats by dynamic programming, the line by the downbeat head's
+  vote over the clip) gets 39 of the 120 clips' bars right from them, where the decode
+  gets 24 and 12a's cues 37.
 
 ## 9. The weight file
 

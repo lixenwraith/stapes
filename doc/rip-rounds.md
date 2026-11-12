@@ -266,7 +266,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 
 **39a, 40a** (12 November, R2: the frame model's beat and bar line, from 12a)
 - 12a's recipe with GuitarSet's training clips and E-GMD by their beats, the family head grown and asked nothing. 39a probed the two heads on 12a held (8,000 steps); 40a trained every weight for 40,000, its pick at 34,000.
-- On GuitarSet's 120 unseen clips the bars are right on 25 (39a's heads), 24 (40a's heads) and 32 (40a without them) against 37 through 12a's cues; the heads lose beyond chance (21 clips only 12a has right, 8 only 40a), the body holds (16 against 11) with 12a's notes. The heads are not installed; 40a's body without them is a trade (drums' F1 on E-GMD's test kits .733 against .629, but 315 false hits on ten sung clips against 109), and 40a's last step starts the frame model's next round ([Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)).
+- On GuitarSet's 120 unseen clips the bars are right on 25 (39a's heads), 24 (40a's heads) and 32 (40a without them) against 37 through 12a's cues; the heads lose beyond chance (21 clips only 12a has right, 8 only 40a), the body holds (16 against 11) with 12a's notes. Neither is installed: the heads lose bars, and the body gains on real kits alone (drums' F1 on E-GMD's test kits .733 against .629) and loses under a mix (Billie Jean's intro: 76 false kicks and 106 false snares against 6 and 5), which the round never heard; 40a's last step starts the frame model's next round ([Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)).
 
 ## Decoder changes that moved scores without training
 

@@ -26,7 +26,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-import ripmodel
+import ripmodels
 
 MAGIC = b"VIFJ"
 VERSION = 1
@@ -160,7 +160,7 @@ def export(path: str, rows: Rows, stages: list[tuple[nn.Sequential, np.ndarray, 
         for layer in net:
             if isinstance(layer, nn.Linear):
                 body += layer.weight.detach().cpu().numpy().astype("<f4").tobytes() + layer.bias.detach().cpu().numpy().astype("<f4").tobytes()
-    body += struct.pack("<Q", ripmodel._fnv64a(bytes(body)))
+    body += struct.pack("<Q", ripmodels._fnv64a(bytes(body)))
     with open(path, "wb") as f:
         f.write(body)
 

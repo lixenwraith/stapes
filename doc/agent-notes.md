@@ -495,7 +495,7 @@ proves wrong or that a document now states, and link the document instead.
   pedal) compete with the strike head for the shared layers. Keep them, their
   loader and their round-trip test.
 - A notes model's per-pitch heads are rows of two tables, `CELL_HEADS` in
-  `ripmodel.py` and audio's `notesHeads`: a new head adds a row to each, with
+  `ripmodels.py` and audio's `notesHeads`: a new head adds a row to each, with
   the values it reads at a pitch, and goes after the others in
   `PITCHNET_HEADS`, since `--init` grows a model only from weights whose heads
   are the first of the new one's. The file's version holds while its header
@@ -584,7 +584,7 @@ proves wrong or that a document now states, and link the document instead.
 - A checkpoint scores a third lower on recordings it trained on: 24b and 33b
   mixed in GuitarSet's player 04 and the 19 MusicNet pieces before those became
   `~/ripcorpus-val`, and 33b's validation loss reads 2.16 against 2.9 to 3.3.
-- `ripmodel.features` over a whole long recording overflows: its PCEN average
+- `ripmodels.features` over a whole long recording overflows: its PCEN average
   is one running sum over growing weights, past float64 near 24,000 frames
   (284 s), and every frame after is NaN under a RuntimeWarning alone. Hear a
   long recording in chunks with the trainer's 128 frames before each; a

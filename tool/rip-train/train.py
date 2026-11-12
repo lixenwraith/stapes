@@ -22,7 +22,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-import ripmodel
+import ripmodels
 
 # frames read before a window for PCEN's average to settle, over three of its time constants
 WARM = 128
@@ -54,7 +54,7 @@ GENES = array.array("f")
 
 def genes() -> np.ndarray:
     """GENES as a row a voice"""
-    return np.frombuffer(GENES, np.float32).reshape(-1, ripmodel.VOICE_GENES)
+    return np.frombuffer(GENES, np.float32).reshape(-1, ripmodels.VOICE_GENES)
 
 
 class Label:
@@ -82,7 +82,7 @@ class Label:
                     GENES.extend(key)
                 self.voice[i] = index[key]
         # the name a note's cells are asked: an engine voice far from the bank's is a synth, a recorded note of no family has none
-        unknown, synth = ripmodel.FAMILIES.index("unknown"), ripmodel.FAMILIES.index("synth")
+        unknown, synth = ripmodels.FAMILIES.index("unknown"), ripmodels.FAMILIES.index("synth")
         self.name = np.where(self.family == unknown, np.where(self.voice >= 0, synth, -1), self.family).astype(np.int8)
         # a note that moves carries its cents from its pitch's cell centre at each frame; one that holds sits at the tuning.
         # A recording's note lists them where its pitch track places it, null, read as nan, at a frame it does not
@@ -108,7 +108,7 @@ class Label:
         if label.get("bpm"):
             num, den = (int(v) for v in label.get("meter", "4/4").split("/"))
             step = (44100 * 60 // (label["bpm"] * 4)) / 44100
-            grid = np.array([int(k * (16 // den) * step / ripmodel.FRAME_SEC + 0.5) for k in range(label["bars"] * num + 1)])
+            grid = np.array([int(k * (16 // den) * step / ripmodels.FRAME_SEC + 0.5) for k in range(label["bars"] * num + 1)])
             self.beats, self.lines, self.metered = grid[:-1], grid[:-1:num], (0, int(grid[-1]) - 1)
         self.order = np.argsort(self.t, kind="stable")
         self.sorted = self.t[self.order]
@@ -220,15 +220,15 @@ class Label:
                 "note": np.where(one, sole, -1), "pitchfamily": name, "pitchwave": of(self.wave), "pitchvoice": of(self.voice)}
 
 
-# a family's index in ripmodel.FAMILIES whose notes the run names to no head, so a calibration run never hears its name
+# a family's index in ripmodels.FAMILIES whose notes the run names to no head, so a calibration run never hears its name
 FAMILY_HOLDOUT = None
 
 
 def load_corpus(d: str):
     with open(os.path.join(d, "corpus.json")) as f:
         manifest = json.load(f)
-    if manifest.get("families", list(ripmodel.FAMILIES)) != list(ripmodel.FAMILIES):
-        raise SystemExit(f"{d}: families {manifest['families']}, the model's {list(ripmodel.FAMILIES)}")
+    if manifest.get("families", list(ripmodels.FAMILIES)) != list(ripmodels.FAMILIES):
+        raise SystemExit(f"{d}: families {manifest['families']}, the model's {list(ripmodels.FAMILIES)}")
     loops, unnamed = [], 0
     skip = set(open(os.path.join(d, "skip.txt")).read().split()) if os.path.exists(os.path.join(d, "skip.txt")) else set()
     for i in range(manifest["loops"]):
@@ -242,7 +242,7 @@ def load_corpus(d: str):
         unnamed += int((lab.name == FAMILY_HOLDOUT).sum()) if FAMILY_HOLDOUT is not None else 0
         loops.append((mel, lab))
     if unnamed:
-        print(f"{unnamed} notes of {d} are {ripmodel.FAMILIES[FAMILY_HOLDOUT]}'s, held out: no head is told their family")
+        print(f"{unnamed} notes of {d} are {ripmodels.FAMILIES[FAMILY_HOLDOUT]}'s, held out: no head is told their family")
     return manifest, loops
 
 
@@ -256,7 +256,7 @@ class Channel:
         d = np.load(path)
         self.white, self.room = d["white"], d["room"].astype(np.float64)
         mel = lambda h: 2595 * np.log10(1 + h / 700)
-        points = np.linspace(mel(30), mel(11025), ripmodel.MEL_BANDS + 2)[1:-1]
+        points = np.linspace(mel(30), mel(11025), ripmodels.MEL_BANDS + 2)[1:-1]
         self.points, self.hz = points, 700 * (10 ** (points / 2595) - 1)
 
     def draw(self, n: int, rng: random.Random):
@@ -339,7 +339,7 @@ def shuffled(pick, window: int, channels: int, rng, channel=None):
     stands out of the other clip, what the frame's voice and family are and where its
     beats fall go unasked, and a cell says what plays it where one clip alone sounds in it"""
     total = window + WARM if channels > 1 else window
-    through, noise = channel.draw(total, rng) if channel is not None else (1.0, np.zeros((total, ripmodel.MEL_BANDS)))
+    through, noise = channel.draw(total, rng) if channel is not None else (1.0, np.zeros((total, ripmodels.MEL_BANDS)))
     es, outs = [], []
     for at in range(0, total, CHUNK):
         (ma, la), (mb, lb) = pick(), pick()
@@ -371,7 +371,7 @@ def shuffled(pick, window: int, channels: int, rng, channel=None):
         ringing(e, rng)
     first = total - window
     out = {k: np.concatenate([o[k] for o in outs])[first:total] for k in outs[0]}
-    return ripmodel.features(np.log1p(e).astype(np.float32), channels)[first:], out
+    return ripmodels.features(np.log1p(e).astype(np.float32), channels)[first:], out
 
 
 def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, rng=None, channel=None):
@@ -411,7 +411,7 @@ def sample(mel, lab: Label, start: int, window: int, channels: int, over=None, r
                 near = slice(max(w - 1, 0), max(min(w + 2, window), 0))
                 out["onset"][near] = 1
                 out["drums"][near, drum] = 1
-    return ripmodel.features(np.log1p(e).astype(np.float32), channels)[start - a:], out
+    return ripmodels.features(np.log1p(e).astype(np.float32), channels)[start - a:], out
 
 
 # A body's ring: what a guitar's air cavity or a room's mode adds at every attack, at one pitch whatever the note, its own harmonics absent. No note is labelled
@@ -423,7 +423,7 @@ def ringing(e, rng):
     """adds a ring to frames of energy, in place: three bands, a window's main lobe"""
     mel = lambda f: 2595 * math.log10(1 + f / 700)
     hz = math.exp(rng.uniform(math.log(RING_HZ[0]), math.log(RING_HZ[1])))
-    k = int(round((mel(hz) - mel(30.0)) / (mel(11025.0) - mel(30.0)) * (ripmodel.MEL_BANDS + 1))) - 1
+    k = int(round((mel(hz) - mel(30.0)) / (mel(11025.0) - mel(30.0)) * (ripmodels.MEL_BANDS + 1))) - 1
     total = e.sum(1)
     kick = np.maximum(np.diff(total, prepend=total[0]), 0)
     keep, y = math.exp(-(256 / 22050) / rng.uniform(*RING_TAU)), 0.0
@@ -528,7 +528,7 @@ SURE = 0.95  # the share of a held-out family's notes whose surest name stays un
 
 def cells(y: torch.Tensor, cfg, name: str) -> torch.Tensor:
     """a per-pitch head's scores, [..., pitches, values]"""
-    return y[..., cfg.slice(name)].unflatten(-1, (-1, ripmodel.PITCHES)).transpose(-1, -2)
+    return y[..., cfg.slice(name)].unflatten(-1, (-1, ripmodels.PITCHES)).transpose(-1, -2)
 
 
 def said(y: torch.Tensor, cfg):
@@ -545,7 +545,7 @@ def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
     a family held out, the share its notes' surest name reaches, SURE of them under it and at the median, with
     the share of the other notes past it and of those the share named right"""
     name, wave, voice = notes
-    names, waves = ripmodel.NAMES, ripmodel.WAVES
+    names, waves = ripmodels.NAMES, ripmodels.WAVES
     w = heard[:, -2]
     share, to = heard[:, :names] / w.clamp(min=1e-9)[:, None], heard[:, names:names + waves].argmax(1)
     top, named = share.max(1)
@@ -553,7 +553,7 @@ def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
     rate = lambda at: (right[at].float().mean().item(), int(at.sum()))
     known = (w > 0) & (voice >= 0)
     miss = (heard[known, names + waves:-2] / w[known, None] - torch.from_numpy(genes()[voice[known].numpy()])) ** 2
-    out = {"families": rate(asked), "by": [(ripmodel.FAMILIES[k], *rate(asked & (name == k))) for k in range(names) if (asked & (name == k)).any()],
+    out = {"families": rate(asked), "by": [(ripmodels.FAMILIES[k], *rate(asked & (name == k))) for k in range(names) if (asked & (name == k)).any()],
            "under": rate(asked & (heard[:, -1] > 0.5 * w)), "waves": (to == wave)[(w > 0) & (wave >= 0)].float().mean().item(),
            "genes": miss.mean(1).sqrt().mean().item()}
     held = (w > 0) & (name == FAMILY_HOLDOUT) if FAMILY_HOLDOUT is not None else torch.zeros(0, dtype=torch.bool)
@@ -563,7 +563,7 @@ def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
     return out
 
 
-def evaluate(model: ripmodel.FrameModel, mels, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None) -> dict:
+def evaluate(model: ripmodels.FrameModel, mels, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None) -> dict:
     """the mean of the losses over fixed windows, the model's weights untouched; with low, the first
     pitch over the strikes' low bar, the strikes' F1 and what a cents head reads, by kind the median
     miss, the median error stated and the share within it; with notes, the windows' (validation), what
@@ -572,13 +572,13 @@ def evaluate(model: ripmodel.FrameModel, mels, tgs, device: str, low: int | None
     model.eval()
     sums: dict = {}
     counts = torch.zeros(4, dtype=torch.long, device=device)
-    bars = torch.where(torch.arange(ripmodel.PITCHES, device=device) < low, STRIKE_BARS[1], STRIKE_BARS[0]) if low is not None else None
+    bars = torch.where(torch.arange(ripmodels.PITCHES, device=device) < low, STRIKE_BARS[1], STRIKE_BARS[0]) if low is not None else None
     timed = "beat" in dict(model.cfg.outputs)
     beats, metered = torch.zeros(2, 4, dtype=torch.long, device=device), 0.0  # the two heads' peaks counted, and the frames asked
     read = []  # each asked reading's miss and stated error in cents, and its kind
     voiced = notes is not None and notes.shape[1] > 0 and "pitchfamily" in dict(model.cfg.outputs)
     # a note's cells' say summed by their weights, then the weights and those of the cells under a higher one sounding
-    heard = torch.zeros(notes.shape[1] if voiced else 0, ripmodel.NAMES + ripmodel.WAVES + ripmodel.VOICE_GENES + 2, device=device)
+    heard = torch.zeros(notes.shape[1] if voiced else 0, ripmodels.NAMES + ripmodels.WAVES + ripmodels.VOICE_GENES + 2, device=device)
     with torch.no_grad():
         for mel, t in zip(mels, tgs):
             mel, t = mel.to(device), {k: v.to(device) for k, v in t.items()}
@@ -608,7 +608,7 @@ def evaluate(model: ripmodel.FrameModel, mels, tgs, device: str, low: int | None
                 if voiced:
                     v, w = said(out, model.cfg)
                     at = (t["note"] >= 0) & (t["valid"][..., None] > 0)
-                    cell = torch.arange(ripmodel.PITCHES, device=device)
+                    cell = torch.arange(ripmodels.PITCHES, device=device)
                     under = cell < (t["pitch"] * cell).amax(-1, keepdim=True)
                     w = w[at]
                     heard.index_add_(0, t["note"][at].long(), torch.cat([v[at] * w[:, None], w[:, None], (w * under[at])[:, None]], 1))
@@ -646,8 +646,8 @@ def probe(model) -> callable:
     back after a step, since AdamW's decay moves a row with no gradient"""
     for p in model.parameters():
         p.requires_grad_(False)
-    if isinstance(model, ripmodel.PitchNet):
-        layer, heads, probed = model.notes, ripmodel.cell_heads(model.cfg), ("pitchfamily", "pitchwave", "pitchvoice")
+    if isinstance(model, ripmodels.PitchNet):
+        layer, heads, probed = model.notes, ripmodels.cell_heads(model.cfg), ("pitchfamily", "pitchwave", "pitchvoice")
     else:
         layer, heads, probed = model.out, model.cfg.outputs, ("beat", "downbeat")
     at, new = 0, []
@@ -670,7 +670,7 @@ def probe(model) -> callable:
     return hold
 
 
-def losses(model: ripmodel.FrameModel, mel: torch.Tensor, t: dict) -> dict:
+def losses(model: ripmodels.FrameModel, mel: torch.Tensor, t: dict) -> dict:
     y = model(mel)
     cfg = model.cfg
     valid = t["valid"]
@@ -692,7 +692,7 @@ def losses(model: ripmodel.FrameModel, mel: torch.Tensor, t: dict) -> dict:
     out["velocity"] = ((velocity - t["velocity"]) ** 2 * heard).sum() / heard.sum().clamp(min=1)
     voiced = t["voiced"] * valid
     n = voiced.sum().clamp(min=1)
-    wave_logits = y[..., cfg.slice("wave")].reshape(-1, ripmodel.WAVES)
+    wave_logits = y[..., cfg.slice("wave")].reshape(-1, ripmodels.WAVES)
     wave_target = t["wave"].reshape(-1).clamp(min=0)
     ce = F.cross_entropy(wave_logits, wave_target, reduction="none").reshape(voiced.shape)
     out["wave"] = (ce * voiced).sum() / n
@@ -700,7 +700,7 @@ def losses(model: ripmodel.FrameModel, mel: torch.Tensor, t: dict) -> dict:
     out["voice"] = ((voice - t["voice"]) ** 2).mean(-1).mul(voiced).sum() / n
     if "family" in dict(cfg.outputs):  # the frame model's alone
         asked = (t["family"] >= 0) * valid
-        logits = y[..., cfg.slice("family")].reshape(-1, len(ripmodel.FAMILIES))
+        logits = y[..., cfg.slice("family")].reshape(-1, len(ripmodels.FAMILIES))
         ce = F.cross_entropy(logits, t["family"].reshape(-1).clamp(min=0), reduction="none").reshape(asked.shape)
         out["family"] = (ce * asked).sum() / asked.sum().clamp(min=1)
     if "beat" in dict(cfg.outputs):  # a beat weighs as a frame without one: audio sums the two heads' log-odds, a posterior's
@@ -737,7 +737,7 @@ def losses(model: ripmodel.FrameModel, mel: torch.Tensor, t: dict) -> dict:
 
 
 def shape(cfg) -> str:
-    """a model's sizes and heads for a message; the heads are ripmodel's, never a flag's"""
+    """a model's sizes and heads for a message; the heads are ripmodels', never a flag's"""
     return ", ".join(f"{k} {v}" if k != "outputs" else "outputs " + "+".join(h for h, _ in v) for k, v in cfg.items()) if cfg else "an unrecorded shape"
 
 
@@ -773,7 +773,7 @@ def main() -> None:
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
     ap.add_argument("--extra", default="", help="more corpora and the share of windows drawn from each, dir:share, comma-separated")
     ap.add_argument("--pitchnet", action="store_true", help="the notes model: convolutions only over the harmonic stack, the same weights at every pitch; --out is then ripnotes.bin, which stapes reads beside ripframe.bin")
-    ap.add_argument("--family-holdout", choices=ripmodel.FAMILIES, help="a family no head is told the name of: its notes are trained on as sound and scored as notes, and a notes model's lines print the share their surest name reaches, the measure of where a name stops being sure, which its weight file carries")
+    ap.add_argument("--family-holdout", choices=ripmodels.FAMILIES, help="a family no head is told the name of: its notes are trained on as sound and scored as notes, and a notes model's lines print the share their surest name reaches, the measure of where a name stops being sure, which its weight file carries")
     ap.add_argument("--sure", type=float, default=0.0, help="the share a family must pass over a note to name it, as a --family-holdout run of the same recipe measured it, for a notes model's weight file to carry; without it the start's is kept, and with neither no family names a note")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--shard-seed", type=int, default=0, help="offsets the stream the windows are drawn from, so a round's workers see different loops; the starting weights stay --seed's")
@@ -786,7 +786,7 @@ def main() -> None:
     args = ap.parse_args()
     global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT, EVEN_GLIDES
     RING, STRIKE_POS, STRIKE_AGAIN, DIP, EVEN_GLIDES = args.ring, args.strike_weight, args.again_weight, args.dip, args.even_glides
-    FAMILY_HOLDOUT = ripmodel.FAMILIES.index(args.family_holdout) if args.family_holdout else None
+    FAMILY_HOLDOUT = ripmodels.FAMILIES.index(args.family_holdout) if args.family_holdout else None
 
     torch.manual_seed(args.seed)
     rng = random.Random(args.seed + (args.shard_seed << 32))  # a stream per seed and shard; shard 0 is the seed's own
@@ -794,20 +794,20 @@ def main() -> None:
     if any(len(c) != 4 for c in convs):
         raise SystemExit(f"--convs {args.convs!r}: want channels x frames x features / pool, comma-separated")
     towers = [tuple(int(v) for v in t.split(":")) for t in args.towers.split(",") if t]
-    if any(len(t) != 2 for t in towers) or towers and sum(h for _, h in towers) != len(ripmodel.HEADS):
-        raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodel.HEADS)}")
+    if any(len(t) != 2 for t in towers) or towers and sum(h for _, h in towers) != len(ripmodels.HEADS):
+        raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodels.HEADS)}")
     if args.probe and towers and not args.pitchnet:
         raise SystemExit("--probe with --towers: a model in towers lays its heads over several output layers, and a probe holds one")
-    heads = [h for h in ripmodel.PITCHNET_HEADS if h[0] != "cents"] if args.probe else ripmodel.PITCHNET_HEADS  # a probe's file rips as its start
-    heard = dict(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS, outputs=heads) if args.pitchnet else dict(channels=2 if args.pcen else 1)
-    cfg = ripmodel.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,
+    heads = [h for h in ripmodels.PITCHNET_HEADS if h[0] != "cents"] if args.probe else ripmodels.PITCHNET_HEADS  # a probe's file rips as its start
+    heard = dict(inputs=ripmodels.STACK_INPUTS, channels=ripmodels.STACK_CHANNELS, outputs=heads) if args.pitchnet else dict(channels=2 if args.pcen else 1)
+    cfg = ripmodels.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,
                           dilations=tuple(int(d) for d in filter(None, args.dilations.split(","))), cell=args.cell)
     planes = min(cfg.channels, 2)  # what the data loader makes; the model stacks them
     resume = bool(args.checkpoint) and os.path.exists(args.checkpoint)
     start = args.checkpoint if resume else args.init
     ck = torch.load(start, map_location=args.device) if start else None
     if ck is not None and "cfg" in ck:
-        ck["cfg"] = {**asdict(ripmodel.Config()), **ck["cfg"]}  # a setting newer than the checkpoint takes the default it was built with
+        ck["cfg"] = {**asdict(ripmodels.Config()), **ck["cfg"]}  # a setting newer than the checkpoint takes the default it was built with
     # a start from a model of the heads before the last added, such as the beat and
     # the downbeat: its weights carry over, the new heads' rows of the output layer start fresh
     had = [tuple(h) for h in ck["cfg"]["outputs"]] if ck is not None and not resume and "cfg" in ck else []
@@ -822,12 +822,12 @@ def main() -> None:
     held = loops[len(loops) - holdout:] if holdout else []
     loops = loops[:len(loops) - holdout] if holdout else loops
     val_mels, val_tgs, val_notes = validation(held, args.window, planes)
-    assert manifest["mel_bands"] == ripmodel.MEL_BANDS and manifest["pitches"] == ripmodel.PITCHES
-    assert manifest["voice_genes"] == ripmodel.VOICE_GENES and len(manifest["waves"]) == ripmodel.WAVES
+    assert manifest["mel_bands"] == ripmodels.MEL_BANDS and manifest["pitches"] == ripmodels.PITCHES
+    assert manifest["voice_genes"] == ripmodels.VOICE_GENES and len(manifest["waves"]) == ripmodels.WAVES
     recorded, check_mels, check_tgs, check_notes = [], [], [], None
     if args.validate:
         check_manifest, recorded = load_corpus(args.validate)
-        assert check_manifest["mel_bands"] == ripmodel.MEL_BANDS and check_manifest["pitches"] == ripmodel.PITCHES
+        assert check_manifest["mel_bands"] == ripmodels.MEL_BANDS and check_manifest["pitches"] == ripmodels.PITCHES
         if not recorded:
             raise SystemExit(f"--validate {args.validate}: no recordings to score")
         check_mels, check_tgs, check_notes = validation(recorded, args.window, planes)
@@ -836,15 +836,15 @@ def main() -> None:
         d, _, sh = args.mix.rpartition(":")
         mixed_manifest, mixed = load_corpus(d)
         share = float(sh)
-        assert mixed_manifest["mel_bands"] == ripmodel.MEL_BANDS and mixed_manifest["pitches"] == ripmodel.PITCHES
+        assert mixed_manifest["mel_bands"] == ripmodels.MEL_BANDS and mixed_manifest["pitches"] == ripmodels.PITCHES
     drums, over_share, drumless = [], 0.0, []
     if args.over:
         d, _, sh = args.over.rpartition(":")
         over_manifest, drums = load_corpus(d)
         over_share = float(sh)
-        assert over_manifest["mel_bands"] == ripmodel.MEL_BANDS
+        assert over_manifest["mel_bands"] == ripmodels.MEL_BANDS
         drumless = [(m, l) for m, l in loops if not (l.drum >= 0).any()]
-    model = (ripmodel.PitchNet if args.pitchnet else ripmodel.FrameModel)(cfg).to(args.device)
+    model = (ripmodels.PitchNet if args.pitchnet else ripmodels.FrameModel)(cfg).to(args.device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     step, best_loss, best_step, best_state = 0, float("inf"), 0, None
     validated = (float("inf"), 0, None, None)  # the best validation loss, its step, its weights and the held-out loss there
@@ -1018,7 +1018,7 @@ def main() -> None:
     if args.sure and hasattr(model, "sure"):
         model.sure.fill_(args.sure)  # over the step exported, whatever its run measured
     model.eval()
-    ripmodel.export(model.cpu(), args.out)
+    ripmodels.export(model.cpu(), args.out)
     sure = ""
     if hasattr(model, "sure"):
         sure = f", a family naming a note past a share of {model.sure.item():.3f}" if model.sure > 0 else ", no family naming a note: no run measured where a name stops being sure (--family-holdout, --sure)"

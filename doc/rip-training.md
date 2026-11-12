@@ -561,7 +561,7 @@ its audio. Drawn by recording, they would be 64% of the windows.
 
 ## 7. The model
 
-`tool/rip-train/ripmodel.py` builds it, and `transformer.Forward` computes the same
+`tool/rip-train/ripmodels.py` builds it, and `transformer.Forward` computes the same
 numbers in Go. The shapes through a window, with B the batch:
 
 ```
@@ -612,7 +612,7 @@ convolutions only, the same weights at every pitch, 171,413 weights in all, 66 o
 cents head's and 1,485 those of what plays each pitch. Its file is `ripnotes.bin` (§9).
 `--dilations 3,9,27` adds a residual 3x3 over the cells for each, its frames that far apart:
 each note head then hears half a second either way instead of 80 ms, 199,157 weights, about
-1.5 times the compute. Its per-pitch heads are a table, `CELL_HEADS` in `ripmodel.py`, a row
+1.5 times the compute. Its per-pitch heads are a table, `CELL_HEADS` in `ripmodels.py`, a row
 a head with the values it reads at a pitch; the cents head reads two, the offset in semitones
 and the log of the error it states, and what plays the pitch is three heads: `pitchfamily`,
 a score for each of the eight names, `pitchwave`, one for each wave, and `pitchvoice`, the 32

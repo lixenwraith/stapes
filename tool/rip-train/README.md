@@ -363,13 +363,13 @@ exists, `--init` starts from a `.pt`'s weights alone (no optimizer state, step
 `--seed` keeps the starting weights; `average.py --pt next.pt --out next.bin
 [--trim 0.1] a.pt b.pt ...` is the merge. The defaults are `ripmodel.Spec`:
 230 inputs, the corpus's 229 bands in dB over the frame's mean and the mean
-itself (`ripmodel.features`, derived from the stored frames), width 256, eight
+itself (`ripmodels.features`, derived from the stored frames), width 256, eight
 heads, four layers, feed-forward 1024, a
 window of 64 frames either side, 3.3 million weights. `--convs
 16x3x3/1,32x3x3/2` puts convolutions before the input layer, each its
 channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:10`
 splits the layers into towers over the shared input layer, each its layers and
-the run of heads it computes in `ripmodel.HEADS` order: the onset and the drums
+the run of heads it computes in `ripmodels.HEADS` order: the onset and the drums
 on two layers, the rest on four. `--pcen` gives the model a second channel of
 230 inputs: each band's PCEN, its energy over its own average of the last 0.4
 s, and their mean ([audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)),
@@ -527,7 +527,7 @@ python3 tool/rip-train/judge.py --rows "$dir/rows" --leave-out guitar --out "$di
 The Go forward pass and this model agree to `float32` rounding: exact GELU,
 layer norm with eps 1e-5, ALiBi slopes of 2^(-8h/H) per head on the frame
 distance, attention banded to the window, and the output layer's slices as the
-heads, in `ripmodel.HEADS` order. `export` writes the tensors by the names and in
+heads, in `ripmodels.HEADS` order. `export` writes the tensors by the names and in
 the order `lixenwraith/transformer` reads them, with an FNV-1a 64 trailer the
 loader checks ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)).
 `--pitchnet` builds the convolutions-only model of [Rip training](../../doc/rip-training.md)

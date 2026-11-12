@@ -899,14 +899,21 @@ bar of a line), through audio v0.25.0:
   47% of the unseen players' beats within 70 ms and the downbeat head 29%, against
   70% and 51% on strummed clips the round trained on. They lose bars beyond chance.
 - 40a's body without its heads holds on bars (16 against 11 clips, which chance gives)
-  and its notes are 12a's on all 120 clips; it hears 53 drum hits on those guitar clips
-  where 12a hears 2,948, every one false. On the Für Elise takes, whose rips keep the
+  and its notes are 12a's on all 120 clips. On 48 of E-GMD's test recordings (a hit
+  right within 50 ms) its drums' F1 is .733 against 12a's .629 (kick .790 against .373,
+  hihat .795 against .733, snare .565 against .606 at precision .447 against .800).
+  Where no drum plays it hears 53 hits on the guitar clips where 12a hears 2,948, but
+  315 on ten vocadito clips against 109: a drum's bar is relative to the recording's
+  loudest peak, so one sure false peak lets weak ones through. On the Für Elise takes, whose rips keep the
   cues, its lines are on 0.47, 0.34, 0.25 and 0.34 of the score's downbeats (clean,
   30 cm, Pixel, Galaxy) against 12a's 0.45, 0.21, 0.22 and 0.28.
-- So by [the rule](#reading-a-candidate) the heads are not installed, the body is a
-  candidate to install without them once it is read on real drums, and 40a's last step
-  starts the frame model's next round, which validates on GuitarSet's val clips with
-  their beats while it trains.
+- So by [the rule](#reading-a-candidate) the heads are not installed; the body without
+  them is a trade, drums gained against hits heard in singing, for Lixen with excerpts
+  (round 16b's gain on kits, dropped for Billie Jean's kicks from the Pixel, was the
+  same kind); and 40a's last step starts the frame model's next round. Given the
+  truth's beats the downbeat head names the downbeat on 89 of the 120 clips where the
+  cues name 58, so the bars' next work is the decoder's tempo and beats where no drum
+  plays.
 
 ## 9. The weight file
 

@@ -1,5 +1,5 @@
-github.com/lixenwraith/audio v0.24.2 h1:dTNverQIIjklnD7yWvxC2C9640+D/uC/+8zlD3NKaCE=
-github.com/lixenwraith/audio v0.24.2/go.mod h1:vmtsajQ4YVAOO9AZYdJva1kprqFiv0P17nvDoML8Csw=
+github.com/lixenwraith/audio v0.24.3-0.20261112044042-ec4ef2822e78 h1:jtSu8eOq/Er+rtnuRvxfGmJ6BtQ7meChteGPY5c1sYI=
+github.com/lixenwraith/audio v0.24.3-0.20261112044042-ec4ef2822e78/go.mod h1:vmtsajQ4YVAOO9AZYdJva1kprqFiv0P17nvDoML8Csw=
 github.com/lixenwraith/color v0.1.5 h1:GRT4PBb9R04ahXW7SGlsfDttqew8E2lgt9GGujL0jEo=
 github.com/lixenwraith/color v0.1.5/go.mod h1:L/I3Vxp6pqslAIzWyZGgKCm2lyStHCA4vKaUoMUm7bU=
 github.com/lixenwraith/genetic v0.1.0 h1:Qbm9UKIHk7J/9YyrJYn6tssvAHlzwgglQlYmJYuMJtI=

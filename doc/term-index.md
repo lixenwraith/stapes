@@ -26,6 +26,8 @@ an entry here that names one links there.
 
 ## C
 
+**candidate** (also: install, the four, a trade) — A round's file as it is read for installing, by [the rule](rip-training.md#reading-a-candidate): notes, drums, bars and voices on recordings no round trained on, under settings fitted for it, each holding, gaining or losing against what is installed beyond chance; a part that gains is installed without the part that does not, a gain beside a loss is a trade for Lixen, and a file that gains nowhere starts the next round. [Rip training §11](rip-training.md#reading-a-candidate)
+
 **channel** (also: plane, `--channel`, `CHANNEL`, noise bank, `noise.npz`, `make_noise.py`) — two senses.
 - *Input*: one plane of 230 inputs a frame the rip's models read, the first the bands in dB over the frame's level and the level, a second, when the file has one, each band's **PCEN** and their mean. [Rip training §4](rip-training.md#4-the-input-two-planes) · `tool/rip-train` `ripmodels.features`
 - *Phone*: what a small speaker, a room and a phone do to a training window, drawn per window for `CHANNEL`'s share of them (`train.py --channel <file.npz>:<share>`): the lows and highs cut, a ripple across the bands and a steady noise floor added in power, shaped from a noise bank, two minutes of white noise as mel frames and a real room's band shape, which `make_noise.py <quiet.wav> <out.npz>` builds. [Rip training §6](rip-training.md#6-what-may-change-a-windows-frames) · [rip-train README](../tool/rip-train/README.md#turning-a-run-toward-your-music) · `tool/rip-train` `Channel`, make_noise.py

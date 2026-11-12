@@ -268,8 +268,13 @@ trained weights:
   takes and the stream's twelve recordings, each with the heads and with the
   same weights' heads left out, and what [audio's
   todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#hear-the-beat-and-the-bar-line-on-trained-weights)
-  leaves to them. A file is installed with its heads only where they read
-  more bars right than its cues.
+  leaves to them, read by [the rule](rip-training.md#reading-a-candidate). Run
+  as R2 (39a, 40a; [Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)):
+  the heads lose bars beyond chance; the body gains on real kits alone and
+  loses under a mix, which the round never heard. Neither is installed. R3's
+  probes from 40a (43a, 44b, 44c) moved drums under a mix and not the beats.
+  Left: the frame model trained again from no weights on what these rounds
+  taught (stapes#49), its bars read through audio v0.25.2's decode.
 - **What the small run says a round must change.** It was read twice: through
   audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
   and by rank, through the decoders of v0.24.1 to v0.25.0 on audio's branch

@@ -203,8 +203,8 @@ class Label:
                 top[seg][up], who[seg][up] = midi, i
         heard = who >= 0
         wave[heard], voice[heard] = self.wave[who[heard]], genes()[self.voice[who[heard]]]
-        family = np.full(w, -1, np.int64)
-        family[whose >= 0] = self.family[whose[whose >= 0]]
+        family = np.full(w, -1, np.int64)  # a frame's, by the rule its highest note's cells are asked by: no engine voice's
+        family[whose >= 0] = self.name[whose[whose >= 0]]
         one = sole >= 0
 
         def of(a):  # an event's value at the cells it alone sounds in, -1 at the others

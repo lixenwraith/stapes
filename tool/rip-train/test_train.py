@@ -106,6 +106,12 @@ class WhatPlaysEachPitch(unittest.TestCase):
         self.assertEqual([int(t[k][3, 64 - 28]) for k in ("pitch", "pitchwave")], [1, 3])
         self.assertGreaterEqual(int(t["pitchvoice"][3, 64 - 28]), 0)
 
+    def test_a_frame_is_asked_a_family_only_where_an_instrument_plays_its_highest_note(self):
+        """The frame's family head is asked by the cells' rule: a frame whose highest note the engine rendered asks no
+        family, one whose highest note an instrument played asks its family."""
+        t = label([note(0, 10, 72, "guitar", voice(0.3), 3), note(0, 20, 60, "piano")]).window(0, 20)
+        self.assertEqual([int(t["family"][f]) for f in (3, 15)], [-1, F["piano"]])
+
     def test_a_note_is_heard_as_its_cells_say_by_their_salience(self):
         """A note is named by its cells' say, each by its salience, over the cells among its frame's VOICE_CELLS most
         salient; the lines give the share named right, by family and under another note, the waves' and the genes'

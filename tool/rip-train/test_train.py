@@ -197,6 +197,18 @@ def marks(frames, at) -> list:
     return out.tolist()
 
 
+class Heard(torch.nn.Module):
+    """a frame model that says what a test wrote into its scores"""
+
+    def __init__(self, frames):
+        super().__init__()
+        self.cfg = ripmodel.Config()
+        self.y = torch.full((1, frames, self.cfg.out_size), -9.0)
+
+    def forward(self, mel):
+        return self.y[:, :mel.shape[1]]
+
+
 class TheBeatAndTheBarLine(unittest.TestCase):
     def test_a_rendered_loop_is_asked_the_beats_and_lines_of_its_grid(self):
         """A loop's beats are its meter's own note, a quarter in 4/4 and 3/4 and an eighth in 6/8, on the frames its
@@ -251,6 +263,28 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         _, plain = train.sample(mel, lab, 200, 256, 1)
         self.assertEqual([int(t["metered"].sum()) for t in (spliced, laid)], [0, 0])
         self.assertEqual(plain["metered"].tolist(), [1] * (412 - 200) + [0] * (256 - 212))
+
+    def test_the_two_heads_are_taught_as_posteriors(self):
+        """Each head's loss is cross-entropy over the frames asked, a beat weighing as a frame without one: a head
+        that says everywhere the share of those frames a beat marks scores that share's entropy, and no lower saying
+        more or less, which is what audio reads a posterior for. Both count whole in the total."""
+        frames = 414  # two bars of 4/4 at 100 bpm in a window of 512: 412 frames asked, 23 in a beat's mark and 5 in a line's
+        mels, tgs, _ = train.validation([(Frames(frames), label([], frames, bpm=100, bars=2))], 512, 1)
+        model = Heard(512)
+
+        def loss(beat, downbeat):
+            model.y[..., model.cfg.slice("beat")], model.y[..., model.cfg.slice("downbeat")] = beat, downbeat
+            return {k: v.item() for k, v in train.losses(model, mels[0], tgs[0]).items()}
+        entropy = lambda p: -(p * np.log(p) + (1 - p) * np.log(1 - p))
+        odds = lambda p: float(np.log(p / (1 - p)))
+        at = loss(odds(23 / 412), odds(5 / 412))
+        self.assertAlmostEqual(at["beat"], entropy(23 / 412), places=5)
+        self.assertAlmostEqual(at["downbeat"], entropy(5 / 412), places=5)
+        for nudge in (-0.2, 0.2):
+            off = loss(odds(23 / 412) + nudge, odds(5 / 412) + nudge)
+            self.assertGreater(off["beat"], at["beat"])
+            self.assertGreater(off["downbeat"], at["downbeat"])
+            self.assertAlmostEqual(off["total"] - at["total"], off["beat"] - at["beat"] + off["downbeat"] - at["downbeat"], places=5)
 
     def test_init_grows_the_heads_and_carries_every_other_weight(self):
         """A frame model from before the beat and downbeat heads starts a run through --init: every weight carries

@@ -623,11 +623,11 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
     y = model(mel)
     cfg = model.cfg
     valid = t["valid"]
-    def bce(name, target, pos_weight):
+    def bce(name, target, pos_weight, asked=valid):
         logits = y[..., cfg.slice(name)]
         target = target if target.dim() == 3 else target[..., None]
         l = F.binary_cross_entropy_with_logits(logits, target, pos_weight=torch.as_tensor(pos_weight, device=logits.device), reduction="none")
-        return (l.mean(-1) * valid).sum() / valid.sum().clamp(min=1)
+        return (l.mean(-1) * asked).sum() / asked.sum().clamp(min=1)
     out = {
         "onset": bce("onset", t["onset"], 8.0),
         "drums": bce("drums", t["drums"], 8.0),
@@ -652,6 +652,9 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
         logits = y[..., cfg.slice("family")].reshape(-1, len(ripmodel.FAMILIES))
         ce = F.cross_entropy(logits, t["family"].reshape(-1).clamp(min=0), reduction="none").reshape(asked.shape)
         out["family"] = (ce * asked).sum() / asked.sum().clamp(min=1)
+    if "beat" in dict(cfg.outputs):  # a beat weighs as a frame without one: audio sums the two heads' log-odds, a posterior's
+        out["beat"] = bce("beat", t["beat"], 1.0, t["metered"] * valid)
+        out["downbeat"] = bce("downbeat", t["downbeat"], 1.0, t["metered"] * valid)
     if "cents" in dict(cfg.outputs):  # the notes model's alone
         place, spread = y[..., cfg.slice("cents")].chunk(2, -1)
         asked = t["asked"] * valid[..., None]
@@ -671,6 +674,7 @@ def losses(model: ripmodel.RipModel, mel: torch.Tensor, t: dict) -> dict:
     # what plays a cell is weighed as what plays the frame is, by PLAYS of it
     out["total"] = (out["onset"] + out["drums"] + out["pitch"] + 0.5 * out["voicing"] + out["strike"] + out["release"]
                     + 2.0 * out["velocity"] + 0.5 * out["wave"] + 2.0 * out["voice"] + 0.5 * out.get("family", 0.0)
+                    + out.get("beat", 0.0) + out.get("downbeat", 0.0)
                     + 2.0 * out.get("cents", 0.0) + SPREAD * out.get("spread", 0.0)
                     + PLAYS * (0.5 * out.get("pitchfamily", 0.0) + 0.5 * out.get("pitchwave", 0.0) + 2.0 * out.get("pitchvoice", 0.0)))
     return out
@@ -821,10 +825,11 @@ def main() -> None:
         """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them;
         a family held out sets the model's measure by its notes there"""
         v = evaluate(model, mels, tgs, args.device, low, notes)
-        # the decoders read the onset, drum, pitch, voicing, strike and release
-        # heads; the wave, voice, velocity and family heads say how a note is
-        # played and by what, and memorize the corpus's, so they do not pick the step
-        v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"]
+        # the decoders read the onset, drum, pitch, voicing, strike and release heads
+        # and a frame model's beat and downbeat; the wave, voice, velocity and family
+        # heads say how a note is played and by what, and memorize the corpus's, so
+        # they do not pick the step
+        v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"] + v.get("beat", 0.0) + v.get("downbeat", 0.0)
         parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read", "voices"))
         f1 = f", strikes' F1 {v['struck']:.3f}" if "struck" in v else ""
         # the cents head: each kind of reading's median miss, the median error stated for it, and the share within the stated

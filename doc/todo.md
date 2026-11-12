@@ -358,6 +358,12 @@ Left open by what landed, each with the option not taken:
   and the reach of notes outside the eight families on a validation corpus,
   NSynth's mallets and organs, which would measure the shipped run itself and
   wants those notes in `--validate`'s list first.
+- An engine voice far from the bank is asked `synth` whatever it sounds like,
+  41% of the asked cells, beside piano, bass and guitar for the same modal and
+  string sounds: with the body free and at full weight the heads named bass
+  and the synths alone, and solo singing, named one way everywhere, on 96% of
+  its notes. Not taken yet: an engine voice named by what it sounds nearest,
+  its wave and genes against the families', or asked nothing far from the bank.
 - A cell two events sound in is asked nothing, 4% of the sounding cells. Not
   taken: asking it where the two are one voice, a twentieth of those, a second
   rule for a fifth of a percent; and asking it both names, which a softmax

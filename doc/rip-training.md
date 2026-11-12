@@ -702,7 +702,7 @@ a Laplace's fall within; it is what audio's decoder widens a reading by before i
 calls two cells one frequency, with no factor on it. The decoders read the cents head
 too, but it does not join `decoders`: its loss is in semitones and no likelihood.
 
-What plays a cell is weighed as what plays the frame is, at a quarter of it (`PLAYS`).
+What plays a cell is weighed as what plays the frame is, at a quarter of it (`PLAYS`, `--plays`).
 Its heads teach the channels the decoders read, and they have to: read with the gradient
 stopped at the cells they learn nothing past the commonest name, wave and voice, so the
 cells carry no timbre the decoders did not ask of them. At the whole weight the strikes

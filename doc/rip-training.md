@@ -19,7 +19,8 @@ Where each part stands:
   the list's `family` cell, each note's program, every part of a file), the family head and
   `--family-holdout`, `--validate`, `tune ... truth`, a moving note's `cents`, `corpus ... glide`,
   the notes model's cents head, `corpus ... labels` and a `from` list's `pitch` column,
-  `rows`, `judge.py` and the root's `ripjudge.bin`.
+  `rows`, `judge.py` and the root's `ripjudge.bin`, the frame model's beat and downbeat
+  heads and a `from` list's `beats` column.
 - **In no repository yet:** the phone take's scripts, which play, align and cut a
   recording of a known file, and the wide test's harness (vif's `tmp/round32`: `cmpn.sh`,
   `table.py`, the timed scorer) with the validation corpus's build (`tmp/audit/valbuild.py`).
@@ -30,9 +31,9 @@ Where each part stands:
 2. Each training step draws 8 windows of 512 frames, 5.9 s each (§7).
 3. A window's frames may be changed in place, as §6 lists, then become two input
    planes (§4).
-4. A window's events become per-frame targets for the 10 heads, and a notes model's
-   cents head (§5).
-5. The model turns frames into 327 numbers a frame, and the losses train it (§7, §8).
+4. A window's events and its loop's grid become per-frame targets for the 12 heads,
+   and a notes model's cents head (§5).
+5. The model turns frames into 329 numbers a frame, and the losses train it (§7, §8).
 6. The best step is written as a weight file (§9).
 7. At a rip, Go computes the same planes, runs the file and hands the heads to the
    decoders (§10).
@@ -93,13 +94,19 @@ as `corpus` writes it now:
 
 The loop's fields:
 
-- `bpm`, `root`, `scale`, `bars`: how it was drawn. The trainer doesn't read them.
+- `bpm`, `bars`, and `meter` when it is not 4/4 (`"3/4"`, `"6/8"`): its tempo, its
+  length and its time signature, which give the trainer its beats and bar lines (§5).
+  A recording's are 0 and absent.
+- `root`, `scale`: how it was drawn. The trainer doesn't read them.
 - `frames`: the length of its `.mel`.
 - `tuning`: cents off A440 it was rendered at, within 50 either way. Events keep the
   written pitch, so at nearly +50 cents as here, a note labelled 55 sounds nearly as
   much like 56. It is where every note of an engine voice sits from its pitch's cell
   centre, unless the note carries `cents`.
 - `source`: in a corpus of recordings, the file it was heard from.
+- `beats`, `downbeats`: a recording's beats and bar lines, in frames, where its list
+  names the file they are read from (a recording's beats, below); absent otherwise, and
+  from every rendered loop, whose grid says them.
 - `events`: in no time order; the trainer sorts them.
 
 An event's fields:
@@ -229,7 +236,7 @@ reaches a corpus that way without its hours of render.
 - `part k/n` labels every n-th loop from the k-th, as it renders them, and leaves
   `corpus.json` to a run without it.
 - A `from` line writes each recording's label again from the list: its family, its
-  MIDI file and its pitch track. The recording is known by the `source` of the
+  MIDI file, its pitch track and its beats. The recording is known by the `source` of the
   label on disk and its WAV is not read, so it may be gone; a label that does not
   read stops the run, its recording being unknown then.
 - Over `corpus <dir> 2000 4 aug gen nowav codec dense` the export took 11 min 36 s
@@ -267,6 +274,31 @@ in cents from its cell centre to a tenth:
 - The run says how many it placed: `6 of 8 note(s) placed by a pitch track`.
 
 A trainer from before the `null` stops on such a label or reads the frame as silent.
+
+### A recording's beats
+
+A `from` list's `beats` column names the file a recording's beats are read from, a
+path from the list's folder. An empty cell names none, and that recording is labelled
+as without the column, byte for byte. Beats are a collection's annotation or its
+score's, never tracked from the audio. Two forms, told apart by the file's name:
+
+- A MIDI file (`.mid`, `.midi`) whose bars are the recording's, as E-GMD's own is,
+  so the cell may repeat `midi_filename`: its beats under its time signatures and
+  tempo map, on the recording's clock, from the beat holding its first note or hit
+  to its last's end, a bar line from the first full bar on (audio's
+  `MIDIScore.Beats`).
+- Any other file is a JAMS file with a `beat_position` annotation, as GuitarSet's:
+  each datum a beat, a bar line where its position is 1 (audio's `ReadJAMSBeats`).
+
+The label lists them as `beats` and `downbeats`, each second on the frame an event's
+is, those at or past the recording's last frame left out:
+
+```
+...,"source":"a.wav","beats":[26,69,112,155,198],"downbeats":[26,198]}
+```
+
+`labels` after the line writes them into a corpus already exported, from the list
+alone (above). What the trainer asks of them is in §5.
 
 ## 4. The input: two planes
 
@@ -371,6 +403,23 @@ glide's pitch target walks the cells it crosses.
 - `family`: that of the highest event sounding, a hit or a strike at midi 0 on its own
   frame, scored only on frames where it is labelled: a hit never stands in for an
   unlabelled note over it.
+- `beat`, `downbeat`: within one frame of a beat of the meter and of a bar line, the
+  frame model's alone, scored where `metered` says. A beat is the meter's own note, a
+  quarter in 4/4 and 3/4 and an eighth in 6/8, six to the bar, as audio's `Rip.Beats`
+  lists them. A rendered loop's are derived from its label, so no corpus gains a
+  field: a sixteenth is `44100 * 60 // (bpm * 4)` samples, whole (audio's
+  `SamplesPerStep`), a beat `16 / den` of them, a bar line every `num` beats from
+  frame 0, each on frame `int(steps * step / (256 / 22050) + 0.5)`, as `corpus`
+  rounds an event's. A recording's are its label's `beats` and `downbeats` (§3).
+- `metered`: the frames those two are asked at.
+  - A rendered loop: from frame 0 to a frame short of the mark of its end's line,
+    a beat no sound gives, since the render ends on it.
+  - A recording: from the first frame of its first listed beat's mark to the last
+    frame of its last's, and no further. Past them the list says nothing: where the
+    next beat of a played tempo would fall is a guess, and a zero there could teach
+    silence on a beat nobody listed. A recording that lists none is asked nothing.
+  - None of a shuffled window or of one `--over` lays drums under (§6), whose hits
+    keep another grid, nor the padding past a loop's end.
 - `cents[p]`: how far the sound nearest the cell sits from its centre, in semitones,
   asked where the label places that sound, an engine voice's note or one that lists
   its `cents`, and within a semitone: in the cell a pitch sounds in, and in the cell
@@ -409,6 +458,8 @@ strike   (frame 0, pitch 27, vel 0.662), (frame 0, pitch 20, vel 0.485), each on
 release  (frame 40, pitch 27), (frame 27, pitch 20)
 wave     1 on every frame: saw, from the highest note, G3
 family   8 on every frame: unknown, from the highest note, G3
+beat     1 1 0 0 0 0 0 0     a quarter at 96 bpm is 53.83 frames: 0, 54, 108, 161, ...
+downbeat 1 1 0 0 0 0 0 0     a bar is 215.31: 0, 215, 431, 646; the end's line, 861, is not asked
 pitchfamily, pitchwave   6 and 1 at pitches 27 and 20 while each sounds alone: synth, as
          an engine voice labelled unknown is, on a saw; nothing at pitch 27 from frame 27
          to 40, where the G3 struck again sounds over the first
@@ -417,6 +468,11 @@ cents    pitch 27 +0.496 and pitch 28 -0.504, pitch 20 +0.496 and pitch 21 -0.50
 
 A shuffled window (§6) asks a cell its cents where one of its two clips alone sounds
 within a semitone of it, and what plays it where one of them alone sounds in it.
+
+The grid's rule was checked against what `corpus` writes before it was trusted: over
+`aug`, `codec`, `midi`, `dense`, `meters`, `glide` and `tempos` corpora, 228 loops,
+none of 24,810 events lay off its loop's sixteenths, and every end's line fell on the
+`.mel`'s last frame or the one past it.
 
 A window running past a loop's end is padded with zero frames, which a `valid` mask
 leaves out of every loss.
@@ -464,7 +520,8 @@ corpus of drums alone, placed at random. Its level is -12 to +6 dB of its mean p
 against the loop's, and uncorrelated sounds add in power, so `e = e_loop + gain x e_drums`.
 A hit joins the onset and drum targets only where it can be heard: what it adds, over its
 best ten bands, must top everything else sounding (`stands_out`), judged after the
-channel. That keeps 86 to 96% of hits. Round 14a, without the rule and at -12 to +3 dB
+channel. That keeps 86 to 96% of hits. The window is asked no beat and no bar line: the
+drums laid under it keep their own. Round 14a, without the rule and at -12 to +3 dB
 of the loop's own level, had drums a median 13.4 dB under the loop against Billie Jean's
 -0.3 dB, labelled whether heard or not, and it reported drums on bass notes.
 
@@ -473,8 +530,8 @@ of the loop's own level, had drums a median 13.4 dB under the loop against Billi
 
 **`--shuffle share`** splices a share of the windows from chunks of a second, each two clips
 from random places summed, the second at -6 to +6 dB of the first's power. Notes keep their
-labels, a drum hit counts where it stands out of the other clip, and wave, voice and
-family go unasked.
+labels, a drum hit counts where it stands out of the other clip, and wave, voice,
+family, the beat and the bar line go unasked.
 
 **`--sung dir:share`** draws that share of the chunks from a corpus of solo singing. 27a, at a
 quarter with half the windows shuffled, took held-out sung notes from 0.54 to 0.63.
@@ -489,6 +546,7 @@ against 31a and every real set up but the renders; a first try at 70 to 400 Hz a
 **`--bend share`** reads that share of the plain windows along a tempo that sways: a rate up
 to 18% either way and a slow sine of up to 12 frames, the features interpolated and the
 targets taken nearest, so no steady grid or pulse is there to learn, as a pianist's isn't.
+The beat, the bar line and their mask are taken the same way and sway with the hits.
 It came in with corpus 15 (31a, at 0.3), so its share of that round's gain is unmeasured.
 
 **`--strike-weight w`** is a strike's weight against a frame without one, 20 by default:
@@ -515,19 +573,19 @@ conv 2         B x 32 x 512 x 57             3x3, GELU, max over 2 features
 flatten        B x 512 x 1824                the last odd feature dropped by the pool
 input layer    B x 512 x 256
 4 blocks       B x 512 x 256                 pre-norm attention and feed-forward 1024
-norm, output   B x 512 x 327                 raw scores
+norm, output   B x 512 x 329                 raw scores
 ```
 
 Attention has 8 heads and looks 64 frames (0.74 s) either side, in every block. There
 are no position embeddings: each head subtracts a slope of `2^(-8(h+1)/8)` per frame of
 distance from its scores (ALiBi), so a window of any length works.
 
-The 3,718,055 weights: 304 + 2,320 + 4,640 in the convolutions, 467,200 in the input
-layer, 789,760 in each block, 512 in the final norm, 84,039 in the output layer, 2,313
-of them the family head's, which 12a's file lacks. A one-channel model has 144 fewer, all
-in `convs.0.weight`.
+The 3,718,569 weights: 304 + 2,320 + 4,640 in the convolutions, 467,200 in the input
+layer, 789,760 in each block, 512 in the final norm, 84,553 in the output layer, 2,313
+of them the family head's and 514 the beat's and the downbeat's, which 12a's file
+lacks. A one-channel model has 144 fewer, all in `convs.0.weight`.
 
-The 327 outputs, in the order the file lists the heads:
+The 329 outputs, in the order the file lists the heads:
 
 ```
 offset    size  head       read as
@@ -541,9 +599,13 @@ offset    size  head       read as
 180..248   69   release    sigmoid
 249..317   69   velocity   sigmoid
 318..326    9   family     softmax: piano, guitar, voice, bass, strings, winds, synth, drums, unknown
+327         1   beat       sigmoid: a beat of the meter within a frame
+328         1   downbeat   sigmoid: a bar line within a frame
 ```
 
-A file may lack the last 4 heads and still load: one without `family` hears no family.
+A file may lack the last 6 heads and still load: one without `family` hears no family,
+and one without `beat` and `downbeat` has its bars read by the cues' rules. An audio
+before v0.24.0 refuses a file that has the two, its heads being no prefix of its `Spec`'s.
 
 `--pitchnet` builds another model on the same heads but `family`, the frame model's to hear:
 convolutions only, the same weights at every pitch, 171,413 weights in all, 66 of them the
@@ -604,6 +666,8 @@ velocity: squared error, on strike frames with a known velocity
 wave:     cross-entropy, on frames with a known voice
 voice:    squared error, on frames with a known voice
 family:   cross-entropy, on frames with a known family, the frame model's alone
+beat, downbeat: binary cross-entropy with no weight on the positive class, on the
+          frames asked (metered), the frame model's alone
 cents:    absolute error in semitones, where asked, the notes model's alone
 pitchfamily, pitchwave: cross-entropy over the eight names and over the waves, at the
           cells asked, the notes model's alone
@@ -612,10 +676,18 @@ spread:   miss / e + log e where asked, e the error the head states and miss the
           offset's absolute error held fixed: a Laplace's scale fitted to it
 
 total    = onset + drums + pitch + 0.5 voicing + strike + release + 2 velocity + 0.5 wave + 2 voice
-           + 0.5 family + 2 cents + 0.2 spread
+           + 0.5 family + beat + downbeat + 2 cents + 0.2 spread
            + 0.25 (0.5 pitchfamily + 0.5 pitchwave + 2 pitchvoice)
-decoders = onset + drums + pitch + 0.5 voicing + strike + release
+decoders = onset + drums + pitch + 0.5 voicing + strike + release + beat + downbeat
 ```
+
+The beat and the downbeat are the onset head's kind of loss with one difference: no
+weight. Audio reads the two as posteriors and sums their log-odds, over the beats of
+a bar for its lines and over a class of frames for the beat the head marks, with no
+threshold between (audio §9). A positive weight w would move every such sum by its
+count times log w, and favour short bars by log w a line. So a frame of a mark and a
+frame outside one weigh the same, and a head that knows nothing says the share of
+frames a mark covers, 7% for the beat at 120 bpm and under 2% for a bar line of 4/4.
 
 The stated error learns from the offset's miss and never the other way: the miss
 enters `spread` with its gradient stopped, so stating an error moves no offset. At
@@ -659,6 +731,75 @@ prints the first three rows as an engine loop does. 63% within is a head that st
 its misses' mean; a share well under it on the gliding readings is a head too sure
 of itself where the decoder leans on it.
 
+A frame model's lines give `beats' F1` and `bar lines'` after the decoders' loss:
+each head's peaks at a half or over (`BEAT_BAR`) among the frames asked, a peak right
+when a beat the labels give lies within four frames of it, counted as the strikes'
+are (`struck`). Over a corpus that lists no beat, such as a `--validate` corpus whose
+list has no `beats` column, the line says `no beat or bar line asked` and gives
+neither head's loss: a mean over no frame prints 0.000, which reads as a head never
+wrong, and adds nothing to `decoders` either way.
+
+### The two heads on a small run
+
+The path was run once at a size four cores train in three quarters of an hour. It
+shows that the targets, the heads, the file and audio's reading hold together and how
+far such a model gets, and nothing of recordings:
+
+- `corpus <dir> 1600 12 gen meters`, clean renders with their audio, 264 s in four
+  parts. A corpus cycles six tempos, so the 160 loops held out share theirs with the
+  rest.
+- A frame model of width 128, four heads, four layers, feed-forward 512, `--pcen`,
+  894,793 weights; 5,000 steps of batch 8 in 42 minutes, scored every 500.
+
+The step exported, 4,500, on the held-out loops:
+
+```
+step 4500 held-out 1.801, decoders 0.987, beats' F1 0.763, bar lines' 0.631 (onset 0.305 drums 0.041 pitch 0.285 voicing 0.072 strike 0.083 release 0.096 velocity 0.030 wave 0.655 voice 0.029 family 0.738 beat 0.107 downbeat 0.034) (best)
+```
+
+Then each held-out loop ripped through the exported file three ways: with the heads;
+with the same weights' heads left out, the frames' `Beat` and `Downbeat` set nil so
+the cues decide; and through the analysis. A loop's bars are right when the rip's
+bar is the loop's length within a tenth and nine in ten of the loop's lines have a
+rip's line within an eighth of a bar (audio's `MatchBars`, against the loop's own
+grid, its end's line left out); its meter is read when the rip names the label's.
+Beside them, each head's F1 over those loops, as the line counts it:
+
+```
+                      the heads' F1       bars right              meter read
+               loops  beats   lines   heads  cues  analysis   heads  cues  analysis
+4/4  drums       78   0.928   0.680     40    70      61        63    77      76
+4/4  drumless    34   0.472   0.313      0    19      17         8    33      32
+3/4  drums       15   0.853   0.869     11    14      10         9    13       9
+3/4  drumless     8   0.578   0.398      2     4       4         2     1       3
+6/8  drums       14   0.631   0.907      2    12      11         5    10       9
+6/8  drumless    11   0.678   0.473      1     5       6         8     1       4
+all             160   0.763   0.631     56   124     109        95   135     133
+```
+
+The heads are learned where a drum marks them, and audio's decoders, which take the
+heads' word alone, read fewer bars right through this model than the cues do through
+the same weights. What stands under it is what the heads say within a frame of the
+loops' own beats, a mean over the held-out loops with each one's first and last bar
+left out:
+
+- **4/4 with drums.** The generated beats kick on one and three, and the downbeat head
+  says 0.73 on one, 0.44 on three and 0.08 on two and four: three is over a half in
+  42 bars of a hundred. Of the 38 loops wrong, 21 have the bar's length and the line
+  elsewhere, and 15 read a bar of six beats.
+- **No drums.** The downbeat head says 0.28 on a 4/4 loop's lines and 0.09 on its
+  other beats, and a head that says little scores the longest bar offered highest: 23
+  of the 34 read a bar longer than the loop's, and none is right.
+- **6/8.** With drums the downbeat head is at its best here and in 3/4, where a bar
+  has one kick: 0.78 on one and 0.03 elsewhere. The beat head says 0.98 and 0.87 on
+  the two dotted quarters and 0.30 on the eighths between, so audio's `level` keeps
+  the dotted quarter as the beat, and four of them are read as one bar, two bars
+  long: 9 of the 14 with drums.
+
+A rip through the file with its two heads cut (the same step exported with ten
+heads) is the wrapped front end's row for row, over 40 loops. What a round has to
+bring is in the [todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line).
+
 A notes model's lines then say what plays each note, read as audio reads it (§10): a
 note's family, wave and genes are its cells' say over the frames it sounds, each frame
 weighed by the pitch head's salience there, over the cells among the frame's
@@ -688,7 +829,8 @@ which no decoder reads from it, and ranked ten rounds unlike their note scores, 
 the strikes' F1 ranked them as solo guitar's test player did. The wave, voice,
 velocity and family heads don't choose it, because they memorize the corpus. A positive
 weight w shifts a head's scale: it scores a posterior p as wp / (wp + 1 - p), which is
-part of why thresholds belong to the weights (§10).
+part of why thresholds belong to the weights (§10); the beat and the downbeat carry
+none and are read with no threshold.
 
 Round 12a's log, first and last, on a GTX 1060:
 
@@ -699,11 +841,12 @@ step 40000 loss 1.107 (onset 0.064 drums 0.017 pitch 0.327 voicing 0.029 strike 
 step 40000 held-out 1.651, decoders 0.965 (onset 0.284 drums 0.035 pitch 0.393 voicing 0.059 strike 0.102 release 0.121 velocity 0.027 wave 1.079 voice 0.047) (best)
 ```
 
-A model with the family head prints its loss last, as 20 steps on a CPU did over the 4
-loops of `corpus <dir> 4 4 aug gen`, a model of the defaults without `--pcen`:
+A model with the family, beat and downbeat heads prints their losses last, as 20 steps
+on a CPU did over the 4 loops of `corpus <dir> 4 4 aug gen`, a model of the defaults
+without `--pcen`:
 
 ```
-step 20 loss 4.817 (onset 1.521 drums 0.923 pitch 0.716 voicing 0.060 strike 0.530 release 0.513 velocity 0.026 wave 0.374 voice 0.077 family 0.380) 20s
+step 20 loss 5.184 (onset 1.525 drums 0.924 pitch 0.714 voicing 0.059 strike 0.523 release 0.519 velocity 0.028 wave 0.374 voice 0.078 family 0.413 beat 0.244 downbeat 0.100) 18s
 ```
 
 The wave head's held-out 1.079 means about a third of its belief on the right wave,
@@ -758,7 +901,8 @@ offset  bytes         field
 ```
 
 The checksum catches damage, not tampering. A file only ever holds numbers, and `Load`
-checks its shape against its tensors.
+checks its shape against its tensors. A file written now lists twelve heads, `beat` and
+`downbeat` of one value each after `family`, and its `out.weight` is 329 x 256.
 
 `--pitchnet` writes version 5, whose `kind` word after the version, 1, makes the model
 transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
@@ -786,7 +930,11 @@ each head and fills `RipFrames`, the same fields the analysis fills, and from a 
 head `Cents`, a hundred times each offset, and `CentsError`, a hundred times e to each
 log error. What plays each pitch it keeps at each frame's twelve most salient pitches
 alone, as bytes: the softmax of the family's and of the wave's scores and the sigmoid of
-the genes (`RipFrames.VoiceAt`, `Voices`), and the measure once (`Sure`). Loop 000 through
+the genes (`RipFrames.VoiceAt`, `Voices`), and the measure once (`Sure`). A frame model's
+beat and downbeat heads fill `RipFrames.Beat` and `Downbeat`, and where the frames carry
+both, the tempo, the beats, the meter and the bar lines are read from them and none of
+the cues' rules decides ([audio
+§9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). Loop 000 through
 12a, with a sure strike on frame 0 where the labels say kick, hihat, G3 and C3:
 
 ```

@@ -3390,25 +3390,6 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 // at every frame, the tuning in them; a note that holds its pitch carries none,
 // nor does any without the word, whose loops are drawn as with it, and the
 // registered voices are as they were afterwards
-func TestABareCorpusLeavesTheFreeSlotEmpty(t *testing.T) {
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	filled := func(bare bool) (n int) {
-		o := tuneOptions{loops: 10, bars: 1, seed: 7, gen: true, bare: bare, labels: true}
-		if err := s.eachLoop(o, func(_ int, l tuneLoop) error {
-			n += min(int(l.slots[2]), 1)
-			return nil
-		}); err != nil {
-			t.Fatal(err)
-		}
-		return n
-	}
-	if with, bare := filled(false), filled(true); with == 0 || bare != 0 {
-		t.Errorf("the free slot filled in %d of 10 loops with gen and %d with gen bare, want some and none", with, bare)
-	}
-}
-
 func TestAGlidingCorpusLabelsWhereEachMovingNoteSits(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)

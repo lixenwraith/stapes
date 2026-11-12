@@ -25,7 +25,7 @@ refinement.
 ```mermaid
 flowchart LR
     A["recording"] --> B["features: log-mel frames"]
-    B --> C["front end: analysis or ripmodel"]
+    B --> C["front end: analysis or ripmodels"]
     C --> D["decoders: tempo, beats, bars, key, hits, notes"]
     D --> E["voices: genes per note, clustered, fitted"]
     E --> F["patterns: dictionary, matching, compression"]
@@ -37,20 +37,20 @@ flowchart LR
 1. **Features** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `MelFrames` makes the log-mel frames a model hears: the rip's own
    grid, 22.05 kHz, 93 ms windows every 11.6 ms, 229 bands from 30 Hz up, under a
    semitone apart from A3, the
-   recording's peak at one. The model reads each band on a true logarithm, in dB
+   recording's peak at one. The frame model reads each band on a true logarithm, in dB
    over a floor 80 dB down less the frame's mean, and the mean as one more input:
    a frame's loudness apart from a level-free shape, the cepstrum's amplitude
    normalization, so a phrase 20 dB softer reaches it as clearly (`log1p(100 ×
    energy)`, the frames' stored form, kept 0.3% of a loud note's contrast for
    notes 18 dB down, the log 59%). The built-in analysis works from the same
    spectrogram, split into a harmonic and a percussive part by medians. Features
-   are computed in Go on both sides of training, so the model sees in stapes
-   exactly what it saw in the trainer.
+   are computed in Go on both sides of training, so the models see in stapes
+   exactly what they saw in the trainer.
 2. **Front end** (`RipFrontEnd`, [library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). It hears a recording into `RipFrames`: the
    strength of any onset, of each drum's, each pitch's salience, each register's
    chroma, and, from a model, the wave and voice genes the note under each frame
    is played with and how surely each pitch is struck there. Two front ends fill it: `analysis`, the package's signal
-   processing, and `ripmodel`: a transformer over the mel frames for the onsets,
+   processing, and `ripmodels`: a transformer over the mel frames for the onsets,
    the drums, the wave and voice genes and, since audio v0.11.0, the family
    playing the highest note (`RipFrames.Family`, nine families with unknown,
    which no decoder reads yet), and beside it the notes model, a cell net over
@@ -81,8 +81,8 @@ flowchart LR
    the busier by default (`Ripper.Lead`). From a front end that hears
    each pitch struck, the melody register's notes are read from the strikes
    instead: a note starts where its pitch's strike peaks over `strike`, as hard
-   as the model heard it struck, and lasts while its salience holds, until the
-   model hears it let go over `release` or until it is struck again over
+   as the models heard it struck, and lasts while its salience holds, until the
+   models hear it let go over `release` or until it is struck again over
    `strike_again`, any number at once, so the notes a pedal leaves ringing do
    not hide the next one struck, which a path through the salience, preferring
    what sounds strongest, stays on; the lines are parted from them as before.
@@ -126,8 +126,8 @@ flowchart LR
    there; a trained front end narrows that. The melody register's second line
    gets a voice of its own (`Rip.UnderVoice`), fitted to its notes alone, so a
    violin under a pluck is not played through the pluck's voice. Next, notes
-   cluster by their genes into as many voices as a line has. The model
-   proposes; the engine disposes.
+   cluster by their genes into as many voices as a line has. The models
+   propose; the engine disposes.
 5. **Patterns and the dictionary.** Notes and hits fall into bars. `rip` writes
    windows of up to four bars as patterns, the estimate heard first; `compress`
    writes the dictionary: per part (beat, melody, bass) the bars that stand for
@@ -173,7 +173,7 @@ flowchart LR
    search over every step's genes at once saw nothing of it in its budget;
    then a step a line leaves empty tries that strongest pitch, the one way in
    for a note the rip missed; a round is one search and one sweep, until a
-   round gains nothing. Next, the model hearing the render too, so
+   round gains nothing. Next, the models hearing the render too, so
    its voice estimate of the render against its estimate of the recording is a
    second, cheaper distance for the voice search.
 
@@ -251,7 +251,7 @@ offline (`song <name> <file.wav>`).
   for the run that sets unknown's bar; and `tune ... truth <list>` searches
   the decoders' thresholds against real recordings' truths through the loaded
   model, each heard once, writing the `rip.toml` that ships beside the weights.
-- **Model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodel.Spec`: 230 inputs (229 bands and the level), width 256, eight heads of 32,
+- **The frame model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodels.FrameSpec`: 230 inputs (229 bands and the level), width 256, eight heads of 32,
   four layers, feed-forward 1024, a window of 64 frames either side, 3.3
   million weights (13.2 MB), four times the first five runs' width 128 and four
   heads, and 3.7 million (14.9 MB) with the three convolutions the rounds since
@@ -261,12 +261,12 @@ offline (`song <name> <file.wav>`).
   of the highest note, and whether a beat and a bar line fall on the frame,
   from which a rip reads its tempo, meter and bars where a file has both. Attention
   carries ALiBi biases, a
-  slope per head on the frame distance, so the model has no positions to learn
+  slope per head on the frame distance, so the frame model has no positions to learn
   and generalises past the training window. A file may put convolutions over
   frames and bands before the input layer, each pooled over the bands
   (`transformer.Conv`), and split the layers into towers over the shared input
   layer, each computing a run of the heads (`transformer.Tower`), so the drums
-  need not share the pitch's layers, and give the model a second input
+  need not share the pitch's layers, and give the frame model a second input
   channel (`transformer.Config.Channels`): each band's PCEN and their mean,
   in which what a room or a microphone holds steady fades and a strike stands
   out at any level. `tool/rip-train` is its PyTorch
@@ -278,8 +278,8 @@ offline (`song <name> <file.wav>`).
   rounding. A three-minute song is 15500 frames, 26 GFLOP a layer at the
   default width: 70 seconds on one core of a 2017 laptop's i7-7700HQ, against
   20 at width 128, and the width and depth are the file's to choose. The analysis stays the
-  default front end: stapes hears with the model when its root holds
-  `ripmodel.bin`.
+  default front end: stapes hears with the frame model when its root holds
+  `ripframe.bin`.
 
 ## 4. Layout
 
@@ -292,8 +292,8 @@ offline (`song <name> <file.wav>`).
   `ReadJAMSBeats`), `ReadMIDI` with every part's notes and programs, and the
   rip that follows a recording as it plays (`RipStream`). Imports only `toml`.
   The searches stay out of it, so it stands alone, a module of its own.
-- `lixenwraith/audio/ripmodel`: the learned front end, `Spec` and `Hear`.
-  Imports `audio` and `transformer`.
+- `lixenwraith/audio/ripmodels`: the learned front end, `FrameSpec`, `NotesSpec`
+  and `Hear`. Imports `audio` and `transformer`.
 - `lixenwraith/transformer`: inference over frames and the weight file, a
   module of its own. Standard library only.
 - `lixenwraith/genetic`: the searches, over `RipParams`, over voice genes and
@@ -309,10 +309,10 @@ offline (`song <name> <file.wav>`).
 
 ## 5. Budgets and determinism
 
-The analysis runs about forty-five times real time on one desktop core, the model
-adds seconds per minute of audio at the default width, and memory is a few floats
+The analysis runs about forty-five times real time on one desktop core, the models
+add seconds per minute of audio at the default width, and memory is a few floats
 per frame per pitch: tens of megabytes for a song. Every render and draw is
-seeded, the searches run on fixed streams, and the model is float32 arithmetic in
+seeded, the searches run on fixed streams, and the models are float32 arithmetic in
 a fixed order, so a rip of one recording with one weight file and one parameter
 set is the same rip on every host.
 
@@ -341,7 +341,7 @@ did not, and the generational engine now has it:
   matching.
 
 What it does not have and may yet need: a covariance step (CMA-ES) if the voice
-fit stalls on correlated genes once its distance is the model's, and a
+fit stalls on correlated genes once its distance is a model's, and a
 reconstruction-scored matching that renders per candidate, where `Memoize`
 and the checkpoint earn their keep.
 
@@ -349,7 +349,7 @@ and the checkpoint earn their keep.
 
 1. Done, through thirteen passes on the sample: the analysis and the decoders;
    parameters as data and their search; the offline render, the truth and the
-   score; the transformer, `ripmodel`, the corpus, the trainer and training in
+   score; the transformer, `ripmodels`, the corpus, the trainer and training in
    rounds across machines; the voice fit by analysis-by-synthesis; the
    dictionary, matching and compression; the song document, rendered offline,
    a line at a time, and conducted live; the augmented, detuned, saturated
@@ -359,7 +359,7 @@ and the checkpoint earn their keep.
    notes' lag, accidentals; the two melody lines decoded together and parted
    by their character under a lead rule; the bass decoded to A3; a note's
    brightness; the truths: transcripts corrected by hand, rhythms tapped
-   out, MIDI files, and two rips of one piece as witnesses; and the model at
+   out, MIDI files, and two rips of one piece as witnesses; and the frame model at
    four times the size, its sixth run passing the engine's loops and losing
    the recordings.
 2. Landed from the audit of 9 November (its measurements are in the audit
@@ -419,7 +419,7 @@ and the checkpoint earn their keep.
      those errors and keeps a step that lands. Through a small model (360
      loops, 3,000 steps) a rendered bend, scoop and short slide each came out
      as one note carrying its motion, stubs without the head, and a fall of
-     three semitones was cut by a strike the model was sure of. A full round
+     three semitones was cut by a strike the notes model was sure of. A full round
      is not trained: vocadito stands at .69 under a ceiling of .77 to .90,
      and its truth holds 241 legato steps a merger by adjacency would eat.
    - **The stream read from outside, and `live`.** Landed: `RipStream` gives
@@ -428,7 +428,7 @@ and the checkpoint earn their keep.
      over a file and measures it against the offline rip.
    - **Each frame once.** Landed: a stream in `transformer` runs each frame
      through each layer once and gives the pass over the whole when it waits
-     the model's reach, which the ear does (2.97 s for the frame model), and
+     a model's reach, which the ear does (2.97 s for the frame model), and
      the GELU runs over a row in the kernels. Through 12a and 32a on twelve
      recordings a second of audio costs the offline rip 0.17 s of a core
      where it cost 0.46, and the stream 0.24 where it cost 1.37, the offline
@@ -440,17 +440,18 @@ and the checkpoint earn their keep.
    - **The beat and the bar line heard.** The cues' rules read the bars of 37
      of 120 GuitarSet clips no round met, and of 58 with the truth's beats
      given: a guitar alone has no kick, no snare and no bass. Landed: a beat
-     and a downbeat head on the frame model, which audio's decoders read as
-     posteriors in the cues' place where a file has both (v0.24.0), and their
-     trainer: a rendered loop's targets from its own grid, a recording's from
-     its list's `beats` column, a loss with no weight on a beat, and each
-     head's F1 on the lines ([Rip training §5 and
+     and a downbeat head on the frame model, which audio's decoders read in
+     the cues' place where a file has both (v0.24.0), by their ranks since
+     v0.24.1, which leave a clip the heads give no reading of to the cues,
+     and their trainer: a rendered loop's targets from its own grid, a
+     recording's from its list's `beats` column, a loss with no weight on a
+     beat, and each head's F1 on the lines ([Rip training §5 and
      §8](rip-training.md#the-two-heads-on-a-small-run)). A small model on
      rendered loops hears the beat where a drum marks it and the line less:
-     its heads read the bars of 56 of 160 held-out loops right and the same
-     weights' cues 124. No round is trained, and no file is installed on its
-     heads' word before they read more bars right than its cues
-     ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)).
+     through v0.24.0 its heads read the bars of 56 of 160 held-out loops right
+     and the same weights' cues 124. No round is trained, and no file is
+     installed on its heads' word before they read more bars right than its
+     cues ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)).
    Then, each waiting on recordings, on a thread above or on a design agreed:
    - **The voice of every note.** Heard per pitch cell on the notes model, not
      per frame: a family, a wave and the genes of what plays that pitch,
@@ -568,17 +569,17 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   not the same as the one nearest the recording's spectrum; the ear decides
   between `bite_fit.wav` (the mel fit) and `bite_refined.wav` (the score fit).
 - The first training run: 120 augmented loops of four bars from the shipped
-  bank, `ripmodel.Spec` at 818 thousand weights, 3000 steps of batch 8 in twenty
+  bank, `ripmodels.FrameSpec` at 818 thousand weights, 3000 steps of batch 8 in twenty
   minutes on four CPU cores, the loss from 4.8 to 0.44 and the pitch head's
   still falling. `bench 12 4` on fresh loops, total then tempo, bars, drums,
   melody, bass: the analysis on clean loops 0.49 (0.75, 0.79, 0.51, 0.18,
-  0.50), the model 0.48 (0.83, 0.85, 0.63, 0.06, 0.27); on augmented loops the
-  analysis 0.45 (0.75, 0.75, 0.54, 0.11, 0.31), the model 0.47 (0.83, 0.88,
-  0.67, 0.05, 0.16). The model already hears onsets and drums better than the
+  0.50), the frame model 0.48 (0.83, 0.85, 0.63, 0.06, 0.27); on augmented loops the
+  analysis 0.45 (0.75, 0.75, 0.54, 0.11, 0.31), the frame model 0.47 (0.83, 0.88,
+  0.67, 0.05, 0.16). The frame model already hears onsets and drums better than the
   analysis and holds up under the room and the mix where the analysis drops;
   its pitches are far behind, which is the head with the most classes and the
   least training. The shipped bank's few melodies cap what a corpus can teach:
-  more patterns and more steps before the model is trusted with a melody.
+  more patterns and more steps before the frame model is trusted with a melody.
 - The bass read from a window four times longer: the loop test's melody rises
   from 0.92 to 0.95 and its bass holds at 1, the sample's bass notes last two
   to four steps where they flipped every step between A#2 and A2, and the
@@ -611,7 +612,7 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   now carry generated parts: the analysis 0.47 on clean loops (tempo 0.75,
   bars 0.75, drums 0.52, melody 0.17, bass 0.39) and 0.46 augmented; the
   model 0.40 (0.67, 0.71, 0.50, 0.11, 0.18) and 0.38 (0.58, 0.73, 0.53, 0.07,
-  0.13). Each loop was seen about three hundred times: the model learned the
+  0.13). Each loop was seen about three hundred times: the frame model learned the
   corpus, not the music. The trainer now holds loops out, scores them as it
   goes and exports the step whose decoder heads scored best on them; the
   number that matters is the held-out loss, not the training loss, and `bench`
@@ -626,9 +627,9 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   loop seen sixteen times: the held-out decoders' loss falls the whole way,
   1.79 at step 1000 to 1.48 at 6000, the pitch head's 0.61 to 0.51, and the
   last step is the one exported. `bench 12 4`: the analysis 0.47 on clean
-  loops (tempo 0.75, bars 0.75, drums 0.52, melody 0.17, bass 0.39), the model
+  loops (tempo 0.75, bars 0.75, drums 0.52, melody 0.17, bass 0.39), the frame model
   0.44 (0.67, 0.75, 0.59, 0.11, 0.25); augmented, the analysis 0.46 (0.83,
-  0.81, 0.50, 0.16, 0.27), the model 0.45 (0.75, 0.77, 0.65, 0.11, 0.08). The
+  0.81, 0.50, 0.16, 0.27), the frame model 0.45 (0.75, 0.77, 0.65, 0.11, 0.08). The
   model is within three hundredths of the analysis overall, ahead on drums,
   behind on pitch, and still improving when the run ended: more loops and more
   steps are the next lever, not another head. The sample through it: 115 bpm,
@@ -646,7 +647,7 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   where the analysis heard 86, F major where it heard A# harmonic minor (its
   fifth), four bars from 1.66 s, 19 melody and 21 bass notes; the song rips
   back at 0.45 through the mel-fitted voices and 0.63 after two rounds of
-  `refine`, against the analysis path's 0.66 and 0.88. The model's transcript
+  `refine`, against the analysis path's 0.66 and 0.88. The frame model's transcript
   is the weaker one today, as `bench` said it would be; the loop lifts either.
 
 - The fourth run, 20000 loops with generated parts, the room and the mix,
@@ -656,10 +657,10 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   1.74 at step 1000 to 1.04 at 20000 (the pitch head's 0.60 to 0.40) and is
   still the best at the last step, so the run was not long. `bench 12 4`
   through the seventh pass's analysis: the analysis 0.49 on clean loops
-  (tempo 0.75, bars 0.85, drums 0.50, melody 0.20, bass 0.40), the model
+  (tempo 0.75, bars 0.85, drums 0.50, melody 0.20, bass 0.40), the frame model
   0.45 (0.58, 0.81, 0.54, 0.17, 0.34); augmented, the analysis 0.48 (0.83,
-  0.88, 0.50, 0.17, 0.28), the model 0.51 (0.83, 0.88, 0.73, 0.11, 0.20).
-  The model passes the analysis for the first time, on the loops with a room
+  0.88, 0.50, 0.17, 0.28), the frame model 0.51 (0.83, 0.88, 0.73, 0.11, 0.20).
+  The frame model passes the analysis for the first time, on the loops with a room
   and a mix, on the strength of its drums; it loses the clean loops on tempo
   and both on pitch, and the analysis itself gained two hundredths from the
   seventh pass. The sample through it (`bite_model_*` on the scratch branch):
@@ -835,16 +836,16 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   falls from 1.82 at step 1000 to 0.99 at 37000 (the pitch head's 0.66 to
   0.46) and is flat from step 33000. `bench 12 4`, its loops drawn without the
   generative lead: the analysis 0.470 on clean loops (tempo 0.75, bars 0.88,
-  drums 0.51, melody 0.13, bass 0.38), the model 0.510 (0.75, 0.85, 0.71,
+  drums 0.51, melody 0.13, bass 0.38), the frame model 0.510 (0.75, 0.85, 0.71,
   0.08, 0.38); augmented, the analysis 0.458 (0.83, 0.90, 0.51, 0.06, 0.33),
-  the model 0.460 (0.75, 0.81, 0.63, 0.07, 0.27): the first run to pass the
+  the frame model 0.460 (0.75, 0.81, 0.63, 0.07, 0.27): the first run to pass the
   analysis on both lines, on its drums, still behind on melody. The truths
-  reverse it: through the model the origin's melody register hears 34 of the
+  reverse it: through the frame model the origin's melody register hears 34 of the
   83 notes the user tapped where the analysis hears 50 (the lead 10 of 25
   against 17), at 99 bpm where the user's eighth gives the analysis's 148;
   the intro 34 against 37, at 115 bpm against 86. Two studio recordings
   scored against MIDI files of their pieces: the whole of Für Elise, 1051
-  notes, has 266 of the 869 above E3 heard through the model against 444
+  notes, has 266 of the 869 above E3 heard through the frame model against 444
   through the analysis; Billie Jean's first forty seconds, its drum channel
   scored hit by hit (`MatchHits`), have 38 of 39 kicks heard with 47 false
   against 37 with 135, 37 of 39 snares with 18 false against 25, 149 of 155
@@ -852,7 +853,7 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   that riff written from memory had its first note an octave low, the
   synthesizer's doubling, and favoured the analysis 110 to 84: a truth is a
   score, not a recollection. The weights are installed on the development
-  machine to be judged by ear and stay out of the tree; the model hears drums
+  machine to be judged by ear and stay out of the tree; the frame model hears drums
   better and melodies worse, a synthesizer's domain more steps will not
   leave, which real recordings with their notes in the corpus are for.
 
@@ -881,9 +882,9 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   misses its own pitch output cleared the decoder's floor for 100 of 104
   loud ones and 122 of 135 at 6 to 12 dB down, which the two-line path
   dropped where a pedal leaves earlier notes ringing as strongly as the new
-  one; below 18 dB the model itself faded, its input (log1p of a hundred
+  one; below 18 dB the frame model itself faded, its input (log1p of a hundred
   times the energy) keeping 0.3% of a loud note's contrast there, a true
-  logarithm 59%. The model gained a strike head for each pitch, the melody
+  logarithm 59%. The frame model gained a strike head for each pitch, the melody
   register's notes read from its strikes any number at once, and an input of
   each band in dB against the frame's own level, the level an input of its
   own. 8b, on 7c's convolutions and 7b's corpus: the bench 0.501 clean, its
@@ -904,7 +905,7 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   0.85 (0.600, 0.632, 0.617), against 0.587 at 0.9 without them and the
   analysis's 0.629. Scored by note onsets instead of order, the F1 agrees
   with truth's (0.590 against 0.585 for 8b at 0.9), so the extra notes are
-  extra, not chords out of order. On the bench they cost the model 0.007
+  extra, not chords out of order. On the bench they cost the frame model 0.007
   clean and 0.004 augmented (its melody 0.15 to 0.13 and 0.11 to 0.09),
   spread over the filters: none alone accounts for it. Listening to that
   Für Elise found two of its mistakes in the decoder: the partial filter
@@ -922,7 +923,7 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   against 0.99) and of an A4 a tone down (0.95 against 0.99), each a false B4
   on a downbeat; with a renewing strike also the surest within a tone, pooled
   F1 0.678 (precision 0.765, recall 0.610) and the bench unchanged.
-- The tenth round (10a) gave the model release and velocity heads, on a corpus
+- The tenth round (10a) gave the frame model release and velocity heads, on a corpus
   of the string and modal voices that fade as they ring, with soft phrases 20
   to 30 dB down. Over 8b on the same bench loops: 0.509 clean (melody 0.22
   against 0.16) and 0.473 augmented (0.16 against 0.12), against 0.502 and
@@ -985,12 +986,12 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   Go made instead.
 - **Relative positions by ALiBi, windows by a band.** No learned positions, no
   limit from the training length, attention cost linear in the recording.
-- **Voices as genes.** One vector serves the model's regression head, the
+- **Voices as genes.** One vector serves the models' regression heads, the
   search's genome and the document, on the scales the ear hears.
 - **The engine labels its own corpus.** Exact labels for free, with the
   synthesizer's domain as the cost to pay down with augmentation and held-out
   recordings.
-- **The model is optional.** The analysis ships and works everywhere; a weight
+- **The models are optional.** The analysis ships and works everywhere; a weight
   file in the root upgrades the hearing without a build.
 - **Pure Go inference.** No CGO, no runtime to ship, the same path on the
   desktop, the browser and the phone.

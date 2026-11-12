@@ -15,17 +15,17 @@ import numpy as np
 import torch
 
 import average
-import ripmodel
+import ripmodels
 import train
 
-MANIFEST = {"mel_bands": ripmodel.MEL_BANDS, "min_midi": 28, "pitches": ripmodel.PITCHES, "voice_genes": ripmodel.VOICE_GENES}
-F = {k: i for i, k in enumerate(ripmodel.FAMILIES)}
-CFG = ripmodel.Config(inputs=ripmodel.STACK_INPUTS, channels=ripmodel.STACK_CHANNELS, outputs=ripmodel.PITCHNET_HEADS, cell=4)
+MANIFEST = {"mel_bands": ripmodels.MEL_BANDS, "min_midi": 28, "pitches": ripmodels.PITCHES, "voice_genes": ripmodels.VOICE_GENES}
+F = {k: i for i, k in enumerate(ripmodels.FAMILIES)}
+CFG = ripmodels.Config(inputs=ripmodels.STACK_INPUTS, channels=ripmodels.STACK_CHANNELS, outputs=ripmodels.PITCHNET_HEADS, cell=4)
 
 
 def voice(first: float) -> list:
     """an engine voice's genes, its first gene telling it from another"""
-    return [first] + [0.5] * (ripmodel.VOICE_GENES - 1)
+    return [first] + [0.5] * (ripmodels.VOICE_GENES - 1)
 
 
 def note(frame, end, midi, family, genes=None, wave=-1, **more) -> dict:
@@ -40,7 +40,7 @@ class Frames:
     """a loop's frames in memory, as train.MelFile gives them"""
 
     def __init__(self, n):
-        self.path, self.mel = f"memory{id(self)}", np.zeros((n, ripmodel.MEL_BANDS), np.float32)
+        self.path, self.mel = f"memory{id(self)}", np.zeros((n, ripmodels.MEL_BANDS), np.float32)
 
     def __len__(self):
         return len(self.mel)
@@ -64,7 +64,7 @@ class Said(torch.nn.Module):
         self.y[0, a:b, self.cfg.slice("pitch")][:, p] = salience
         for head, value, score in (("pitchfamily", family and F[family], 9.0), ("pitchwave", wave, 9.0), ("pitchvoice", 0, gene)):
             if value is not None and score is not None:
-                self.y[0, a:b, self.cfg.slice(head)][:, value * ripmodel.PITCHES + p] = score
+                self.y[0, a:b, self.cfg.slice(head)][:, value * ripmodels.PITCHES + p] = score
 
     def forward(self, mel):
         return self.y[:, :mel.shape[1]]
@@ -123,7 +123,7 @@ class WhatPlaysEachPitch(unittest.TestCase):
             model.say(20, 30, m, 5.0 + m)
         for i in range(21):  # the held-out family's notes, each surer of a piano than the last
             model.say(40 + 10 * i, 50 + 10 * i, 55, 9.0, "piano")
-            model.y[0, 40 + 10 * i:50 + 10 * i, CFG.slice("pitchfamily")][:, F["synth"] * ripmodel.PITCHES + 55 - 28] = 9.0 - 0.5 * i
+            model.y[0, 40 + 10 * i:50 + 10 * i, CFG.slice("pitchfamily")][:, F["synth"] * ripmodels.PITCHES + 55 - 28] = 9.0 - 0.5 * i
         mels, tgs, notes = train.validation([(Frames(frames), label(events, frames))], frames, 2)
         v = train.evaluate(model, mels, tgs, "cpu", 24, notes)["voices"]
         self.assertEqual((round(v["families"][0], 6), v["families"][1]), (round(2 / 3, 6), 3))
@@ -133,7 +133,7 @@ class WhatPlaysEachPitch(unittest.TestCase):
         # the piano's gene 0.2 heard as 0.79, the bass's 0.6 as 0.5, the voice's 0.8 as 1, each over the genes' RMS
         salience = torch.sigmoid(torch.tensor([9.0, -1.0]))
         piano = float((salience[0] * 1.0 + salience[1] * 0.0) / salience.sum())
-        want = np.mean([abs(piano - 0.2), 0.1, 0.2]) / np.sqrt(ripmodel.VOICE_GENES)
+        want = np.mean([abs(piano - 0.2), 0.1, 0.2]) / np.sqrt(ripmodels.VOICE_GENES)
         self.assertAlmostEqual(v["genes"], want, places=3)
         count, reach, median, past, right = v["held"]
         shares = sorted(1 / (1 + np.exp(-0.5 * i)) for i in range(21))  # a piano's share against the synth's, the rest nothing
@@ -145,13 +145,13 @@ class WhatPlaysEachPitch(unittest.TestCase):
     def test_the_weight_file_carries_the_heads_and_the_measure(self):
         """The file names the heads of what plays each pitch after the cents, a value a pitch each, and the measure as
         a frame head whose weights are zero and whose bias is the measure."""
-        model = ripmodel.PitchNet(CFG)
+        model = ripmodels.PitchNet(CFG)
         model.sure.fill_(0.75)
         with tempfile.TemporaryDirectory() as d:
-            ripmodel.export(model, os.path.join(d, "notes.bin"))
+            ripmodels.export(model, os.path.join(d, "notes.bin"))
             with open(os.path.join(d, "notes.bin"), "rb") as f:
                 body = f.read()
-        at = 4 + 16 + len(ripmodel._cells_header(model))
+        at = 4 + 16 + len(ripmodels._cells_header(model))
 
         def take(fmt):
             nonlocal at
@@ -165,8 +165,8 @@ class WhatPlaysEachPitch(unittest.TestCase):
             at += n
             return body[at - n:at].decode()
         heads = [(name(), take("I")) for _ in range(take("I"))]
-        p = ripmodel.PITCHES
-        self.assertEqual(heads[4:8], [("cents", 2 * p), ("pitchfamily", ripmodel.NAMES * p), ("pitchwave", ripmodel.WAVES * p), ("pitchvoice", ripmodel.VOICE_GENES * p)])
+        p = ripmodels.PITCHES
+        self.assertEqual(heads[4:8], [("cents", 2 * p), ("pitchfamily", ripmodels.NAMES * p), ("pitchwave", ripmodels.WAVES * p), ("pitchvoice", ripmodels.VOICE_GENES * p)])
         self.assertEqual(heads[-1], ("sure", 1))
         tensors = {}
         for _ in range(take("I")):
@@ -185,7 +185,7 @@ class WhatPlaysEachPitch(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             files, out = [os.path.join(d, name) for name in ("held.pt", "more.pt", "none.pt")], os.path.join(d, "out.bin")
             for file, sure in zip(files, (0.2, 0.4, 0.0)):
-                model = ripmodel.PitchNet(CFG)
+                model = ripmodels.PitchNet(CFG)
                 model.sure.fill_(sure)
                 torch.save({"model": model.state_dict(), "cfg": asdict(CFG)}, file)
 
@@ -208,14 +208,15 @@ def corpus(d, labels, frames=64):
         json.dump({**MANIFEST, "loops": len(labels), "waves": ["sine", "saw", "square", "string", "modal"]}, f)
     for i, lab in enumerate(labels):
         with open(os.path.join(d, f"loop_{i:03d}.mel"), "wb") as f:
-            f.write(struct.pack("<II", frames, ripmodel.MEL_BANDS) + bytes(4 * frames * ripmodel.MEL_BANDS))
+            f.write(struct.pack("<II", frames, ripmodels.MEL_BANDS) + bytes(4 * frames * ripmodels.MEL_BANDS))
         with open(os.path.join(d, f"loop_{i:03d}.json"), "w") as f:
             json.dump(lab, f)
 
 
 def run(*flags, steps=1) -> str:
-    """steps of train.py at the smallest shape, and what it printed"""
-    argv = ["train.py", *flags, "--steps", str(steps), "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4"]
+    """steps of train.py at the smallest shape, and what it printed; on the CPU whatever the machine has, as every
+    tensor a test builds is there"""
+    argv = ["train.py", *flags, "--steps", str(steps), "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4", "--device", "cpu"]
     with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as said:
         train.main()
     return said.getvalue()
@@ -234,7 +235,7 @@ class Heard(torch.nn.Module):
 
     def __init__(self, frames):
         super().__init__()
-        self.cfg = ripmodel.Config()
+        self.cfg = ripmodels.Config()
         self.y = torch.full((1, frames, self.cfg.out_size), -9.0)
 
     def forward(self, mel):
@@ -348,8 +349,8 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         """A frame model from before the beat and downbeat heads starts a run through --init: every weight carries
         over, the output layer's rows of the heads it had among them, the two heads' rows are new, and the weight
         file lists them after the family."""
-        old = ripmodel.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodel.HEADS[:-2])
-        before = ripmodel.RipModel(old).state_dict()
+        old = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodels.HEADS[:-2])
+        before = ripmodels.FrameModel(old).state_dict()
         with tempfile.TemporaryDirectory() as d:
             at = lambda name: os.path.join(d, name)
             corpus(d, [{"bpm": 120, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
@@ -359,21 +360,21 @@ class TheBeatAndTheBarLine(unittest.TestCase):
             with open(at("new.bin"), "rb") as f:
                 body = f.read()
         self.assertIn("its heads but beat, downbeat, which start fresh", said)
-        self.assertEqual([tuple(h) for h in after["cfg"]["outputs"]], ripmodel.HEADS)
+        self.assertEqual([tuple(h) for h in after["cfg"]["outputs"]], ripmodels.HEADS)
         had = old.out_size
         for k, v in before.items():
             with self.subTest(tensor=k):
                 self.assertTrue(torch.equal(after["model"][k][:had] if k.startswith("out.") else after["model"][k], v))
         self.assertEqual([len(after["model"][k]) for k in ("out.weight", "out.bias")], [had + 2, had + 2])
         head = lambda name, size: struct.pack("<H", len(name)) + name.encode() + struct.pack("<I", size)
-        self.assertIn(head("family", len(ripmodel.FAMILIES)) + head("beat", 1) + head("downbeat", 1) + struct.pack("<I", len(after["model"])), body)
+        self.assertIn(head("family", len(ripmodels.FAMILIES)) + head("beat", 1) + head("downbeat", 1) + struct.pack("<I", len(after["model"])), body)
 
     def test_a_probe_trains_the_two_heads_alone_on_a_frame_model_held_as_it_was(self):
         """--probe on a frame model started from one without the beat and downbeat heads trains those two heads' rows
         of the output layer and holds the rest: after three steps every other weight is the start's, every other
         head says bit for bit what the start's did, the two heads say something else, and the last step is exported."""
-        old = ripmodel.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodel.HEADS[:-2])
-        before = ripmodel.RipModel(old).state_dict()
+        old = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodels.HEADS[:-2])
+        before = ripmodels.FrameModel(old).state_dict()
         with tempfile.TemporaryDirectory() as d:
             at = lambda name: os.path.join(d, name)
             corpus(d, [{"bpm": 100, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
@@ -386,10 +387,10 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         for k, v in before.items():
             with self.subTest(tensor=k):
                 self.assertTrue(torch.equal(probed["model"][k][:had] if k.startswith("out.") else probed["model"][k], v))
-        frames = torch.randn(1, 40, ripmodel.INPUTS, generator=torch.Generator().manual_seed(1))
+        frames = torch.randn(1, 40, ripmodels.INPUTS, generator=torch.Generator().manual_seed(1))
         says = []
         for ck in (start, probed):
-            model = ripmodel.RipModel(ripmodel.Config(**ck["cfg"]))
+            model = ripmodels.FrameModel(ripmodels.Config(**ck["cfg"]))
             model.load_state_dict(ck["model"])
             with torch.no_grad():
                 says.append(model.eval()(frames))

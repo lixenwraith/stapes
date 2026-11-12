@@ -44,10 +44,11 @@ The root is `-config-dir`, or else `os.UserConfigDir()` plus `stapes`
   engine's 50 ms when unset; a key it has no field for is refused by name;
 - `rip.toml`, the rip's parameters: what `rip` listens with when it is there,
   and where `tune` writes;
-- `ripmodel.bin`, the rip's learned front end: what `rip` hears with when it is
-  there, the built-in analysis when it is not
-  ([rip-train](../tool/rip-train/README.md));
-- `ripnotes.bin`, the notes model: beside `ripmodel.bin` it gives the notes, the
+- `ripframe.bin`, the frame model, the rip's learned front end: what `rip`
+  hears with when it is there, the built-in analysis when it is not
+  ([rip-train](../tool/rip-train/README.md)); under its old name,
+  `ripmodel.bin`, it is named at the start to be renamed and never loaded;
+- `ripnotes.bin`, the notes model: beside `ripframe.bin` it gives the notes, the
   pitches and their strikes, releases and velocities, and alone it is unused;
 - `ripjudge.bin`, a judge of the strikes: beside the weights it was fitted on
   it rules which strikes are notes, in the installed scores' place, and beside
@@ -157,7 +158,7 @@ Over the library's rip (library
   offline rip's bar lines and beats as the truth, and the process's CPU over
   each (`getrusage`, so the mixer's and a screen's are in it).
 - `rip` listens with the root's `rip.toml` when one is there, and hears with
-  the root's `ripmodel.bin`, and the notes from its `ripnotes.bin` when that is
+  the root's `ripframe.bin`, and the notes from its `ripnotes.bin` when that is
   there, which `tool/rip-train` trains on loops stapes exports (`corpus`); `render` writes what the slots hold to a WAV through
   `RenderMusic`, so an estimate is heard without a device. The root's
   `ripjudge.bin` is the rip's judge (`Ripper.Judge`, loaded with
@@ -178,13 +179,13 @@ Over the library's rip (library
   patterns across tempos and keys with `lixenwraith/genetic`'s generational
   engine, the current set seeding the pool, and writes a set that beats it
   ([todo](todo.md#tune-the-rip) for what the corpus still lacks). `tune ...
-  truth <list>` searches instead the thresholds the loaded model's decoders
+  truth <list>` searches instead the thresholds the loaded models' decoders
   read (`modelGenes`), the rest held, against real recordings, a line
   `wav<TAB>truth[<TAB>condition[<TAB>timed]]` each, by the mean over the
   conditions of each condition's F1 by pitch and onset (`conditionF1`), from a
   pool drawn near the current thresholds (`search`'s `near`); a set that takes
   more than `guard` from a condition's F1 at the start scores under zero
-  (`guarded`) and is never written. The model's `Hear` ignores `RipParams`, so
+  (`guarded`) and is never written. The front end's `Hear` ignores `RipParams`, so
   each recording is heard once (`heardOnce`) and a candidate pays the decoders
   alone; `frames <dir>` keeps what was heard between runs, a gob of the
   `RipFrames` named by the checksums of the recording and of the weight files
@@ -204,7 +205,7 @@ Over the library's rip (library
   only when it rises, each voice held within a tenth of its tonal floor, the
   fit's own distance from the recording's notes, so the score of the mix does not
   drift a voice into one that fills the mix.
-- `bench` grades the analysis and a loaded model on fresh renders, clean and
+- `bench` grades the analysis and the loaded models on fresh renders, clean and
   augmented (`corpus ... aug`), and with `meters` each meter apart, a third of
   the loops in 3/4 or 6/8 with every part generated in it, so the bars of a loop
   match its meter (`ExpectedRip`'s). With `sampled <dir>`, both play half of a loop's

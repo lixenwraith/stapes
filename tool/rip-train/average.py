@@ -13,7 +13,7 @@ import argparse
 
 import torch
 
-import ripmodel
+import ripmodels
 
 
 def shape(ck: dict) -> dict:
@@ -60,14 +60,14 @@ def main() -> None:
                          "so their mean would be no run's measure: give the merge one with --sure")
 
     cut = int(args.trim * len(cks))
-    model = ripmodel.build(ripmodel.Config(**cks[0]["cfg"]))
+    model = ripmodels.build(ripmodels.Config(**cks[0]["cfg"]))
     model.load_state_dict(mean([ck["model"] for ck in cks], cut))
     if args.sure and hasattr(model, "sure"):
         model.sure.fill_(args.sure)
     if args.pt:
         torch.save({"model": model.state_dict(), "cfg": cks[0]["cfg"]}, args.pt)
     model.eval()
-    ripmodel.export(model, args.out)
+    ripmodels.export(model, args.out)
     print(f"averaged {len(cks)} files, {cut} dropped at each end of each weight; wrote {' and '.join(f for f in (args.pt, args.out) if f)}")
 
 

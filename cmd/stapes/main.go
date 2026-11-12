@@ -17,7 +17,7 @@ var (
 	flagBackend   = flag.String("ab", "", "Force audio backend by name (pacat, aplay, null, wav:out.wav, ...)")
 	flagHeadless  = flag.Bool("headless", false, "Discard audio output (equivalent to -ab null)")
 	flagScript    = flag.String("s", "", "Execute script file and exit")
-	flagConfigDir = flag.String("config-dir", "", "The stapes root, holding stapes.toml, rip.toml and ripmodel.bin (default: the user config folder's stapes/)")
+	flagConfigDir = flag.String("config-dir", "", "The stapes root, holding stapes.toml, rip.toml and ripframe.bin (default: the user config folder's stapes/)")
 	flagMusic     = flag.String("config-music", "", "Music pattern document TOML, in place of the search path's music.toml")
 	flagSounds    = flag.String("config-sounds", "", "Sound definition document TOML, in place of the search path's sounds.toml")
 	flagVol       = flag.Float64("vol", 0.7, "Sound effect volume 0..1; music keeps its own level")

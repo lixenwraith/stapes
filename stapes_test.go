@@ -22,7 +22,7 @@ import (
 
 	"github.com/lixenwraith/audio"
 	"github.com/lixenwraith/audio/bank"
-	"github.com/lixenwraith/audio/ripmodel"
+	"github.com/lixenwraith/audio/ripmodels"
 	"github.com/lixenwraith/terminal"
 	"github.com/lixenwraith/terminal/tui"
 	"github.com/lixenwraith/transformer"
@@ -823,7 +823,7 @@ func writeFile(t *testing.T, file, data string) {
 }
 
 // TestTheRootHoldsSettingsAndTheRip: the stapes root, the user's or -config-dir's
-// alone, holds stapes.toml, rip.toml, ripmodel.bin and ripnotes.bin, flat; nothing of vif's root
+// alone, holds stapes.toml, rip.toml, ripframe.bin and ripnotes.bin, flat; nothing of vif's root
 // is read, and a key stapes.toml cannot hold is refused by name.
 func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 	base := t.TempDir()
@@ -831,16 +831,16 @@ func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 	user := filepath.Join(base, rootName)
 	writeFile(t, filepath.Join(user, settingsFile), "[audio]\nbuffer_ms = 20\n")
 	writeFile(t, filepath.Join(user, ripFile), "[rip]\n")
-	writeFile(t, filepath.Join(user, modelFile), "weights")
+	writeFile(t, filepath.Join(user, frameFile), "weights")
 	writeFile(t, filepath.Join(user, notesFile), "weights")
 	writeFile(t, filepath.Join(base, "vif", "vif.toml"), "[audio]\nbuffer_ms = 30\n")
 	writeFile(t, filepath.Join(base, vifAudio, ripFile), "[rip]\n")
 	f, err := ResolveFiles("", "", "")
-	if err != nil || f.buffer != 20*time.Millisecond || f.rip != filepath.Join(user, ripFile) || f.model != filepath.Join(user, modelFile) || f.notes != filepath.Join(user, notesFile) {
-		t.Fatalf("the user's root gave %+v, %v; want its buffer, rip.toml, ripmodel.bin and ripnotes.bin", f, err)
+	if err != nil || f.buffer != 20*time.Millisecond || f.rip != filepath.Join(user, ripFile) || f.frame != filepath.Join(user, frameFile) || f.notes != filepath.Join(user, notesFile) {
+		t.Fatalf("the user's root gave %+v, %v; want its buffer, rip.toml, ripframe.bin and ripnotes.bin", f, err)
 	}
 	dir := t.TempDir()
-	if f, err = ResolveFiles(dir, "", ""); err != nil || f.buffer != 0 || f.rip != "" || f.model != "" || f.notes != "" || f.ripTarget != filepath.Join(dir, ripFile) {
+	if f, err = ResolveFiles(dir, "", ""); err != nil || f.buffer != 0 || f.rip != "" || f.frame != "" || f.notes != "" || f.ripTarget != filepath.Join(dir, ripFile) {
 		t.Fatalf("-config-dir gave %+v, %v; want that root alone", f, err)
 	}
 	writeFile(t, filepath.Join(dir, settingsFile), "[paths]\nroot = \"elsewhere\"\n")
@@ -849,12 +849,14 @@ func TestTheRootHoldsSettingsAndTheRip(t *testing.T) {
 	}
 }
 
-// TestTheNotesModelLoadsBesideTheModel: ripnotes.bin beside ripmodel.bin gives
-// rip its notes, and the session and stat name both files; alone, it is named
-// and the analysis listens.
-func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
+// TestTheNotesModelLoadsBesideTheFrameModel: ripnotes.bin beside ripframe.bin gives
+// rip its notes, and the session and stat name the frame model and the notes
+// model with their files; alone, it is named and the analysis listens.
+func TestTheNotesModelLoadsBesideTheFrameModel(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	dir := t.TempDir()
+	// a model saved as the trainer's export writes it: a notes model's sure head,
+	// frameout's last row, zero, and the checksum written again
 	save := func(name string, cfg transformer.Config) {
 		m, err := transformer.NewRandom(cfg, 1)
 		if err != nil {
@@ -864,7 +866,16 @@ func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 		if err := m.Save(&b); err != nil {
 			t.Fatal(err)
 		}
-		writeFile(t, filepath.Join(dir, name), b.String())
+		data, le := b.Bytes(), binary.LittleEndian
+		if slices.ContainsFunc(cfg.Outputs, func(h transformer.Head) bool { return h.Name == ripmodels.HeadSure }) {
+			at := bytes.Index(data, []byte("frameout.weight")) + len("frameout.weight") // then its rank, 2, and its dims
+			rows, cols := int(le.Uint32(data[at+1:])), int(le.Uint32(data[at+5:]))
+			clear(data[at+9+4*(rows-1)*cols : at+9+4*rows*cols])
+			h := fnv.New64a()
+			h.Write(data[:len(data)-8])
+			le.PutUint64(data[len(data)-8:], h.Sum64())
+		}
+		writeFile(t, filepath.Join(dir, name), string(data))
 	}
 	open := func() (*Session, *bytes.Buffer) {
 		files, err := ResolveFiles(dir, "", "")
@@ -878,28 +889,63 @@ func TestTheNotesModelLoadsBesideTheModel(t *testing.T) {
 		}
 		return s, &out
 	}
-	notes := ripmodel.NotesSpec()
+	notes := ripmodels.NotesSpec()
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	save(notesFile, notes)
 	s, out := open()
-	if s.frontEnd != nil || !strings.Contains(out.String(), "no "+modelFile+" beside it") {
+	if s.frontEnd != nil || !strings.Contains(out.String(), "no "+frameFile+" beside it") {
 		t.Errorf("a notes model alone loaded %v: %s", s.frontEnd != nil, out)
 	}
 	teardown(t, s)
 
-	model := ripmodel.Spec()
-	model.Dim, model.Heads, model.Layers, model.FFN = 8, 2, 1, 8
-	save(modelFile, model)
+	frame := ripmodels.FrameSpec()
+	frame.Dim, frame.Heads, frame.Layers, frame.FFN = 8, 2, 1, 8
+	save(frameFile, frame)
 	s, out = open()
 	defer teardown(t, s)
-	named := filepath.Join(dir, notesFile) + " ("
-	if s.frontEnd == nil || s.frontEnd.Notes == nil || !strings.Contains(out.String(), named) {
+	named := "the frame model " + filepath.Join(dir, frameFile) + " ("
+	notesNamed := ", the notes model " + filepath.Join(dir, notesFile) + " ("
+	if s.frontEnd == nil || s.frontEnd.Notes == nil || !strings.Contains(out.String(), named) || !strings.Contains(out.String(), notesNamed) {
 		t.Fatalf("a model and a notes model gave notes %v: %s", s.frontEnd != nil && s.frontEnd.Notes != nil, out)
 	}
 	out.Reset()
 	runOrFatal(t, s, out, "stat\n")
-	if !strings.Contains(out.String(), named) {
-		t.Errorf("stat names no notes model: %s", out)
+	if !strings.Contains(out.String(), named) || !strings.Contains(out.String(), notesNamed) {
+		t.Errorf("stat names not each model: %s", out)
+	}
+}
+
+// TestAFrameModelUnderItsOldNameIsNamedNotLoaded: a root that holds ripmodel.bin
+// and no ripframe.bin says the file is to be renamed, loads nothing from it and
+// hears with the analysis.
+func TestAFrameModelUnderItsOldNameIsNamedNotLoaded(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	root := t.TempDir()
+	cfg := ripmodels.FrameSpec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+	m, err := transformer.NewRandom(cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	if err := m.Save(&b); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(root, oldFrameFile)
+	writeFile(t, old, b.String())
+	files, err := ResolveFiles(root, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	s, err := NewSession(Options{Backend: "null", Out: &out, Files: files})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer teardown(t, s)
+	said := oldFrameFile + " is now " + frameFile + ", so rename " + old + " (the analysis listens)"
+	if s.frontEnd != nil || !strings.Contains(out.String(), said) {
+		t.Errorf("a root holding %s alone loaded a model %v and said: %s", oldFrameFile, s.frontEnd != nil, out.String())
 	}
 }
 
@@ -1551,19 +1597,19 @@ func TestLiveKeepsTheRipRipMakes(t *testing.T) {
 	dir := t.TempDir()
 	wav := filepath.Join(dir, "loop.wav")
 	writeWAV(t, wav, loops[0].audio)
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fe, err := ripmodel.New(m, nil)
+	fe, err := ripmodels.New(m, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, ear := range []struct {
 		name string
-		fe   *ripmodel.FrontEnd
+		fe   *ripmodels.FrontEnd
 	}{{"analysis", nil}, {"model", fe}} {
 		s.frontEnd = ear.fe
 		out.Reset()
@@ -2085,7 +2131,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 ! tune truth %s guard 2
 ! tune truth %s frames
 `, list, list, list, list, list))
-	if !strings.Contains(out.String(), "no "+modelFile+" is loaded") {
+	if !strings.Contains(out.String(), "no "+frameFile+" is loaded") {
 		t.Errorf("no refusal for want of a model:\n%s", out.String())
 	}
 	// a loop the registered patterns render, its notes a MIDI truth
@@ -2112,13 +2158,13 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	writeFile(t, list, "loop.wav\tloop.mid\n")
 	// a model too small to hear well, from a start that takes a strike whose
 	// pitch hardly sounds: the sets near it hear fewer notes that were not played
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fe, err := ripmodel.New(m, nil)
+	fe, err := ripmodels.New(m, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2168,7 +2214,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 
 // truthFixture is a rendered loop as loop.wav in a new folder and a model too
 // small to hear well, with the notes its rip of that file holds under p
-func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmodel.FrontEnd, heard func(audio.RipParams) []audio.RipNote, write func(name string, notes []audio.RipNote)) {
+func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmodels.FrontEnd, heard func(audio.RipParams) []audio.RipNote, write func(name string, notes []audio.RipNote)) {
 	t.Helper()
 	loops, err := s.corpus(tuneOptions{loops: 2, bars: 2, seed: 1})
 	if err != nil {
@@ -2176,13 +2222,13 @@ func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmod
 	}
 	dir = t.TempDir()
 	writeWAV(t, filepath.Join(dir, "loop.wav"), loops[1].audio)
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, seed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fe, err = ripmodel.New(m, nil); err != nil {
+	if fe, err = ripmodels.New(m, nil); err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.Open(filepath.Join(dir, "loop.wav"))
@@ -2268,7 +2314,7 @@ func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
 func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	open := func(seed uint64) (*Session, *bytes.Buffer) {
-		cfg := ripmodel.Spec()
+		cfg := ripmodels.FrameSpec()
 		cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 		m, err := transformer.NewRandom(cfg, seed)
 		if err != nil {
@@ -2279,7 +2325,7 @@ func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 			t.Fatal(err)
 		}
 		root := t.TempDir()
-		writeFile(t, filepath.Join(root, modelFile), b.String())
+		writeFile(t, filepath.Join(root, frameFile), b.String())
 		files, err := ResolveFiles(root, "", "")
 		if err != nil {
 			t.Fatal(err)
@@ -2359,7 +2405,7 @@ func judgeBytes(notes uint64, odds [2]float64) []byte {
 func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -2369,7 +2415,7 @@ func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	if err := m.Save(&weights); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(root, modelFile), weights.String())
+	writeFile(t, filepath.Join(root, frameFile), weights.String())
 	sum := binary.LittleEndian.Uint64(weights.Bytes()[weights.Len()-8:])
 	open := func(notes uint64) (*Session, *bytes.Buffer) {
 		// a judge that keeps every reported note and returns no dropped strike
@@ -2387,7 +2433,7 @@ func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 		return s, &out
 	}
 	s, out := open(sum + 1)
-	if s.judge != nil || s.ripper().Judge != nil || !strings.Contains(out.String(), "rip judge "+filepath.Join(root, judgeFile)+": ") || !strings.Contains(out.String(), "the installed scores judge") {
+	if s.judge != nil || s.ripper().Judge != nil || !strings.Contains(out.String(), "judge "+filepath.Join(root, judgeFile)+": ") || !strings.Contains(out.String(), "the installed scores judge") {
 		t.Errorf("a judge fitted on other notes weights loaded %v: %s", s.judge != nil, out)
 	}
 	dir, _, heard, write := truthFixture(t, s, 1)
@@ -2395,7 +2441,7 @@ func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	teardown(t, s)
 	s, out = open(sum)
 	defer teardown(t, s)
-	named := ", judge " + filepath.Join(root, judgeFile)
+	named := ", the judge " + filepath.Join(root, judgeFile)
 	if s.judge == nil || s.ripper().Judge == nil || !strings.Contains(out.String(), named) {
 		t.Fatalf("a judge fitted on the notes weights loaded gave the ripper none: %s", out)
 	}
@@ -2469,7 +2515,7 @@ func TestRowsWritesEachStrikesRowAsTheRipReadIt(t *testing.T) {
 	dir, fe, heard, write := truthFixture(t, s, 1)
 	list, to := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rows")
 	runOrFatal(t, s, &out, fmt.Sprintf("! rows %[1]s from %[2]s\n! rows %[1]s %[2]s\n! rows %[1]s from %[2]s part 2/2\n! rows %[1]s from %[2]s frames\n", to, list))
-	if !strings.Contains(out.String(), "no "+modelFile+" is loaded") {
+	if !strings.Contains(out.String(), "no "+frameFile+" is loaded") {
 		t.Errorf("no refusal for want of a model:\n%s", out.String())
 	}
 	// the truth is what the rip hears, so the notes it kept are the right ones
@@ -2533,13 +2579,13 @@ func TestRowsReadACorpusThatKeptItsAudio(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	cfg := ripmodel.Spec()
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.frontEnd, err = ripmodel.New(m, nil); err != nil {
+	if s.frontEnd, err = ripmodels.New(m, nil); err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()

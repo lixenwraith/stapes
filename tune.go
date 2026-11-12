@@ -119,7 +119,7 @@ func cmdTune(s *Session, a []string) error {
 			}
 		}
 		if s.frontEnd == nil {
-			return fmt.Errorf("tune truth tunes the model's decoders, and no %s is loaded", modelFile)
+			return fmt.Errorf("tune truth tunes the models' decoders, and no %s is loaded", frameFile)
 		}
 		return s.tuneTruth(o, s.path(a[i+1]), "", s.frontEnd)
 	}

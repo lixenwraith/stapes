@@ -189,6 +189,14 @@ def corpus(d, labels, frames=64):
             json.dump(lab, f)
 
 
+def run(*flags) -> str:
+    """one step of train.py at the smallest shape, and what it printed"""
+    argv = ["train.py", *flags, "--steps", "1", "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4"]
+    with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as said:
+        train.main()
+    return said.getvalue()
+
+
 def marks(frames, at) -> list:
     """a target of frames frames marked a frame either side of each frame in at"""
     out = np.zeros(frames, np.uint8)
@@ -286,6 +294,32 @@ class TheBeatAndTheBarLine(unittest.TestCase):
             self.assertGreater(off["downbeat"], at["downbeat"])
             self.assertAlmostEqual(off["total"] - at["total"], off["beat"] - at["beat"] + off["downbeat"] - at["downbeat"], places=5)
 
+    def test_a_line_scores_each_heads_peaks_and_says_where_none_is_asked(self):
+        """A held-out or validation line gives each head's F1 at its peaks over a half among the frames asked, a
+        peak right within four frames of a beat the labels give, as the strikes' is. Over a corpus that lists no
+        beat it says none is asked and gives neither head's loss, which over no frame would read as a perfect one."""
+        frames = 414  # two bars of 4/4 at 100 bpm: beats at 0, 52, 103, 155, 207, 258, 310 and 362, lines at 0 and 207
+        loop, recording = label([], frames, bpm=100, bars=2), label([note(0, 10, 60, "guitar")], frames, source="a.wav")
+        model = Heard(512)
+        beat, downbeat = model.cfg.slice("beat").start, model.cfg.slice("downbeat").start
+        model.y[0, [0, 54, 103, 155, 180, 258, 310, 413], beat] = 9.0  # six beats heard, one two frames late; one that is none; one past the frames asked
+        model.y[0, 362, beat] = -0.1  # and one under a half
+        model.y[0, 207, downbeat] = 9.0
+        v = train.evaluate(model, *train.validation([(Frames(frames), loop)], 512, 1)[:2], "cpu")
+        self.assertAlmostEqual(v["beats"][0], 2 * (6 / 7) * (6 / 8) / (6 / 7 + 6 / 8))
+        self.assertAlmostEqual(v["beats"][1], 2 * 1 * (1 / 2) / (1 + 1 / 2))
+        none = train.evaluate(model, *train.validation([(Frames(frames), recording)], 512, 1)[:2], "cpu")
+        self.assertEqual((none["beats"], "beat" in none, "downbeat" in none, "onset" in none), (None, False, False, True))
+        with tempfile.TemporaryDirectory() as d:
+            os.mkdir(os.path.join(d, "recordings"))
+            corpus(d, [{"bpm": 100, "bars": 1, "events": []}] * 2)
+            corpus(os.path.join(d, "recordings"), [{"source": "a.wav", "events": [note(0, 10, 60, "guitar")]}])
+            said = run("--corpus", d, "--out", os.path.join(d, "out.bin"), "--holdout", "1", "--validate", os.path.join(d, "recordings")).splitlines()
+        held, validation = (next(line for line in said if line.startswith(f"step 1 {name} ")) for name in ("held-out", "validation"))
+        self.assertRegex(held, r", beats' F1 \d\.\d{3}, bar lines' \d\.\d{3} \(.* beat \d\.\d{3} downbeat \d\.\d{3}\)")
+        self.assertIn(", no beat or bar line asked (", validation)
+        self.assertNotIn("beat ", validation.split("asked (")[1])
+
     def test_init_grows_the_heads_and_carries_every_other_weight(self):
         """A frame model from before the beat and downbeat heads starts a run through --init: every weight carries
         over, the output layer's rows of the heads it had among them, the two heads' rows are new, and the weight
@@ -296,14 +330,11 @@ class TheBeatAndTheBarLine(unittest.TestCase):
             at = lambda name: os.path.join(d, name)
             corpus(d, [{"bpm": 120, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
             torch.save({"model": before, "cfg": asdict(old)}, at("old.pt"))
-            argv = ["train.py", "--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--lr", "0", "--steps", "1",
-                    "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4"]
-            with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as said:
-                train.main()
+            said = run("--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--lr", "0")
             after = torch.load(at("new.pt"))
             with open(at("new.bin"), "rb") as f:
                 body = f.read()
-        self.assertIn("its heads but beat, downbeat, which start fresh", said.getvalue())
+        self.assertIn("its heads but beat, downbeat, which start fresh", said)
         self.assertEqual([tuple(h) for h in after["cfg"]["outputs"]], ripmodel.HEADS)
         had = old.out_size
         for k, v in before.items():

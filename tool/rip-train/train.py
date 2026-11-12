@@ -494,17 +494,25 @@ def validation(loops, window: int, channels: int):
 # A notes model's strikes as the decoder reads them: a peak over the bar a strike starts a note at, the higher bar
 # under E3, right when a labelled strike of its pitch lies within STRIKE_REACH frames
 STRIKE_BARS, STRIKE_LOW, STRIKE_REACH = (0.7, 0.9), 52, 4
+BEAT_BAR = 0.5  # a frame model's beat and downbeat are posteriors: a peak is one the head calls likelier than not
 
 
-def struck(logits: torch.Tensor, strike: torch.Tensor, valid: torch.Tensor, low: int) -> torch.Tensor:
-    """a window's peaks right, peaks, labelled strikes heard and labelled strikes, from [frames, pitches] each"""
+def struck(logits: torch.Tensor, strike: torch.Tensor, valid: torch.Tensor, bar) -> torch.Tensor:
+    """a window's peaks right, peaks, labelled strikes heard and labelled strikes, from [frames, pitches]
+    each, a peak one at bar or over, a pitch's own or one for all: a beat's and a bar line's are counted so too"""
     p = torch.sigmoid(logits)
-    bar = torch.where(torch.arange(p.shape[1], device=p.device) < low, STRIKE_BARS[1], STRIKE_BARS[0])
     peak = (p >= bar) & (p >= F.max_pool1d(p.T[None], 5, 1, 2)[0].T) & (valid[:, None] > 0)
     first = (strike > 0) & (F.pad(strike[:-1], (0, 0, 1, 0)) == 0)  # a mark's first frame; the strike is the next
     onset = F.pad(first[:-1], (0, 0, 1, 0))
     near = lambda x: F.max_pool1d(x.float().T[None], 2 * STRIKE_REACH + 1, 1, STRIKE_REACH)[0].T > 0
     return torch.stack([(peak & near(onset)).sum(), peak.sum(), (onset & near(peak)).sum(), onset.sum()])
+
+
+def fscore(counts) -> float:
+    """the F1 of struck's four counts"""
+    right, peaks, heard, given = (float(c) for c in counts)
+    precision, recall = right / max(peaks, 1), heard / max(given, 1)
+    return 2 * precision * recall / max(precision + recall, 1e-9)
 
 
 # the readings a cents head is scored over: of a cell its sound is on a glide in, of one it holds its pitch in, and of the
@@ -556,15 +564,17 @@ def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
 
 
 def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None) -> dict:
-    """the mean of the losses over the held-out windows, the model's weights untouched;
-    with low, the first pitch over the strikes' low bar, the strikes' F1 beside them,
-    and what a cents head reads: over the readings the labels place and each kind,
-    the median miss and the median error it states, in cents, and the share within
-    the stated; nan where a label does not say; with notes, the windows' notes
-    (validation), what a model that says what plays each pitch heard them as (noted)"""
+    """the mean of the losses over fixed windows, the model's weights untouched; with low, the first
+    pitch over the strikes' low bar, the strikes' F1 and what a cents head reads, by kind the median
+    miss, the median error stated and the share within it; with notes, the windows' (validation), what
+    a model that says what plays each pitch heard them as (noted); and of a frame model with the heads
+    the beats' and the bar lines' F1 at their peaks, None and no loss of theirs where no frame is asked"""
     model.eval()
     sums: dict = {}
     counts = torch.zeros(4, dtype=torch.long, device=device)
+    bars = torch.where(torch.arange(ripmodel.PITCHES, device=device) < low, STRIKE_BARS[1], STRIKE_BARS[0]) if low is not None else None
+    timed = "beat" in dict(model.cfg.outputs)
+    beats, metered = torch.zeros(2, 4, dtype=torch.long, device=device), 0.0  # the two heads' peaks counted, and the frames asked
     read = []  # each asked reading's miss and stated error in cents, and its kind
     voiced = notes is not None and notes.shape[1] > 0 and "pitchfamily" in dict(model.cfg.outputs)
     # a note's cells' say summed by their weights, then the weights and those of the cells under a higher one sounding
@@ -575,11 +585,18 @@ def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None =
             l = losses(model, mel, t)
             for k, v in l.items():
                 sums[k] = sums.get(k, 0.0) + v.item()
-            if low is not None:
+            if low is not None or timed:
                 out = model(mel)
+            if timed:
+                on = t["valid"] * t["metered"]
+                metered += on.sum().item()
+                for k, name in enumerate(("beat", "downbeat")):
+                    for i in range(len(out)):
+                        beats[k] += struck(out[i][:, model.cfg.slice(name)], t[name][i][:, None], on[i], BEAT_BAR)
+            if low is not None:
                 y = out[..., model.cfg.slice("strike")]
                 for i in range(len(y)):
-                    counts += struck(y[i], t["strike"][i], t["valid"][i], low)
+                    counts += struck(y[i], t["strike"][i], t["valid"][i], bars)
                 if "cents" in dict(model.cfg.outputs):
                     place, spread = out[..., model.cfg.slice("cents")].chunk(2, -1)
                     placed = t["asked"] > 0
@@ -605,9 +622,11 @@ def evaluate(model: ripmodel.RipModel, mels, tgs, device: str, low: int | None =
                         (miss[at] <= stated[at]).float().mean().item() if name != CENTS_KINDS[3] else float("nan"))
                        for name, at in [("cents", kind < 3)] + [(k, kind == i) for i, k in enumerate(CENTS_KINDS)] if at.any()]
     if low is not None:
-        right, peaks, heard, given = (float(c) for c in counts)
-        precision, recall = right / max(peaks, 1), heard / max(given, 1)
-        out["struck"] = 2 * precision * recall / max(precision + recall, 1e-9)
+        out["struck"] = fscore(counts)
+    if timed:  # a corpus that lists no beat asks neither head, and a mean over no frame would read as a head never wrong
+        out["beats"] = tuple(fscore(c) for c in beats) if metered else None
+        if not metered:
+            out.pop("beat", None), out.pop("downbeat", None)
     return out
 
 
@@ -822,16 +841,18 @@ def main() -> None:
     low = STRIKE_LOW - manifest["min_midi"] if args.pitchnet else None
 
     def scored(name: str, mels, tgs, notes):
-        """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them;
-        a family held out sets the model's measure by its notes there"""
+        """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them, a frame
+        model's with its beats' and bar lines' F1; a family held out sets the model's measure by its notes there"""
         v = evaluate(model, mels, tgs, args.device, low, notes)
         # the decoders read the onset, drum, pitch, voicing, strike and release heads
         # and a frame model's beat and downbeat; the wave, voice, velocity and family
         # heads say how a note is played and by what, and memorize the corpus's, so
         # they do not pick the step
         v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"] + v.get("beat", 0.0) + v.get("downbeat", 0.0)
-        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read", "voices"))
+        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read", "voices", "beats"))
         f1 = f", strikes' F1 {v['struck']:.3f}" if "struck" in v else ""
+        if "beats" in v:
+            f1 += ", beats' F1 {:.3f}, bar lines' {:.3f}".format(*v["beats"]) if v["beats"] else ", no beat or bar line asked"
         # the cents head: each kind of reading's median miss, the median error stated for it, and the share within the stated
         read = "".join(f"{'; ' if i else ', '}{k} " + (f"{stated:.1f} stated" if miss != miss else f"{miss:.1f} off, {stated:.1f} stated, {within:.0%} within")
                        for i, (k, miss, stated, within) in enumerate(v.get("read", [])))

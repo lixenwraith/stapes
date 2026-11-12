@@ -256,7 +256,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 **38a, 38b** (12 November, the probe)
 - From 32a with `--probe`, 3,000 steps at rate 1e-3 on its recipe over the corpora that name what plays (17 for 15, 11f for 11, 14, the singing corpus, GuitarSet's training players): only the three heads of what plays each pitch train. 38b holds the guitar out, which measures the share a name must pass: .674, 12% of the other families' notes past it and 71% of those right.
 - 32a's 22 tensors stay bit for bit, and 38a's file, with 38b's measure, rips as 32a does.
-- The names are poor. On NSynth's held-out instruments 38a names bass (1,627 right of 4,695 notes past the measure) and almost no synth (75 of 11,420), and no piano, guitar, strings, winds or voice. Waves .564 right, genes .202 off. 32a's frozen cells keep the bass and the synths apart from the rest and nothing a linear reading can name.
+- The names are poor. On NSynth's held-out instruments 38a names bass (1,627 right of 4,695 notes past the measure) and almost no synth (75 of 11,420), and no piano, guitar, strings, winds or voice. Waves .564 right, genes .202 off. The body free named the same (38c, 38e below): what the heads are asked, not 32a's cells.
 
 **38c, 38d, 38e** (12 November, the voices with the body free)
 - The probe's runs with every weight training and a fresh cents head: 38c at the voice heads' quarter weight, 38d the same with the guitar held out (measure .732), 38e at full weight (`--plays 1`), read for names alone.

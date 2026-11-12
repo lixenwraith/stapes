@@ -192,6 +192,13 @@ proves wrong or that a document now states, and link the document instead.
   recordings through the installed pair, the offline rip's note counts against
   the last reading and the two `corpus` digests take minutes and say whether
   the merge holds on what the rip is for.
+- **An installed root must rename its frame model's file to `ripframe.bin`.**
+  A root from before v0.23.0 holds `ripmodel.bin`, which stapes names at the
+  start ("frame model: ripmodel.bin is now ripframe.bin, so rename ...") and
+  never loads, so the rip hears with the analysis, the notes model and the
+  judge unread, until it is renamed: Lixen's root and any `-config-dir` a
+  recipe names. The archived names under `weights/`, audio's package
+  `ripmodel` and `pipeline.sh`'s checkpoint, `ripmodel.pt`, keep theirs.
 
 - Write a truth from a score or a MIDI file, never from memory: a remembered
   Billie Jean riff had its first note an octave low, the synthesizer's doubling

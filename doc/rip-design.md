@@ -278,7 +278,7 @@ offline (`song <name> <file.wav>`).
   rounding. A three-minute song is 15500 frames, 26 GFLOP a layer at the
   default width: 70 seconds on one core of a 2017 laptop's i7-7700HQ, against
   20 at width 128, and the width and depth are the file's to choose. The analysis stays the
-  default front end: stapes hears with the model when its root holds
+  default front end: stapes hears with the frame model when its root holds
   `ripframe.bin`.
 
 ## 4. Layout

@@ -44,9 +44,10 @@ The root is `-config-dir`, or else `os.UserConfigDir()` plus `stapes`
   engine's 50 ms when unset; a key it has no field for is refused by name;
 - `rip.toml`, the rip's parameters: what `rip` listens with when it is there,
   and where `tune` writes;
-- `ripframe.bin`, the rip's learned front end: what `rip` hears with when it is
-  there, the built-in analysis when it is not
-  ([rip-train](../tool/rip-train/README.md));
+- `ripframe.bin`, the frame model, the rip's learned front end: what `rip`
+  hears with when it is there, the built-in analysis when it is not
+  ([rip-train](../tool/rip-train/README.md)); under its old name,
+  `ripmodel.bin`, it is named at the start to be renamed and never loaded;
 - `ripnotes.bin`, the notes model: beside `ripframe.bin` it gives the notes, the
   pitches and their strikes, releases and velocities, and alone it is unused;
 - `ripjudge.bin`, a judge of the strikes: beside the weights it was fitted on

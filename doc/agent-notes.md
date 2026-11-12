@@ -23,6 +23,9 @@ proves wrong or that a document now states, and link the document instead.
   also take under a minute, enough to exercise the whole training path.
 - Build the binary from `./cmd/stapes`: `go build -o bin/stapes .` writes the
   library's archive under that name, which then refuses to run.
+- A phrase in the docs wraps, so count one over the whole file, `\s+` between
+  its words: `perl -0777 -ne 'print scalar(() = /\b[Tt]he\s+model\b/g)'` over
+  v0.24.0's tree counts 26 where `git grep` by line found 20.
 - A change that needs an audio not yet tagged names the tag in `go.mod` and
   builds through a workspace kept outside both trees: a `go.work` of `use
   <stapes>` and `replace github.com/lixenwraith/audio vX => <audio>`, named by

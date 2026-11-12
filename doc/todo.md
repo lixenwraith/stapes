@@ -103,9 +103,9 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    kick at times, drifting saws) cost the analysis a little on clean loops
    (`bench 48 4` 0.455 to 0.432, drums 0.43 to 0.39) and gain it a little on
    augmented ones (0.399 to 0.406); a corpus rendered with them trains the
-   model on them. The analysis also leans on a lone oscillator starting every
-   note at phase 0: at random phases two lines on one instrument stop parting
-   (`TestRipTellsTheLeadByItsCharacter`), as a recording's would. Then
+   rip's models on them. The analysis also leans on a lone oscillator starting
+   every note at phase 0: at random phases two lines on one instrument stop
+   parting (`TestRipTellsTheLeadByItsCharacter`), as a recording's would. Then
    the weights and a tuned parameter set shipped as data, `DefaultRipParams`
    kept for a recording nothing tuned for. [Rip design §8](rip-design.md#8-measured-on-the-sample-recording)
    has the runs' numbers.

@@ -273,8 +273,10 @@ trained weights:
   the heads lose bars beyond chance; the body gains on real kits alone and
   loses under a mix, which the round never heard. Neither is installed. R3's
   probes from 40a (43a, 44b, 44c) moved drums under a mix and not the beats.
-  Left: the frame model trained again from no weights on what these rounds
-  taught (stapes#49), its bars read through audio v0.25.2's decode.
+  The frame model trained again from no weights (48a, rip-rounds) has the beat
+  right on 76% of a generated evaluation's 4/4 loops and states six or three
+  beats a bar on a third of them through audio v0.25.2's decode: the meter
+  with the heads is the decoder's to mend before a round is read by its bars.
 - **What the small run says a round must change.** It was read twice: through
   audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
   and by rank, through the decoders of v0.24.1 to v0.25.0 on audio's branch

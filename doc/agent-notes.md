@@ -204,6 +204,19 @@ proves wrong or that a document now states, and link the document instead.
   `pipeline.sh`'s checkpoint is `ripframe.pt`, so a round stopped under the
   old name resumes with `CHECKPOINT=` naming its file.
 
+- A truth holds one note a frame and pitch, since a rip reports one, and none
+  outside the models' pitches (E1 to C7 until the range widens, todo): two
+  parts on one pitch were counted twice in 6.9% of the generated evaluation's
+  notes, which capped its recall at 93%, and 1.1% lay under E1. A doubled
+  note's name is right when it is any family sounding there, and its names are
+  printed apart ([Rip training §5](rip-training.md#5-the-targets)).
+- A scorer is code nobody trained. Six defects sat in November's scorers (a
+  doubled note counted twice, float mixes read as 16-bit, tempo rows under the
+  wrong names, a doubled note's parts kept by one kind, a beat count's
+  denominator, every MIDI channel read as drums) until a review re-ran each
+  claim on the files. A new scorer gets a test or a count made apart before a
+  figure from it is used. A table is one decode's: when audio moves, rebuild
+  the reading tools between rounds and read the baseline again.
 - Write a truth from a score or a MIDI file, never from memory: a remembered
   Billie Jean riff had its first note an octave low, the synthesizer's doubling
   the analysis hears, and turned a 96-to-94 tie into a 110-to-84 loss.
@@ -297,17 +310,25 @@ proves wrong or that a document now states, and link the document instead.
   the rip hears as wrong: read it by bass notes right (111 of 138 clean). A
   judge fitted on recordings, which hold no drums, kept 49 to 76 of them;
   fitted on the engine's mixes alone, 102.
-- 32a trained on vocadito's clips 1 to 30: its singing corpus
-  (`~/ripcorpus-vocal`) holds them beside VocalSet, 30 loops of 2,346, which
-  a look at every fiftieth label missed. Search every label's `source` before
-  calling a set unmet. GuitarSet, MusicNet, vocadito's clips 31 to 40 and the
-  takes are unmet by it (its log names corpora 15, 14 and 11, the singing
-  corpus and E-GMD). A round that trains on one of them takes it out of
-  every held-out reading, a judge's fit included.
-- **A full track only measures.** Billie Jean, the pop set and the piano
-  takes are never in a corpus or a fit's list: no licence covers training on
-  them (AGENTS, Data). The audit's scratch fits of a judge held Billie Jean's
-  rows whenever another collection was left out; nothing from them is kept.
+- Hold-outs are by source, never by file: GuitarSet's players (00 to 03
+  train, 04 validates, 05 tests), VocalSet's singers (f2, f8, m3, m5 and m10
+  held out), MusicNet's pieces, E-GMD's split, NSynth's instruments, a
+  generated set's seed. 32a trained on vocadito's clips 1 to 30, 30 loops of
+  `~/ripcorpus-vocal`'s 2,346, which a look at every fiftieth label missed:
+  check every label's `source` against every validation, fit and test list
+  before calling a set unmet, and take a set a round trains on out of every
+  held-out reading, a judge's fit included. Music is shared too: 98 of the
+  generated evaluation's 800 loops share a Lakh stretch with a training loop
+  and scored no higher in November; `vif/tmp/audit2/evalshared.py`, naming
+  every corpus trained on, says after a round whether they pull ahead.
+- **A recording of a song only measures.** Billie Jean, the pop set and the
+  piano takes, the originals or a phone's recording of them, are never in a
+  corpus or a fit's list: no licence covers training on them (AGENTS, Data);
+  a transcription the engine renders and the CC BY sets are what trains. Nor
+  may one shape an input: the channel's noise bank took its room from the
+  quiet of a phone take until the fresh rounds
+  (`vif/tmp/round37/r4/noise-clean.npz`). At a fresh start, list every input
+  with where it came from.
 - **`rows` knows a recording by its audio alone**: its files are named by
   the first eight bytes of the WAV's SHA-256, the name `frames <dir>` starts
   with. Two list lines over one WAV write one recording, under the first
@@ -347,7 +368,9 @@ proves wrong or that a document now states, and link the document instead.
   beside every reading and hold no stage back on it.
 - Lixen's order of work: fix what is already known to help, train a little,
   then measure with focus. Do not measure further ahead of a round to pin
-  every open piece first.
+  every open piece first. A reading where little is trained is not a verdict:
+  a line only moves forward, and what it cannot do yet is read again after
+  the next round.
 
 ## Corpus and bench
 
@@ -435,6 +458,24 @@ proves wrong or that a document now states, and link the document instead.
   32a's peaks, models outside its line find 80 to 88% within a frame; a rendered
   loop's exact labels would only take on 32a's frame of play, so only MusicNet
   is snapped (`vif/tmp/round37/tools/snap.py`).
+- A label a tool made carries the tool's offset. VocalSet's notes come from a
+  YIN pitch track that stamps a note at the start of its 1,024-sample window,
+  two frames before its sound, and were 95% of the singing both lines trained
+  on through 51a; `~/ripcorpus-vocal-m` holds them moved
+  (`vif/tmp/round37/r6/vocalmend.py`). Before a corpus trains,
+  `tool/rip-train/datacheck.py` with `GROUP=1` reads each source's lag from a
+  labelled start to the sound's rise: 0 or 1 frame, as vocadito's hand labels
+  and MusicNet after its snap read.
+- A recording read at the wrong scale is silence with labels: a float WAV is
+  already within one, and divided by 32,768 as 16-bit samples the mix test's
+  ten MusicNet mixes held 2,157 hits in no sound. `datacheck.py` prints a
+  corpus's median loudest value and the loops under a tenth of it; look at a
+  set's level before reading anything from it.
+- A real set repeated is not more sound: GuitarSet's two training hours at
+  0.4 of 48a's windows (8 windows of 512 frames a step) were each heard about a
+  hundred times in 40,000 steps, its 84 hours of generated loops about twice.
+  Before a round, count the hours of windows it draws from each corpus against
+  the hours each holds.
 - `part k/n` counts k from 0: `part 4/4` is refused, and the pass with no part
   then renders that quarter's loops itself, on one core.
 - A drum change is benched piece by piece without editing the tree:
@@ -484,6 +525,11 @@ proves wrong or that a document now states, and link the document instead.
   them, so tune them (`tune ... truth <list>`) before judging a round (10a read
   0.530 pooled at 8b's, 0.650 at its own), and pin them in the root's
   `rip.toml` beside the weights. Compare rounds on one tree's bench loops.
+  The drums' `onset_min` is one: a share of the recording's loudest frame, so
+  a surer drums head wants a higher bar (the fresh pair heard 113 false hits a
+  minute on the generated evaluation's clean loops at the built-in 0.1, 31 at
+  0.7). Never read a new model through the old one's `rip.toml`, and fit a bar
+  on validation recordings, never the test's.
 - With strikes the melody register never reaches the pair decoder, so
   `second_voice` and `cross` move no note on the models' path, while the bass
   line's own path reads `jump`, `switch` and `retrigger`: `modelGenes` is what
@@ -593,7 +639,11 @@ proves wrong or that a document now states, and link the document instead.
   peaks at the decoder's bars ranked them as solo guitar's test player did
   (Spearman .93), which is what `--validate` picks a notes model by. One
   instrument's score trades against another's (the same peaks against
-  MusicNet, -.58), so validate on every kind of recording at once.
+  MusicNet, -.58), so validate on every kind of recording at once. A frame
+  model is still picked by the decoders' loss there, which rose only as its
+  onset head grew surer while its beats' F1 rose (.14 to .24): 48a's pick was
+  step 10,000 of 40,000. Read a line at its last step, each head by its own
+  score on the recordings, not by one sum.
 - A checkpoint scores a third lower on recordings it trained on: 24b and 33b
   mixed in GuitarSet's player 04 and the 19 MusicNet pieces before those became
   `~/ripcorpus-val`, and 33b's validation loss reads 2.16 against 2.9 to 3.3.

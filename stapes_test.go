@@ -2207,8 +2207,8 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if now.f1() < was.f1() {
-		t.Errorf("the written parameters score %.3f, the start %.3f:\n%s", now.f1(), was.f1(), out.String())
+	if now.notes.f1() < was.notes.f1() {
+		t.Errorf("the written parameters score %.3f, the start %.3f:\n%s", now.notes.f1(), was.notes.f1(), out.String())
 	}
 }
 
@@ -2287,7 +2287,8 @@ func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
 		t.Fatal(err)
 	}
 	const guard = 0.01
-	before, costly := conditionF1(takes, len(conds), s.rip, s.lead), conditionF1(takes, len(conds), lower, s.lead)
+	given := conditionCounts(takes, len(conds), s.rip, s.lead)
+	before, costly := scores(given, given), scores(conditionCounts(takes, len(conds), lower, s.lead), given)
 	if before[0] != 1 || guarded(costly, before, 1) <= guarded(before, before, 1) || before[0]-costly[0] <= guard {
 		t.Fatalf("the lower bar scores %.3f from %.3f: want a gain of the mean that costs sure over %g", costly, before, guard)
 	}
@@ -2304,6 +2305,83 @@ func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
 	}
 	if _, err := os.Stat(file); err == nil {
 		t.Errorf("a set was written past the guard:\n%s", out.String())
+	}
+}
+
+// analysisEar hears through the package's own analysis, which hears a rendered
+// loop's drums and bars where a test's small model hears neither
+type analysisEar struct{}
+
+func (analysisEar) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFrames, error) {
+	return audio.Ripper{Params: p}.Hear(x, rate)
+}
+
+// TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem: a label gives its loop's
+// hits and bars beside its notes, a rendered loop's bars from its tempo and
+// meter; one written from a rip's own scores one on each, tune truth says the
+// three apart and searches the drums' and the bars' genes, and those no score
+// of so short a loop sees are written as the start's
+func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
+	bar := 12 * float64(audio.SamplesPerStep(120)) / audio.AudioSampleRate
+	if beats, downbeats, err := (corpusLoop{BPM: 120, Bars: 2, Meter: "3/4"}).grid(); err != nil || len(beats) != 6 || !slices.Equal(downbeats, []float64{0, bar}) {
+		t.Fatalf("two bars of 3/4 at 120 give beats %v and bar lines %v (%v), want six beats and lines at 0 and %g s", beats, downbeats, err, bar)
+	}
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	loops, err := s.corpus(tuneOptions{loops: 1, bars: 4, seed: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeWAV(t, filepath.Join(dir, "loop.wav"), loops[0].audio)
+	r, err := audio.Ripper{Params: s.rip, Lead: s.lead}.Samples(loops[0].audio, audio.AudioSampleRate)
+	if err != nil || len(r.Notes) == 0 || len(r.Hits()) == 0 || len(r.Bars) < 2 {
+		t.Fatalf("the start's rip: %v, %d notes, %d hits, %d bars: no fixture", err, len(r.Notes), len(r.Hits()), len(r.Bars))
+	}
+	frame := func(sec float64) int { return int(math.Round(sec / audio.RipFrameSec)) }
+	lab := corpusLoop{BPM: r.BPM, Bars: len(r.Bars)}
+	for _, n := range r.Notes {
+		lab.Events = append(lab.Events, corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: n.Vel})
+	}
+	for _, h := range r.Hits() {
+		lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), Drum: int(h.Drum), Vel: h.Vel})
+	}
+	for i, b := range r.Beats {
+		if lab.Beats = append(lab.Beats, frame(b)); i%r.Meter.Beats() == 0 {
+			lab.Downbeats = append(lab.Downbeats, frame(b))
+		}
+	}
+	if err := writeJSON(filepath.Join(dir, "loop.json"), lab); err != nil {
+		t.Fatal(err)
+	}
+	list, file := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rip.toml")
+	writeFile(t, list, "loop.wav\tloop.json\tloop\ttimed\n")
+	takes, _, err := readTruthList(list, analysisEar{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, err := takes[0].count(s.rip, s.lead); err != nil || c.notes.f1() != 1 || c.drums.f1() != 1 || c.bars() != 1 {
+		t.Fatalf("a label of the rip's own notes, hits and beats counts %+v (%v), want one on each", c, err)
+	}
+	// a start whose drums' bar is the range's top: every move of it hears more of the hits
+	s.rip.OnsetMin = 0.9
+	start := s.rip
+	if err := s.tuneTruth(tuneOptions{generations: 2, pool: 8, seed: 1}, list, file, analysisEar{}); err != nil {
+		t.Fatalf("tune truth: %v\n%s", err, out.String())
+	}
+	for _, want := range []string{"loop: F1 ", "loop: drums F1 ", "loop: bars ", fmt.Sprintf("%d hit(s) and %d bar line(s) given", len(r.Hits()), len(lab.Downbeats))} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("no %q in what tune truth says of a label:\n%s", want, out.String())
+		}
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("nothing written over a start that hears few of the hits:\n%s", out.String())
+	}
+	p, err := audio.LoadRipParams(data)
+	if err != nil || p.OnsetMin >= start.OnsetMin || p.RepeatMargin != start.RepeatMargin || p.NearMargin != start.NearMargin || p.NearRepeat != start.NearRepeat {
+		t.Errorf("wrote %+v (%v): want onset_min under the start's, and the margins of how a reading repeats, read of no four bars, the start's %+v", p, err, start)
 	}
 }
 

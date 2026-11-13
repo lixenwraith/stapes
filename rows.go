@@ -196,7 +196,7 @@ func truthSources(from string) (lines []truthLine, silent int, err error) {
 			silent++
 			continue
 		}
-		lines = append(lines, truthLine{dir: from, wav: wav, truth: filepath.Base(label), cond: filepath.Base(from), timed: true, label: true})
+		lines = append(lines, truthLine{dir: from, wav: wav, truth: filepath.Base(label), cond: filepath.Base(from), timed: true})
 	}
 	if len(lines) == 0 {
 		return nil, 0, fmt.Errorf("%s: no loop with its audio beside its label (a corpus written without nowav)", from)

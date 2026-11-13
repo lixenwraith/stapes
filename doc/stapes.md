@@ -180,12 +180,25 @@ Over the library's rip (library
   engine, the current set seeding the pool, and writes a set that beats it
   ([todo](todo.md#tune-the-rip) for what the corpus still lacks). `tune ...
   truth <list>` searches instead the thresholds the loaded models' decoders
-  read (`modelGenes`), the rest held, against real recordings, a line
-  `wav<TAB>truth[<TAB>condition[<TAB>timed]]` each, by the mean over the
-  conditions of each condition's F1 by pitch and onset (`conditionF1`), from a
-  pool drawn near the current thresholds (`search`'s `near`); a set that takes
-  more than `guard` from a condition's F1 at the start scores under zero
-  (`guarded`) and is never written. The front end's `Hear` ignores `RipParams`, so
+  read (`modelGenes`), the rest held, against recordings, a line
+  `wav<TAB>truth[<TAB>condition[<TAB>timed]]` each, from a pool drawn near the
+  current thresholds (`search`'s `near`). A truth gives notes, and may give
+  drum hits (a `.mid`'s drum channel, a corpus label's) and bars (a label's
+  alone: a rendered loop's from its tempo, bars and meter, `corpusLoop.grid`;
+  a transcription's `.mid` holds its writer's default signature). Each
+  condition then carries up to three scores (`truthCount`, `scores`): its
+  notes' F1 by pitch and onset, its drums' F1 (`MatchHits`, as `truth` counts
+  them) and its bars, the share of the downbeats given on a bar line of a rip
+  whose bar is the given's length (`MatchBars`). A set scores their mean:
+  each is a share of one capability, none converts into another, and the
+  guard holds each, so a set that takes more than `guard` from any one at the
+  start scores under zero (`guarded`) and is never written. With hits
+  `onset_min` is searched too (`drumGenes`), with bars the tempo's prior and
+  combs, `tightness`, the bars' weights and the meter's margins (`barGenes`);
+  and either search's best has each gene whose move the score does not see,
+  put back alone, back at the start's (`settled`), since a pool moves genes by
+  chance and a search through the analysis, a model without the heads or loops
+  under six bars sees only some of them. The front end's `Hear` ignores `RipParams`, so
   each recording is heard once (`heardOnce`) and a candidate pays the decoders
   alone; `frames <dir>` keeps what was heard between runs, a gob of the
   `RipFrames` named by the checksums of the recording and of the weight files

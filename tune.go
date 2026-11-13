@@ -947,6 +947,43 @@ func (l corpusLoop) notes() []audio.RipNote {
 	return out
 }
 
+// hits is a label's drum hits as a truth on the loop's own clock
+func (l corpusLoop) hits() []audio.RipHit {
+	var out []audio.RipHit
+	for _, e := range l.Events {
+		if e.Drum >= 0 {
+			out = append(out, audio.RipHit{Start: float64(e.Frame) * audio.RipFrameSec, Drum: audio.InstrumentType(e.Drum), Vel: e.Vel})
+		}
+	}
+	return out
+}
+
+// grid is a label's beats and bar lines in seconds: a recording's as its list
+// named them, a rendered loop's from its tempo, bars and meter, a sixteenth of
+// whole samples as exportCorpus lays an event, the last bar's end no line
+func (l corpusLoop) grid() (beats, downbeats []float64, err error) {
+	if len(l.Beats) > 0 {
+		for _, f := range l.Beats {
+			beats = append(beats, float64(f)*audio.RipFrameSec)
+		}
+		for _, f := range l.Downbeats {
+			downbeats = append(downbeats, float64(f)*audio.RipFrameSec)
+		}
+		return beats, downbeats, nil
+	}
+	m, err := audio.ParseMeter(l.Meter)
+	if err != nil || l.BPM <= 0 {
+		return nil, nil, err
+	}
+	step := float64(audio.SamplesPerStep(l.BPM)) / audio.AudioSampleRate
+	for i := range l.Bars * m.Beats() {
+		if beats = append(beats, float64(i*m.Beat())*step); i%m.Beats() == 0 {
+			downbeats = append(downbeats, beats[i])
+		}
+	}
+	return beats, downbeats, nil
+}
+
 // corpusManifest names the corpus's layout for the trainer
 type corpusManifest struct {
 	Version    int      `json:"version"`
@@ -2075,7 +2112,7 @@ func (s *Session) tune(o tuneOptions, file string) error {
 // genome scored once and candidates in parallel: near, its first pool is start
 // and sets a step from it, the step widening while the best betters and
 // narrowing while it stalls, as the fit's; else draws across the ranges. A
-// score under zero is a set refused. It returns the best and the start's score.
+// score under zero is a set refused. It returns the best, settled, and the start's score.
 func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterBounds, start []float64, near bool, eval func([]float64) float64) (genetic.Candidate[[]float64, float64], float64, error) {
 	eval = genetic.Memoize(func(g []float64) string { return fmt.Sprint(g) }, eval)
 	base := eval(start)
@@ -2129,7 +2166,57 @@ func (s *Session) search(o tuneOptions, over string, bounds []genetic.ParameterB
 		return genetic.Candidate[[]float64, float64]{}, 0, err
 	}
 	say(pool, pool.Generation) // the engine's loop ends before the last one's turn
-	return pool.Members[0], base, nil
+	return settled(pool.Members[0], start, base, eval), base, nil
+}
+
+// settled is a search's best with each gene whose move the score does not see
+// back at the start's: a pool moves genes the truths cannot read, the heads'
+// weights under a model without them, and they are not to be written by chance.
+// Each is put back alone, side by side; those that cost nothing go back
+// together, or one at a time where together they cost.
+func settled(best genetic.Candidate[[]float64, float64], start []float64, base float64, eval func([]float64) float64) genetic.Candidate[[]float64, float64] {
+	back := func(data []float64, genes ...int) []float64 {
+		out := slices.Clone(data)
+		for _, k := range genes {
+			out[k] = start[k]
+		}
+		return out
+	}
+	var moved []int
+	for k := range best.Data {
+		if best.Score > base && best.Data[k] != start[k] {
+			moved = append(moved, k)
+		}
+	}
+	alone := make([]float64, len(moved))
+	var wg sync.WaitGroup
+	free := make(chan struct{}, runtime.NumCPU())
+	for i, k := range moved {
+		wg.Go(func() {
+			free <- struct{}{}
+			alone[i] = eval(back(best.Data, k))
+			<-free
+		})
+	}
+	wg.Wait()
+	var unseen []int
+	for i, k := range moved {
+		if alone[i] >= best.Score {
+			unseen = append(unseen, k)
+		}
+	}
+	if all := back(best.Data, unseen...); len(unseen) > 0 {
+		if score := eval(all); score >= best.Score {
+			best.Data, best.Score = all, score
+			return best
+		}
+	}
+	for _, k := range unseen {
+		if one := back(best.Data, k); eval(one) >= best.Score {
+			best.Data, best.Score = one, eval(one)
+		}
+	}
+	return best
 }
 
 // nearStep is the step a search near its start opens with, a share of each
@@ -2176,6 +2263,34 @@ var modelGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.Retrigger },
 }
 
+// drumGenes is what tune truth searches beside them when a truth gives drum
+// hits, the bar a hit rises to against its drum's loudest; barGenes when one
+// gives bars: the tempo's prior and combs, the beats' tightness, the bar lines'
+// weights and the meter's margins
+var drumGenes = []func(*audio.RipParams) *float64{
+	func(p *audio.RipParams) *float64 { return &p.OnsetMin },
+}
+
+var barGenes = []func(*audio.RipParams) *float64{
+	func(p *audio.RipParams) *float64 { return &p.TempoPrior },
+	func(p *audio.RipParams) *float64 { return &p.TempoWidth },
+	func(p *audio.RipParams) *float64 { return &p.Tightness },
+	func(p *audio.RipParams) *float64 { return &p.TempoComb },
+	func(p *audio.RipParams) *float64 { return &p.BeatComb2 },
+	func(p *audio.RipParams) *float64 { return &p.BeatComb3 },
+	func(p *audio.RipParams) *float64 { return &p.BeatComb4 },
+	func(p *audio.RipParams) *float64 { return &p.BarLine },
+	func(p *audio.RipParams) *float64 { return &p.BarBeat },
+	func(p *audio.RipParams) *float64 { return &p.BarAccent },
+	func(p *audio.RipParams) *float64 { return &p.BarHead },
+	func(p *audio.RipParams) *float64 { return &p.BarMove },
+	func(p *audio.RipParams) *float64 { return &p.MeterMargin },
+	func(p *audio.RipParams) *float64 { return &p.MeterHead },
+	func(p *audio.RipParams) *float64 { return &p.RepeatMargin },
+	func(p *audio.RipParams) *float64 { return &p.NearMargin },
+	func(p *audio.RipParams) *float64 { return &p.NearRepeat },
+}
+
 // geneOf is where a parameter stands in Genes' order, which names none
 func geneOf(at func(*audio.RipParams) *float64) int {
 	var p audio.RipParams
@@ -2183,78 +2298,99 @@ func geneOf(at func(*audio.RipParams) *float64) int {
 	return slices.Index(p.Genes(), 1)
 }
 
-// tuneTruth searches modelGenes against the recordings a list names, each heard
-// once through fe or read back from o.frames, the other parameters held at the
-// session's: a set scores the mean of its conditions' F1 by pitch and onset, and
-// one that takes more than o.guard from a condition's F1 at the start is refused;
-// it says each condition's F1 before and after
+// tuneTruth searches the decoders' parameters against the recordings a list
+// names, each heard once through fe or read back from o.frames, the rest held at
+// the session's: modelGenes, drumGenes where a truth gives hits and barGenes
+// where one gives bars. A set scores the mean of every score its conditions
+// carry (scores), refused past o.guard; it says each before and after.
 func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontEnd) error {
 	takes, conds, err := readTruthList(list, fe, o.frames, s.earSum)
 	if err != nil {
 		return err
 	}
-	cur, ranges := s.rip, audio.RipGeneRanges()
-	bounds, start := make([]genetic.ParameterBounds, len(modelGenes)), make([]float64, len(modelGenes))
-	for k, at := range modelGenes {
-		r := ranges[geneOf(at)]
-		bounds[k], start[k] = genetic.ParameterBounds{Min: r[0], Max: r[1]}, *at(&cur)
-	}
-	params := func(genes []float64) audio.RipParams {
-		p := cur
-		for k, at := range modelGenes {
-			*at(&p) = genes[k]
-		}
-		return p
-	}
 	// the current parameters' rips hear every recording and read every transcript
-	sums, given, read := make([]noteCount, len(conds)), 0, 0
+	cur, sums, read := s.rip, make([]truthCount, len(conds)), 0
 	for _, t := range takes {
 		t.judge = s.judge
 		c, err := t.count(cur, s.lead)
 		if err != nil {
 			return err
 		}
-		if c.given == 0 {
-			return fmt.Errorf("%s: no notes given", t.truthFile)
+		if c.notes.given+c.drums.given+c.lines == 0 {
+			return fmt.Errorf("%s: no notes, hits or bars given", t.truthFile)
 		}
-		t.given, given, sums[t.cond] = c.given, given+c.given, sums[t.cond].plus(c)
+		t.given, sums[t.cond] = c, sums[t.cond].plus(c)
 		if t.ear.read {
 			read++
 		}
 	}
+	var all truthCount
+	for _, c := range sums {
+		all = all.plus(c)
+	}
+	genes := slices.Clone(modelGenes)
+	if all.drums.given > 0 {
+		genes = append(genes, drumGenes...)
+	}
+	if all.lines > 0 {
+		genes = append(genes, barGenes...)
+	}
+	ranges := audio.RipGeneRanges()
+	bounds, start := make([]genetic.ParameterBounds, len(genes)), make([]float64, len(genes))
+	for k, at := range genes {
+		r := ranges[geneOf(at)]
+		bounds[k], start[k] = genetic.ParameterBounds{Min: r[0], Max: r[1]}, *at(&cur)
+	}
+	params := func(data []float64) audio.RipParams {
+		p := cur
+		for k, at := range genes {
+			*at(&p) = data[k]
+		}
+		return p
+	}
 	if o.frames != "" {
 		fmt.Fprintf(s.out, "%d recording(s) heard and their frames kept in %s, %d read back from it\n", len(takes)-read, o.frames, read)
 	}
-	before := f1s(sums)
-	over := fmt.Sprintf("%d recording(s) of %d condition(s) against %d note(s) given, a set refused that takes over %g from a condition", len(takes), len(conds), given, o.guard)
-	best, base, err := s.search(o, over, bounds, start, true, func(genes []float64) float64 {
-		return guarded(conditionF1(takes, len(conds), params(genes), s.lead), before, o.guard)
-	})
+	before := scores(sums, sums)
+	score := func(data []float64) float64 {
+		return guarded(scores(conditionCounts(takes, len(conds), params(data), s.lead), sums), before, o.guard)
+	}
+	over := fmt.Sprintf("%d recording(s) of %d condition(s) against %d note(s), %d hit(s) and %d bar line(s) given, a set refused that takes over %g from a score",
+		len(takes), len(conds), all.notes.given, all.drums.given, all.lines, o.guard)
+	best, base, err := s.search(o, over, bounds, start, true, score)
 	if err != nil {
 		return err
 	}
-	after := before
+	after := sums
 	if best.Score > base {
-		after = conditionF1(takes, len(conds), params(best.Data), s.lead)
+		after = conditionCounts(takes, len(conds), params(best.Data), s.lead)
 	}
 	for c, name := range conds {
-		fmt.Fprintf(s.out, "%s: F1 %.3f before, %.3f after\n", name, before[c], after[c])
+		if sums[c].notes.given > 0 {
+			fmt.Fprintf(s.out, "%s: F1 %.3f before, %.3f after\n", name, sums[c].notes.f1(), after[c].notes.f1())
+		}
+		if sums[c].drums.given > 0 {
+			fmt.Fprintf(s.out, "%s: drums F1 %.3f before, %.3f after\n", name, sums[c].drums.f1(), after[c].drums.f1())
+		}
+		if sums[c].lines > 0 {
+			fmt.Fprintf(s.out, "%s: bars %.3f before, %.3f after\n", name, sums[c].bars(), after[c].bars())
+		}
 	}
 	return s.keepRip(file, params(best.Data), best.Score, base)
 }
 
-// guarded is a set's score: the mean of its conditions' F1, or for a set that
-// takes more than guard from any condition's F1 at the start, the most it takes
-// under zero, so every set that passes scores over every set refused
-func guarded(f1, start []float64, guard float64) float64 {
+// guarded is a set's score: the mean of its scores, or for a set that takes
+// more than guard from any of them at the start, the most it takes under zero,
+// so every set that passes scores over every set refused
+func guarded(got, start []float64, guard float64) float64 {
 	var sum, cost float64
-	for c := range f1 {
-		sum, cost = sum+f1[c], max(cost, start[c]-f1[c])
+	for c := range got {
+		sum, cost = sum+got[c], max(cost, start[c]-got[c])
 	}
 	if cost > guard {
 		return -cost
 	}
-	return sum / float64(len(f1))
+	return sum / float64(len(got))
 }
 
 // heardOnce hears one recording once, or reads the frames a run before kept in
@@ -2327,7 +2463,9 @@ type truthTake struct {
 	x              []float64
 	ear            *heardOnce
 	truth          func(*audio.Rip) ([]audio.RipNote, error)
-	given          int             // the notes the truth gives, all missed by a rip that fails
+	hits           []audio.RipHit  // the drum hits its truth gives, nil for none
+	beats, lines   []float64       // the beats and bar lines a label gives, in the recording's seconds, nil for none
+	given          truthCount      // what the truth gives, all missed by a rip that fails
 	cond           int             // its condition, an index into the list's
 	timed          bool            // the truth's seconds are the recording's
 	judge          *audio.RipJudge // what rules its rip's strikes, nil for the installed scores
@@ -2335,10 +2473,10 @@ type truthTake struct {
 
 // truthLine is a truth list's line: a recording and its truth, relative paths
 // read from dir, its condition, and whether the truth's seconds are the
-// recording's; label says the truth is a corpus loop's label
+// recording's
 type truthLine struct {
 	dir, wav, truth, cond string
-	timed, label          bool
+	timed                 bool
 }
 
 func (l truthLine) at(p string) string {
@@ -2397,19 +2535,24 @@ func (l truthLine) take(recording []byte, sum [sha256.Size]byte, fe audio.RipFro
 		t.ear.file = filepath.Join(frames, fmt.Sprintf("%x-%.16s.frames", sum[:8], weights))
 	}
 	switch {
-	case l.label:
+	case strings.EqualFold(filepath.Ext(l.truth), ".json"): // a corpus loop's label
 		var lab corpusLoop
 		if err := json.Unmarshal(given, &lab); err != nil {
 			return nil, fmt.Errorf("%s: %w", l.truth, err)
 		}
+		beats, downbeats, err := lab.grid()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", l.truth, err)
+		}
 		notes := lab.notes()
-		t.truth = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }
+		t.truth, t.hits, t.beats, t.lines = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }, lab.hits(), beats, downbeats
 	case isMIDI(l.truth):
 		score, err := audio.ReadMIDI(bytes.NewReader(given))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", l.truth, err)
 		}
-		t.truth = func(*audio.Rip) ([]audio.RipNote, error) { return score.Notes, nil }
+		// its drum channel's hits, and no bars: a transcription's are its writer's default signature and tempo
+		t.truth, t.hits = func(*audio.Rip) ([]audio.RipNote, error) { return score.Notes, nil }, score.Hits
 	default:
 		text := string(given)
 		t.truth = func(r *audio.Rip) ([]audio.RipNote, error) { return transcript(text, r) }
@@ -2448,17 +2591,63 @@ func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([
 	return takes, conds, nil
 }
 
-// count rips the take under p and counts its notes against its truth's
-func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (noteCount, error) {
+// count rips the take under p and counts it against its truth: its notes by
+// pitch and onset, its hits within half a step as truth counts them, and the
+// downbeats given that fall on a bar line of a bar the given's length (MatchBars)
+func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, error) {
+	missed := truthCount{notes: noteCount{given: t.given.notes.given}, drums: noteCount{given: t.given.drums.given}, lines: t.given.lines}
 	r, err := audio.Ripper{Params: p, FrontEnd: t.ear, Lead: lead, Judge: t.judge}.Samples(t.x, audio.RipRate)
 	if err != nil {
-		return noteCount{given: t.given}, fmt.Errorf("%s: %w", t.wav, err)
+		return missed, fmt.Errorf("%s: %w", t.wav, err)
 	}
 	given, err := t.truth(r)
 	if err != nil {
-		return noteCount{given: t.given}, fmt.Errorf("%s: %w", t.truthFile, err)
+		return missed, fmt.Errorf("%s: %w", t.truthFile, err)
 	}
-	return everyNote(audio.MatchNotes(r.Notes, given, t.timed)), nil
+	c := truthCount{notes: everyNote(audio.MatchNotes(r.Notes, given, t.timed)), lines: len(t.lines)}
+	if len(t.hits) > 0 {
+		for _, l := range audio.MatchHits(r.Hits(), t.hits, 30/float64(r.BPM)/audio.StepsPerBeat).Drums {
+			c.drums = c.drums.plus(noteCount{l.Matched, l.B, l.A})
+		}
+	}
+	if c.lines > 0 {
+		c.onLine = audio.MatchBars(r, t.beats, t.lines).Downbeats * float64(c.lines)
+	}
+	return c, nil
+}
+
+// truthCount is a rip against a truth: its notes, its drum hits, and of the
+// downbeats the truth gives those on a bar line of the rip's
+type truthCount struct {
+	notes, drums noteCount
+	lines        int
+	onLine       float64
+}
+
+func (c truthCount) plus(o truthCount) truthCount {
+	return truthCount{c.notes.plus(o.notes), c.drums.plus(o.drums), c.lines + o.lines, c.onLine + o.onLine}
+}
+
+// bars is the share of the downbeats given that fall on a bar line
+func (c truthCount) bars() float64 { return c.onLine / float64(max(c.lines, 1)) }
+
+// scores is every score the conditions carry, in their order: each one's notes'
+// F1, its drums' F1 and its bars where given gives it any to count, each a
+// share of one capability, so a set is weighed by their mean and held by each
+func scores(counts, given []truthCount) []float64 {
+	var out []float64
+	for i, c := range counts {
+		if given[i].notes.given > 0 {
+			out = append(out, c.notes.f1())
+		}
+		if given[i].drums.given > 0 {
+			out = append(out, c.drums.f1())
+		}
+		if given[i].lines > 0 {
+			out = append(out, c.bars())
+		}
+	}
+	return out
 }
 
 // noteCount is a rip's notes against a truth's: those that hit, those given and
@@ -2486,22 +2675,13 @@ func (c noteCount) plus(o noteCount) noteCount {
 // f1 is twice the hits over the notes given and heard
 func (c noteCount) f1() float64 { return 2 * float64(c.hits) / float64(max(c.given+c.heard, 1)) }
 
-// conditionF1 is each of n conditions' F1 under p, by pitch and onset, its
-// recordings' counts as one; a rip that fails hears none of its notes
-func conditionF1(takes []*truthTake, n int, p audio.RipParams, lead audio.LeadRule) []float64 {
-	sums := make([]noteCount, n)
+// conditionCounts is each of n conditions' count under p, its recordings' as
+// one; a rip that fails hears none of what its truth gives
+func conditionCounts(takes []*truthTake, n int, p audio.RipParams, lead audio.LeadRule) []truthCount {
+	sums := make([]truthCount, n)
 	for _, t := range takes {
 		c, _ := t.count(p, lead)
 		sums[t.cond] = sums[t.cond].plus(c)
 	}
-	return f1s(sums)
-}
-
-// f1s is each count's F1
-func f1s(counts []noteCount) []float64 {
-	out := make([]float64, len(counts))
-	for i, c := range counts {
-		out[i] = c.f1()
-	}
-	return out
+	return sums
 }

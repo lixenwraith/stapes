@@ -622,6 +622,23 @@ proves wrong or that a document now states, and link the document instead.
   fit may hold, and decode a tuned `rip.toml` over every condition, the full
   tracks among them (`vif/tmp/audit2/cond-v0140`), before it ships; no change
   of one bar from the hand-swept five gained the mean of twenty conditions.
+- **A search writes back what it moved by chance unless each gene is put
+  back.** A near pool moves one gene in four, and a score sees only some of
+  the genes it is given: a model without the two heads reads no `beat_comb`,
+  heard beats no `bar_beat` or `bar_move`, a loop under six bars no margin of
+  how a reading repeats. One search over a four-bar loop wrote eleven
+  parameters off their start for a gain `onset_min` alone had made, and
+  `tune` through the analysis draws the heads' weights across their ranges.
+  `search` puts each moved gene of its best back alone and keeps it back
+  unless the score falls (`settled`); a new gene needs no rule of its own.
+- A MIDI truth gives the search notes and drum hits, never bars: a
+  transcription's file holds its writer's default signature and tempo
+  (GuitarSet's, MusicNet's), and the search would fit the bars to it. Bars
+  come from a corpus label: a rendered loop's own grid, or a recording's from
+  its list's `beats` column (`corpus <dir> from`).
+- A test's small random model hears no drum hit and a bar at most of a
+  two-bar loop: a test of the drums' or the bars' score hears through the
+  analysis (`analysisEar`), which reads a rendered loop's.
 - A pool drawn near its start suits `tune ... truth` and not `tune`: over 12
   rendered loops of 4 bars at 16 by 8, from .616, the pool drawn across the
   ranges reached .678, .677 and .686 on three seeds and the near one .650,

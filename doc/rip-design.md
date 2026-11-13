@@ -138,8 +138,15 @@ flowchart TD
      over a truth list's conditions of the F1 by pitch and onset (`MatchNotes`:
      a note pairs one of its pitch within 0.1 s of its place, under a time map
      that holds a steady tempo or, `timed`, as given, the most pairs there
-     are), a set that takes more than its guard from any condition refused. A
-     set that beats the current one goes to `rip.toml`.
+     are), a set that takes more than its guard from any condition refused.
+     Where a truth gives drum hits a condition carries its drums' F1 beside
+     its notes', and `onset_min` is searched; where a corpus label gives bars,
+     its bars (the downbeats given on a bar line, `MatchBars`), and the
+     tempo's prior and combs, `tightness`, the bar lines' weights and the
+     meter's margins are searched, which audio holds as parameters. The mean
+     is over every score carried, the guard on each, and a parameter no score
+     saw move is written as it stood. A set that beats the current one goes
+     to `rip.toml`.
 4. **Voices.** `rip` fits each line's voice to the recording, and `fit` again
    at the generations asked: its thirty-two genes and wave, seeded with the
    voice the front end heard and every registered one, scored by the mel

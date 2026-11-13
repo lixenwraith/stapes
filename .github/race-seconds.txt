@@ -9,6 +9,7 @@
 54 TestTuneTruthSearchesTheModelsThresholds
 50 TestTuneSearchesTheRipParameters
 47 TestRipMakesPatternsOfARecording
+42 TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays
 40 TestRowsReadACorpusThatKeptItsAudio
 38 TestRowsWritesEachStrikesRowAsTheRipReadIt
 31 TestCompressPlaysTheRecordingsDrums

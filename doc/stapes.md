@@ -181,15 +181,25 @@ Over the library's rip (library
   ([todo](todo.md#tune-the-rip) for what the corpus still lacks). `tune ...
   truth <list>` searches instead the thresholds the loaded models' decoders
   read (`modelGenes`), the rest held, against recordings, a line
-  `wav<TAB>truth[<TAB>condition[<TAB>timed]]` each, from a pool drawn near the
-  current thresholds (`search`'s `near`). A truth gives notes, and may give
+  `wav<TAB>truth[<TAB>condition[<TAB>[timed] [drumless]]]` each, from a pool
+  drawn near the current thresholds (`search`'s `near`). A truth gives notes,
+  and may give
   drum hits (a `.mid`'s drum channel, a corpus label's) and bars (a label's
   alone: a rendered loop's from its tempo, bars and meter, `corpusLoop.grid`;
   a transcription's `.mid` holds its writer's default signature). Each
   condition then carries up to three scores (`truthCount`, `scores`): its
   notes' F1 by pitch and onset, its drums' F1 (`MatchHits`, as `truth` counts
   them) and its bars, the share of the downbeats given on a bar line of a rip
-  whose bar is the given's length (`MatchBars`). A set scores their mean:
+  whose bar is the given's length (`MatchBars`). A truth knows the drums
+  (`truthTake.drums`) when it is a label, gives hits or its line says
+  `drumless`: a hit heard that it does not give is heard and not given, so a
+  recording without drums takes from its condition's F1. A condition that
+  gives no hit scores by `drumScore`, the F1 of a rip that heard those hits
+  beside every hit as many minutes hold at the list's own rate, the hits a
+  minute its recordings with drums give (`hitRate`): 2g/(2g+h) for h heard
+  against g, one with none heard, and what the same hits cost pooled with a
+  recording as long heard whole. A list that gives no hit has no rate and no
+  drums' score. A set scores their mean:
   each is a share of one capability, none converts into another, and the
   guard holds each, so a set that takes more than `guard` from any one at the
   start scores under zero (`guarded`) and is never written. With hits

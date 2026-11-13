@@ -23,6 +23,9 @@ proves wrong or that a document now states, and link the document instead.
   also take under a minute, enough to exercise the whole training path.
 - Build the binary from `./cmd/stapes`: `go build -o bin/stapes .` writes the
   library's archive under that name, which then refuses to run.
+- A phrase in the docs wraps, so count one over the whole file, `\s+` between
+  its words: `perl -0777 -ne 'print scalar(() = /\b[Tt]he\s+model\b/g)'` over
+  v0.24.0's tree counts 26 where `git grep` by line found 20.
 - A change that needs an audio not yet tagged names the tag in `go.mod` and
   builds through a workspace kept outside both trees: a `go.work` of `use
   <stapes>` and `replace github.com/lixenwraith/audio vX => <audio>`, named by
@@ -654,10 +657,11 @@ proves wrong or that a document now states, and link the document instead.
   meters` read `beats' F1 0.763, bar lines' 0.631` held out, and through its
   file on audio v0.24.0, which took the heads' word alone, the bars of 56 of
   the 160 held-out loops were right with the heads, 124 with the same weights'
-  heads left out and 109 through the analysis. Since v0.24.1 the heads are
-  read by rank and a clip they give no reading of is the cues' (85 right on
-  audio's branch before the tag). Read a round's bars both ways before its
-  file is installed.
+  heads left out and 109 through the analysis; by rank, as v0.24.1 to v0.25.0
+  read them, 85. Ranks then cost 40a GuitarSet's bars (24 of 120 against a
+  plain tracker's 39), and since v0.25.2 audio reads the heads by level as that
+  tracker does, the downbeat head beside the cues. Read a round's bars both
+  ways before its file is installed.
 - The lines' F1 does not say which beats a head misses. Print what each head
   says within a frame of the loops' own beats by their place in the bar
   (`train.Label.beats`, the frame model over a whole loop): the downbeat head said

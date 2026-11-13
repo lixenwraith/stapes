@@ -407,6 +407,25 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         for k in (had, had + 1):
             self.assertFalse(torch.equal(says[0][..., k], says[1][..., k]))
 
+    def test_a_family_unasked_has_no_term_and_its_rows_stay_zero(self):
+        """--family-unasked on a frame model grown from the nine heads before the family: the step's loss has no
+        family term, and after three steps of a free body the family's rows of the output layer are zero."""
+        old = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodels.HEADS[:-3])
+        before = ripmodels.FrameModel(old).state_dict()
+        with tempfile.TemporaryDirectory() as d:
+            at = lambda name: os.path.join(d, name)
+            corpus(d, [{"bpm": 100, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
+            torch.save({"model": before, "cfg": asdict(old)}, at("old.pt"))
+            said = run("--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--family-unasked", "--lr", "0.01", steps=3)
+            after = torch.load(at("new.pt"))["model"]
+        self.assertIn("its heads but family, beat, downbeat, which start fresh", said)
+        last = next(line for line in said.splitlines() if line.startswith("step 3 loss "))
+        self.assertIn(" downbeat ", last)
+        self.assertNotIn("family", last)
+        family = ripmodels.Config().slice("family")
+        self.assertEqual([after[k][family].abs().sum().item() for k in ("out.weight", "out.bias")], [0, 0])
+        self.assertFalse(all(torch.equal(after[k], v) for k, v in before.items() if not k.startswith("out.")))
+
 
 if __name__ == "__main__":
     unittest.main()

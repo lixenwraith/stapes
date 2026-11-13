@@ -223,6 +223,7 @@ class Label:
 
 # a family's index in ripmodels.FAMILIES whose notes the run names to no head, so a calibration run never hears its name
 FAMILY_HOLDOUT = None
+FAMILY_UNASKED = False  # a frame model's family head grown and asked nothing: no term in the loss, its rows zero
 
 
 def load_corpus(d: str):
@@ -671,6 +672,14 @@ def probe(model) -> callable:
     return hold
 
 
+def unask_family(model) -> None:
+    """a frame model's family head asked nothing: its rows of the output layer zero, which no term of the loss moves
+    nor AdamW's decay, so every frame states even shares and the file says nothing there"""
+    at = model.cfg.slice("family")
+    with torch.no_grad():
+        model.out.weight[at], model.out.bias[at] = 0, 0
+
+
 def losses(model: ripmodels.FrameModel, mel: torch.Tensor, t: dict) -> dict:
     y = model(mel)
     cfg = model.cfg
@@ -699,12 +708,12 @@ def losses(model: ripmodels.FrameModel, mel: torch.Tensor, t: dict) -> dict:
     out["wave"] = (ce * voiced).sum() / n
     voice = torch.sigmoid(y[..., cfg.slice("voice")])
     out["voice"] = ((voice - t["voice"]) ** 2).mean(-1).mul(voiced).sum() / n
-    if "family" in dict(cfg.outputs):  # the frame model's alone
+    if "family" in dict(cfg.outputs) and not FAMILY_UNASKED:  # the frame model's alone
         asked = (t["family"] >= 0) * valid
         logits = y[..., cfg.slice("family")].reshape(-1, len(ripmodels.FAMILIES))
         ce = F.cross_entropy(logits, t["family"].reshape(-1).clamp(min=0), reduction="none").reshape(asked.shape)
         out["family"] = (ce * asked).sum() / asked.sum().clamp(min=1)
-    if "beat" in dict(cfg.outputs):  # a beat weighs as a frame without one: audio sums the two heads' log-odds, a posterior's
+    if "beat" in dict(cfg.outputs):  # a beat weighs as a frame without one: audio reads each head's level as a posterior
         out["beat"] = bce("beat", t["beat"], 1.0, t["metered"] * valid)
         out["downbeat"] = bce("downbeat", t["downbeat"], 1.0, t["metered"] * valid)
     if "cents" in dict(cfg.outputs):  # the notes model's alone
@@ -743,7 +752,7 @@ def shape(cfg) -> str:
 
 
 def main() -> None:
-    global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT, EVEN_GLIDES, PLAYS
+    global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT, EVEN_GLIDES, PLAYS, FAMILY_UNASKED
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--corpus", required=True, help="directory stapes' corpus verb wrote")
     ap.add_argument("--mix", default="", help="another corpus and the share of windows drawn from it, dir:share, such as recordings with their MIDI files (corpus <dir> from <list>)")
@@ -768,6 +777,7 @@ def main() -> None:
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
     ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
+    ap.add_argument("--family-unasked", action="store_true", help="a frame model's family head grown and asked nothing: no term for it in the loss and its rows of the output layer zero from the start, so every frame's shares are even and the file says nothing there")
     ap.add_argument("--plays", type=float, default=PLAYS, help="the weight of the heads of what plays each pitch in the total, against what plays the frame: a quarter by default")
     ap.add_argument("--probe", action="store_true", help="a notes model's heads of what plays each pitch, or a frame model's beat and downbeat heads, trained alone from --init's weights, every other weight held as it was: a notes model carries no cents head, so its file rips as its start, and a frame model's other heads say what its start's did; the last step is exported")
     ap.add_argument("--even-glides", action="store_true", help="the cents head's gliding readings weigh as much as the rest in its loss wherever a batch holds both")
@@ -787,7 +797,7 @@ def main() -> None:
     ap.add_argument("--validate", default="", help="a corpus of recordings (corpus <dir> from <list>) cut into fixed windows and scored every --every steps; the step that scores best on it is what --out gets, in place of the held-out loops' best: by the decoders' loss, a notes model by its strikes' F1 at the decoder's bars")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
-    RING, STRIKE_POS, STRIKE_AGAIN, DIP, EVEN_GLIDES, PLAYS = args.ring, args.strike_weight, args.again_weight, args.dip, args.even_glides, args.plays
+    RING, STRIKE_POS, STRIKE_AGAIN, DIP, EVEN_GLIDES, PLAYS, FAMILY_UNASKED = args.ring, args.strike_weight, args.again_weight, args.dip, args.even_glides, args.plays, args.family_unasked
     FAMILY_HOLDOUT = ripmodels.FAMILIES.index(args.family_holdout) if args.family_holdout else None
 
     torch.manual_seed(args.seed)
@@ -798,6 +808,8 @@ def main() -> None:
     towers = [tuple(int(v) for v in t.split(":")) for t in args.towers.split(",") if t]
     if any(len(t) != 2 for t in towers) or towers and sum(h for _, h in towers) != len(ripmodels.HEADS):
         raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodels.HEADS)}")
+    if args.family_unasked and (args.pitchnet or towers):
+        raise SystemExit("--family-unasked: the family head is a frame model's, on one output layer")
     if args.probe and towers and not args.pitchnet:
         raise SystemExit("--probe with --towers: a model in towers lays its heads over several output layers, and a probe holds one")
     heads = [h for h in ripmodels.PITCHNET_HEADS if h[0] != "cents"] if args.probe else ripmodels.PITCHNET_HEADS  # a probe's file rips as its start
@@ -873,6 +885,9 @@ def main() -> None:
         print(f"started from {args.init}")
     if args.sure and hasattr(model, "sure"):
         model.sure.fill_(args.sure)
+    if FAMILY_UNASKED:
+        unask_family(model)
+        print("the family head is asked nothing: its rows zero, every frame's shares even")
     hold = probe(model) if args.probe else None
     print(f"{sum(p.numel() for p in model.parameters())} weights, {len(loops)} loops, {sum(len(m) for m, _ in loops)} frames, {len(held)} held out in {len(val_mels)} windows")
     if recorded:

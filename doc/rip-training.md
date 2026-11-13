@@ -688,12 +688,13 @@ decoders = onset + drums + pitch + 0.5 voicing + strike + release + beat + downb
 ```
 
 The beat and the downbeat are the onset head's kind of loss with one difference: no
-weight. Audio reads the two by rank, never by level: a beat by how often the head is
-higher where a reading claims one than where it leaves one, a bar line by how many of
-a reading's bars it tops (audio §9), so neither a weight nor a head's level moves a
-decode. A frame of a mark and a frame outside one weigh the same, and a head that
-knows nothing says the share of frames a mark covers, 7% for the beat at 120 bpm and
-under 2% for a bar line of 4/4.
+weight. Audio reads the two by their level, as posteriors: the tempo from how the beat
+head repeats and the beats tracked on it, a bar line where the downbeat head summed by
+place stands highest over its mean beat, beside the cues (audio §9), so a weight on
+the marks, which lifts a head most where it is unsure, would move a decode. A frame
+of a mark and a frame outside one weigh the same, and a head that knows nothing says
+the share of frames a mark covers, 7% for the beat at 120 bpm and under 2% for a bar
+line of 4/4.
 
 The stated error learns from the offset's miss and never the other way: the miss
 enters `spread` with its gradient stopped, so stating an error moves no offset. At
@@ -786,8 +787,9 @@ all             160   0.763   0.631     56   124     109        95   135     133
 
 The heads are learned where a drum marks them, and v0.24.0's decoders, which took the
 heads' word alone, read fewer bars right through this model than the cues do through
-the same weights; since v0.24.1 audio reads the heads by rank and leaves a clip they
-give no reading of to the cues, and these loops are not read through it here
+the same weights. Audio read the heads by rank from v0.24.1, and since v0.25.2 by their
+level beside the cues, as a plain tracker does, a clip they give no reading of left to
+the cues; these loops are read through neither here
 ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)). What stands under
 it is what the heads say within a frame of the loops' own beats, a mean over the
 held-out loops with each one's first and last bar left out:
@@ -877,6 +879,53 @@ The checkpoint, a PyTorch `.pt`, holds `model`, `opt`, `step`, `cfg` (the shape,
 resumed run must match), `best` (the best held-out score, its step and its weights) and
 `validated` (the best validation score, its step, its weights and the held-out score there).
 
+### The two heads on 12a: the probe and the round
+
+R2 grew the two heads on 12a, the installed frame model, with its recipe (corpus 11 as
+11f, PCEN, the channel, its convolutions) and GuitarSet's 240 training clips and E-GMD
+by their beats at a tenth of the windows each. 12a has no family head, which the file
+lists before the two, so the round grew it too and asked it nothing (`--family-unasked`):
+its rows are zero and the file's family head is untaught. 39a probed the two heads on
+12a held, 8,000 steps; 40a trained every weight for 12a's 40,000, its pick at step
+34,000. On the 400 held-out loops of the engine and on GuitarSet's 120 val and test
+clips (players 04 and 05, which no round trained on; a clip's bars right when they are
+the truth's length within a tenth and 80% of its downbeats lie within an eighth of a
+bar of a line), through audio v0.25.0:
+
+```
+                       held-out loops       the 120 clips: bars right      only one side right
+                       beats    lines       all  strummed  solo            12a's cues  this
+12a, its cues            -        -          37     26      11                 -        -
+39a, the probe's heads  0.788    0.341       25     18       7                12        0
+40a, its heads          0.891    0.804       24     21       3                21        8
+40a, heads left out       -        -         32     28       4                16       11
+```
+
+- The heads learned the engine's loops and real guitar only weakly: read with no decoder
+  between, the K highest peaks of a head where the truth has K, the beat head places
+  47% of the unseen players' beats within 70 ms and the downbeat head 29%, against
+  70% and 51% on strummed clips the round trained on. They lose bars beyond chance.
+- 40a's body without its heads holds on bars (16 against 11 clips, which chance gives)
+  and its notes are 12a's on all 120 clips. On 48 of E-GMD's test recordings (a hit
+  right within 50 ms) its drums' F1 is .733 against 12a's .629 (kick .790 against .373,
+  hihat .795 against .733, snare .565 against .606 at precision .447 against .800).
+  At an absolute bar of 0.7 on the planes it reads .845 there, where 12a falls to .560,
+  and hears a false hit a minute on the guitar clips. Under a mix it loses: on Billie
+  Jean's intro, clean, it hears 76 false kicks and 106 false snares where 12a hears 6
+  and 5 at the installed bar, still 6 and 31 at 0.7, and from the Pixel it finds 10 of
+  54 kicks where 12a finds 30 to 34; singing draws 95 false hits a minute against 33.
+  The round heard real kits alone, never under bass, synth and voice. On the Für Elise takes, whose rips keep the
+  cues, its lines are on 0.47, 0.34, 0.25 and 0.34 of the score's downbeats (clean,
+  30 cm, Pixel, Galaxy) against 12a's 0.45, 0.21, 0.22 and 0.28.
+- So by [the rule](#reading-a-candidate) neither is installed: the heads lose bars, and
+  the body gains on kits alone and loses under a mix. R3's probe from 40a's last step,
+  hearing real kits under a mix and recordings with no drums, gained under a mix and
+  left the beats where they were (rip-rounds, 43a to 44c). The heads held more than
+  v0.25.0's decode took: a plain tracker (the tempo from the beat head's
+  autocorrelation, the beats by dynamic programming, the line by the downbeat head's
+  vote over the clip) got 39 of the 120 clips' bars right from them, where that decode
+  got 24 and 12a's cues 37; audio reads them so since v0.25.2.
+
 ## 9. The weight file
 
 [Transformer's format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)
@@ -952,8 +1001,8 @@ log error. What plays each pitch it keeps at each frame's twelve most salient pi
 alone, as bytes: the softmax of the family's and of the wave's scores and the sigmoid of
 the genes (`RipFrames.VoiceAt`, `Voices`), and the measure once (`Sure`). A frame model's
 beat and downbeat heads fill `RipFrames.Beat` and `Downbeat`, and where the frames carry
-both, the tempo, the beats, the meter and the bar lines are read from them and none of
-the cues' rules decides ([audio
+both, the tempo and the beats are read from the beat head and the bar lines from the
+downbeat head beside the cues' rules ([audio
 §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). Loop 000 through
 12a, with a sure strike on frame 0 where the labels say kick, hihat, G3 and C3:
 
@@ -1097,6 +1146,33 @@ And 16b, which adds an E-GMD corpus:
 ```bash
 CORPUS=<corpus 11> PCEN=1 CHANNEL=<noise.npz>:0.5 OVER=<e-gmd corpus>:0.25 MIX=<e-gmd corpus>:0.1 STEPS=40000 HOLDOUT=400 EVERY=1000 CONVS=16x3x3/1,16x3x3/2,32x3x3/2 tool/rip-train/pipeline.sh train
 ```
+
+### Reading a candidate
+
+A round's file is read by what it can do, each on recordings no round trained on: notes
+(the mean over the truth-backed conditions of F1 by pitch and onset), drums (hits' F1 on
+real drum recordings, and false hits on recordings with none), bars (GuitarSet's unseen
+players' clips whose bars are right, the scored takes' downbeats on a line) and voices
+(notes named right on the solo sets). It is read with settings fitted for it, a judge on
+its own rows and thresholds tuned on its own heads, never through the installed model's.
+
+- Against what is installed each of the four holds, gains or loses, a difference
+  counting only beyond what chance gives: until each has a measured spread, the notes'
+  mean .01, any one condition .03, drums' F1 .02, and for clips the two-sided count of
+  those only one side has right.
+- Gains somewhere and holds elsewhere: installed. A part that gains is installed without
+  the part that does not, as a body without its new heads.
+- Gains somewhere and loses elsewhere: a trade, which goes to Lixen with the numbers and
+  a pair of excerpts; no rule drops it.
+- Gains nowhere: not installed and not thrown away. The model's next round starts from
+  its weights wherever they hold, and the round's record says what it taught.
+- A new head is read first as one more piece of evidence beside what the decoder already
+  uses, and replaces something only after that. A round validates while it trains on
+  real held-out recordings of what it teaches and picks its step there; held-out loops
+  of the engine say how well it learned the engine.
+
+A round's PR ends with a table by the four and one of: install, install this part, a
+trade for Lixen, the next round's start.
 
 ## 12. The scores
 

@@ -204,7 +204,12 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    a corpus label alone, so a recording's want its list's beats in a label
    (`corpus <dir> from`), and a `.jams` truth, beats and no notes, is not read
    yet. It has run on no generated truth of every meter: that run sets the
-   bars' weights audio still holds at the values they were written with.
+   bars' weights audio still holds at the values they were written with. Nor
+   on loops cut off the bar line: some fit loops are to start a quarter to
+   three quarters of a bar in, their beats and lines given as a recording's
+   are, so the bars' weights do not learn a rendered loop's start ([agent
+   notes](agent-notes.md#the-rip-and-its-truths)); the table reads bars on
+   such loops beside the whole ones.
 7. The pedal: a piano arpeggio under pedal rings three or four notes at once,
    and the analysis's two lines hold two; the second line's eighths read as
    held notes (30 of 58 heard, 11 spanning two). A model's strikes start every
@@ -448,7 +453,8 @@ audio v0.26.0; until then a truth leaves out the notes outside it, as
     harmonic stack's extent (`STACK_BINS`, `STACK_ROOT_MIDI`: 213 bins from MIDI
     27, 270 from MIDI 20 for a cell either side of the 88) and the cells it reads
     (`PITCHES`). Its frame heads pool the stack in sixteen regions, which a wider
-    stack moves, so they train again. A frame costs it 88/69 of the work.
+    stack moves: the pool keeps the old span, or the heads train again. A
+    frame costs it 88/69 of the work.
   - The frame model's `pitch`, `strike`, `release` and `velocity` heads grow 19
     rows each, its body unchanged. `--init` keeps an old file's output rows only
     at the front of the layer: it is to place each head's rows at its new

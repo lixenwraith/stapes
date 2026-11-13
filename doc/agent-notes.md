@@ -217,6 +217,13 @@ proves wrong or that a document now states, and link the document instead.
   claim on the files. A new scorer gets a test or a count made apart before a
   figure from it is used. A table is one decode's: when audio moves, rebuild
   the reading tools between rounds and read the baseline again.
+- A generated loop starts on a bar line, which rewards a decoder that leans on
+  a recording's start. Cut a quarter to three quarters of a bar in, 181 of the
+  evaluation's clean 4/4 loops fell from 70% of bars right to 48% under the
+  installed pair's cues, and from 57% to 54% under the fresh pair's heads on
+  audio v0.26.0 (`vif/tmp/audit2/cutbars.py`, the truth's lines moved by the
+  cut). Read bars on cut loops beside whole ones: a search fitted on whole
+  loops alone can learn the lean.
 - Write a truth from a score or a MIDI file, never from memory: a remembered
   Billie Jean riff had its first note an octave low, the synthesizer's doubling
   the analysis hears, and turned a 96-to-94 tie into a 110-to-84 loss.
@@ -530,8 +537,10 @@ proves wrong or that a document now states, and link the document instead.
   The drums' `onset_min` is one: a share of the recording's loudest frame, so
   a surer drums head wants a higher bar (the fresh pair heard 113 false hits a
   minute on the generated evaluation's clean loops at the built-in 0.1, 31 at
-  0.7). Never read a new model through the old one's `rip.toml`, and fit a bar
-  on validation recordings, never the test's.
+  0.7). The search sets it, and the bars' weights, only where its list's truths
+  give hits and bars: give it rendered loops' labels beside the recordings, at
+  a seed no training corpus or evaluation set uses. Never read a new model
+  through the old one's `rip.toml`.
 - With strikes the melody register never reaches the pair decoder, so
   `second_voice` and `cross` move no note on the models' path, while the bass
   line's own path reads `jump`, `switch` and `retrigger`: `modelGenes` is what

@@ -87,8 +87,13 @@ flowchart TD
      under the same prior, and the beats are tracked on it; a line falls every
      bar's beats from the place where the downbeat head, summed over the whole
      clip, stands highest over its mean beat, weighed beside the cues, which
-     decide where its margin is small. The meter and the pickup stay the
-     decoders' own, and a clip the heads give no reading of is the cues'. The
+     decide where its margin is small, the head never read at a beat on the
+     clip's last frames. The meter is chosen by the cues' margins, with two
+     rules of the heads' own: six beats are read against four only where the
+     head stands at their lines over four's, as a head that marks the half bar
+     marks both alike, and no reading is told by how it repeats under six bars.
+     The pickup stays the decoders' own, and a clip the heads give no reading
+     of is the cues'. The
      key and each bar's chord come from the chroma, the hits from each drum's
      onsets, a drum the frame model is never sure of silent.
    - **The notes.** Where the front end hears each pitch struck, both
@@ -115,8 +120,10 @@ flowchart TD
      note the others explain goes and a strike the rules dropped comes back
      where its sound is its own: by the installed scores, logistic ones set on
      graded recordings, or by a judge, a reported note staying and a strike
-     over a half that started none coming back where its odds reach a half.
-     With no judge the rip is the installed scores', byte for byte.
+     over a half that started none coming back where its odds reach a half,
+     as a note that runs to its release as the decoder's own do, or not at all
+     where its pitch does not sound. With no judge the rip is the installed
+     scores', byte for byte.
    - **The voices.** Each note is told its voice (`tell`) from what the notes
      model says plays its pitch over the frames it sounds, a wave, genes and a
      family where its share passes the measure the weight file carries, and a
@@ -131,8 +138,15 @@ flowchart TD
      over a truth list's conditions of the F1 by pitch and onset (`MatchNotes`:
      a note pairs one of its pitch within 0.1 s of its place, under a time map
      that holds a steady tempo or, `timed`, as given, the most pairs there
-     are), a set that takes more than its guard from any condition refused. A
-     set that beats the current one goes to `rip.toml`.
+     are), a set that takes more than its guard from any condition refused.
+     Where a truth gives drum hits a condition carries its drums' F1 beside
+     its notes', and `onset_min` is searched; where a corpus label gives bars,
+     its bars (the downbeats given on a bar line, `MatchBars`), and the
+     tempo's prior and combs, `tightness`, the bar lines' weights and the
+     meter's margins are searched, which audio holds as parameters. The mean
+     is over every score carried, the guard on each, and a parameter no score
+     saw move is written as it stood. A set that beats the current one goes
+     to `rip.toml`.
 4. **Voices.** `rip` fits each line's voice to the recording, and `fit` again
    at the generations asked: its thirty-two genes and wave, seeded with the
    voice the front end heard and every registered one, scored by the mel
@@ -479,7 +493,13 @@ What is trained and what is only written, on 12 November 2026:
      §8](rip-training.md#the-two-heads-on-a-small-run)). 40a's heads read the
      bars of 24 of the 120 through the ranks and 39 through a plain tracker,
      where the same weights' cues read 32: the ranks lost what the heads hold,
-     and v0.25.2 reads them as that tracker does. No file is installed on its
+     and v0.25.2 reads them as that tracker does. 48a's heads then read 38,
+     and stated six or three beats on 267 of 728 generated loops in 4/4: its
+     downbeat head marks the half bar as it marks the line. Audio v0.26.0's
+     rules of the meter (§2) leave 29 and read 40 of the 120; the place of the
+     line on those loops is what is left, 56% of their bars right where the
+     same frames' cues read 67% ([audio's
+     todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md)). No file is installed on its
      heads' word before they read more bars right than its cues
      ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)).
    Then, each waiting on recordings, on a thread above or on a design agreed:

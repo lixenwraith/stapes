@@ -195,12 +195,13 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    `timed` on GuitarSet's lines, before a run after every round writes a
    `rip.toml`; a timed truth's drum hits still pass through `MatchHits`' own
    map; and kept frames outlive a change to the models' code, which their
-   names do not hold. A bar-phase score belongs beside it: the note scorer's
-   time map never sees a bar line, and the rip's lines fall within an eighth
-   of a bar of GuitarSet's downbeats on 72% of them after audio v0.8.9, 63%
-   before. When `tune ... truth` scores the bars too (`MatchBars`), the tempo
-   and beat genes (`tempo_prior`, `tempo_width`, `tightness`) join
-   `modelGenes`, which stays a list, not a rule.
+   names do not hold. It scores the drums and the bars beside the notes where
+   a truth gives them, and then searches `onset_min` and the tempo's, the
+   beats' and the bars' parameters (`drumGenes`, `barGenes`); bars come from
+   a corpus label alone, so a recording's want its list's beats in a label
+   (`corpus <dir> from`), and a `.jams` truth, beats and no notes, is not read
+   yet. It has run on no generated truth of every meter: that run sets the
+   bars' weights audio still holds at the values they were written with.
 7. The pedal: a piano arpeggio under pedal rings three or four notes at once,
    and the analysis's two lines hold two; the second line's eighths read as
    held notes (30 of 58 heard, 11 spanning two). A model's strikes start every

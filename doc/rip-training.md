@@ -449,6 +449,18 @@ glide's pitch target walks the cells it crosses.
   `family`, its notes' sound, wave and voice asked as any. A voice is a row of one
   table of the corpus's voices (`train.GENES`) and a cell's target that row's index.
 
+**Two notes on one pitch.** Two parts often play one pitch at once: 6.8% of corpus 17's
+notes start on the frame and pitch of another's. The yes-or-no planes (`pitch`, `strike`,
+`release`) see one note there and `velocity` the later listed; the notes model is asked no
+name there (`sole`, above). The frame model's `family` takes the highest note's, the first
+listed where that note is doubled: one name of two, which no decoder reads, and asking none
+there is a todo. A truth a rip is scored against holds one note a frame and pitch, as a rip
+reports one; a name is right there when it is any family sounding in the cell, and doubled
+notes' names are read apart. What a rip says of a doubled note is untaught. Its name is to
+be decided over its line within a section, in the decoder; teaching two names at once, a
+yes or no a family rather than one share among them, waits until a song can play two
+voices on one note.
+
 Frames 0 to 7 of loop 000, from its kick and hat at 0, its G3 (55) and its C3 (48):
 
 ```

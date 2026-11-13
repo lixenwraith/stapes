@@ -274,8 +274,10 @@ trained weights:
   the heads lose bars beyond chance; the body gains on real kits alone and
   loses under a mix, which the round never heard. Neither is installed. R3's
   probes from 40a (43a, 44b, 44c) moved drums under a mix and not the beats.
-  Left: the frame model trained again from no weights on what these rounds
-  taught (stapes#49), its bars read through audio v0.25.2's decode.
+  The frame model trained again from no weights (48a, rip-rounds) states six
+  or three beats a bar on a third of a generated evaluation's 4/4 loops
+  through audio v0.25.2's decode: the meter with the heads is the decoder's
+  to mend before a round is read by its bars.
 - **What the small run says a round must change.** It was read twice: through
   audio v0.24.0 ([Rip training §8](rip-training.md#the-two-heads-on-a-small-run)),
   and by rank, through the decoders of v0.24.1 to v0.25.0 on audio's branch
@@ -384,7 +386,10 @@ Left open by what landed, each with the option not taken:
   taken: asking it where the two are one voice, a twentieth of those, a second
   rule for a fifth of a percent; and asking it both names, which a softmax
   over the names cannot hold and a head of one name against the rest did not
-  earn on the held-out family.
+  earn on the held-out family. The frame model's `family` is still asked the
+  first listed name of a doubled top note ([Rip training
+  §5](rip-training.md#5-the-targets)): it is to ask none there, as a cell
+  does, a line in `Label.window` riding with a frame round.
 - An embedding with linear readouts in place of the heads: no better at any
   width, short of the genes under 16 values, and its readouts need a place in
   the weight file ([Rip training §7](rip-training.md#7-the-models)). It is the
@@ -416,6 +421,46 @@ Left open by what landed, each with the option not taken:
   most salient pitches is in no share, so the count of notes moves a little
   with the notes model's salience from step to step.
 - `test_train.py` runs by hand: CI has no PyTorch.
+
+### Widen the pitch range
+
+- Priority: P2
+- Affected files: `lixenwraith/audio` (`rip.go`, `ripmodels`), `tool/rip-train`
+  (`ripmodels.py`, `train.py`)
+
+The models hear MIDI 28 to 96, E1 to C7 (audio's `RipMinMIDI`, `RipMaxMIDI`).
+About 1% of a generated corpus's notes lie under it, all at MIDI 22 to 27 (2% of
+corpus 14's), 0.06% over it, and MusicNet's labels reach MIDI 23. Lixen decided
+on 13 November 2026 to widen it to the piano's 88 keys, MIDI 21 to 108, after
+audio v0.26.0; until then a truth leaves out the notes outside it, as
+`readScore` does.
+
+- Why E1: the input starts there. The mel's lowest band is centred at 38.9 Hz
+  and E1 is 41.2 Hz; at the bottom the bands are about 9 Hz apart where
+  neighbouring semitones are 2.4 Hz apart, so a low note is told by its
+  harmonics already, and the harmonic stack reads nothing under the lowest
+  band's centre (`axis_ok`).
+- What it takes, no weight new but the frame model's rows:
+  - The notes model has the same weights at every pitch, so its range is the
+    harmonic stack's extent (`STACK_BINS`, `STACK_ROOT_MIDI`: 213 bins from MIDI
+    27, 270 from MIDI 20 for a cell either side of the 88) and the cells it reads
+    (`PITCHES`). Its frame heads pool the stack in sixteen regions, which a wider
+    stack moves, so they train again. A frame costs it 88/69 of the work.
+  - The frame model's `pitch`, `strike`, `release` and `velocity` heads grow 19
+    rows each, its body unchanged. `--init` keeps an old file's output rows only
+    at the front of the layer: it is to place each head's rows at its new
+    offset, a pitch's row seven up.
+  - The corpora hold those notes' sound and MIDI numbers already; each
+    manifest's `min_midi` and `pitches` are rewritten, nothing rendered.
+  - Audio's `RipMinMIDI`, `RipMaxMIDI`, the stack's constants in `ripmodels`
+    and what `RipPitches` sizes, and the weight files' version, so a file of
+    the old range is refused rather than read seven pitches off.
+  - A pass that trains the new rows from the current lines.
+- What it does not buy: the fundamentals under E1, at or under the lowest band,
+  so a note there is told by its harmonics alone and an octave off more often.
+  Finer low bands or a longer window is a new front end, every corpus rendered
+  again and both models trained from nothing: decide that once, before a bass
+  under E1 is a goal.
 
 ### A live rip
 

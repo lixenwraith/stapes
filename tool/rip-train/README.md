@@ -125,6 +125,13 @@ cores with anything else the machine does.
 
 ## Reading a run
 
+- A corpus, before a round trains on it: `python3 tool/rip-train/datacheck.py
+  <dir>...` reads a sample of its loops and prints a row a corpus (a row a
+  source with `GROUP=1`): files whole and finite, labels inside their loop,
+  notes outside the models' pitches, doubled notes, loops far under the
+  corpus's level, and the lag in frames from labelled starts, hits and beats to
+  where the sound rises. Hand labels read 0 or 1; a tool's labels read its
+  offset ([agent notes](../../doc/agent-notes.md#corpus-and-bench)).
 - The training lines name each head's loss; the line that matters is the
   held-out one every `EVERY` steps: `step N held-out X, decoders Y (onset ...
   drums ... pitch ... voicing ...)`, with `(best)` on the step `OUT` will get.

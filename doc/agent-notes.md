@@ -214,9 +214,9 @@ proves wrong or that a document now states, and link the document instead.
   doubled note counted twice, float mixes read as 16-bit, tempo rows under the
   wrong names, a doubled note's parts kept by one kind, a beat count's
   denominator, every MIDI channel read as drums) until a review re-ran each
-  claim on the files. A new scorer gets a test or a count made apart before a figure from it
-  is used. A table is one decode's: when audio moves, rebuild the reading tools
-  between rounds and read the baseline again.
+  claim on the files. A new scorer gets a test or a count made apart before a
+  figure from it is used. A table is one decode's: when audio moves, rebuild
+  the reading tools between rounds and read the baseline again.
 - Write a truth from a score or a MIDI file, never from memory: a remembered
   Billie Jean riff had its first note an octave low, the synthesizer's doubling
   the analysis hears, and turned a 96-to-94 tie into a 110-to-84 loss.

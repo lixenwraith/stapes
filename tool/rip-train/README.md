@@ -547,15 +547,19 @@ loader checks ([format](https://github.com/lixenwraith/transformer/blob/main/doc
 of either model into its file. `--shuffle <share>` and
 `--extra <dir>:<share>,...` are `train.py` flags with no `pipeline.sh` setting,
 as are `--cell <n>`, the notes model's width (its channels at each cell, 32,
-which its weight file carries), and `--dip <share>`, the share of the channel's
+which its weight file carries), `--range <lowest>-<highest>`, the pitches a
+model tells apart by their MIDI numbers (21-108, the piano's; 28-96 resumes or
+starts from a model of E1 to C7 without growing it), and `--dip <share>`, the share of the channel's
 windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room
 hears. `--family-holdout <family>` tells no head a family's name: its notes stay
 in the run as sound, and a notes model's lines say what their surest name reaches,
 the measure a name must pass to be given (below). A checkpoint from before
-a setting existed loads with that setting's default, and `--init` takes one of the
-frame model from before the family head or the beat and downbeat heads, or of the
-notes model from before the cents head or the heads of what plays each pitch: every
-weight carries over and the head's rows start fresh, though resuming one is refused.
+a setting existed loads with that setting's default, its pitches as E1 to C7, and
+`--init` takes one of the frame model from before the family head or the beat and
+downbeat heads, of the notes model from before the cents head or the heads of what
+plays each pitch, or of either at fewer pitches: every weight carries over, a new
+head's rows start fresh and a new pitch's silent ([Rip training
+§7](../../doc/rip-training.md#7-the-models)), though resuming one is refused.
 
 A notes model has a cents head: for each pitch, how far its sound sits from the
 cell's centre and the error it states for that, taught where a sound the labels
@@ -640,21 +644,18 @@ median, how many of the other families' notes pass the measure and how many of
 those are named right: a measure most named notes fall under is a model that
 tells too little apart yet, and its file names few notes rather than wrong ones.
 
-The trainer's rules for what plays each pitch and for the beat and the bar line
-are tests of their own, with no corpus and in two seconds, on the CPU whatever
-the machine has: `python3 -m unittest discover tool/rip-train`.
+The trainer's rules for what plays each pitch, for the beat and the bar line and
+for a model's pitches are tests of their own, with no corpus, on the CPU whatever
+the machine has: `python3 -m unittest discover tool/rip-train`, a minute, most of
+it the 150 steps that teach a model a note at either end of the piano's pitches.
 
-It writes the file's version 3, the channels after the inputs, which needs
-transformer v0.2.0 or later (audio v0.2.0): a stapes built on an older audio
-refuses it, of one channel or two. A frame model's file lists the beat and
-downbeat heads, which needs audio v0.24.0: an older one refuses it by its count
-of heads, and one from before them still loads in any. `--pitchnet`'s file is version 5, a cell net
-with its long convolutions listed, which needs transformer v0.5.0 (audio v0.8.2);
-the cents head changes neither, being one more per-pitch head of two values, and
-an audio before v0.21.0 reads such a file's other heads and hears no glide; nor
-do the heads of what plays each pitch and the measure, a frame head of one value
-whose weights are zero and whose bias is the measure, and an audio before v0.23.0
-reads such a file and tells no note's voice.
+It writes the file's version 6, which states the model's lowest pitch as a
+constant after the heads and, for `--pitchnet`'s cell net, the bins its regions
+pool, and needs transformer v0.7.0 (audio v0.27.0): a stapes built on an older
+audio refuses it. That audio reads the files written before as it did, a frame
+model's without its last heads and a notes model's without the cents head, the
+heads of what plays each pitch or the measure, a frame head of one value whose
+weights are zero and whose bias is the measure.
 A change to either side is a change to both: check a random model's outputs on
 a corpus loop from the two before trusting a trained file, as the module's
 [agent notes](https://github.com/lixenwraith/transformer/blob/main/doc/agent-notes.md)

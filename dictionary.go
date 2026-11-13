@@ -904,7 +904,7 @@ func (s *Session) refineSteps(rp *ripped, d *audio.SongDef, base float64, o refi
 	}
 	// proposal is the recording's strongest pitch over a step of the bar a
 	// pattern first plays in, in the register of the pattern's slot
-	m := rp.rip.Meter
+	m, pitches := rp.rip.Meter, want.Frames.Pitches()
 	proposal := func(pat string, pos int) (int, bool) {
 		bar := uses[pat][0] + pos/m.Steps()
 		i := m.Beats()*bar + pos%m.Steps()/m.Beat()
@@ -914,15 +914,15 @@ func (s *Session) refineSteps(rp *ripped, d *audio.SongDef, base float64, o refi
 		span := (rp.rip.Beats[i+1] - rp.rip.Beats[i]) / float64(m.Beat())
 		t0 := rp.rip.Beats[i] + span*float64(pos%m.Beat())
 		f0, f1 := int(t0/want.Frames.Hop), int((t0+span)/want.Frames.Hop)
-		lo, hi := audio.RipMelodyLow, audio.RipMaxMIDI
+		lo, hi := audio.RipMelodyLow, pitches.Max
 		if slotOf[pat] == 3 {
-			lo, hi = audio.RipMinMIDI, audio.RipBassReach
+			lo, hi = pitches.Min, audio.RipBassReach
 		}
 		best, bestV := -1, 0.0
 		for m := lo; m < hi; m++ {
 			var v float64
-			for t := max(f0, 0); t < f1 && (t+1)*audio.RipPitches <= len(want.Frames.Salience); t++ {
-				v += float64(want.Frames.Salience[t*audio.RipPitches+m-audio.RipMinMIDI])
+			for t := max(f0, 0); t < f1 && (t+1)*pitches.Len() <= len(want.Frames.Salience); t++ {
+				v += float64(want.Frames.Salience[t*pitches.Len()+m-pitches.Min])
 			}
 			if v > bestV {
 				best, bestV = m, v
@@ -967,7 +967,7 @@ func (s *Session) refineSteps(rp *ripped, d *audio.SongDef, base float64, o refi
 		}
 		var moves []func(*audio.StepDef)
 		for _, m := range [...]int{midi - 1, midi + 1, midi - 12, midi + 12} {
-			if m >= audio.RipMinMIDI && m < audio.RipMaxMIDI {
+			if pitches.Holds(m) {
 				moves = append(moves, pitch(m))
 			}
 		}

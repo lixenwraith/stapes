@@ -10,6 +10,7 @@ One file is its own mean, so a .pt alone becomes its weight file:
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 
 import torch
 
@@ -17,7 +18,7 @@ import ripmodels
 
 
 def shape(ck: dict) -> dict:
-    return {**{f"cfg.{k}": v for k, v in ck["cfg"].items()}, **{k: tuple(t.shape) for k, t in ck["model"].items()}}
+    return {**{f"cfg.{k}": v for k, v in asdict(ripmodels.shape(ck["cfg"])).items()}, **{k: tuple(t.shape) for k, t in ck["model"].items()}}
 
 
 def mean(states: list, cut: int) -> dict:
@@ -60,12 +61,13 @@ def main() -> None:
                          "so their mean would be no run's measure: give the merge one with --sure")
 
     cut = int(args.trim * len(cks))
-    model = ripmodels.build(ripmodels.Config(**cks[0]["cfg"]))
+    cfg = ripmodels.shape(cks[0]["cfg"])
+    model = ripmodels.build(cfg)
     model.load_state_dict(mean([ck["model"] for ck in cks], cut))
     if args.sure and hasattr(model, "sure"):
         model.sure.fill_(args.sure)
     if args.pt:
-        torch.save({"model": model.state_dict(), "cfg": cks[0]["cfg"]}, args.pt)
+        torch.save({"model": model.state_dict(), "cfg": asdict(cfg)}, args.pt)
     model.eval()
     ripmodels.export(model, args.out)
     print(f"averaged {len(cks)} files, {cut} dropped at each end of each weight; wrote {' and '.join(f for f in (args.pt, args.out) if f)}")

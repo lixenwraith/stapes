@@ -181,13 +181,16 @@ sounding alone, and 1% have no event sounding.
 `corpus.json` names the layout for the whole folder:
 
 ```
-{"version":1,"loops":40000,"rate":22050,"hop":256,"mel_bands":229,"min_midi":28,
- "pitches":69,"drums":["kick","snare","hihat"],"waves":["sine","saw","square","string","modal"],
+{"version":1,"loops":40000,"rate":22050,"hop":256,"mel_bands":229,"min_midi":21,
+ "pitches":88,"drums":["kick","snare","hihat"],"waves":["sine","saw","square","string","modal"],
  "families":["piano","guitar","voice","bass","strings","winds","synth","drums","unknown"],"voice_genes":32}
 ```
 
 `loops` counts the files `loop_000` onward; the number grows past three digits as
-needed (`loop_39999`). The corpora in use:
+needed (`loop_39999`). `min_midi` and `pitches` state the pitches a model is built for,
+the piano's 88 from MIDI 21, and E1 to C7, 69 from 28, in a corpus written before stapes
+v0.30.0. A label holds each note's own MIDI number whatever they state and the trainer
+reads neither, so a corpus of either trains a model of either. The corpora in use:
 
 - **Corpus 11:** `corpus <dir> 40000 4 aug gen nowav codec`. Rendered loops of 4 bars,
   25.6 million frames, 24 GB. [Rip design §3](rip-design.md#3-learning) lists what
@@ -381,13 +384,17 @@ channel reads plane 1 alone, 230 values.
 `--pitchnet` reads both planes through a harmonic stack it computes itself. A plane's bands
 are read on a log-frequency axis of 36 bins an octave, by interpolation. Each plane then
 gives 8 channels, one per harmonic of 0.5, 1 and 2 to 7, each shifted by -36, 0, 36, 57, 72,
-84, 93 or 101 bins, so a pitch's harmonics line up at its own bin. That's 213 bins from MIDI
-27 in 16 channels, each channel ending in its plane's scalar.
+84, 93 or 101 bins, so a pitch's harmonics line up at its own bin. The axis runs from the
+semitone under the model's lowest pitch to the one over its highest: 270 bins from MIDI 20
+for the piano's pitches, 213 from MIDI 27 for E1 to C7, in 16 channels, each channel ending
+in its plane's scalar.
 
 ## 5. The targets
 
 `Label.window(a, b)` builds what each head should say for frames a to b. A note's pitch
-index is `midi - 28`, and one outside 0 to 68 sets no pitch. A note that carries `cents`
+index is its MIDI number less the model's lowest pitch (`Config.low`, 21), and one outside
+the model's pitches sets no pitch: the cell is the model's, whatever the corpus's manifest
+states. A note that carries `cents`
 sounds, is struck and is let go in the cell nearest its frequency at each frame, so a
 glide's pitch target walks the cells it crosses.
 
@@ -590,35 +597,40 @@ conv 2         B x 32 x 512 x 57             3x3, GELU, max over 2 features
 flatten        B x 512 x 1824                the last odd feature dropped by the pool
 input layer    B x 512 x 256
 4 blocks       B x 512 x 256                 pre-norm attention and feed-forward 1024
-norm, output   B x 512 x 329                 raw scores
+norm, output   B x 512 x 405                 raw scores
 ```
 
 Attention has 8 heads and looks 64 frames (0.74 s) either side, in every block. There
 are no position embeddings: each head subtracts a slope of `2^(-8(h+1)/8)` per frame of
 distance from its scores (ALiBi), so a window of any length works.
 
-The 3,718,569 weights: 304 + 2,320 + 4,640 in the convolutions, 467,200 in the input
-layer, 789,760 in each block, 512 in the final norm, 84,553 in the output layer, 2,313
+The 3,738,101 weights: 304 + 2,320 + 4,640 in the convolutions, 467,200 in the input
+layer, 789,760 in each block, 512 in the final norm, 104,085 in the output layer, 2,313
 of them the family head's and 514 the beat's and the downbeat's, which 12a's file
 lacks. A one-channel model has 144 fewer, all in `convs.0.weight`.
 
-The 329 outputs, in the order the file lists the heads:
+The 405 outputs, in the order the file lists the heads:
 
 ```
 offset    size  head       read as
   0         1   onset      sigmoid
   1..3      3   drums      sigmoid: kick, snare, hihat
-  4..72    69   pitch      sigmoid: MIDI 28 to 96
- 73         1   voicing    sigmoid
- 74..78     5   wave       softmax: sine, saw, square, string, modal
- 79..110   32   voice      sigmoid: genes
-111..179   69   strike     sigmoid
-180..248   69   release    sigmoid
-249..317   69   velocity   sigmoid
-318..326    9   family     softmax: piano, guitar, voice, bass, strings, winds, synth, drums, unknown
-327         1   beat       sigmoid: a beat of the meter within a frame
-328         1   downbeat   sigmoid: a bar line within a frame
+  4..91    88   pitch      sigmoid: MIDI 21 to 108
+ 92         1   voicing    sigmoid
+ 93..97     5   wave       softmax: sine, saw, square, string, modal
+ 98..129   32   voice      sigmoid: genes
+130..217   88   strike     sigmoid
+218..305   88   release    sigmoid
+306..393   88   velocity   sigmoid
+394..402    9   family     softmax: piano, guitar, voice, bass, strings, winds, synth, drums, unknown
+403         1   beat       sigmoid: a beat of the meter within a frame
+404         1   downbeat   sigmoid: a bar line within a frame
 ```
+
+The pitches are the model's own (`--range`, the piano's 21-108 by default; `Config.low`
+and the width of its `pitch` head, which a checkpoint records and the weight file states,
+§9). A model of E1 to C7, as every one before stapes v0.30.0 and any checkpoint that
+records no lowest pitch, has 69 where this has 88: 329 outputs, 19,532 weights fewer.
 
 A file may lack the last 6 heads and still load: one without `family` hears no family,
 and one without `beat` and `downbeat` has its bars read by the cues' rules. An audio
@@ -626,7 +638,8 @@ before v0.24.0 refuses a file that has the two, its heads being no prefix of the
 model's heads it knows.
 
 `--pitchnet` builds another model on the same heads but `family`, the frame model's to hear:
-convolutions only, the same weights at every pitch, 171,413 weights in all, 66 of them the
+convolutions only, the same weights at every pitch, so 171,413 weights in all whatever its
+pitches, 66 of them the
 cents head's and 1,485 those of what plays each pitch. Its file is `ripnotes.bin` (§9).
 `--dilations 3,9,27` adds a residual 3x3 over the cells for each, its frames that far apart:
 each note head then hears half a second either way instead of 80 ms, 199,157 weights, about
@@ -659,17 +672,37 @@ as many notes right (0.656) and parted the held-out family's notes no better (th
 
 ```
 input          B x T x 460              the two planes
-stack          B x 16 x T x 214         the harmonic stack of section 4
-reduce         B x 8 x T x 213          1x1, GELU, the scalars set aside
-wide           B x 16 x T x 213         3x39, thirteen semitones, GELU
-cells          B x 32 x T x 71          7x3, stride 3 over features, one cell a semitone, GELU
-near           B x 32 x T x 71          7x3 with a residual, GELU
-long           B x 32 x T x 71          3x3 dilated in time, one each of --dilations, with a residual, GELU
-notes          B x 51 x T x 69          1x1: pitch, strike, release, velocity, the cents head's two,
+stack          B x 16 x T x 271         the harmonic stack of section 4
+reduce         B x 8 x T x 270          1x1, GELU, the scalars set aside
+wide           B x 16 x T x 270         3x39, thirteen semitones, GELU
+cells          B x 32 x T x 90          7x3, stride 3 over features, one cell a semitone, GELU
+near           B x 32 x T x 90          7x3 with a residual, GELU
+long           B x 32 x T x 90          3x3 dilated in time, one each of --dilations, with a residual, GELU
+notes          B x 51 x T x 88          1x1: pitch, strike, release, velocity, the cents head's two,
                                         and the 8, 5 and 32 of what plays the pitch
 frame          B x T x 42               wide pooled to 16 regions plus the scalars, a 1D conv of 5
                                         and one of 9 dilated by 2, linear: the other heads
 ```
+
+The regions pool the 213 bins the stack of E1 to C7 holds (`PitchNet.pool`, bins 21 to 233
+of the piano's 270), whatever the model's pitches, so they hold the frequencies they held
+in a model of that range.
+
+**Growing a model's pitches.** `--init` from a checkpoint of fewer pitches grows it
+(`ripmodels.carried`), as it grows one of fewer heads. The body and every other head go
+whole. A frame model's four per-pitch heads keep each pitch's row of the output layer at
+its pitch, seven rows up from E1 to C7 into the piano's, and a pitch new to them starts
+at a zero row under a bias of -10, a sigmoid of 0.00005: it says of its own pitches what
+it said and nothing of the new until they are trained. A notes model has no row a pitch,
+so every weight goes whole and no cell is new to them: a cell reads 19 bins either way
+through the wide convolution and a cell more through each convolution over the cells, so
+a pitch eleven or more from an old edge, with three long convolutions, hears what it
+heard, and the ten at each edge now hear the sound past it, where the old stack ended in
+silence. The installed pair's checkpoints grown so and not trained, over eight generated
+loops of 10,874 frames: 32a's pitches from D2 to D6 say what they said to 1e-6; at the
+edges 11 of its 2,353 strikes over the decoder's bars go and 8 come, and 3 are heard on
+the new pitches; its voicing moves by 0.003 on average and 0.05 at most, its onset by 0.05
+and 0.59, which no decoder reads from it; 12a's rows say what they said to 2e-6.
 
 ## 8. A training step
 
@@ -982,21 +1015,26 @@ offset  bytes         field
 ```
 
 The checksum catches damage, not tampering. A file only ever holds numbers, and `Load`
-checks its shape against its tensors. A file written now lists twelve heads, `beat` and
-`downbeat` of one value each after `family`, and its `out.weight` is 329 x 256.
+checks its shape against its tensors. A file written now is version 6: a `kind` word
+after the version, 0 for the frame model, twelve heads, `beat` and `downbeat` of one value
+each after `family`, an `out.weight` of 405 x 256, and after the heads the constants it
+states, a count and for each a name and a float32: one, `lowest`, the MIDI number of the
+model's lowest pitch, 21 (audio's `ripmodels.Lowest`). Its pitch head's size is how many
+pitches follow, and a file that states none, as every one before, hears E1 to C7.
 
-`--pitchnet` writes version 5, whose `kind` word after the version, 1, makes the notes model
+`--pitchnet` writes the same version, whose `kind` word, 1, makes the notes model
 transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
-scalars, then the long convolutions' spacings, then the heads, the per-pitch ones first: pitch,
+scalars, then the long convolutions' spacings and the bins its regions pool, the first and
+how many (21 and 213, or 0 and 0 for every bin), then the heads, the per-pitch ones first: pitch,
 strike, release, velocity, cents, pitchfamily, pitchwave and pitchvoice, then onset, drums,
-voicing, wave, voice and sure. `cents` is 138 numbers a frame, the 69 offsets then the 69 log
-errors, `cellout`'s fifth and sixth channels; `pitchfamily` 552, `pitchwave` 345 and
-`pitchvoice` 2,208, a value's 69 pitches together, `cellout`'s next 45. `sure` is the measure
+voicing, wave, voice and sure. `cents` is 176 numbers a frame, the 88 offsets then the 88 log
+errors, `cellout`'s fifth and sixth channels; `pitchfamily` 704, `pitchwave` 440 and
+`pitchvoice` 2,816, a value's 88 pitches together, `cellout`'s next 45. `sure` is the measure
 of §8, written as a frame head of one value whose row of `frameout.weight` is zero and whose
-bias is the measure, so every frame states it and the format holds no new field. The layout
-and the version are as they were: a file without a head lists fewer and loads as before, its
-rip with no glides or with no note's voice, and one with them loads in an audio before
-v0.23.0 too, which reads the heads it knows by name and computes the rest unread. The tensors are
+bias is the measure, so every frame states it; it predates the constants and stays a head
+while trained files carry it so. A file without a head lists fewer and loads as before, its
+rip with no glides or with no note's voice. Version 6 needs transformer v0.7.0 (audio
+v0.27.0), which reads the versions before it as it did. The tensors are
 `reduce`, `wide`, `cells`, `near.0`, `long.{i}`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
 `nn.Conv1d` or `nn.Linear` holds it. In the stapes root the file is `ripnotes.bin`.
 Beside the frame model's `ripframe.bin` it gives pitch, voicing, strike, release, velocity

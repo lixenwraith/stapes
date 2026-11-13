@@ -601,7 +601,7 @@ func (s *Session) readScore(file string) (*ripped, error) {
 		said = append(said, fmt.Sprintf("%d tempo change(s) after the start, played at the first tempo throughout", m.Changes))
 	}
 	if dropped > 0 {
-		said = append(said, fmt.Sprintf("%d note(s) outside %s to %s dropped", dropped, noteName(audio.RipMinMIDI), noteName(audio.RipMaxMIDI-1)))
+		said = append(said, fmt.Sprintf("%d note(s) outside %s to %s dropped", dropped, noteName(r.Range.Min), noteName(r.Range.Max-1)))
 	}
 	if m.Left > 0 {
 		said = append(said, fmt.Sprintf("%d part(s) past the melody, under and bass left out", m.Left))

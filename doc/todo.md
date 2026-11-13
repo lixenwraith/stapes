@@ -430,46 +430,33 @@ Left open by what landed, each with the option not taken:
   with the notes model's salience from step to step.
 - `test_train.py` runs by hand: CI has no PyTorch.
 
-### Widen the pitch range
+### Train the piano's pitches
 
-- Priority: P2
-- Affected files: `lixenwraith/audio` (`rip.go`, `ripmodels`), `tool/rip-train`
-  (`ripmodels.py`, `train.py`)
+- Priority: P1
+- Affected files: `tool/rip-train` (a round's recipe), `tune.go` (`midiLoop`);
+  `lixenwraith/audio` (`ripmodels`, `MIDIScore.Rip`)
 
-The models hear MIDI 28 to 96, E1 to C7 (audio's `RipMinMIDI`, `RipMaxMIDI`).
-About 1% of a generated corpus's notes lie under it, all at MIDI 22 to 27 (2% of
-corpus 14's), 0.06% over it, and MusicNet's labels reach MIDI 23. Lixen decided
-on 13 November 2026 to widen it to the piano's 88 keys, MIDI 21 to 108, after
-audio v0.26.0; until then a truth leaves out the notes outside it, as
-`readScore` does.
+The models are built for MIDI 21 to 108 since v0.30.0 (audio v0.27.0), and the
+lines in training are still E1 to C7. What is left:
 
-- Why E1: the input starts there. The mel's lowest band is centred at 38.9 Hz
-  and E1 is 41.2 Hz; at the bottom the bands are about 9 Hz apart where
-  neighbouring semitones are 2.4 Hz apart, so a low note is told by its
-  harmonics already, and the harmonic stack reads nothing under the lowest
-  band's centre (`axis_ok`).
-- What it takes, no weight new but the frame model's rows:
-  - The notes model has the same weights at every pitch, so its range is the
-    harmonic stack's extent (`STACK_BINS`, `STACK_ROOT_MIDI`: 213 bins from MIDI
-    27, 270 from MIDI 20 for a cell either side of the 88) and the cells it reads
-    (`PITCHES`). Its frame heads pool the stack in sixteen regions, which a wider
-    stack moves: the pool keeps the old span, or the heads train again. A
-    frame costs it 88/69 of the work.
-  - The frame model's `pitch`, `strike`, `release` and `velocity` heads grow 19
-    rows each, its body unchanged. `--init` keeps an old file's output rows only
-    at the front of the layer: it is to place each head's rows at its new
-    offset, a pitch's row seven up.
-  - The corpora hold those notes' sound and MIDI numbers already; each
-    manifest's `min_midi` and `pitches` are rewritten, nothing rendered.
-  - Audio's `RipMinMIDI`, `RipMaxMIDI`, the stack's constants in `ripmodels`
-    and what `RipPitches` sizes, and the weight files' version, so a file of
-    the old range is refused rather than read seven pitches off.
-  - A pass that trains the new rows from the current lines.
-- What it does not buy: the fundamentals under E1, at or under the lowest band,
-  so a note there is told by its harmonics alone and an octave off more often.
-  Finer low bands or a longer window is a new front end, every corpus rendered
-  again and both models trained from nothing: decide that once, before a bass
-  under E1 is a goal.
+- Each line is grown once, at a pass's boundary (`--init`, [Rip training
+  §7](rip-training.md#7-the-models)), and that pass trains the new pitches: a
+  frame model's rows start silent, and a notes model's ten pitches at each old
+  edge hear the sound past it from the first step.
+- `corpus ... midi` still drops a file's notes outside E1 to C7 before it
+  transposes a loop (`MIDIScore.Rip`), which is why a corpus's notes under E1
+  are all at MIDI 22 to 27: keeping them changes every such corpus's bytes, so
+  it goes with the next corpus rendered.
+- `truth` counts a note given outside the rip's pitches as only given, where
+  `tune ... truth` and `rows` leave it out (`matchHeard`): a score read
+  against its own file shows the note it dropped that way
+  (`TestRipReadsAMIDIFileAsAScore`). Decide whether the verb follows, with a
+  line saying how many it left out.
+- What the range does not buy: the fundamentals under E1, at or under the
+  mel's lowest band (38.9 Hz), so a note there is told by its harmonics alone
+  and an octave off more often. Finer low bands or a longer window is a new
+  front end, every corpus rendered again and both models trained from
+  nothing: decide that once, before a bass under E1 is a goal.
 
 ### A live rip
 

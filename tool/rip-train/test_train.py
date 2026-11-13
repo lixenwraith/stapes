@@ -18,9 +18,11 @@ import average
 import ripmodels
 import train
 
-MANIFEST = {"mel_bands": ripmodels.MEL_BANDS, "min_midi": 28, "pitches": ripmodels.PITCHES, "voice_genes": ripmodels.VOICE_GENES}
+# a corpus from before the piano's pitches: its manifest states E1 to C7, and its labels hold every note
+MANIFEST = {"mel_bands": ripmodels.MEL_BANDS, "min_midi": ripmodels.OLD_LOW, "pitches": ripmodels.OLD_PITCHES, "voice_genes": ripmodels.VOICE_GENES}
 F = {k: i for i, k in enumerate(ripmodels.FAMILIES)}
-CFG = ripmodels.Config(inputs=ripmodels.STACK_INPUTS, channels=ripmodels.STACK_CHANNELS, outputs=ripmodels.PITCHNET_HEADS, cell=4)
+LOW = ripmodels.LOW  # the lowest pitch of a model built now, a label's first cell
+CFG = ripmodels.Config(inputs=ripmodels.stack_bins(ripmodels.PITCHES) + 1, channels=ripmodels.STACK_CHANNELS, outputs=ripmodels.PITCHNET_HEADS, cell=4)
 
 
 def voice(first: float) -> list:
@@ -60,7 +62,7 @@ class Said(torch.nn.Module):
 
     def say(self, a, b, midi, salience=9.0, family=None, wave=None, gene=None):
         """over frames a to b the pitch sounds, played by a family on a wave, its voice's first gene given"""
-        p = midi - MANIFEST["min_midi"]
+        p = midi - LOW
         self.y[0, a:b, self.cfg.slice("pitch")][:, p] = salience
         for head, value, score in (("pitchfamily", family and F[family], 9.0), ("pitchwave", wave, 9.0), ("pitchvoice", 0, gene)):
             if value is not None and score is not None:
@@ -84,7 +86,7 @@ class WhatPlaysEachPitch(unittest.TestCase):
                      note(0, 10, 70, "unknown"), note(0, 10, 72, "piano", voice(0.1), 4), note(5, 15, 72, "guitar", voice(0.3), 3),
                      note(20, 30, 50, "bass", voice(0.4), 4, cents=bend)])
         t = lab.window(0, 40)
-        cell = lambda key, frame, midi: int(t[key][frame, midi - 28])
+        cell = lambda key, frame, midi: int(t[key][frame, midi - LOW])
         rows = train.genes()
         for frame, midi, family, wave, first in ((3, 60, None, 4, 0.1), (3, 64, "strings", -1, None), (3, 67, None, 1, 0.2), (3, 70, None, -1, None),
                                                  (3, 72, None, 4, 0.1), (7, 72, None, -1, None), (12, 72, None, 3, 0.3),
@@ -94,17 +96,17 @@ class WhatPlaysEachPitch(unittest.TestCase):
                 self.assertEqual(cell("pitchwave", frame, midi), wave)
                 got = cell("pitchvoice", frame, midi)
                 self.assertEqual(None if got < 0 else round(float(rows[got][0]), 3), first)
-        self.assertEqual([int(t["pitch"][f, m - 28]) for f, m in ((3, 70), (7, 72), (27, 51), (27, 50))], [1, 1, 1, 0])
+        self.assertEqual([int(t["pitch"][f, m - LOW]) for f, m in ((3, 70), (7, 72), (27, 51), (27, 50))], [1, 1, 1, 0])
 
     def test_a_family_held_out_is_named_to_no_head(self):
         """The notes of the family held out stay in the run, their sound, wave and voice taught, but neither the
         cells' head nor the frame's is told their family."""
         train.FAMILY_HOLDOUT = F["guitar"]
         t = label([note(0, 10, 60, "guitar"), note(0, 10, 64, "guitar", voice(0.3), 3), note(0, 20, 48, "bass")]).window(0, 20)
-        self.assertEqual([int(t["pitchfamily"][3, m - 28]) for m in (60, 48)], [-1, F["bass"]])
+        self.assertEqual([int(t["pitchfamily"][3, m - LOW]) for m in (60, 48)], [-1, F["bass"]])
         self.assertEqual([int(t["family"][f]) for f in (3, 15)], [-1, F["bass"]])
-        self.assertEqual([int(t[k][3, 64 - 28]) for k in ("pitch", "pitchwave")], [1, 3])
-        self.assertGreaterEqual(int(t["pitchvoice"][3, 64 - 28]), 0)
+        self.assertEqual([int(t[k][3, 64 - LOW]) for k in ("pitch", "pitchwave")], [1, 3])
+        self.assertGreaterEqual(int(t["pitchvoice"][3, 64 - LOW]), 0)
 
     def test_a_frame_is_asked_a_family_only_where_an_instrument_plays_its_highest_note(self):
         """The frame's family head is asked by the cells' rule: a frame whose highest note the engine rendered asks no
@@ -132,7 +134,7 @@ class WhatPlaysEachPitch(unittest.TestCase):
             model.say(20, 30, m, 5.0 + m)
         for i in range(21):  # the held-out family's notes, each surer of a piano than the last
             model.say(40 + 10 * i, 50 + 10 * i, 55, 9.0, "piano")
-            model.y[0, 40 + 10 * i:50 + 10 * i, CFG.slice("pitchfamily")][:, F["synth"] * ripmodels.PITCHES + 55 - 28] = 9.0 - 0.5 * i
+            model.y[0, 40 + 10 * i:50 + 10 * i, CFG.slice("pitchfamily")][:, F["synth"] * ripmodels.PITCHES + 55 - LOW] = 9.0 - 0.5 * i
         mels, tgs, notes = train.validation([(Frames(frames), label(events, frames)), (Frames(frames), label(engine, frames))], frames, 2)
         v = train.evaluate(model, mels, tgs, "cpu", 24, notes)["voices"]
         self.assertEqual((round(v["families"][0], 6), v["families"][1]), (round(2 / 3, 6), 3))
@@ -152,8 +154,9 @@ class WhatPlaysEachPitch(unittest.TestCase):
         self.assertEqual((round(past, 6), right), (round(2 / 3, 6), 0.5))  # the voice and the bass, named wrong, are surer than they reach
 
     def test_the_weight_file_carries_the_heads_and_the_measure(self):
-        """The file names the heads of what plays each pitch after the cents, a value a pitch each, and the measure as
-        a frame head whose weights are zero and whose bias is the measure."""
+        """The file names the heads of what plays each pitch after the cents, a value a pitch each, states the lowest
+        pitch as a constant after the heads, and carries the measure as a frame head whose weights are zero and whose
+        bias is the measure."""
         model = ripmodels.PitchNet(CFG)
         model.sure.fill_(0.75)
         with tempfile.TemporaryDirectory() as d:
@@ -174,6 +177,7 @@ class WhatPlaysEachPitch(unittest.TestCase):
             at += n
             return body[at - n:at].decode()
         heads = [(name(), take("I")) for _ in range(take("I"))]
+        self.assertEqual([(name(), take("f")) for _ in range(take("I"))], [("lowest", float(LOW))])
         p = ripmodels.PITCHES
         self.assertEqual(heads[4:8], [("cents", 2 * p), ("pitchfamily", ripmodels.NAMES * p), ("pitchwave", ripmodels.WAVES * p), ("pitchvoice", ripmodels.VOICE_GENES * p)])
         self.assertEqual(heads[-1], ("sure", 1))
@@ -211,13 +215,13 @@ class WhatPlaysEachPitch(unittest.TestCase):
             self.assertEqual(merged(files[2]), 0.0)
 
 
-def corpus(d, labels, frames=64):
-    """a corpus on disk of loops of silence, a label each"""
+def corpus(d, labels, frames=64, sound=None):
+    """a corpus on disk of loops of silence, or of the frames sound gives a label, a label each"""
     with open(os.path.join(d, "corpus.json"), "w") as f:
         json.dump({**MANIFEST, "loops": len(labels), "waves": ["sine", "saw", "square", "string", "modal"]}, f)
     for i, lab in enumerate(labels):
         with open(os.path.join(d, f"loop_{i:03d}.mel"), "wb") as f:
-            f.write(struct.pack("<II", frames, ripmodels.MEL_BANDS) + bytes(4 * frames * ripmodels.MEL_BANDS))
+            f.write(struct.pack("<II", frames, ripmodels.MEL_BANDS) + (sound(lab).tobytes() if sound else bytes(4 * frames * ripmodels.MEL_BANDS)))
         with open(os.path.join(d, f"loop_{i:03d}.json"), "w") as f:
             json.dump(lab, f)
 
@@ -376,7 +380,8 @@ class TheBeatAndTheBarLine(unittest.TestCase):
                 self.assertTrue(torch.equal(after["model"][k][:had] if k.startswith("out.") else after["model"][k], v))
         self.assertEqual([len(after["model"][k]) for k in ("out.weight", "out.bias")], [had + 2, had + 2])
         head = lambda name, size: struct.pack("<H", len(name)) + name.encode() + struct.pack("<I", size)
-        self.assertIn(head("family", len(ripmodels.FAMILIES)) + head("beat", 1) + head("downbeat", 1) + struct.pack("<I", len(after["model"])), body)
+        lowest = struct.pack("<IH", 1, 6) + b"lowest" + struct.pack("<f", LOW)
+        self.assertIn(head("family", len(ripmodels.FAMILIES)) + head("beat", 1) + head("downbeat", 1) + lowest + struct.pack("<I", len(after["model"])), body)
 
     def test_a_probe_trains_the_two_heads_alone_on_a_frame_model_held_as_it_was(self):
         """--probe on a frame model started from one without the beat and downbeat heads trains those two heads' rows
@@ -399,7 +404,7 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         frames = torch.randn(1, 40, ripmodels.INPUTS, generator=torch.Generator().manual_seed(1))
         says = []
         for ck in (start, probed):
-            model = ripmodels.FrameModel(ripmodels.Config(**ck["cfg"]))
+            model = ripmodels.FrameModel(ripmodels.shape(ck["cfg"]))
             model.load_state_dict(ck["model"])
             with torch.no_grad():
                 says.append(model.eval()(frames))
@@ -425,6 +430,130 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         family = ripmodels.Config().slice("family")
         self.assertEqual([after[k][family].abs().sum().item() for k in ("out.weight", "out.bias")], [0, 0])
         self.assertFalse(all(torch.equal(after[k], v) for k, v in before.items() if not k.startswith("out.")))
+
+
+def sounding(frames, events) -> np.ndarray:
+    """a loop's frames as a corpus stores them, each note's first eight harmonics in the band nearest each, louder
+    over its first two frames"""
+    mel = lambda hz: 2595 * np.log10(1 + hz / 700)
+    e = np.zeros((frames, ripmodels.MEL_BANDS))
+    for ev in events:
+        for h in range(1, 9):
+            band = int(round((mel(440 * 2 ** ((ev["midi"] - 69) / 12) * h) - mel(30)) / (mel(11025) - mel(30)) * (ripmodels.MEL_BANDS + 1))) - 1
+            if 0 <= band < ripmodels.MEL_BANDS:
+                e[ev["frame"]:ev["end"], band] += 0.05 / h
+                e[ev["frame"]:ev["frame"] + 2, band] += 0.2 / h
+    return np.log1p(100 * e).astype(np.float32)
+
+
+class ThePitches(unittest.TestCase):
+    def test_a_note_takes_its_cell_from_the_models_pitches_whatever_the_manifest_states(self):
+        """A corpus's labels hold every note, and a note's cell is its pitch among the model's: under a manifest that
+        states E1 to C7, a B0 and an A7 are a pitch, a strike and a release of a model of the piano's pitches, and
+        of a model of E1 to C7 they are in no cell, the note inside it asked as ever."""
+        events = [note(2, 10, 23, "piano"), note(4, 12, 105, "piano"), note(0, 20, 60, "piano")]
+        t = label(events).window(0, 40)
+        pairs = lambda key: [tuple(x) for x in t[key].tolist()]
+        for midi, at, end in ((23, 2, 10), (105, 4, 12)):
+            with self.subTest(midi=midi):
+                self.assertEqual(int(t["pitch"][:, midi - LOW].sum()), end - at)
+                self.assertIn((at, midi - LOW), pairs("strikes"))
+                self.assertIn((end, midi - LOW), pairs("releases"))
+        old = ripmodels.Config(outputs=ripmodels.heads(ripmodels.OLD_PITCHES), low=ripmodels.OLD_LOW)
+        t = train.Label({"events": events}, 40, MANIFEST, old).window(0, 40)
+        self.assertEqual((t["pitch"].shape, int(t["pitch"].sum()), pairs("strikes")), ((40, ripmodels.OLD_PITCHES), 20, [(0, 60 - ripmodels.OLD_LOW)]))
+
+    def test_init_grows_a_frame_model_to_more_pitches_each_row_at_its_pitch(self):
+        """A frame model of E1 to C7, its checkpoint stating no lowest pitch as none before this could, starts a run of
+        the piano's pitches through --init: its body is carried whole and each per-pitch head's rows lie seven
+        pitches up, the new pitches' rows zero under a silent bias, so it says of its own pitches what it said
+        and nothing of the new, and the weight file states the lowest; --range 28-96 starts it as it was."""
+        old = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodels.heads(ripmodels.OLD_PITCHES), low=ripmodels.OLD_LOW)
+        was = ripmodels.FrameModel(old).eval()
+        before = was.state_dict()
+        with tempfile.TemporaryDirectory() as d:
+            at = lambda name: os.path.join(d, name)
+            corpus(d, [{"bpm": 120, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
+            torch.save({"model": before, "cfg": {k: v for k, v in asdict(old).items() if k != "low"}}, at("old.pt"))
+            said = run("--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--lr", "0")
+            kept = run("--corpus", d, "--out", at("kept.bin"), "--init", at("old.pt"), "--checkpoint", at("kept.pt"), "--lr", "0", "--range", "28-96")
+            after, same = torch.load(at("new.pt")), torch.load(at("kept.pt"))
+            files = []
+            for name in ("new.bin", "kept.bin"):
+                with open(at(name), "rb") as f:
+                    files.append(f.read())
+        self.assertIn("its pitches MIDI 28 to 96 of this run's 21 to 108, the new ones their rows silent", said)
+        self.assertNotIn("its pitches", kept)
+        for body, low in zip(files, (LOW, ripmodels.OLD_LOW)):
+            self.assertIn(struct.pack("<IH", 1, 6) + b"lowest" + struct.pack("<f", low), body)
+        self.assertTrue(all(torch.equal(same["model"][k], v) for k, v in before.items()))
+        self.assertEqual((same["cfg"]["low"], dict(same["cfg"]["outputs"])["pitch"]), (ripmodels.OLD_LOW, ripmodels.OLD_PITCHES))
+        self.assertTrue(all(torch.equal(after["model"][k], v) for k, v in before.items() if not k.startswith("out.")))
+        cfg = ripmodels.shape(after["cfg"])
+        now = ripmodels.FrameModel(cfg).eval()
+        now.load_state_dict(after["model"])
+        frames = torch.randn(1, 40, ripmodels.INPUTS, generator=torch.Generator().manual_seed(1))
+        with torch.no_grad():
+            a, b = was(frames), now(frames)
+        up = ripmodels.OLD_LOW - LOW
+        for k, n in old.outputs:
+            with self.subTest(head=k):
+                said = b[..., cfg.slice(k)]
+                if n == ripmodels.OLD_PITCHES:
+                    new = torch.cat([said[..., :up], said[..., up + n:]], -1)
+                    self.assertEqual((new.min().item(), new.max().item()), (ripmodels.SILENT, ripmodels.SILENT))
+                    said = said[..., up:up + n]
+                self.assertTrue(torch.allclose(said, a[..., old.slice(k)], rtol=0, atol=1e-5))
+
+    def test_a_notes_model_grown_hears_its_pitches_as_it_did_away_from_the_old_edges(self):
+        """A notes model's weights are the same at every pitch, so one grown to the piano's pitches carries each whole
+        and none is new: its regions pool the bins the stack of E1 to C7 held, and a pitch whose neighbourhood lay
+        inside that stack says what it said, while one nearer an old edge now hears the sound past it, where it
+        heard none."""
+        old = ripmodels.Config(inputs=ripmodels.stack_bins(ripmodels.OLD_PITCHES) + 1, channels=ripmodels.STACK_CHANNELS,
+                               outputs=ripmodels.pitchnet_heads(ripmodels.OLD_PITCHES), cell=4, dilations=(3, 9), low=ripmodels.OLD_LOW)
+        cfg = ripmodels.Config(inputs=ripmodels.stack_bins(ripmodels.PITCHES) + 1, channels=ripmodels.STACK_CHANNELS, outputs=ripmodels.PITCHNET_HEADS, cell=4, dilations=(3, 9))
+        torch.manual_seed(1)
+        was, now = ripmodels.PitchNet(old).eval(), ripmodels.PitchNet(cfg).eval()
+        now.load_state_dict(ripmodels.carried(now, old, was.state_dict()))
+        self.assertTrue(all(torch.equal(now.state_dict()[k], v) for k, v in was.state_dict().items()))
+        held, up = ripmodels.stack_bins(ripmodels.OLD_PITCHES), ripmodels.OLD_LOW - LOW
+        self.assertEqual((was.pool, now.pool), ((0, held), (3 * up, held)))
+        mel = torch.rand(1, 60, 2 * ripmodels.INPUTS, generator=torch.Generator().manual_seed(2))
+        with torch.no_grad():
+            a, b = was(mel), now(mel)
+        # a cell reads the cells within one of it through each convolution over them, three bins a cell, and 19 bins on through the wide one
+        reach = len(old.dilations) + 1 + 7
+        for k, per in ripmodels.CELL_HEADS:
+            with self.subTest(head=k):
+                x = a[..., old.slice(k)].unflatten(-1, (per, ripmodels.OLD_PITCHES))
+                y = b[..., cfg.slice(k)].unflatten(-1, (per, ripmodels.PITCHES))[..., up:up + ripmodels.OLD_PITCHES]
+                self.assertTrue(torch.allclose(x[..., reach:-reach], y[..., reach:-reach], rtol=0, atol=1e-5))
+                self.assertFalse(torch.allclose(x[..., :2], y[..., :2], rtol=0, atol=1e-5))
+
+    def test_a_model_taught_a_note_at_either_end_of_the_pianos_pitches_reports_it(self):
+        """A notes model trained 150 steps on one loop whose sound is a B0 and an A7, twice each, says both pitches
+        sound over their notes and are struck in their cells, and no other pitch: the cells under E1 and over C7 are
+        taught and heard as any."""
+        events = [note(8, 40, 23, "piano"), note(24, 56, 105, "piano"), note(72, 104, 23, "piano"), note(88, 120, 105, "piano")]
+        with tempfile.TemporaryDirectory() as d:
+            corpus(d, [{"events": events}], 128, lambda lab: sounding(128, lab["events"]))
+            argv = ["train.py", "--corpus", d, "--pitchnet", "--cell", "8", "--out", os.path.join(d, "notes.bin"), "--checkpoint", os.path.join(d, "notes.pt"),
+                    "--steps", "150", "--every", "150", "--batch", "1", "--window", "64", "--lr", "0.01", "--device", "cpu"]
+            with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()):
+                train.main()
+            ck = torch.load(os.path.join(d, "notes.pt"))
+        model = ripmodels.build(ripmodels.shape(ck["cfg"])).eval()
+        model.load_state_dict(ck["model"])
+        with torch.no_grad():
+            y = model(torch.from_numpy(ripmodels.features(sounding(128, events), 2))[None])[0]
+        pitch, strike = (torch.sigmoid(y[:, model.cfg.slice(k)]) for k in ("pitch", "strike"))
+        cells = [23 - LOW, 105 - LOW]
+        for ev in events:
+            self.assertGreater(pitch[(ev["frame"] + ev["end"]) // 2, ev["midi"] - LOW].item(), 0.9)
+        self.assertGreater(strike[:, cells].amax(0).min().item(), 0.5)
+        others = [c for c in range(model.cfg.pitches) if c not in cells]
+        self.assertLess(max(pitch[:, others].max().item(), strike[:, others].max().item()), 0.5)
 
 
 if __name__ == "__main__":

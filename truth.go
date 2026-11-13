@@ -106,6 +106,23 @@ func cmdTruth(s *Session, a []string) error {
 	return nil
 }
 
+// matchHeard matches a rip's notes to a truth's as MatchNotes does, the notes
+// given at pitches the rip's front end does not tell apart, under the
+// transposition found, left out: no rip of its weights could report them, so a
+// search and a judge's rows are not held to them. It returns the agreement and
+// the notes it counted.
+func matchHeard(r *audio.Rip, given []audio.RipNote, timed bool) (audio.Agreement, []audio.RipNote) {
+	ag := audio.MatchNotes(r.Notes, given, timed)
+	if r.Range == (audio.RipRange{}) {
+		return ag, given
+	}
+	heard := slices.DeleteFunc(slices.Clone(given), func(n audio.RipNote) bool { return n.MIDI >= 0 && !r.Range.Holds(n.MIDI+ag.Shift) })
+	if len(heard) == len(given) {
+		return ag, given
+	}
+	return audio.MatchNotes(r.Notes, heard, timed), heard
+}
+
 // transcript reads notes given as text against a rip: at its tempo, and a rhythm
 // tapped out without a start from where its melody register first sounds
 func transcript(text string, r *audio.Rip) ([]audio.RipNote, error) {

@@ -205,9 +205,14 @@ proves wrong or that a document now states, and link the document instead.
   old name resumes with `CHECKPOINT=` naming its file.
 
 - A truth holds one note a frame and pitch, since a rip reports one, and none
-  outside the models' pitches (E1 to C7 until the range widens, todo): two
-  parts on one pitch were counted twice in 6.9% of the generated evaluation's
-  notes, which capped its recall at 93%, and 1.1% lay under E1. A doubled
+  outside the pitches the rip's front end tells apart: two parts on one pitch
+  were counted twice in 6.9% of the generated evaluation's notes, which capped
+  its recall at 93%, and 1.1% lay under E1. `tune ... truth` and `rows` leave
+  the second kind out themselves (`matchHeard`, by `Rip.Range`, under the
+  transposition the match finds); until v0.30.0 they counted each as a miss,
+  so a score read before it on a truth with such notes reads lower. `truth`
+  still lists such a note as only given
+  ([todo](todo.md#train-the-pianos-pitches)). A doubled
   note's name is right when it is any family sounding there, and its names are
   printed apart ([Rip training §5](rip-training.md#5-the-targets)).
 - A scorer is code nobody trained. Six defects sat in November's scorers (a
@@ -765,6 +770,25 @@ proves wrong or that a document now states, and link the document instead.
 - That run's path takes an hour on four cores: the corpus with its audio 264 s
   in four parts (7.9 GB), 5,000 steps at 0.45 s and 30 s a held-out score of
   160 loops, 480 rips in three minutes over four processes.
+- **A notes model grown to more pitches is its start only away from the old
+  edges.** Its weights are the same at every pitch, so `--init` carries each
+  whole, and a cell reads 19 bins through the wide convolution and a cell more
+  through each convolution over the cells: with three long ones the ten
+  pitches at each old edge hear sound where the old stack ended in silence.
+  32a grown and untrained said of D2 to D6 what it said to 1e-6 over eight
+  generated loops, lost 11 and gained 8 of 2,353 strikes over the decoder's
+  bars at the edges and heard 3 on the new pitches; its regions keep their
+  bins, yet its onset head moved 0.05 on average, the lowest region's bins
+  being the old bottom edge's. Read a grown line's edges apart from its middle
+  (`ripmodels.carried` on a `.pt`, each model over a loop's `features`), and
+  judge the frame model's growth by its rows: 12a's said what they said to 2e-6.
+- **A checkpoint that records no lowest pitch is E1 to C7** (`ripmodels.shape`),
+  and a run builds the piano's pitches unless told: `--init` from such a file
+  grows it, and resuming one, or starting from it as it is, takes `--range
+  28-96`, which `pipeline.sh` passes on with its other trailing flags.
+- A notes model taught at a rate of 0.03 went to NaN within a hundred steps on
+  one loop; at 0.01 it said a B0 and an A7 at 0.97 and no other pitch over 0.3
+  after 150 steps of one 64-frame window, the trainer's test of the range.
 - A frame model's probe (`--probe` from a model without the beat and downbeat
   heads) is checked on real weights by its held-out line and by a rip: the
   other ten heads' losses print to the digit as the start's, and its file

@@ -2212,8 +2212,9 @@ func settled(best genetic.Candidate[[]float64, float64], start []float64, base f
 		}
 	}
 	for _, k := range unseen {
-		if one := back(best.Data, k); eval(one) >= best.Score {
-			best.Data, best.Score = one, eval(one)
+		one := back(best.Data, k)
+		if score := eval(one); score >= best.Score {
+			best.Data, best.Score = one, score
 		}
 	}
 	return best

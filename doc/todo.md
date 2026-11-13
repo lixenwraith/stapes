@@ -201,7 +201,12 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    a corpus label alone, so a recording's want its list's beats in a label
    (`corpus <dir> from`), and a `.jams` truth, beats and no notes, is not read
    yet. It has run on no generated truth of every meter: that run sets the
-   bars' weights audio still holds at the values they were written with.
+   bars' weights audio still holds at the values they were written with. Nor
+   on loops cut off the bar line: some fit loops are to start a quarter to
+   three quarters of a bar in, their beats and lines given as a recording's
+   are, so the bars' weights do not learn a rendered loop's start ([agent
+   notes](agent-notes.md#the-rip-and-its-truths)); the table reads bars on
+   such loops beside the whole ones.
 7. The pedal: a piano arpeggio under pedal rings three or four notes at once,
    and the analysis's two lines hold two; the second line's eighths read as
    held notes (30 of 58 heard, 11 spanning two). A model's strikes start every

@@ -691,6 +691,13 @@ proves wrong or that a document now states, and link the document instead.
 - A test's small random model hears no drum hit and a bar at most of a
   two-bar loop: a test of the drums' or the bars' score hears through the
   analysis (`analysisEar`), which reads a rendered loop's.
+- The analysis hears drums where none play and drops played ones as fast: a
+  four-bar bank loop without its rhythm slot reads 42 hits at `onset_min`
+  0.02, 13 at 0.1 and 9 at 0.3 (the bass, as kicks), and with its drums 123,
+  85 and 64, so a search rightly holds the bar there: a hit heard where none
+  plays weighs what a false hit does in as long a recording with drums. A
+  test that wants the bar to rise takes a beat of one velocity alone as its
+  recording with drums (60, 56, 50 and 44 hits at 0.02, 0.05, 0.1 and 0.3).
 - A pool drawn near its start suits `tune ... truth` and not `tune`: over 12
   rendered loops of 4 bars at 16 by 8, from .616, the pool drawn across the
   ranges reached .678, .677 and .686 on three seeds and the near one .650,

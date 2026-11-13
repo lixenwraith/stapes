@@ -509,12 +509,11 @@ func soften(rng *rand.Rand, evs []audio.Step, steps int) {
 	}
 }
 
-// genAccompaniment is an accompaniment the bank never had, for the free slot: a
-// broken chord, the key's first, third and fifth with the seventh now and then,
-// in eighths or sixteenths that change pitch from note to note, up, down or
-// alternating, softer than a lead, on a tonal instrument drawn from the
-// registered ones, one or two bars of meter m: the line that runs under a slow
-// melody in much music, which the rip has to part from it
+// genAccompaniment is an accompaniment the bank never had, for the free slot,
+// one or two bars of meter m: a broken chord, the key's first, third and fifth
+// with the seventh now and then, in eighths or sixteenths going up, down or
+// alternating, softer than a lead, on a registered tonal instrument drawn: the
+// line under a slow melody in much music, which the rip has to part from it
 func genAccompaniment(rng *rand.Rand, degrees int, m audio.Meter) *audio.Pattern {
 	steps := m.Steps() * (1 + rng.IntN(2))
 	tonal := audio.TonalInstruments()
@@ -1969,12 +1968,11 @@ func (t *benchTally) mean() audio.RipScore {
 	return audio.RipScore{Tempo: t.sum.Tempo / d, Bars: t.sum.Bars / d, Drums: t.sum.Drums / d, Melody: t.sum.Melody / d, Bass: t.sum.Bass / d, Total: t.sum.Total / d}
 }
 
-// bench grades the front ends the session has, the analysis and the model when
-// one loaded, on fresh loops the engine renders with generated parts among the
-// bank's, clean and augmented: the mean of each rip's score against the loop's
-// expected rip, so a trained model is measured against the analysis before it
-// is trusted with a recording, and under meters the mean of each meter's loops
-// with the rips that read it; verbose then lists every loop and the worst three
+// bench grades the session's front ends, the analysis and the model when one
+// loaded, on fresh loops rendered with generated parts among the bank's, clean
+// and augmented, by the mean of each rip's score against the loop's expected
+// rip, so a trained model is measured before it is trusted with a recording;
+// under meters each meter's mean with the rips that read it, verbose every loop
 func (s *Session) bench(o tuneOptions, verbose bool) error {
 	type front struct {
 		name string
@@ -2366,12 +2364,19 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	if best.Score > base {
 		after = conditionCounts(takes, len(conds), params(best.Data), s.lead)
 	}
+	rate := all.hitRate()
 	for c, name := range conds {
 		if sums[c].notes.given > 0 {
 			fmt.Fprintf(s.out, "%s: F1 %.3f before, %.3f after\n", name, sums[c].notes.f1(), after[c].notes.f1())
 		}
-		if sums[c].drums.given > 0 {
-			fmt.Fprintf(s.out, "%s: drums F1 %.3f before, %.3f after\n", name, sums[c].drums.f1(), after[c].drums.f1())
+		if was, ok := sums[c].drumScore(sums[c], rate); ok {
+			now, _ := after[c].drumScore(sums[c], rate)
+			if sums[c].drums.given > 0 {
+				fmt.Fprintf(s.out, "%s: drums F1 %.3f before, %.3f after\n", name, was, now)
+			} else {
+				fmt.Fprintf(s.out, "%s: drums %.3f before, %.3f after: %.1f and %.1f hit(s) a minute heard where none plays, against %.0f given elsewhere\n",
+					name, was, now, float64(sums[c].drums.heard)/sums[c].drumless, float64(after[c].drums.heard)/sums[c].drumless, rate)
+			}
 		}
 		if sums[c].lines > 0 {
 			fmt.Fprintf(s.out, "%s: bars %.3f before, %.3f after\n", name, sums[c].bars(), after[c].bars())
@@ -2465,6 +2470,7 @@ type truthTake struct {
 	ear            *heardOnce
 	truth          func(*audio.Rip) ([]audio.RipNote, error)
 	hits           []audio.RipHit  // the drum hits its truth gives, nil for none
+	drums          bool            // its truth knows the drums, so a hit heard that it does not give is false
 	beats, lines   []float64       // the beats and bar lines a label gives, in the recording's seconds, nil for none
 	given          truthCount      // what the truth gives, all missed by a rip that fails
 	cond           int             // its condition, an index into the list's
@@ -2473,11 +2479,11 @@ type truthTake struct {
 }
 
 // truthLine is a truth list's line: a recording and its truth, relative paths
-// read from dir, its condition, and whether the truth's seconds are the
-// recording's
+// read from dir, its condition, whether the truth's seconds are the recording's
+// and whether no drum plays in it
 type truthLine struct {
 	dir, wav, truth, cond string
-	timed                 bool
+	timed, drumless       bool
 }
 
 func (l truthLine) at(p string) string {
@@ -2487,8 +2493,8 @@ func (l truthLine) at(p string) string {
 	return filepath.Join(l.dir, p)
 }
 
-// readTruthLines reads a line "wav<TAB>truth[<TAB>condition[<TAB>timed]]" a
-// recording, a relative path from the list's own folder, a line that names no
+// readTruthLines reads a line "wav<TAB>truth[<TAB>condition[<TAB>[timed] [drumless]]]"
+// a recording, a relative path from the list's own folder, a line that names no
 // condition one of its own under its recording's name
 func readTruthLines(list string) ([]truthLine, error) {
 	data, err := os.ReadFile(list)
@@ -2504,10 +2510,15 @@ func readTruthLines(list string) ([]truthLine, error) {
 		for k := range f {
 			f[k] = strings.TrimSpace(f[k])
 		}
-		if len(f) < 2 || len(f) > 4 || f[0] == "" || f[1] == "" || len(f) == 4 && f[3] != "timed" && f[3] != "" {
-			return nil, fmt.Errorf("%s line %d: want wav<TAB>truth[<TAB>condition[<TAB>timed]]", list, i+1)
+		var words []string
+		if len(f) == 4 {
+			words = strings.Fields(f[3])
 		}
-		l := truthLine{dir: filepath.Dir(list), wav: f[0], truth: f[1], cond: f[0], timed: len(f) == 4 && f[3] == "timed"}
+		other := func(w string) bool { return w != "timed" && w != "drumless" }
+		if len(f) < 2 || len(f) > 4 || f[0] == "" || f[1] == "" || slices.ContainsFunc(words, other) {
+			return nil, fmt.Errorf("%s line %d: want wav<TAB>truth[<TAB>condition[<TAB>[timed] [drumless]]]", list, i+1)
+		}
+		l := truthLine{dir: filepath.Dir(list), wav: f[0], truth: f[1], cond: f[0], timed: slices.Contains(words, "timed"), drumless: slices.Contains(words, "drumless")}
 		if len(f) > 2 && f[2] != "" {
 			l.cond = f[2]
 		}
@@ -2531,7 +2542,7 @@ func (l truthLine) take(recording []byte, sum [sha256.Size]byte, fe audio.RipFro
 	if err != nil {
 		return nil, err
 	}
-	t := &truthTake{wav: l.wav, truthFile: l.truth, x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: fe}, timed: l.timed}
+	t := &truthTake{wav: l.wav, truthFile: l.truth, x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: fe}, timed: l.timed, drums: l.drumless}
 	if frames != "" {
 		t.ear.file = filepath.Join(frames, fmt.Sprintf("%x-%.16s.frames", sum[:8], weights))
 	}
@@ -2547,6 +2558,7 @@ func (l truthLine) take(recording []byte, sum [sha256.Size]byte, fe audio.RipFro
 		}
 		notes := lab.notes()
 		t.truth, t.hits, t.beats, t.lines = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }, lab.hits(), beats, downbeats
+		t.drums = true // a label holds every event of its loop, so no hit there is none played
 	case isMIDI(l.truth):
 		score, err := audio.ReadMIDI(bytes.NewReader(given))
 		if err != nil {
@@ -2558,6 +2570,10 @@ func (l truthLine) take(recording []byte, sum [sha256.Size]byte, fe audio.RipFro
 		text := string(given)
 		t.truth = func(r *audio.Rip) ([]audio.RipNote, error) { return transcript(text, r) }
 	}
+	if l.drumless && len(t.hits) > 0 {
+		return nil, fmt.Errorf("%s: drumless, and its truth gives %d drum hit(s)", l.truth, len(t.hits))
+	}
+	t.drums = t.drums || len(t.hits) > 0
 	return t, nil
 }
 
@@ -2593,10 +2609,16 @@ func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([
 }
 
 // count rips the take under p and counts it against its truth: its notes by
-// pitch and onset, its hits within half a step as truth counts them, and the
-// downbeats given that fall on a bar line of a bar the given's length (MatchBars)
+// pitch and onset, its hits within half a step as truth counts them, every hit
+// heard false where the truth knows the drums and gives none, and the downbeats
+// given that fall on a bar line of a bar the given's length (MatchBars)
 func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, error) {
 	missed := truthCount{notes: noteCount{given: t.given.notes.given}, drums: noteCount{given: t.given.drums.given}, lines: t.given.lines}
+	if minutes := float64(len(t.x)) / audio.RipRate / 60; len(t.hits) > 0 {
+		missed.drummed = minutes
+	} else if t.drums {
+		missed.drumless = minutes
+	}
 	r, err := audio.Ripper{Params: p, FrontEnd: t.ear, Lead: lead, Judge: t.judge}.Samples(t.x, audio.RipRate)
 	if err != nil {
 		return missed, fmt.Errorf("%s: %w", t.wav, err)
@@ -2605,8 +2627,8 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 	if err != nil {
 		return missed, fmt.Errorf("%s: %w", t.truthFile, err)
 	}
-	c := truthCount{notes: everyNote(audio.MatchNotes(r.Notes, given, t.timed)), lines: len(t.lines)}
-	if len(t.hits) > 0 {
+	c := truthCount{notes: everyNote(audio.MatchNotes(r.Notes, given, t.timed)), lines: len(t.lines), drummed: missed.drummed, drumless: missed.drumless}
+	if t.drums {
 		for _, l := range audio.MatchHits(r.Hits(), t.hits, 30/float64(r.BPM)/audio.StepsPerBeat).Drums {
 			c.drums = c.drums.plus(noteCount{l.Matched, l.B, l.A})
 		}
@@ -2618,31 +2640,61 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 }
 
 // truthCount is a rip against a truth: its notes, its drum hits, and of the
-// downbeats the truth gives those on a bar line of the rip's
+// downbeats the truth gives those on a bar line of the rip's; with the minutes
+// of the recordings whose truth gives hits and of those it knows play no drum
 type truthCount struct {
-	notes, drums noteCount
-	lines        int
-	onLine       float64
+	notes, drums      noteCount
+	lines             int
+	onLine            float64
+	drummed, drumless float64
 }
 
 func (c truthCount) plus(o truthCount) truthCount {
-	return truthCount{c.notes.plus(o.notes), c.drums.plus(o.drums), c.lines + o.lines, c.onLine + o.onLine}
+	return truthCount{c.notes.plus(o.notes), c.drums.plus(o.drums), c.lines + o.lines, c.onLine + o.onLine, c.drummed + o.drummed, c.drumless + o.drumless}
 }
 
 // bars is the share of the downbeats given that fall on a bar line
 func (c truthCount) bars() float64 { return c.onLine / float64(max(c.lines, 1)) }
 
+// hitRate is the hits a minute the truths give over the recordings with drums,
+// what a hit heard where none plays is weighed against: 0 when none gives any
+func (c truthCount) hitRate() float64 {
+	if c.drummed == 0 {
+		return 0
+	}
+	return float64(c.drums.given) / c.drummed
+}
+
+// drumScore is c's drums where given carries a score of them: the F1 where it
+// gives hits; where it knows that none plays, the F1 of a rip that heard c's
+// hits beside every hit such minutes hold at rate a minute, so one by none
+// heard and less by degrees. With no rate nothing weighs a hit: no score.
+func (c truthCount) drumScore(given truthCount, rate float64) (float64, bool) {
+	if given.drums.given > 0 {
+		return c.drums.f1(), true
+	}
+	even := rate * given.drumless
+	if even == 0 {
+		return 0, false
+	}
+	return 2 * even / (2*even + float64(c.drums.heard)), true
+}
+
 // scores is every score the conditions carry, in their order: each one's notes'
-// F1, its drums' F1 and its bars where given gives it any to count, each a
-// share of one capability, so a set is weighed by their mean and held by each
+// F1, its drums' (drumScore) and its bars where given gives it any to count,
+// each a share of one capability, so a set is weighed by their mean and held by each
 func scores(counts, given []truthCount) []float64 {
+	var all truthCount
+	for _, g := range given {
+		all = all.plus(g)
+	}
 	var out []float64
 	for i, c := range counts {
 		if given[i].notes.given > 0 {
 			out = append(out, c.notes.f1())
 		}
-		if given[i].drums.given > 0 {
-			out = append(out, c.drums.f1())
+		if d, ok := c.drumScore(given[i], all.hitRate()); ok {
+			out = append(out, d)
 		}
 		if given[i].lines > 0 {
 			out = append(out, c.bars())

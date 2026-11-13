@@ -140,7 +140,9 @@ flowchart TD
      that holds a steady tempo or, `timed`, as given, the most pairs there
      are), a set that takes more than its guard from any condition refused.
      Where a truth gives drum hits a condition carries its drums' F1 beside
-     its notes', and `onset_min` is searched; where a corpus label gives bars,
+     its notes', a hit heard where a truth knows no drum plays counted
+     against it (by the list's own hits a minute where a condition gives
+     none), and `onset_min` is searched; where a corpus label gives bars,
      its bars (the downbeats given on a bar line, `MatchBars`), and the
      tempo's prior and combs, `tightness`, the bar lines' weights and the
      meter's margins are searched, which audio holds as parameters. The mean

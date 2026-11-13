@@ -191,13 +191,16 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    real validation list (`~/data/rip/val-list.tsv`, GuitarSet's player 04;
    the MusicNet pieces join it once their audio is on disk again) names no
    condition and is guitar alone, so it wants a condition a kind, of the
-   collections and renders a fit may hold and never a full track, and
-   `timed` on GuitarSet's lines, before a run after every round writes a
-   `rip.toml`; a timed truth's drum hits still pass through `MatchHits`' own
-   map; and kept frames outlive a change to the models' code, which their
-   names do not hold. It scores the drums and the bars beside the notes where
-   a truth gives them, and then searches `onset_min` and the tempo's, the
-   beats' and the bars' parameters (`drumGenes`, `barGenes`); bars come from
+   collections and renders a fit may hold and never a full track,
+   `timed` on GuitarSet's lines and `drumless` on every line no drum plays
+   in (a `.mid` says nothing of drums without it, and the phantom hits on a
+   guitar or a singer alone are then unseen), before a run after every round
+   writes a `rip.toml`; a timed truth's drum hits still pass through
+   `MatchHits`' own map; and kept frames outlive a change to the models'
+   code, which their names do not hold. It scores the drums and the bars
+   beside the notes where a truth gives them, a hit heard where a truth
+   knows no drum plays against the drums, and then searches `onset_min` and
+   the tempo's, the beats' and the bars' parameters (`drumGenes`, `barGenes`); bars come from
    a corpus label alone, so a recording's want its list's beats in a label
    (`corpus <dir> from`), and a `.jams` truth, beats and no notes, is not read
    yet. It has run on no generated truth of every meter: that run sets the

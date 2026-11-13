@@ -2385,6 +2385,100 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	}
 }
 
+// TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays: a label and a
+// drumless line know that no drum plays, a .mid alone says nothing; a hit heard
+// there is heard and not given, its condition scoring one by none heard and
+// less by degrees against the hits a minute the list's drums give, and a search
+// from a bar that hears hits there ends at one that hears fewer
+func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
+	// by degrees: what the same hits cost counted with a recording as long heard whole
+	given, quiet := truthCount{drums: noteCount{40, 40, 40}, drummed: 0.5}, truthCount{drumless: 0.5}
+	score := func(heard int) float64 {
+		quiet.drums.heard = heard
+		return scores([]truthCount{given, quiet}, []truthCount{given, quiet})[1]
+	}
+	if none, few, more, pooled := score(0), score(4), score(8), (noteCount{40, 40, 44}).f1(); none != 1 || few != pooled || more >= few {
+		t.Errorf("0, 4 and 8 hits heard where none plays score %.3f, %.3f and %.3f against 40 given in as long, want 1, %.3f and less", none, few, more, pooled)
+	}
+	if got := scores([]truthCount{quiet}, []truthCount{quiet}); len(got) != 0 {
+		t.Errorf("a list that gives no hit scores %v, want no drums' score where nothing weighs a hit", got)
+	}
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	loops, err := s.corpus(tuneOptions{loops: 1, bars: 4, seed: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// a beat of one velocity alone, which a higher bar drops little of, and a
+	// loop without its drums; each one's truth is what the range's lowest bar
+	// hears of it, so only fewer hits heard where none plays can better the start
+	beat := &audio.Pattern{Name: "steady", Steps: 16, Role: audio.RoleRhythm, Tracks: []audio.Track{
+		{Instr: audio.InstrKick, Events: []audio.Step{{Pos: 0, Vel: 1}, {Pos: 8, Vel: 1}}},
+		{Instr: audio.InstrSnare, Events: []audio.Step{{Pos: 4, Vel: 1}, {Pos: 12, Vel: 1}}},
+		{Instr: audio.InstrHihat},
+	}}
+	for pos := 0; pos < beat.Steps; pos += 2 {
+		beat.Tracks[2].Events = append(beat.Tracks[2].Events, audio.Step{Pos: pos, Vel: 0.8})
+	}
+	steady, err := s.eng.DefinePattern(beat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, dir := loops[0], t.TempDir()
+	s.rip.OnsetMin = 0.02
+	start := s.rip
+	for name, slots := range map[string][audio.MusicSlots]audio.PatternID{"drums": {steady}, "bare": {audio.PatternSilence, l.slots[1], l.slots[2], l.slots[3]}} {
+		x, err := s.eng.RenderMusic(slots, l.bpm, l.meter, 4, l.root, l.scale, nil, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := audio.Ripper{Params: start, Lead: s.lead}.Samples(x, audio.AudioSampleRate)
+		if err != nil || len(r.Hits()) == 0 {
+			t.Fatalf("the start's rip of %s: %v, %d hits: no fixture", name, err, len(r.Hits()))
+		}
+		notes, hits := r.Notes, []audio.RipHit(nil)
+		if name == "drums" {
+			notes, hits = nil, r.Hits()
+		}
+		var mid bytes.Buffer
+		if err := audio.WriteMIDI(&mid, notes, hits, r.BPM, r.Meter); err != nil {
+			t.Fatal(err)
+		}
+		writeWAV(t, filepath.Join(dir, name+".wav"), x)
+		writeFile(t, filepath.Join(dir, name+".mid"), mid.String())
+	}
+	if err := writeJSON(filepath.Join(dir, "bare.json"), corpusLoop{BPM: l.bpm, Bars: 4}); err != nil {
+		t.Fatal(err)
+	}
+	list, file := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rip.toml")
+	writeFile(t, list, "drums.wav\tdrums.mid\tdrums\ttimed drumless\n")
+	if _, _, err := readTruthList(list, analysisEar{}, "", ""); err == nil || !strings.Contains(err.Error(), "drumless, and its truth gives") {
+		t.Errorf("a drumless line whose truth gives hits read with %v, want it refused", err)
+	}
+	writeFile(t, list, "bare.wav\tbare.mid\nbare.wav\tbare.json\n")
+	if takes, _, err := readTruthList(list, analysisEar{}, "", ""); err != nil || takes[0].drums || !takes[1].drums {
+		t.Fatalf("a .mid without the word and a label without hits read with %v: want the first to say nothing of drums and the second to know them", err)
+	}
+	writeFile(t, list, "drums.wav\tdrums.mid\tdrums\ttimed\nbare.wav\tbare.mid\tbare\tdrumless timed\n")
+	if err := s.tuneTruth(tuneOptions{generations: 2, pool: 8, seed: 1, guard: 1}, list, file, analysisEar{}); err != nil {
+		t.Fatalf("tune truth: %v\n%s", err, out.String())
+	}
+	var was, now, before, after, rate float64
+	_, said, _ := strings.Cut(out.String(), "bare: drums ")
+	n, _ := fmt.Sscanf(said, "%f before, %f after: %f and %f hit(s) a minute heard where none plays, against %f given elsewhere", &was, &now, &before, &after, &rate)
+	if n != 5 || !strings.Contains(out.String(), "drums: drums F1 1.000 before, ") || before == 0 || after >= before || now <= was {
+		t.Errorf("want the drums' own F1 one at the start, and of the drumless loop a score that rose as the hits a minute heard there fell from over none:\n%s", out.String())
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("nothing written over a start that hears hits where none plays:\n%s", out.String())
+	}
+	if p, err := audio.LoadRipParams(data); err != nil || p.OnsetMin <= start.OnsetMin {
+		t.Errorf("wrote %+v (%v): want onset_min over the start's %g", p, err, start.OnsetMin)
+	}
+}
+
 // TestTuneTruthReadsKeptFramesBack: with frames, tune truth keeps what it heard
 // of a recording under the checksums of the recording and of the weight files; a
 // second run reads it back and scores as the first, and another model hears the
@@ -2894,11 +2988,10 @@ func TestLabelsWritesWhatTheExportWrote(t *testing.T) {
 }
 
 // TestACorpusFromTakesABatchAfterItsLoops: a batch joining a corpus of
-// recordings numbers its loops after those on disk, which stay as they are, so
-// no recording repeats or is lost; a MIDI file of toms alone is skipped, a tom
-// beside a kick is an onset of no drum and no pitch, and the list's family
-// labels a recording's notes, every strike the drums'. Under labels the list's
-// loops are labelled again from it, their recordings gone and their frames kept.
+// recordings numbers its loops after those on disk, which stay, so no recording
+// repeats or is lost; a MIDI file of toms alone is skipped, a tom beside a kick
+// an onset of no drum and no pitch; the list's family labels a recording's notes,
+// every strike the drums'. Under labels its loops are labelled again, frames kept.
 func TestACorpusFromTakesABatchAfterItsLoops(t *testing.T) {
 	dir := t.TempDir()
 	corpus, list := filepath.Join(dir, "corpus"), filepath.Join(dir, "list.csv")

@@ -473,9 +473,11 @@ proves wrong or that a document now states, and link the document instead.
   set's level before reading anything from it.
 - A real set repeated is not more sound: GuitarSet's two training hours at
   0.4 of 48a's windows (8 windows of 512 frames a step) were each heard about a
-  hundred times in 40,000 steps, its 84 hours of generated loops about twice.
-  Before a round, count the hours of windows it draws from each corpus against
-  the hours each holds.
+  hundred times in 40,000 steps, its 84 hours of generated loops about three
+  times. `--extra`'s shares are drawn in order, each of the windows the ones
+  before it left: 48a's three after GuitarSet drew 6%, 5.4% and 2.4%, not 10,
+  10 and 5, and the main corpus 46%. Before a round, count the hours of
+  windows it draws from each corpus against the hours each holds.
 - `part k/n` counts k from 0: `part 4/4` is refused, and the pass with no part
   then renders that quarter's loops itself, on one core.
 - A drum change is benched piece by piece without editing the tree:

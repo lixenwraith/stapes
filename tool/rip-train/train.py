@@ -784,7 +784,7 @@ def main() -> None:
     ap.add_argument("--dip", type=float, default=0.0, help="the share of the channel's windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room hears")
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
     ap.add_argument("--shuffle", type=float, default=0.0, help="the share of windows spliced from chunks of a second, each two clips summed")
-    ap.add_argument("--extra", default="", help="more corpora and the share of windows drawn from each, dir:share, comma-separated")
+    ap.add_argument("--extra", default="", help="more corpora, dir:share, comma-separated: each draws its share of the windows the ones before it left")
     ap.add_argument("--pitchnet", action="store_true", help="the notes model: convolutions only over the harmonic stack, the same weights at every pitch; --out is then ripnotes.bin, which stapes reads beside ripframe.bin")
     ap.add_argument("--family-holdout", choices=ripmodels.FAMILIES, help="a family no head is told the name of: its notes are trained on as sound and scored as notes, and a notes model's lines print the share their surest name reaches, the measure of where a name stops being sure, which its weight file carries")
     ap.add_argument("--sure", type=float, default=0.0, help="the share a family must pass over a note to name it, as a --family-holdout run of the same recipe measured it, for a notes model's weight file to carry; without it the start's is kept, and with neither no family names a note")
@@ -959,12 +959,13 @@ def main() -> None:
     by_mixed = list(accumulate(len(m) for m, _ in mixed))
     by_drums = list(accumulate(len(m) for m, _ in drums))
 
-    extras = []
+    extras, left = [], 1.0
     for item in filter(None, args.extra.split(",")):
         d, _, sh = item.rpartition(":")
         _, loops_x = load_corpus(d)
         extras.append((float(sh), loops_x, list(accumulate(len(m) for m, _ in loops_x))))
-        print(f"{len(loops_x)} loops of {sum(len(m) for m, _ in loops_x)} frames from {d}, {float(sh):.0%} of the windows")
+        print(f"{len(loops_x)} loops of {sum(len(m) for m, _ in loops_x)} frames from {d}, {float(sh) * left:.1%} of the windows")
+        left *= 1 - float(sh)
 
     def draw():
         """a loop, and the drums to lay over it or None"""

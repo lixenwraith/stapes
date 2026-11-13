@@ -530,8 +530,10 @@ proves wrong or that a document now states, and link the document instead.
   The drums' `onset_min` is one: a share of the recording's loudest frame, so
   a surer drums head wants a higher bar (the fresh pair heard 113 false hits a
   minute on the generated evaluation's clean loops at the built-in 0.1, 31 at
-  0.7). Never read a new model through the old one's `rip.toml`, and fit a bar
-  on validation recordings, never the test's.
+  0.7). The search sets it, and the bars' weights, only where its list's truths
+  give hits and bars: give it rendered loops' labels beside the recordings, at
+  a seed no training corpus or evaluation set uses. Never read a new model
+  through the old one's `rip.toml`.
 - With strikes the melody register never reaches the pair decoder, so
   `second_voice` and `cross` move no note on the models' path, while the bass
   line's own path reads `jump`, `switch` and `retrigger`: `modelGenes` is what

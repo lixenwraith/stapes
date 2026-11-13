@@ -445,7 +445,8 @@ audio v0.26.0; until then a truth leaves out the notes outside it, as
     harmonic stack's extent (`STACK_BINS`, `STACK_ROOT_MIDI`: 213 bins from MIDI
     27, 270 from MIDI 20 for a cell either side of the 88) and the cells it reads
     (`PITCHES`). Its frame heads pool the stack in sixteen regions, which a wider
-    stack moves, so they train again. A frame costs it 88/69 of the work.
+    stack moves: the pool keeps the old span, or the heads train again. A
+    frame costs it 88/69 of the work.
   - The frame model's `pitch`, `strike`, `release` and `velocity` heads grow 19
     rows each, its body unchanged. `--init` keeps an old file's output rows only
     at the front of the layer: it is to place each head's rows at its new

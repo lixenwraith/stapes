@@ -230,8 +230,8 @@ proves wrong or that a document now states, and link the document instead.
   cut). Read bars on cut loops beside whole ones: a search fitted on whole
   loops alone can learn the lean.
 - Write a truth from a score or a MIDI file, never from memory: a remembered
-  Billie Jean riff had its first note an octave low, the synthesizer's doubling
-  the analysis hears, and turned a 96-to-94 tie into a 110-to-84 loss.
+  riff of the pop song had its first note an octave low, the synthesizer's
+  doubling the analysis hears, and turned a 96-to-94 tie into a 110-to-84 loss.
 - Score the three recordings pooled (every note once) beside their mean: the
   origin and the intro have 83 notes each, where five notes move F1 by 0.06.
 - The test loop scores 0.98 under `DefaultRipParams` and loops of the shipped bank
@@ -318,7 +318,7 @@ proves wrong or that a document now states, and link the document instead.
   gained nothing, and no second pass over a recording did. The frame model's
   drum onsets and the note's length added to the network's input moved no
   collection by .015 (`vif/tmp/audit2/README.md`, the judge's tools).
-- Billie Jean's truth is its bass line alone, so its F1 counts every chord
+- The pop song's truth is its bass line alone, so its F1 counts every chord
   the rip hears as wrong: read it by bass notes right (111 of 138 clean). A
   judge fitted on recordings, which hold no drums, kept 49 to 76 of them;
   fitted on the engine's mixes alone, 102.
@@ -333,12 +333,12 @@ proves wrong or that a document now states, and link the document instead.
   generated evaluation's 800 loops share a Lakh stretch with a training loop
   and scored no higher in November; `vif/tmp/audit2/evalshared.py`, naming
   every corpus trained on, says after a round whether they pull ahead.
-- **A recording of a song only measures.** Billie Jean, the pop set and the
-  piano takes, the originals or a phone's recording of them, are never in a
-  corpus or a fit's list: no licence covers training on them (AGENTS, Data);
-  a transcription the engine renders and the CC BY sets are what trains. Nor
-  may one shape an input: the channel's noise bank took its room from the
-  quiet of a phone take until the fresh rounds
+- **A recording of a song only measures.** The pop song is never in a corpus
+  or a fit's list, nor are the pop set's songs and the piano takes, the
+  originals or a phone's recording of them: no licence covers training on
+  them (AGENTS, Data); a transcription the engine renders and the CC BY sets
+  are what trains. Nor may one shape an input: the channel's noise bank took
+  its room from the quiet of a phone take until the fresh rounds
   (`vif/tmp/round37/r4/noise-clean.npz`). At a fresh start, list every input
   with where it came from.
 - **`rows` knows a recording by its audio alone**: its files are named by
@@ -388,7 +388,7 @@ proves wrong or that a document now states, and link the document instead.
 
 - The user judges the corpus by ear, as music: measure what they hear before
   changing the generator. The bank's drums and bass put 82 to 89% of a loop's
-  energy under 250 Hz (Für Elise and the sample 7 to 14%, Billie Jean 76%), a
+  energy under 250 Hz (Für Elise and the sample 7 to 14%, the pop song 76%), a
   white floor a recording's mix would cover sits bare over a synthesizer's empty
   treble (a recording's hiss is about 39 dB under its median frame), and a
   reverb after the clip passes full scale.
@@ -711,9 +711,9 @@ proves wrong or that a document now states, and link the document instead.
 - Scored within lines over a list of guitar alone, its first run silenced the
   bass line (`strike_low` to .99): its own score rose .608 to .670 and solo
   guitar .06 by pitch and onset, while the renders, the clean take, the phones
-  and MusicNet fell .02 to .04 and Billie Jean's bass from 111 right to 93. The
-  guard refuses that only for conditions its list names: list every kind a
-  fit may hold, and decode a tuned `rip.toml` over every condition, the full
+  and MusicNet fell .02 to .04 and the pop song's bass from 111 right to 93.
+  The guard refuses that only for conditions its list names: list every kind
+  a fit may hold, and decode a tuned `rip.toml` over every condition, the full
   tracks among them (`vif/tmp/audit2/cond-v0140`), before it ships; no change
   of one bar from the hand-swept five gained the mean of twenty conditions.
 - `tune ... truth` weighs a condition, not a recording: a set scores the plain

@@ -197,7 +197,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 
 **29b** (installed as `ripnotes.bin`, 7 to 8 November)
 - 29a with its longest layer gone: +-0.5 s, 197,606 weights.
-- Goal: keep the reach's gains and clean's notes. Best overall on the wide test: Pixel .724, solo guitar .812, vocadito .616 with octave errors 73 to 12, phones' low extras halved. Billie Jean's bass the one loss, F#1 for F#2 on kick hits.
+- Goal: keep the reach's gains and clean's notes. Best overall on the wide test: Pixel .724, solo guitar .812, vocadito .616 with octave errors 73 to 12, phones' low extras halved. The pop song's bass the one loss, F#1 for F#2 on kick hits.
 
 **30a**
 - 27a's recipe with a body's ring at every attack, unlabelled, 70 to 400 Hz at -15 to 0 dB of the attack's rise.
@@ -224,7 +224,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 **Drums from the notes model** (8 November)
 - Drum heads on 100 held-out E-GMD recordings, F1 at each model's best bar: 12a kick .34, snare .54, hihat .65; 32c .88, .82, .81, as are 32a, 33a and 33c within .01; on 12a's own synth loops both .93 to .96.
 - Through the whole rip at Go's drum bar (0.1 over twice the local median), on the 65 recordings over 4 s: 12a .36, .55, .68; the notes model's scores as they come .72, .62, .75, flooding (precision .53 to .59); turned into posteriors (the trainer's positive weight of 8 undone) .85, .78, .80.
-- But on Billie Jean the notes model hears the bass line's notes as kicks: 125 kicks on the clean recording, on the and of two and of three, on four and on the bar's last sixteenth as well as on one and three, against 12a's 38 on one and three, and kicks as snares. Its frame path reads the harmonic stack pooled, where a bass attack and a kick look alike. 12a stays.
+- But on the pop song the notes model hears the bass line's notes as kicks: 125 kicks on the clean recording, on the and of two and of three, on four and on the bar's last sixteenth as well as on one and three, against 12a's 38 on one and three, and kicks as snares. Its frame path reads the harmonic stack pooled, where a bass attack and a kick look alike. 12a stays.
 
 **33a, 33b, 33c**
 - From 32b on corpus 16 with 15, 14, 11 and singing, every head: 33a as such; 33b with GuitarSet's and MusicNet's training recordings; 33c, 33a fine-tuned 7,000 steps at rate 3e-4 with E-GMD under half the drumless windows.
@@ -237,7 +237,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 
 **34c, 34d**
 - 32c fine-tuned 15,000 steps at rate 3e-4 on corpus 16's mix; 34d adds `--dip 0.5`, a 6 to 20 dB dip centred 100 to 500 Hz in a quarter of the windows, as the phones at 2 m measured.
-- Billie Jean's bass from the Pixel: 4 right of 138 for 34c, 7 for 34d, 3 for 32a. The four takes' low notes right, clean, 30 cm, Pixel, Galaxy: 94, 5, 23, 32 for 34c and 91, 6, 24, 34 for 34d. GuitarSet's low extras: comp 1370 and 1417, solo 440 and 415.
+- The pop song's bass from the Pixel: 4 right of 138 for 34c, 7 for 34d, 3 for 32a. The four takes' low notes right, clean, 30 cm, Pixel, Galaxy: 94, 5, 23, 32 for 34c and 91, 6, 24, 34 for 34d. GuitarSet's low extras: comp 1370 and 1417, solo 440 and 415.
 - F1, 34c then 34d: renders .933, .929; clean .829, .832; 30 cm .622, .616; Pixel .690, .696; Galaxy .702, .711; comp .575, .596; solo .807, .808; MusicNet .616, .616; vocadito .693, .688.
 - The dip moves the phones' bass the right way by a few notes and lifts strummed guitar, but 34d still trails 32a on the 30 cm and Pixel takes and solo guitar. Neither installed; 32a stays.
 
@@ -266,7 +266,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 
 **39a, 40a** (12 November, R2: the frame model's beat and bar line, from 12a)
 - 12a's recipe with GuitarSet's training clips and E-GMD by their beats, the family head grown and asked nothing. 39a probed the two heads on 12a held (8,000 steps); 40a trained every weight for 40,000, its pick at 34,000.
-- On GuitarSet's 120 unseen clips the bars are right on 25 (39a's heads), 24 (40a's heads) and 32 (40a without them) against 37 through 12a's cues; the heads lose beyond chance (21 clips only 12a has right, 8 only 40a), the body holds (16 against 11) with 12a's notes. Neither is installed: the heads lose bars, and the body gains on real kits alone (drums' F1 on E-GMD's test kits .733 against .629) and loses under a mix (Billie Jean's intro: 76 false kicks and 106 false snares against 6 and 5), which the round never heard; 40a's last step starts the frame model's next round ([Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)).
+- On GuitarSet's 120 unseen clips the bars are right on 25 (39a's heads), 24 (40a's heads) and 32 (40a without them) against 37 through 12a's cues; the heads lose beyond chance (21 clips only 12a has right, 8 only 40a), the body holds (16 against 11) with 12a's notes. Neither is installed: the heads lose bars, and the body gains on real kits alone (drums' F1 on E-GMD's test kits .733 against .629) and loses under a mix (the pop song's intro: 76 false kicks and 106 false snares against 6 and 5), which the round never heard; 40a's last step starts the frame model's next round ([Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)).
 
 **41c, 42a, 44a** (12 November, R1: the notes model under the rule)
 - The rule asks a family only of a note an instrument played: in 150 batches of R1's mix no cell of a note the engine rendered is asked one (0 of 1,353,333).

@@ -546,7 +546,7 @@ A hit joins the onset and drum targets only where it can be heard: what it adds,
 best ten bands, must top everything else sounding (`stands_out`), judged after the
 channel. That keeps 86 to 96% of hits. The window is asked no beat and no bar line: the
 drums laid under it keep their own. Round 14a, without the rule and at -12 to +3 dB
-of the loop's own level, had drums a median 13.4 dB under the loop against Billie Jean's
+of the loop's own level, had drums a median 13.4 dB under the loop against the pop song's
 -0.3 dB, labelled whether heard or not, and it reported drums on bass notes.
 
 **`--mix dir:share`** draws a share of the windows from another corpus as it stands.
@@ -965,8 +965,8 @@ bar of a line), through audio v0.25.0:
   right within 50 ms) its drums' F1 is .733 against 12a's .629 (kick .790 against .373,
   hihat .795 against .733, snare .565 against .606 at precision .447 against .800).
   At an absolute bar of 0.7 on the planes it reads .845 there, where 12a falls to .560,
-  and hears a false hit a minute on the guitar clips. Under a mix it loses: on Billie
-  Jean's intro, clean, it hears 76 false kicks and 106 false snares where 12a hears 6
+  and hears a false hit a minute on the guitar clips. Under a mix it loses: on the pop
+  song's intro, clean, it hears 76 false kicks and 106 false snares where 12a hears 6
   and 5 at the installed bar, still 6 and 31 at 0.7, and from the Pixel it finds 10 of
   54 kicks where 12a finds 30 to 34; singing draws 95 false hits a minute against 33.
   The round heard real kits alone, never under bass, synth and voice. On the Für Elise takes, whose rips keep the
@@ -1083,7 +1083,7 @@ The drum heads follow the two-frame target closely. This loop also shows two wea
   labelled; this loop has no bass. 11a and 12b do the same. There's little sound there
   (-41 dB at 66 Hz by frame 20), so the likely reading is a learned expectation: most
   loops have a bass on the root, and this root (36) sounds nearly as 37 at this tuning.
-  False notes of this kind reach real recordings, such as the 18 in Billie Jean's 5 s
+  False notes of this kind reach real recordings, such as the 18 in the pop song's 5 s
   drum intro.
 
 The decoders then read the frames: hits by peak picking, the bass by one hidden path,
@@ -1102,7 +1102,7 @@ release = 0.9
 From 11a on, all run 40,000 steps at batch 8, window 512, seed 1, with the shape in §7.
 Round 8b, on an earlier corpus, has that shape but one input plane and no release or
 velocity heads, 3,680,132 weights. `clean`, `30 cm`, `Pixel` and `Galaxy` are
-pooled F1 of the melody register as one line, over Für Elise (869 notes), One More Bite's
+pooled F1 of the melody register as one line, over Für Elise (869 notes), the sample's
 origin (83) and its intro (83), every note once, at the column's best settings. The last
 three are those recordings played on a laptop: recorded by a phone at 30 cm with a fan on,
 and by a Pixel 8 Pro and a Galaxy S20 Ultra at 2 m. The 30 cm take also shaped the
@@ -1130,11 +1130,11 @@ drum loops on random kits, mixes darkened to 800 Hz, and 267 loops from the phon
 - **PCEN** is 12a against 12b: +0.024 clean, +0.040 from the phone.
 - **The channel** is 12b against 11a: +0.011 clean, +0.061 from the phone.
 - **The bench's drums** fell with both, from 0.66 (11a) to 0.56 (12b) to 0.47 (12a), yet
-  real recordings improved. On Billie Jean from the phone, 12a hears 37 of 39 kicks and
+  real recordings improved. On the pop song from the phone, 12a hears 37 of 39 kicks and
   138 of 155 hats where 8b heard 2 and 38. The bench's engine drums aren't the target.
 - **Real drums** are 16b against 12a: kits 0.659 to 0.826 (0.876 at bar 0.3) for 0.008
-  clean. They cost phones: Billie Jean's beat from the Pixel at bar 0.5 has 2 of 36 kicks
-  against 12a's 33 at bar 0.1, so 12a stays installed.
+  clean. They cost phones: the pop song's beat from the Pixel at bar 0.5 has 2 of 36
+  kicks against 12a's 33 at bar 0.1, so 12a stays installed.
 - **The labels' audibility** is 16a against 14a: clean +0.006, 30 cm +0.013, Pixel -0.005,
   Galaxy +0.034, and `bench sampled` augmented 0.421 to 0.487.
 - **More steps** don't pay: 16b continued at half the rate moved its held-out decoders'
@@ -1239,8 +1239,8 @@ trade for Lixen, the next round's start.
 - **`truth <name> <file>`** finds a time map from the longest common subsequence of
   pitches in time order, at the transposition within an octave that matches most, and
   counts a note right when one of its pitch starts within 0.1 s of its place on that map
-  (audio's `MatchNotes`). For a rhythm given with no pitches, as
-  One More Bite's is, it matches onsets on a fitted time map. Against a MIDI file it also
+  (audio's `MatchNotes`). For a rhythm given with no pitches, as the sample's is, it
+  matches onsets on a fitted time map. Against a MIDI file it also
   counts hits per drum, within half a step, under a fitted stretch and offset.
 - **`bench`** renders fresh loops and grades each against what was played: a note
   counts only at its exact step and pitch in the right bar. The total is `(tempo + bars

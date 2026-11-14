@@ -60,7 +60,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    `round.sh`), passed the analysis on both bench lines (0.51 against 0.47
    clean, 0.460 against 0.458 augmented, on its drums; melody 0.08 against
    0.13), its held-out loss flat from step 33000, and on recordings beat
-   the analysis on drums (Billie Jean's false kicks a third) and lost on
+   the analysis on drums (the pop song's false kicks a third) and lost on
    melodies (the origin's register 34 of 83 tapped notes against 50, Für
    Elise's 266 of 869 against 444). Round seven (229 bands, a corpus nearer
    a real mix, convolutions) and round eight (a strike head per pitch, an
@@ -229,7 +229,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
      full track, read with a collection left out, singing reported and never
      a gate; and a bass line under drums when recordings are in the fit. The
      first, on 32a's rows, passed with each collection left out and is not
-     installed: on Billie Jean it reports as many low notes with eight fewer
+     installed: on the pop song it reports as many low notes with eight fewer
      right, and on vocadito the fit holding everything reports 400 notes for
      742, which the row's next version, with the note's voice, is for.
    - `bench` grades the loaded models under the installed scores whatever the root
@@ -363,7 +363,7 @@ remains: real notes labelled by the fit, an instrument of NSynth's at a time;
 the frame model's planes as context to those heads, measured as a pair; and the
 round, judged on NSynth's held-out instruments by each family's recall a note
 and the rip's voice over the fit's distance (2.3 now), with E-GMD's kits and
-Billie Jean's kicks, clean and from the Pixel, unmoved. Then lines by voice:
+the pop song's kicks, clean and from the Pixel, unmoved. Then lines by voice:
 notes gathered by their voices and their continuity, first inside the three
 lines a rip holds, then as many as were heard, through the song and the game.
 

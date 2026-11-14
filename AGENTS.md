@@ -52,11 +52,10 @@ it there in the same PR.
   `run`'s from its own.
 - Nothing is trained or fitted on a full track, bought or not, nor on anything
   taken from one (a take of it through a room or a phone, a noise bank shaped
-  by its quiet): a commercial song such as Billie Jean only measures the rip,
-  since no licence covers training on it. A corpus or a fit's list holds
-  licensed collections, renders and the engine's own mixes; a wanted piece is
-  rendered from its score, and a round's notes name the collections it took,
-  for the credits.
+  by its quiet): a commercial song only measures the rip, since no licence
+  covers training on it. A corpus or a fit's list holds licensed collections,
+  renders and the engine's own mixes; a wanted piece is rendered from its
+  score, and a round's notes name the collections it took, for the credits.
 
 ## Scope
 

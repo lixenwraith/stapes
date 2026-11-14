@@ -341,6 +341,14 @@ proves wrong or that a document now states, and link the document instead.
   its room from the quiet of a phone take until the fresh rounds
   (`vif/tmp/round37/r4/noise-clean.npz`). At a fresh start, list every input
   with where it came from.
+- **A collection's licence is read on its own page, and its parts may carry
+  their own.** MusicNet's record is CC BY 4.0, yet its recordings are
+  Creative Commons and public-domain performances. The Isabella Stewart
+  Gardner Museum's are among them, and the museum released its concerts
+  under CC BY-NC-ND 2.0; the set's metadata names a recording's performer,
+  not its licence. URMP's pages state no licence, and its Dryad deposit is
+  CC0 by Dryad's terms. A set a round adds joins [CREDITS](../CREDITS.md)
+  with its title, creators, link, licence and what stapes changed in it.
 - **`rows` knows a recording by its audio alone**: its files are named by
   the first eight bytes of the WAV's SHA-256, the name `frames <dir>` starts
   with. Two list lines over one WAV write one recording, under the first

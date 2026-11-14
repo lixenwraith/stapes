@@ -333,14 +333,15 @@ proves wrong or that a document now states, and link the document instead.
   generated evaluation's 800 loops share a Lakh stretch with a training loop
   and scored no higher in November; `vif/tmp/audit2/evalshared.py`, naming
   every corpus trained on, says after a round whether they pull ahead.
-- **A recording of a song only measures.** The pop song is never in a corpus
-  or a fit's list, nor are the pop set's songs and the piano takes, the
-  originals or a phone's recording of them: no licence covers training on
-  them (AGENTS, Data); a transcription the engine renders and the CC BY sets
-  are what trains. Nor may one shape an input: the channel's noise bank took
-  its room from the quiet of a phone take until the fresh rounds
-  (`vif/tmp/round37/r4/noise-clean.npz`). At a fresh start, list every input
-  with where it came from.
+- **A song only measures.** The pop song is never in a corpus or a fit's
+  list, nor are the pop set's songs and the piano takes, the originals or a
+  phone's recording of them, nor a commercial song's transcription such as
+  Lakh's MIDI files: no licence covers training on them (AGENTS, Data).
+  Generated parts, public-domain scores the engine renders and the CC BY sets
+  are what trains; the weights trained on Lakh stay. Nor may a song shape an
+  input: the channel's noise bank took its room from the quiet of a phone
+  take until the fresh rounds (`vif/tmp/round37/r4/noise-clean.npz`). At a
+  fresh start, list every input with where it came from.
 - **A collection's licence is read on its own page, and its parts may carry
   their own.** MusicNet's record is CC BY 4.0, yet its recordings are
   Creative Commons and public-domain performances. The Isabella Stewart

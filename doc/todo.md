@@ -41,12 +41,13 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    their MIDI in the corpus and held out: a
    loader for a WAV beside a MIDI file (`ReadMIDI` reads the notes; the
    frames and labels a loop carries are what `corpus` writes) and a few
-   recordings the user plays or owns with their scores, so neither a model
-   nor a tuned set learns the synthesizer. Public sets with aligned MIDI
-   (MAESTRO's piano, Slakh's rendered multitracks, GuitarSet, URMP) fit the
-   same loader. MusicNet's labels are snapped to the strike peaks; a note left
-   unsnapped (`"snap": false`) is still to be masked out of the strike loss and
-   the strikes' F1, its pitch's target within eight frames of the label.
+   recordings the user plays from public-domain scores, with the scores, so
+   neither a model nor a tuned set learns the synthesizer. Public sets with
+   aligned MIDI (GuitarSet, URMP) fit the same loader; MAESTRO, non-commercial,
+   and Slakh, rendered from Lakh, stay out (AGENTS, Data). MusicNet's labels
+   are snapped to the strike peaks; a note left unsnapped (`"snap": false`) is
+   still to be masked out of the strike loss and the strikes' F1, its pitch's
+   target within eight frames of the label.
 2. The frame model's pitch: on 20000 loops over 20000 steps the held-out decoders'
    loss was still falling (1.04) and the fourth run passed the analysis on
    augmented loops (0.51 against 0.48) on its drums while losing clean loops
@@ -75,7 +76,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    (the analysis 0.633). The release and velocity heads gained on the bench and
    not on the recordings (0.650). Next for it: real recorded notes as voices of
    the corpus (Iowa's samples carry no condition, NSynth's and E-GMD's only
-   credit; MAESTRO's non-commercial licence would bind the weights), since
+   credit; MAESTRO's licence is non-commercial, so it stays out), since
    better synthesis alone has not closed the gap; the corpus's pedal varied by
    the bar; the constants tuned by `tune` against the truths rather than swept
    by hand. Towers (7d: no gain for 43% more weights) are tried again once the
@@ -225,7 +226,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    none is fitted on recordings or installed: `rows`, `tool/rip-train`'s
    `judge.py` and the root's `ripjudge.bin`
    ([a judge](../tool/rip-train/README.md#a-judge)). Left:
-   - The fit: licensed collections, renders and the engine's mixes, never a
+   - The fit: the CC BY collections, renders and the engine's mixes, never a
      full track, read with a collection left out, singing reported and never
      a gate; and a bass line under drums when recordings are in the fit. The
      first, on 32a's rows, passed with each collection left out and is not

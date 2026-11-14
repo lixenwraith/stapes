@@ -202,7 +202,8 @@ reads neither, so a corpus of either trains a model of either. The corpora in us
 - **Corpus 14:** `corpus <dir> 20000 4 aug gen nowav codec midi <dir>`. Three quarters of
   the loops play a random 4-bar stretch of a random file from Lakh's clean MIDI set: its
   beat, melody, second line and bass, moved up to half an octave, the second line on a
-  random tonal instrument.
+  random tonal instrument. Lakh's files are transcriptions of commercial songs, which
+  nothing trains on from here on (AGENTS, Data); the weights trained on them stay in use.
 - **Corpus 15:** `corpus <dir> 20000 4 aug gen nowav codec dense seed 151 midi <dir>`.
   Corpus 14's recipe playing every part of the file: the parts past its melody,
   second line and bass spread by octave over up to three tracks on instruments of

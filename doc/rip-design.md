@@ -445,12 +445,14 @@ What is trained and what is only written, on 12 November 2026:
    - What is decided of a part of a song, its tempo, meter and key, its
      voices, holds within that part and is never carried across a boundary
      into a part it has nothing to do with.
-   - Nothing is trained or fitted on a full track, bought or not. A commercial
-     song measures the rip on real-world music and no more, since no licence
-     covers training on it; a corpus or a fit takes licensed collections,
-     renders and the engine's own mixes. A piece that is wanted is rendered
-     from its score with licensed notes, and a round's notes name every
-     collection it took, for the credits.
+   - Nothing is trained or fitted on a set whose licence is non-commercial or
+     research-only, on a song's recording, bought or not, or on a commercial
+     song's transcription. Such a song measures the rip on real-world music and
+     no more, since no licence covers training on it; a corpus or a fit takes
+     the engine's generated parts and mixes, public-domain scores it renders
+     and the CC BY sets. Lakh's files are such transcriptions; the weights
+     trained on them stay. A round's notes name every collection it took, for
+     the credits.
    Code alone, a thread each, in parallel:
    - **Notes by pitch and onset, and the search under a guard**, landed.
      `Agreement` counts every note as one line (`All`) and `MatchNotes`
@@ -544,7 +546,7 @@ What is trained and what is only written, on 12 November 2026:
      line under drums, which it keeps only when its fit is the engine's own
      mixes. So the judge is a small trained stage whose reach is its fit's
      breadth: fitted first on the notes model in use, which needs no round,
-     from every licensed collection with truths, renders and the engine's
+     from every CC BY collection with truths, renders and the engine's
      mixes; refitted after each round, reading the note's voice once notes
      carry one; and installed only when no collection left out of the fit
      scores under the installed rip by more than its spread, singing apart,

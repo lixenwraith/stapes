@@ -708,7 +708,16 @@ and 0.59, which no decoder reads from it; 12a's rows say what they said to 2e-6.
 
 Each step: 8 windows, targets, forward, losses, backward, gradient clipped to norm 1,
 AdamW at weight decay 0.01. The learning rate runs from 3e-4 to zero on a cosine over
-the steps. The next batch is built on a second thread while the device works.
+the steps. The batches are built beside the device by `--builders` processes forked
+from the run, one by default, each at most two batches ahead, handed over in index
+order: a batch is Python holding the interpreter's lock, so a second thread builds
+less, not more. Batch k draws every window from a stream of its own,
+`random.Random(seed + (shard << 32) + (k << 64))` (`stream`), so it is the same
+tensors whatever builds it, a run resumed at step k draws the batches the unbroken run
+drew from k on, and two shards draw different batches. A round on this trainer does not
+draw the windows an earlier trainer drew for the same seed, but for its first batch:
+that one drew every batch from one stream of the seed and the shard, which a resumed
+run started over, training on its first batches again.
 
 ```
 onset, drums, pitch, voicing, strike, release: binary cross-entropy with a weight on
@@ -922,7 +931,8 @@ its guess means little, which is why a rip can play a piano on a saw.
 
 The checkpoint, a PyTorch `.pt`, holds `model`, `opt`, `step`, `cfg` (the shape, which a
 resumed run must match), `best` (the best held-out score, its step and its weights) and
-`validated` (the best validation score, its step, its weights and the held-out score there).
+`validated` (the best validation score, its step, its weights and the held-out score there);
+no stream, since the step is all a batch's draws need.
 
 ### The two heads on 12a: the probe and the round
 

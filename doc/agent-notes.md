@@ -446,7 +446,13 @@ proves wrong or that a document now states, and link the document instead.
   jittered track were gliding. A recorded note glides when its track spans
   half a cell (`GLIDE_SPAN`). A change to how `train.py` reads a label is
   checked by `Label.window` before and after over a `glide` corpus: its
-  targets from engine labels must not move.
+  targets from engine labels must not move. A rewrite of `window` for speed is
+  checked so over every target, byte for byte, of fixed windows of generated,
+  `glide` and drum loops and of recordings' labels made up with nulls in their
+  cents, a 50-cent tuning and notes outside the pitches (549,120 digests in
+  v0.31.0). NumPy 2 compares a bare float with a float32 array in float32,
+  where an array of float64 offsets compared in float64: keep `np.float64`,
+  which the pinned digest's labels cannot tell apart.
 - A `corpus <dir> from` loop is known by its `source`, the CSV's
   `audio_filename`: the set may move, but an entry renamed joins as new. A clap
   in a test file is a hit for a song, not for `truth`.
@@ -572,6 +578,11 @@ proves wrong or that a document now states, and link the document instead.
   the held-out line no longer says what a rip will. The rules are tests with
   no corpus: `python3 -m unittest discover tool/rip-train`, which CI, without
   PyTorch, does not run.
+- Two runs of `train.main()` in one process number their voices' genes on
+  from each other, as `GENES` grows with every `Label`, so a cell's
+  `pitchvoice`, a row of it, differs between them though the genes are the
+  same: a test that compares two runs' batches gives each a fresh `GENES`
+  (`handed`), as a process of its own starts.
 - A family's name is learned long after its sound: on 720 loops every held-out
   note was a synth at step 500 and no piano or sung note was named at step
   1,500, the bass at .43, while the wave and the genes moved from the start.
@@ -640,10 +651,25 @@ proves wrong or that a document now states, and link the document instead.
   5.2 GB for 40000 loops, and MAESTRO's 159 training hours would add 10 GB. A
   `np.memmap` a loop would keep a file descriptor open each, 40000 of them,
   past a 1024 limit or macOS's 256.
-- A training run shares the cores with everything else the session does: the
-  fourth run slowed from 0.4 to 4 seconds a step under a rip and a test run,
-  and the two-hour waiter on it timed out twice. Size a waiter by the run
-  alone and expect to re-arm it, or follow the run by a reminder instead.
+- A training run shares the cores with everything else the session does, and
+  its steps a second follow what its builders get: the fourth run slowed from
+  0.4 to 4 seconds a step under a rip and a test run, and 51a, its batches
+  built on one thread, its process at 1.0 to 1.4 cores and the GPU busy 53% of
+  the time, went from 0.94 to 0.80 s a step when an indexer holding 0.85 of a
+  core stopped. A batch is Python holding the interpreter's lock (`Label.window` was
+  62% of a notes batch): two threads built 0.63 times what one did, so
+  `--builders` forks processes, a core each, each paying about 35 CPU-ms to
+  hand a batch of 23 MB over. Size a waiter by the run alone and expect to
+  re-arm it, or follow the run by a reminder instead.
+- **A builder shares the run's pages until a write copies one, and a read
+  writes an object's reference count.** Once it has drawn from every loop a
+  builder holds about 2 KB of the run's a loop, each loop's `Label`, arrays'
+  and `MelFile`'s headers (0.29 GB a builder over 100,000 loops), the arrays'
+  data still shared. A full collection would copy every object's page (three
+  builders 449 MB against 250 over 8,169 loops), so the run freezes the
+  collector while they fork. Read a builder by `Private_Clean` and
+  `Private_Dirty` in `/proc/<pid>/smaps_rollup`, its worst case by touching
+  every loop in it and collecting.
 - A run's noise differs by set: five rounds of one recipe (32a, 32c, 33a, 33c,
   34c) spread .003 on the renders, the clean take and MusicNet, .005 to .008 on
   the phone takes and guitar, .010 on vocadito and .003 on the mean of nine.

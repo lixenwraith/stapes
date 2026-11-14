@@ -121,7 +121,9 @@ shape takes 1.45 s on the four cores and 0.11 s on its GTX 1060, 0.19 s in a
 whole run, which reads the frames from disk and scores the held-out loops, so
 40000 steps take two hours on the GPU (the first runs' width 128 took 0.65 s
 on the cores); `bench 12 4` grades in a few minutes. Each stage shares the
-cores with anything else the machine does.
+cores with anything else the machine does, a run most of all: its batches are
+built on the cores beside the device, a core a builder (`--builders`, [by
+hand](#by-hand)), and its steps a second follow what they get.
 
 ## Reading a run
 
@@ -182,8 +184,9 @@ tool/rip-train/round.sh               # corpus, train, bench, logging to $CORPUS
 writes last, is there, then trains and benches, every line appended to
 `$CORPUS/round.log`. Run it again after a stop and it goes on: the corpus from
 the loops on disk, whose randomness the export draws all the same, and the
-training from `CHECKPOINT`, which carries the best held-out step; either way
-the result is an unbroken run's. On the laptop above the corpus takes 95
+training from `CHECKPOINT`, which carries the best held-out step, drawing from
+its step the batches the unbroken run drew; either way the result is an
+unbroken run's. On the laptop above the corpus takes 95
 minutes in four parts and the 40000 steps two hours on its GPU, about sixteen
 on its cores.
 
@@ -363,13 +366,19 @@ mkdir -p ~/.config/stapes && cp "$dir/ripframe.bin" ~/.config/stapes/ripframe.bi
 ```
 
 `train.py` trains on `--batch` windows of `--window` frames (512, six seconds)
-cropped at random from the loops, the next batch built while the device
-trains on this one; `--checkpoint` saves every `--every` steps,
-with the best held-out step's weights, and resumes from the file when it
-exists, `--init` starts from a `.pt`'s weights alone (no optimizer state, step
-0), and `--shard-seed` moves the stream the windows are drawn from while
-`--seed` keeps the starting weights; `average.py --pt next.pt --out next.bin
-[--trim 0.1] a.pt b.pt ...` is the merge. The defaults are `ripmodels.FrameSpec`:
+cropped at random from the loops, built beside the device by `--builders`
+processes forked from the run, one by default, each up to two batches ahead.
+Batch k draws from a stream of `--seed`, `--shard-seed` and k alone, so it is
+the same whatever builds it ([Rip training §8](../../doc/rip-training.md#8-a-training-step)).
+`--checkpoint` saves every `--every` steps, with the best held-out step's
+weights, and resumes from the file when it exists, drawing from its step the
+batches the unbroken run drew; `--init` starts from a `.pt`'s weights alone (no
+optimizer state, step 0), and `--shard-seed` moves the streams while `--seed`
+keeps the starting weights; `average.py --pt next.pt --out next.bin
+[--trim 0.1] a.pt b.pt ...` is the merge. A builder holds 50 to 80 MB of its
+own and, once it has drawn from every loop, about 2 KB of the run's a loop,
+whose objects its reads write to: over 100,000 loops two add 0.58 GB to a
+run, three 0.86 GB. The defaults are `ripmodels.FrameSpec`:
 230 inputs, the corpus's 229 bands in dB over the frame's mean and the mean
 itself (`ripmodels.features`, derived from the stored frames), width 256, eight
 heads, four layers, feed-forward 1024, a
@@ -546,8 +555,9 @@ loader checks ([format](https://github.com/lixenwraith/transformer/blob/main/doc
 `ripframe.bin` it gives the notes for. `average.py --out ripnotes.bin a.pt` turns one `.pt`
 of either model into its file. `--shuffle <share>` and
 `--extra <dir>:<share>,...` are `train.py` flags with no `pipeline.sh` setting,
-as are `--cell <n>`, the notes model's width (its channels at each cell, 32,
-which its weight file carries), `--range <lowest>-<highest>`, the pitches a
+as are `--builders <n>` (by hand, above), `--cell <n>`, the notes model's width
+(its channels at each cell, 32, which its weight file carries),
+`--range <lowest>-<highest>`, the pitches a
 model tells apart by their MIDI numbers (21-108, the piano's; 28-96 resumes or
 starts from a model of E1 to C7 without growing it), and `--dip <share>`, the share of the channel's
 windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room
@@ -644,10 +654,11 @@ median, how many of the other families' notes pass the measure and how many of
 those are named right: a measure most named notes fall under is a model that
 tells too little apart yet, and its file names few notes rather than wrong ones.
 
-The trainer's rules for what plays each pitch, for the beat and the bar line and
-for a model's pitches are tests of their own, with no corpus, on the CPU whatever
-the machine has: `python3 -m unittest discover tool/rip-train`, a minute, most of
-it the 150 steps that teach a model a note at either end of the piano's pitches.
+The trainer's rules for what plays each pitch, for the beat and the bar line, for
+a model's pitches and for the batches are tests of their own, with no corpus, on
+the CPU whatever the machine has: `python3 -m unittest discover tool/rip-train`,
+a minute, most of it the 150 steps that teach a model a note at either end of the
+piano's pitches.
 
 It writes the file's version 6, which states the model's lowest pitch as a
 constant after the heads and, for `--pitchnet`'s cell net, the bins its regions

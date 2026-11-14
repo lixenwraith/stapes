@@ -172,35 +172,44 @@ class Label:
                 drums[span(max(t - 1, 0), min(t + 2, frames)), self.drum[i]] = 1
                 continue
             x, at = max(t, a), int(self.cents_at[i])
-            rows = np.arange(x - a, max(min(end, b), x) - a)  # the note's frames in the window
+            r0, r1 = x - a, max(min(end, b), x) - a  # the note's frames in the window
             first = last = p
-            placed = np.full(len(rows), self.voice[i] >= 0)  # an engine voice plays where the label says; a recording only where it lists its cents
-            if at < 0:
-                off, glides = np.full(len(rows), p + self.tuning / 100, np.float32), np.zeros(len(rows), bool)
-                cell = np.full(len(rows), p)
+            placed = self.voice[i] >= 0  # an engine voice plays where the label says; a recording only where it lists its cents
+            if at < 0:  # it holds its pitch: one cell and one offset over its frames, a column of each target
+                held, off = slice(r0, r1), np.float32(p + self.tuning / 100)
+                if 0 <= p < pitches:
+                    pitch[held, p], sole[held, p] = 1, np.where(sole[held, p] == -1, i, -2)
+                    if not placed:
+                        near[held, p], asked[held, p] = 0, 0  # where it sits in its cell is not known
+                for cell in range(int(np.rint(off)) - 1, int(np.rint(off)) + 2):
+                    o = float(off) - cell
+                    if placed and abs(o) < 1 and 0 <= cell < pitches:
+                        nearer = np.float64(abs(o)) < near[held, cell]  # the nearest sound is the one a cell reports; a bare float compares in float32
+                        near[held, cell][nearer], cents[held, cell][nearer], asked[held, cell][nearer], moving[held, cell][nearer] = abs(o), o, 1, 0
             else:
+                rows = np.arange(r0, r1)
                 c, glides = self.cents[at + x - t:at + x - t + len(rows)], self.moves[at + x - t:at + x - t + len(rows)]
                 placed = ~np.isnan(c)  # a frame that is not placed sounds in the note's own cell
                 off = p + np.nan_to_num(c) / 100
                 cell = np.rint(off).astype(np.int64)
                 first, last = (int(np.rint(p + np.nan_to_num(self.cents[at + k]) / 100)) for k in (0, end - t - 1))
-            ok = (cell >= 0) & (cell < pitches)
-            r, c = rows[ok], cell[ok]
-            pitch[r, c], sole[r, c] = 1, np.where(sole[r, c] == -1, i, -2)
+                ok = (cell >= 0) & (cell < pitches)
+                r, c = rows[ok], cell[ok]
+                pitch[r, c], sole[r, c] = 1, np.where(sole[r, c] == -1, i, -2)
+                if 0 <= p < pitches:
+                    near[rows[~placed], p], asked[rows[~placed], p] = 0, 0
+                # the cells under, at and over each frame's offset in one pass: no two of a frame's are one cell
+                rows, cell = np.tile(rows, 3), np.concatenate([cell - 1, cell, cell + 1])
+                o = np.tile(off, 3) - cell
+                ok = np.tile(placed, 3) & (np.abs(o) < 1) & (cell >= 0) & (cell < pitches)
+                ok[ok] = np.abs(o[ok]) < near[rows[ok], cell[ok]]
+                r, c = rows[ok], cell[ok]
+                near[r, c], cents[r, c], asked[r, c], moving[r, c] = np.abs(o[ok]), o[ok], 1, np.tile(glides, 3)[ok]
             if 0 <= first < pitches:
                 strikes.append((t - a, first))
                 vels.append(self.vel[i])
             if 0 <= last < pitches and self.end[i] < frames:
                 releases.append((int(self.end[i]) - a, last))
-            if 0 <= p < pitches:
-                near[rows[~placed], p], asked[rows[~placed], p] = 0, 0  # where it sits in its cell is not known
-            for beside in (-1, 0, 1):
-                cell = np.rint(off).astype(np.int64) + beside
-                o = off - cell
-                ok = placed & (np.abs(o) < 1) & (cell >= 0) & (cell < pitches)
-                ok[ok] = np.abs(o[ok]) < near[rows[ok], cell[ok]]  # the nearest sound is the one a cell reports
-                r, c = rows[ok], cell[ok]
-                near[r, c], cents[r, c], asked[r, c], moving[r, c] = np.abs(o[ok]), o[ok], 1, glides[ok]
             if self.wave[i] >= 0:
                 up = midi > top[seg]
                 top[seg][up], who[seg][up] = midi, i

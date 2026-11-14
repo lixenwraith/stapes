@@ -1,6 +1,7 @@
 """The trainer's rules, each a test: python3 -m unittest discover tool/rip-train"""
 import array
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -623,6 +624,31 @@ class TheBatches(unittest.TestCase):
         """Two shards of one seed draw no batch alike."""
         a, b = (handed(*self.flags, "--shard-seed", shard, steps=3) for shard in ("0", "1"))
         self.assertFalse(any(torch.equal(x, y) for (x, _), (y, _) in zip(a, b)))
+
+    def test_a_windows_targets_are_pinned(self):
+        """A digest of every target over windows cut anywhere and padded, of labels whose notes hold their pitch or move,
+        placed or not, two to a cell or outside the pitches, beside drums: a change to how a window is built leaves it,
+        and a change to what a window holds pins it again."""
+        rng, digest = random.Random(5), hashlib.sha1()
+        with mock.patch.object(train, "GENES", array.array("f")):
+            for _ in range(24):
+                frames, events = rng.choice([90, 300, 700]), []
+                for _ in range(rng.randrange(5, 40)):
+                    t = rng.randrange(-2, frames + 2)
+                    if rng.random() < 0.25:
+                        events.append({"frame": t, "end": t, "drum": rng.randrange(3), "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]})
+                        continue
+                    e = note(t, t + rng.choice([-1, 1, 5, 30, 120, 400]), rng.choice([15, 21, 52, 60, 60, 61, 108, 115]), rng.choice(ripmodels.FAMILIES),
+                             voice(rng.random()) if rng.random() < 0.5 else None, rng.randrange(5))
+                    if rng.random() < 0.5:  # its cents a frame, a recording's null where its track is unvoiced
+                        e["cents"] = [None if "voice" not in e and rng.random() < 0.2 else rng.uniform(-60, 60) for _ in range(e["end"] - t)]
+                    events.append(e)
+                lab = label(events, frames, tuning=rng.choice([0.0, 50.0, -50.0, 23.4]))
+                for start in rng.sample(range(frames), 3):
+                    t = train.targets(Frames(frames), lab, start, rng.choice([86, 512]), rng.random() < 0.5)
+                    for k in sorted(t):
+                        digest.update(f"{k} {t[k].dtype} {t[k].shape}".encode() + np.ascontiguousarray(t[k]).tobytes())
+        self.assertEqual(digest.hexdigest(), "fe0a3c89add1305d577616ac935b69ddb7754cf5")
 
 
 if __name__ == "__main__":

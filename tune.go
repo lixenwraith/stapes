@@ -983,7 +983,8 @@ func (l corpusLoop) grid() (beats, downbeats []float64, err error) {
 	return beats, downbeats, nil
 }
 
-// corpusManifest names the corpus's layout for the trainer
+// corpusManifest names the corpus's layout for the trainer: its pitches are the
+// piano's, those a model is built for, though a label holds every note's own
 type corpusManifest struct {
 	Version    int      `json:"version"`
 	Loops      int      `json:"loops"`
@@ -1301,7 +1302,7 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		return first
 	}
 	m := corpusManifest{Version: 1, Loops: loops, Rate: audio.RipRate, Hop: audio.RipHop, MelBands: audio.RipMelBands,
-		MinMIDI: audio.RipMinMIDI, Pitches: audio.RipPitches, Drums: []string{"kick", "snare", "hihat"}, Waves: audio.VoiceWaves[:], Families: audio.RipFamilies[:], VoiceGenes: audio.VoiceGeneCount}
+		MinMIDI: audio.RipPiano.Min, Pitches: audio.RipPiano.Len(), Drums: []string{"kick", "snare", "hihat"}, Waves: audio.VoiceWaves[:], Families: audio.RipFamilies[:], VoiceGenes: audio.VoiceGeneCount}
 	if err := writeJSON(filepath.Join(dir, "corpus.json"), m); err != nil {
 		return err
 	}
@@ -1728,7 +1729,7 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	}
 	if o.parts == 0 && unheard == 0 {
 		m := corpusManifest{Version: 1, Loops: o.loops, Rate: audio.RipRate, Hop: audio.RipHop, MelBands: audio.RipMelBands,
-			MinMIDI: audio.RipMinMIDI, Pitches: audio.RipPitches, Drums: []string{"kick", "snare", "hihat"}, Waves: audio.VoiceWaves[:], Families: audio.RipFamilies[:], VoiceGenes: audio.VoiceGeneCount}
+			MinMIDI: audio.RipPiano.Min, Pitches: audio.RipPiano.Len(), Drums: []string{"kick", "snare", "hihat"}, Waves: audio.VoiceWaves[:], Families: audio.RipFamilies[:], VoiceGenes: audio.VoiceGeneCount}
 		if err := writeJSON(filepath.Join(dir, "corpus.json"), m); err != nil {
 			return err
 		}
@@ -2627,7 +2628,8 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 	if err != nil {
 		return missed, fmt.Errorf("%s: %w", t.truthFile, err)
 	}
-	c := truthCount{notes: everyNote(audio.MatchNotes(r.Notes, given, t.timed)), lines: len(t.lines), drummed: missed.drummed, drumless: missed.drumless}
+	ag, _ := matchHeard(r, given, t.timed)
+	c := truthCount{notes: everyNote(ag), lines: len(t.lines), drummed: missed.drummed, drumless: missed.drumless}
 	if t.drums {
 		for _, l := range audio.MatchHits(r.Hits(), t.hits, 30/float64(r.BPM)/audio.StepsPerBeat).Drums {
 			c.drums = c.drums.plus(noteCount{l.Matched, l.B, l.A})

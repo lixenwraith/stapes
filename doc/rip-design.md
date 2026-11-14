@@ -53,8 +53,12 @@ flowchart TD
 2. **Front end** (`RipFrontEnd`). It hears a recording into `RipFrames`, the
    seam: per frame the strength of any onset and of each drum's, each pitch's
    salience, each register's chroma, and the models' planes below. The decoders
-   read the frames alone, so none knows which front end heard. The rip's three
-   models are files in stapes' root:
+   read the frames alone, so none knows which front end heard, and the frames
+   say which pitches they hold (`RipFrames.Range`): the analysis's E1 to C7, or
+   those a weight file states, the piano's A0 to C8 for one built now and E1
+   to C7 where it states none ([library
+   §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)).
+   The rip's three models are files in stapes' root:
    - the frame model, `ripframe.bin` (`ripmodels.FrameSpec`, §3): a
      transformer over the mel frames, its heads the onsets, the drums, the wave
      and voice genes a frame, the family of the highest note
@@ -292,8 +296,9 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   feed-forward 1024, a window of 64 frames either side, 3.3 million weights
   (13.2 MB), four times the first five runs' width 128 and four heads, and 3.7
   million (14.9 MB) with the three convolutions the rounds since 11a put before
-  the input layer; its heads are §2's, of three drums, sixty-nine pitches, five
-  waves, thirty-two genes and nine families. Attention carries ALiBi biases, a
+  the input layer; its heads are §2's, of three drums, its pitches (the
+  piano's eighty-eight, sixty-nine in a file of E1 to C7), five waves,
+  thirty-two genes and nine families. Attention carries ALiBi biases, a
   slope per head on the frame distance, so it has no positions to learn and
   generalises past the training window. A file may put convolutions over
   frames and bands before the input layer, each pooled over the bands

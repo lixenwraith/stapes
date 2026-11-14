@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """datacheck.py <corpus dir>...: a shallow check of a corpus's labels against its sound, on a sample of loops
 (SAMPLE, 160; GROUP=1 splits a corpus by where each recording came from): file sizes, finite frames, each loop's
-level (a recording read at the wrong scale sits far under the rest), labels within their loop and the models'
-pitches, doubled (frame, pitch) labels, loops with no label, notes and hits in silence, and the lag in 11.6 ms
+level (a recording read at the wrong scale sits far under the rest), labels within their loop and the piano's
+keys, the pitches a model is built for, doubled (frame, pitch) labels, loops with no label, notes and hits in silence, and the lag in 11.6 ms
 frames at which the sound rises most after a labelled start, hit or beat, with how far over the median it stands."""
 import json, os, sys, numpy as np
 K = int(os.environ.get('SAMPLE', 160)); LAGS = range(-8, 9)
@@ -36,7 +36,7 @@ for d, only, g in jobs:
         if not np.isfinite(m).all(): bad['nan'] += 1; why.append(f'loop {i}: not finite')
         nt = [(e['frame'], e['end'], e['midi']) for e in ev if e['drum'] < 0 and e['midi'] > 0]; ht = [e['frame'] for e in ev if e['drum'] >= 0]
         r = sum(1 for f, e, k in nt if not (0 <= f < lab['frames'] and f <= e))
-        out += sum(1 for f, e, k in nt if not c['min_midi'] <= k < c['min_midi'] + c['pitches']); past += sum(1 for f, e, k in nt if e > lab['frames'] + 2)
+        out += sum(1 for f, e, k in nt if not 21 <= k <= 108); past += sum(1 for f, e, k in nt if e > lab['frames'] + 2)
         r += sum(1 for e in ev if not (-1 <= e['drum'] < len(c['drums']) and -1 <= e.get('family', -1) < len(c.get('families', [])) + 0 and -1 <= e.get('wave', -1) < len(c.get('waves', []))))
         r += sum(1 for f in ht if not 0 <= f < lab['frames'])
         if r: bad['rng'] += 1; why.append(f'loop {i}: {r} labels out of range')
@@ -61,6 +61,6 @@ for d, only, g in jobs:
     name = os.path.basename(d) + ('' if only is None else ': ' + only)
     print(f'{name[:26]:26s} {n:6d} {len(idx):4d}   {bad["size"]:3d} {bad["nan"]:3d} {bad["rng"]:4d}   {pct(dbl, tot)}  {pct(empty, len(idx))} |      {lag("note")}  {pct(notes_sil, notes_n)}    |     {lag("hit")}  {pct(hits_sil, hits_n)}    |     {lag("beat")}')
     pk = float(np.median(peaks)) if peaks else 0.0
-    why = [f'loudest value a loop {pk:.2f} (median), {sum(1 for x in peaks if x < pk / 10)} loops under a tenth of it; {100 * fq / max(fn, 1):.0f}% of all frames are quiet by the same measure; {100 * out / max(tot, 1):.2f}% of notes outside the pitches the models have, {100 * past / max(tot, 1):.2f}% end after their loop'] + why
+    why = [f'loudest value a loop {pk:.2f} (median), {sum(1 for x in peaks if x < pk / 10)} loops under a tenth of it; {100 * fq / max(fn, 1):.0f}% of all frames are quiet by the same measure; {100 * out / max(tot, 1):.2f}% of notes outside the piano's keys, {100 * past / max(tot, 1):.2f}% end after their loop'] + why
     extra = ([f'{nj} json and {nm} mel files for {n} loops'] if nj != n or nm != n else []) + why[:4] + ([f'{big} loops read to 60,000 frames'] if big else [])
     if extra: print('      ' + '; '.join(extra))

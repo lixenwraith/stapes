@@ -62,9 +62,11 @@ class Label:
     (window), so memory holds the events and not a row per frame: a corpus of
     recordings runs to tens of millions of frames."""
 
-    def __init__(self, label: dict, frames: int, manifest: dict):
+    def __init__(self, label: dict, frames: int, manifest: dict, cfg: ripmodels.Config | None = None):
         ev = label["events"]
         self.frames, self.manifest = frames, manifest
+        # a note's cell is its pitch in the model's range, whatever range the corpus's manifest states
+        self.low, self.pitches = (cfg.low, cfg.pitches) if cfg else (ripmodels.LOW, ripmodels.PITCHES)
         self.t = np.array([e["frame"] for e in ev], np.int32)
         self.end = np.array([e["end"] for e in ev], np.int32)
         self.drum = np.array([e["drum"] for e in ev], np.int8)
@@ -128,7 +130,7 @@ class Label:
         releases are lists of (frame, pitch) from a, each strike's velocity beside it, -1
         where the corpus does not say. A beat and a bar line mark a frame either side."""
         m, frames, w = self.manifest, self.frames, b - a
-        pitches, min_midi = m["pitches"], m["min_midi"]
+        pitches, min_midi = self.pitches, self.low
         onset = np.zeros(w, np.uint8)
         drums = np.zeros((w, 3), np.uint8)
         pitch = np.zeros((w, pitches), np.uint8)
@@ -226,7 +228,8 @@ FAMILY_HOLDOUT = None
 FAMILY_UNASKED = False  # a frame model's family head grown and asked nothing: no term in the loss, its rows zero
 
 
-def load_corpus(d: str):
+def load_corpus(d: str, cfg: ripmodels.Config | None = None):
+    """a corpus's manifest and its loops, each its frames and its label for a model of the shape cfg, the piano's pitches without one"""
     with open(os.path.join(d, "corpus.json")) as f:
         manifest = json.load(f)
     if manifest.get("families", list(ripmodels.FAMILIES)) != list(ripmodels.FAMILIES):
@@ -240,7 +243,7 @@ def load_corpus(d: str):
         mel = MelFile(base + ".mel")
         with open(base + ".json") as f:
             label = json.load(f)
-        lab = Label(label, len(mel), manifest)
+        lab = Label(label, len(mel), manifest, cfg)
         unnamed += int((lab.name == FAMILY_HOLDOUT).sum()) if FAMILY_HOLDOUT is not None else 0
         loops.append((mel, lab))
     if unnamed:
@@ -530,7 +533,7 @@ SURE = 0.95  # the share of a held-out family's notes whose surest name stays un
 
 def cells(y: torch.Tensor, cfg, name: str) -> torch.Tensor:
     """a per-pitch head's scores, [..., pitches, values]"""
-    return y[..., cfg.slice(name)].unflatten(-1, (-1, ripmodels.PITCHES)).transpose(-1, -2)
+    return y[..., cfg.slice(name)].unflatten(-1, (-1, cfg.pitches)).transpose(-1, -2)
 
 
 def said(y: torch.Tensor, cfg):
@@ -574,7 +577,7 @@ def evaluate(model: ripmodels.FrameModel, mels, tgs, device: str, low: int | Non
     model.eval()
     sums: dict = {}
     counts = torch.zeros(4, dtype=torch.long, device=device)
-    bars = torch.where(torch.arange(ripmodels.PITCHES, device=device) < low, STRIKE_BARS[1], STRIKE_BARS[0]) if low is not None else None
+    bars = torch.where(torch.arange(model.cfg.pitches, device=device) < low, STRIKE_BARS[1], STRIKE_BARS[0]) if low is not None else None
     timed = "beat" in dict(model.cfg.outputs)
     beats, metered = torch.zeros(2, 4, dtype=torch.long, device=device), 0.0  # the two heads' peaks counted, and the frames asked
     read = []  # each asked reading's miss and stated error in cents, and its kind
@@ -610,7 +613,7 @@ def evaluate(model: ripmodels.FrameModel, mels, tgs, device: str, low: int | Non
                 if voiced:
                     v, w = said(out, model.cfg)
                     at = (t["note"] >= 0) & (t["valid"][..., None] > 0)
-                    cell = torch.arange(ripmodels.PITCHES, device=device)
+                    cell = torch.arange(model.cfg.pitches, device=device)
                     under = cell < (t["pitch"] * cell).amax(-1, keepdim=True)
                     w = w[at]
                     heard.index_add_(0, t["note"][at].long(), torch.cat([v[at] * w[:, None], w[:, None], (w * under[at])[:, None]], 1))
@@ -777,6 +780,7 @@ def main() -> None:
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
     ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
+    ap.add_argument("--range", default=f"{ripmodels.LOW}-{ripmodels.LOW + ripmodels.PITCHES - 1}", help="the pitches the model tells apart, the lowest's MIDI number to the highest's: the piano's by default; 28-96 for a model of the pitches before, to resume one or to start from one without growing it. The checkpoint and the weight file carry it")
     ap.add_argument("--family-unasked", action="store_true", help="a frame model's family head grown and asked nothing: no term for it in the loss and its rows of the output layer zero from the start, so every frame's shares are even and the file says nothing there")
     ap.add_argument("--plays", type=float, default=PLAYS, help="the weight of the heads of what plays each pitch in the total, against what plays the frame: a quarter by default")
     ap.add_argument("--probe", action="store_true", help="a notes model's heads of what plays each pitch, or a frame model's beat and downbeat heads, trained alone from --init's weights, every other weight held as it was: a notes model carries no cents head, so its file rips as its start, and a frame model's other heads say what its start's did; the last step is exported")
@@ -812,49 +816,64 @@ def main() -> None:
         raise SystemExit("--family-unasked: the family head is a frame model's, on one output layer")
     if args.probe and towers and not args.pitchnet:
         raise SystemExit("--probe with --towers: a model in towers lays its heads over several output layers, and a probe holds one")
-    heads = [h for h in ripmodels.PITCHNET_HEADS if h[0] != "cents"] if args.probe else ripmodels.PITCHNET_HEADS  # a probe's file rips as its start
-    heard = dict(inputs=ripmodels.STACK_INPUTS, channels=ripmodels.STACK_CHANNELS, outputs=heads) if args.pitchnet else dict(channels=2 if args.pcen else 1)
+    try:
+        low, high = (int(v) for v in args.range.split("-"))
+    except ValueError:
+        low, high = 0, -1
+    if not 0 <= low <= high <= 127:
+        raise SystemExit(f"--range {args.range!r}: want the lowest pitch's MIDI number and the highest's, 21-108")
+    pitches = high - low + 1
+    heads = [h for h in ripmodels.pitchnet_heads(pitches) if h[0] != "cents" or not args.probe]  # a probe's file rips as its start
+    heard = dict(inputs=ripmodels.stack_bins(pitches) + 1, channels=ripmodels.STACK_CHANNELS, outputs=heads) if args.pitchnet else \
+        dict(channels=2 if args.pcen else 1, outputs=ripmodels.heads(pitches))
     cfg = ripmodels.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,
-                          dilations=tuple(int(d) for d in filter(None, args.dilations.split(","))), cell=args.cell)
+                          dilations=tuple(int(d) for d in filter(None, args.dilations.split(","))), cell=args.cell, low=low)
     planes = min(cfg.channels, 2)  # what the data loader makes; the model stacks them
     resume = bool(args.checkpoint) and os.path.exists(args.checkpoint)
     start = args.checkpoint if resume else args.init
     ck = torch.load(start, map_location=args.device) if start else None
+    had = None
     if ck is not None and "cfg" in ck:
-        ck["cfg"] = {**asdict(ripmodels.Config()), **ck["cfg"]}  # a setting newer than the checkpoint takes the default it was built with
-    # a start from a model of the heads before the last added, such as the beat and
-    # the downbeat: its weights carry over, the new heads' rows of the output layer start fresh
-    had = [tuple(h) for h in ck["cfg"]["outputs"]] if ck is not None and not resume and "cfg" in ck else []
-    grown = 0 < len(had) < len(cfg.outputs) and had == list(cfg.outputs)[:len(had)] and \
-        {k: v for k, v in ck["cfg"].items() if k != "outputs"} == {k: v for k, v in asdict(cfg).items() if k != "outputs"}
+        had = ripmodels.shape(ck["cfg"])  # a setting newer than the checkpoint takes the value it was built with
+        had.outputs = [tuple(h) for h in had.outputs]
+        ck["cfg"] = asdict(had)
+    # a start from a model of the heads before the last added, such as the beat and the downbeat, or of fewer
+    # pitches: its weights carry over, a new head's rows of the output layer fresh and a new pitch's silent
+    grown = False
+    if had is not None and not resume and asdict(had) != asdict(cfg):
+        rest = lambda c: {k: v for k, v in asdict(c).items() if k not in ("outputs", "low") and (k != "inputs" or not args.pitchnet)}
+        try:
+            grown = rest(had) == rest(cfg) and bool(ripmodels.places(had, cfg))
+        except ValueError:
+            pass
     # refused before the corpus loads: load_state_dict names only a tensor's size,
     # and takes another head count or window without a word
     if ck is not None and ck.get("cfg") != asdict(cfg) and not grown:
         raise SystemExit(f"{start} holds a model of {shape(ck.get('cfg'))}, and this run builds {shape(asdict(cfg))}: pass its shape, or another file")
-    manifest, loops = load_corpus(args.corpus)
+    manifest, loops = load_corpus(args.corpus, cfg)
     holdout = args.holdout if args.holdout >= 0 else (len(loops) // 10 if len(loops) >= 5 else 0)
     held = loops[len(loops) - holdout:] if holdout else []
     loops = loops[:len(loops) - holdout] if holdout else loops
     val_mels, val_tgs, val_notes = validation(held, args.window, planes)
-    assert manifest["mel_bands"] == ripmodels.MEL_BANDS and manifest["pitches"] == ripmodels.PITCHES
+    assert manifest["mel_bands"] == ripmodels.MEL_BANDS
     assert manifest["voice_genes"] == ripmodels.VOICE_GENES and len(manifest["waves"]) == ripmodels.WAVES
     recorded, check_mels, check_tgs, check_notes = [], [], [], None
     if args.validate:
-        check_manifest, recorded = load_corpus(args.validate)
-        assert check_manifest["mel_bands"] == ripmodels.MEL_BANDS and check_manifest["pitches"] == ripmodels.PITCHES
+        check_manifest, recorded = load_corpus(args.validate, cfg)
+        assert check_manifest["mel_bands"] == ripmodels.MEL_BANDS
         if not recorded:
             raise SystemExit(f"--validate {args.validate}: no recordings to score")
         check_mels, check_tgs, check_notes = validation(recorded, args.window, planes)
     mixed, share = [], 0.0
     if args.mix:
         d, _, sh = args.mix.rpartition(":")
-        mixed_manifest, mixed = load_corpus(d)
+        mixed_manifest, mixed = load_corpus(d, cfg)
         share = float(sh)
-        assert mixed_manifest["mel_bands"] == ripmodels.MEL_BANDS and mixed_manifest["pitches"] == ripmodels.PITCHES
+        assert mixed_manifest["mel_bands"] == ripmodels.MEL_BANDS
     drums, over_share, drumless = [], 0.0, []
     if args.over:
         d, _, sh = args.over.rpartition(":")
-        over_manifest, drums = load_corpus(d)
+        over_manifest, drums = load_corpus(d, cfg)
         over_share = float(sh)
         assert over_manifest["mel_bands"] == ripmodels.MEL_BANDS
         drumless = [(m, l) for m, l in loops if not (l.drum >= 0).any()]
@@ -870,16 +889,17 @@ def main() -> None:
         validated = ck.get("validated", validated)
         print(f"resumed at step {step}")
     elif grown:
-        state = model.state_dict()
-        for k, v in ck["model"].items():
-            if state[k].shape == v.shape:
-                state[k] = v
-            elif v.dim() and state[k].shape[1:] == v.shape[1:] and len(state[k]) > len(v):
-                state[k][:len(v)] = v  # the output layer: the rows of the heads it had
-            else:
-                raise SystemExit(f"{start}: {k} is {tuple(v.shape)}, this run's {tuple(state[k].shape)}")
-        model.load_state_dict(state)
-        print(f"started from {args.init}, its heads but {', '.join(h for h, _ in cfg.outputs[len(had):])}, which start fresh")
+        try:
+            model.load_state_dict(ripmodels.carried(model, had, ck["model"]))
+        except ValueError as err:
+            raise SystemExit(f"{start}: {err}")
+        said = []
+        if len(had.outputs) < len(cfg.outputs):
+            said.append(f"its heads but {', '.join(h for h, _ in cfg.outputs[len(had.outputs):])}, which start fresh")
+        if (had.low, had.pitches) != (cfg.low, cfg.pitches):
+            new = "at the weights every pitch shares" if args.pitchnet else "their rows silent"
+            said.append(f"its pitches MIDI {had.low} to {had.low + had.pitches - 1} of this run's {cfg.low} to {cfg.low + cfg.pitches - 1}, the new ones {new}")
+        print(f"started from {args.init}, {', '.join(said)}")
     elif ck is not None:
         model.load_state_dict(ck["model"])
         print(f"started from {args.init}")
@@ -898,7 +918,7 @@ def main() -> None:
         print(f"{len(drums)} recordings of {sum(len(m) for m, _ in drums)} frames laid over {len(drumless)} loops with no drums, {over_share:.0%} of the windows")
     t0 = time.time()
 
-    low = STRIKE_LOW - manifest["min_midi"] if args.pitchnet else None
+    low = STRIKE_LOW - cfg.low if args.pitchnet else None
 
     def scored(name: str, mels, tgs, notes):
         """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them, a frame
@@ -962,7 +982,7 @@ def main() -> None:
     extras, left = [], 1.0
     for item in filter(None, args.extra.split(",")):
         d, _, sh = item.rpartition(":")
-        _, loops_x = load_corpus(d)
+        _, loops_x = load_corpus(d, cfg)
         extras.append((float(sh), loops_x, list(accumulate(len(m) for m, _ in loops_x))))
         print(f"{len(loops_x)} loops of {sum(len(m) for m, _ in loops_x)} frames from {d}, {float(sh) * left:.1%} of the windows")
         left *= 1 - float(sh)
@@ -982,7 +1002,7 @@ def main() -> None:
     sung, sung_share, by_sung = [], 0.0, []
     if args.sung:
         d, _, sh = args.sung.rpartition(":")
-        _, sung = load_corpus(d)
+        _, sung = load_corpus(d, cfg)
         sung_share, by_sung = float(sh), list(accumulate(len(m) for m, _ in sung))
         print(f"{len(sung)} sung recordings of {sum(len(m) for m, _ in sung)} frames from {d}, {sung_share:.0%} of the chunks")
 

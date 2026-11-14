@@ -889,7 +889,7 @@ func TestTheNotesModelLoadsBesideTheFrameModel(t *testing.T) {
 		}
 		return s, &out
 	}
-	notes := ripmodels.NotesSpec()
+	notes := ripmodels.NotesSpec(audio.RipPiano)
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	save(notesFile, notes)
 	s, out := open()
@@ -898,7 +898,7 @@ func TestTheNotesModelLoadsBesideTheFrameModel(t *testing.T) {
 	}
 	teardown(t, s)
 
-	frame := ripmodels.FrameSpec()
+	frame := ripmodels.FrameSpec(audio.RipPiano)
 	frame.Dim, frame.Heads, frame.Layers, frame.FFN = 8, 2, 1, 8
 	save(frameFile, frame)
 	s, out = open()
@@ -921,7 +921,7 @@ func TestTheNotesModelLoadsBesideTheFrameModel(t *testing.T) {
 func TestAFrameModelUnderItsOldNameIsNamedNotLoaded(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
-	cfg := ripmodels.FrameSpec()
+	cfg := ripmodels.FrameSpec(audio.RipPiano)
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -1597,7 +1597,7 @@ func TestLiveKeepsTheRipRipMakes(t *testing.T) {
 	dir := t.TempDir()
 	wav := filepath.Join(dir, "loop.wav")
 	writeWAV(t, wav, loops[0].audio)
-	cfg := ripmodels.FrameSpec()
+	cfg := ripmodels.FrameSpec(audio.RipPiano)
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -2158,7 +2158,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	writeFile(t, list, "loop.wav\tloop.mid\n")
 	// a model too small to hear well, from a start that takes a strike whose
 	// pitch hardly sounds: the sets near it hear fewer notes that were not played
-	cfg := ripmodels.FrameSpec()
+	cfg := ripmodels.FrameSpec(audio.RipPiano)
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -2222,7 +2222,7 @@ func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmod
 	}
 	dir = t.TempDir()
 	writeWAV(t, filepath.Join(dir, "loop.wav"), loops[1].audio)
-	cfg := ripmodels.FrameSpec()
+	cfg := ripmodels.FrameSpec(audio.RipPiano)
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, seed)
 	if err != nil {
@@ -2486,7 +2486,7 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	open := func(seed uint64) (*Session, *bytes.Buffer) {
-		cfg := ripmodels.FrameSpec()
+		cfg := ripmodels.FrameSpec(audio.RipPiano)
 		cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 		m, err := transformer.NewRandom(cfg, seed)
 		if err != nil {
@@ -2577,7 +2577,7 @@ func judgeBytes(notes uint64, odds [2]float64) []byte {
 func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
-	cfg := ripmodels.FrameSpec()
+	cfg := ripmodels.FrameSpec(audio.RipPiano)
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -2751,7 +2751,7 @@ func TestRowsReadACorpusThatKeptItsAudio(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	cfg := ripmodels.FrameSpec()
+	cfg := ripmodels.FrameSpec(audio.RipPiano)
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -2809,6 +2809,36 @@ func TestALabelServesReportedNotesFirstAndATruthNoteOnce(t *testing.T) {
 	}
 	if right, unanswered := rightStrikes(r, late, false); !slices.Equal(right, want) || unanswered != 2 {
 		t.Errorf("a truth off the clock labels %v with %d note(s) unanswered, want %v with 2", right, unanswered, want)
+	}
+}
+
+// TestATruthCountsNoNoteOutsideTheRipsPitches: a truth's notes at pitches the
+// rip's front end does not tell apart are left out of its count, so a rip of
+// E1 to C7 is not held to a B0 or an A7 that a rip of the piano's pitches is;
+// a truth off the clock and a tone down is judged where the rip would hear it.
+func TestATruthCountsNoNoteOutsideTheRipsPitches(t *testing.T) {
+	note := func(sec float64, midi int) audio.RipNote {
+		return audio.RipNote{Start: sec, End: sec + 0.1, MIDI: midi}
+	}
+	e1c7 := audio.RipRange{Min: audio.RipMinMIDI, Max: audio.RipMaxMIDI}
+	r := &audio.Rip{Range: e1c7, Notes: []audio.RipNote{note(1, 60), note(2, 62), note(3, 64), note(4, 65), note(5, 67)}}
+	given := append(slices.Clone(r.Notes), note(1.5, 23), note(2.5, 105))
+	for _, c := range []struct {
+		pitches audio.RipRange
+		want    noteCount
+	}{{e1c7, noteCount{5, 5, 5}}, {audio.RipPiano, noteCount{5, 7, 5}}} {
+		r.Range = c.pitches
+		if ag, heard := matchHeard(r, given, true); everyNote(ag) != c.want || len(heard) != c.want.given {
+			t.Errorf("a rip of %v counts %+v of %d note(s), want %+v", c.pitches, everyNote(ag), len(heard), c.want)
+		}
+	}
+	r.Range = e1c7
+	late := []audio.RipNote{note(4.5, 25), note(5.5, 27)} // a tone up they are a G0, which the rip cannot report, and an F1, which it missed
+	for _, n := range r.Notes {
+		late = append(late, note(n.Start+3, n.MIDI-2))
+	}
+	if ag, heard := matchHeard(r, late, false); ag.Shift != 2 || everyNote(ag) != (noteCount{5, 6, 5}) || len(heard) != 6 {
+		t.Errorf("a truth a tone down counts %+v of %d note(s) transposed %+d, want 5 of 6 given", everyNote(ag), len(heard), ag.Shift)
 	}
 }
 

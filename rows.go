@@ -137,6 +137,7 @@ func (s *Session) rows(dir, from string, o tuneOptions, fe audio.RipFrontEnd, no
 		if slices.ContainsFunc(truth, func(n audio.RipNote) bool { return n.MIDI < 0 }) {
 			return fmt.Errorf("%s: a rhythm gives no pitch to label a strike by", l.truth)
 		}
+		_, truth = matchHeard(r, truth, t.timed)
 		rec := rowsRecording{Source: l.wav, Condition: l.cond, Given: len(truth), Strikes: make([]rowStrike, len(r.Strikes))}
 		labels, rows := rec.Strikes, make([][]float32, len(r.Strikes))
 		var answers []bool

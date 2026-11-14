@@ -119,11 +119,11 @@ func cmdNotes(s *Session, a []string) error {
 		if snd == nil {
 			return ""
 		}
-		f := snd.Frames
+		f, pitches := snd.Frames, snd.Frames.Pitches()
 		var own, all float64
-		for t := int(n.Start / f.Hop); t < int(n.End/f.Hop) && (t+1)*audio.RipPitches <= len(f.Salience); t++ {
-			row := f.Salience[t*audio.RipPitches : (t+1)*audio.RipPitches]
-			if i := n.MIDI - audio.RipMinMIDI; i >= 0 && i < len(row) {
+		for t := int(n.Start / f.Hop); t < int(n.End/f.Hop) && (t+1)*pitches.Len() <= len(f.Salience); t++ {
+			row := f.Salience[t*pitches.Len() : (t+1)*pitches.Len()]
+			if i := n.MIDI - pitches.Min; i >= 0 && i < len(row) {
 				own += float64(row[i])
 			}
 			var peak float32

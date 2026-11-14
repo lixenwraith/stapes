@@ -459,6 +459,22 @@ lines in training are still E1 to C7. What is left:
   front end, every corpus rendered again and both models trained from
   nothing: decide that once, before a bass under E1 is a goal.
 
+### Gather the scores `corpus ... midi` plays
+
+- Priority: P2
+- Affected files: `CREDITS.md`, `doc/rip-training.md` and `doc/rip-rounds.md`
+  (the corpus's entries)
+
+Corpora 14 to 17 and the glide pair played stretches of Lakh's MIDI files,
+transcriptions of commercial songs that nothing trains on from here on (AGENTS,
+Data); the weights trained on them stay. The folder `midi <dir>` names may hold
+generated MIDI and public-domain scores, never Lakh's files or Slakh's. A
+score's file has rights of its own apart from its work's, its sequencer's or its
+engraver's, so a file joins only when its own page puts it in the public domain
+or under CC BY, listed with its source and licence for the
+[credits](../CREDITS.md). What closes it: such a folder, and the next corpus
+with `midi` rendered from it, its notes past E1 to C7 kept (the item above).
+
 ### A live rip
 
 - Priority: P2
@@ -664,3 +680,19 @@ repository since it spells the names, closes it. What it costs:
 - GitHub keeps every PR's `refs/pull/<n>/head`, which no push deletes, so the
   old commits stay reachable there and in cached views until GitHub Support
   purges them. PR titles and bodies are edited on GitHub by hand.
+
+### Carry Go's notice with every binary
+
+- Priority: P1
+- Affected files: `Makefile` (`install`), a notices file; vif's app
+
+A stapes binary links Go's standard library and golang.org/x/sys and x/term,
+whose BSD 3-Clause licence (`$(go env GOROOT)/LICENSE`, the same in each
+module's folder under `go env GOMODCACHE`) asks that a binary reproduce the Go
+Authors' notice, conditions and disclaimer. The other modules in `go.mod`,
+lixenwraith's audio, color, genetic, terminal, toml and transformer, carry
+stapes' own `LICENSE` word for word, which `make install` installs; nothing
+carries Go's. What closes it: a notices file with Go's licence, installed
+beside `LICENSE` and put in every desktop archive, and the About screen of
+vif's app, which hosts the Android build, listing both; each is checked
+against `go list -deps ./...` when `go.mod` changes.

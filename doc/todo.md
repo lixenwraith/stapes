@@ -639,3 +639,27 @@ about as long as the heaviest test
   a branch before its pull request opens.
 - A job uses one core of four: tests run one at a time while a session
   registers in the audio module's process-wide registries.
+
+## The repository
+
+### Rewrite the history without the songs' names
+
+- Priority: P1
+- Affected files: every commit
+
+v0.31.1 gave the test songs neutral labels in the docs and the code. Older
+trees, commit messages and squash titles still name the songs and their
+artists. One `git filter-repo` pass with `--replace-text` and
+`--replace-message`, from the mapping kept in the project's files outside the
+repository since it spells the names, closes it. What it costs:
+
+- Every hash changes: each clone re-clones, open branches are rebased by hand,
+  and every tag is set again on its rewritten commit.
+- proxy.golang.org and sum.golang.org keep each published version as it was
+  tagged, so the proxy keeps serving the old text whatever the rewrite does, and
+  a re-set tag whose tree changed fails `go`'s checksum check for anyone who
+  fetches it directly. Rewrite only the messages under tagged trees, or let the
+  old versions' trees stand in the proxy.
+- GitHub keeps every PR's `refs/pull/<n>/head`, which no push deletes, so the
+  old commits stay reachable there and in cached views until GitHub Support
+  purges them. PR titles and bodies are edited on GitHub by hand.

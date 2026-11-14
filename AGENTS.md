@@ -50,11 +50,13 @@ it there in the same PR.
   a verb or a flag names. Never add a working-directory probe.
 - A script's relative paths are read from the script's own folder, a nested
   `run`'s from its own.
-- Nothing is trained or fitted on a full track, bought or not: a commercial
-  song such as Billie Jean only measures the rip, since no licence covers
-  training on it. A corpus or a fit's list holds licensed collections, renders
-  and the engine's own mixes; a wanted piece is rendered from its score, and
-  a round's notes name the collections it took, for the credits.
+- Nothing is trained or fitted on a full track, bought or not, nor on anything
+  taken from one (a take of it through a room or a phone, a noise bank shaped
+  by its quiet): a commercial song such as Billie Jean only measures the rip,
+  since no licence covers training on it. A corpus or a fit's list holds
+  licensed collections, renders and the engine's own mixes; a wanted piece is
+  rendered from its score, and a round's notes name the collections it took,
+  for the credits.
 
 ## Scope
 
@@ -100,9 +102,11 @@ it there in the same PR.
   4 aug gen nowav` before and after, `diff -r`), and so whether a new round is
   needed.
 - Weights live in the main checkout's `weights/`, which git ignores and Lixen
-  backs up: a round's exported `.bin` files and its `.best.pt` are copied there
-  when it ends, and the installed pair with its `rip.toml` whenever it changes.
-  A weight file held only in a round's own folder is one disk from lost.
+  backs up: when a round ends, its `.last.pt` (the step a later round starts
+  from), its `.best.pt`, the `.bin` files exported from either and its log are
+  copied there, each with its line in `MANIFEST.txt`, and the installed pair
+  with its `rip.toml` whenever it changes. A weight file held only in a
+  round's own folder is one disk from lost.
 
 ## Docs and commits
 
@@ -117,14 +121,23 @@ it there in the same PR.
 - A gap you are deferring goes in `doc/todo.md`: extend the item it belongs to, or
   add a concise one in the file's pattern.
 - PR bodies: what changed, why, how it was verified.
+- Open the PR at the first push, its title final and its body as far as it is,
+  saying what is still owed: Lixen merges a pushed branch he is waiting on. A
+  PR another session must measure before it merges opens as a draft and says so
+  in its first line. Before calling a PR ready, check that its head is the
+  commit pushed (`gh api repos/<owner>/<repo>/pulls/<n> -q .head.sha`).
 - A change made for performance reports its measurement, before and after, in the
   PR body: the benchmark or the reading, the shape it was taken in, and the
   benefit in the unit the user feels (CPU, bytes, allocations, latency). A
   projection is not a result; a change whose measured benefit is nil says so.
 - Commits are versions: each commit on main starts with the version it makes
   (`v0.1.1 rip: ...`), the next minor for a break or a new feature and the next
-  patch otherwise, and Lixen tags it. A PR's title is its squashed commit's
-  message, so it starts with the version too.
+  patch otherwise, and Lixen tags it. Lixen squash-merges: a PR of one commit
+  lands under that commit's message and a PR of several under its title, so
+  the title and every commit's message start with the version.
+- A change that needs another of these modules' new version names it in
+  `go.mod` in the same PR, before the tag exists: the PR bodies state the merge
+  order, and a bump is never a PR of its own.
 - One task, one branch, one PR. Divide the work into commits on that branch; do not
   split it across stacked PRs or multiple branches.
 - Work that continues after its PR merged starts again from the latest main; never
@@ -160,5 +173,8 @@ the sweep CI runs.
   search that reads its pattern as the file holds it (`grep -P` for a tab, or a
   literal tab); a search that matches nothing proves nothing, and the PR body
   states the count.
+- A change under `tool/rip-train` runs the trainer's own tests, `python3 -m
+  unittest discover tool/rip-train` in its venv (`make venv`): CI has no
+  PyTorch and does not run them.
 - Do not run `-race` tests unless investigating a known/suspected race issue; CI
   runs them, with the cross builds.

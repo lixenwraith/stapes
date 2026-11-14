@@ -659,7 +659,9 @@ proves wrong or that a document now states, and link the document instead.
   model is still picked by the decoders' loss there, which rose only as its
   onset head grew surer while its beats' F1 rose (.14 to .24): 48a's pick was
   step 10,000 of 40,000. Read a line at its last step, each head by its own
-  score on the recordings, not by one sum.
+  score on the recordings, not by one sum. A round's `.bin` is its pick's
+  export (50a's is step 2,000 of 40,000): a line's file is its `.last.pt`
+  through `average.py --out`.
 - A checkpoint scores a third lower on recordings it trained on: 24b and 33b
   mixed in GuitarSet's player 04 and the 19 MusicNet pieces before those became
   `~/ripcorpus-val`, and 33b's validation loss reads 2.16 against 2.9 to 3.3.
@@ -688,6 +690,12 @@ proves wrong or that a document now states, and link the document instead.
   fit may hold, and decode a tuned `rip.toml` over every condition, the full
   tracks among them (`vif/tmp/audit2/cond-v0140`), before it ships; no change
   of one bar from the hand-swept five gained the mean of twenty conditions.
+- `tune ... truth` weighs a condition, not a recording: a set scores the plain
+  mean of every score its conditions carry (`scores`, `guarded`), a condition's
+  notes pooled over its recordings. In a list of six conditions and thirteen
+  scores, `piano` and `ensemble` of two MusicNet pieces each held four scores
+  and 87 sung clips two: give a condition recordings enough to stand for its
+  kind, and read a searched file on recordings its list left out.
 - **A search writes back what it moved by chance unless each gene is put
   back.** A near pool moves one gene in four, and a score sees only some of
   the genes it is given: a model without the two heads reads no `beat_comb`,

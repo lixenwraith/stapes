@@ -1,4 +1,5 @@
 """The trainer's rules, each a test: python3 -m unittest discover tool/rip-train"""
+import array
 import contextlib
 import io
 import json
@@ -227,12 +228,31 @@ def corpus(d, labels, frames=64, sound=None):
 
 
 def run(*flags, steps=1) -> str:
-    """steps of train.py at the smallest shape, and what it printed; on the CPU whatever the machine has, as every
-    tensor a test builds is there"""
-    argv = ["train.py", *flags, "--steps", str(steps), "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4", "--device", "cpu"]
+    """steps of train.py at the smallest shape unless flags name another, and what it printed; on the CPU whatever
+    the machine has, as every tensor a test builds is there"""
+    argv = ["train.py", "--steps", str(steps), "--batch", "1", "--window", "32", "--dim", "8", "--heads", "2", "--layers", "1", "--ffn", "16", "--attention-window", "4", "--device", "cpu", *flags]
     with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as said:
         train.main()
     return said.getvalue()
+
+
+def handed(*flags, steps=1) -> list:
+    """the batches a run hands its device, a step's each: its frames and its targets; the run numbers its voices'
+    genes from none, as a process of its own does, since a cell's pitchvoice is a row of them"""
+    seen, real = [], train.losses
+
+    def losses(model, mel, t):
+        if torch.is_grad_enabled():  # a step's, not a score's
+            seen.append((mel, t))
+        return real(model, mel, t)
+    with mock.patch.object(train, "losses", losses), mock.patch.object(train, "GENES", array.array("f")):
+        run(*flags, steps=steps)
+    return seen
+
+
+def same(a: list, b: list) -> bool:
+    """whether two runs' batches are equal tensor for tensor"""
+    return len(a) == len(b) and all(torch.equal(x, y) and t.keys() == u.keys() and all(torch.equal(t[k], u[k]) for k in t) for (x, t), (y, u) in zip(a, b))
 
 
 def marks(frames, at) -> list:
@@ -304,7 +324,7 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         past a loop's end holds none: each asks the beat and the bar line nothing, where a plain window asks its loop's."""
         frames, rng = 414, random.Random(1)  # two bars of 4/4 at 100 bpm, the end's line at frame 413
         mel, lab = Frames(frames), label([{"frame": 52, "end": 52, "drum": 0, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]}], frames, bpm=100, bars=2)
-        _, spliced = train.shuffled(lambda: (mel, lab), 256, 1, rng)
+        _, spliced = train.shuffled(lambda rng: (mel, lab), 256, 1, rng)
         _, laid = train.sample(mel, lab, 0, 256, 1, (mel, lab, 0.0), rng)
         _, plain = train.sample(mel, lab, 200, 256, 1)
         self.assertEqual([int(t["metered"].sum()) for t in (spliced, laid)], [0, 0])
@@ -554,6 +574,55 @@ class ThePitches(unittest.TestCase):
         self.assertGreater(strike[:, cells].amax(0).min().item(), 0.5)
         others = [c for c in range(model.cfg.pitches) if c not in cells]
         self.assertLess(max(pitch[:, others].max().item(), strike[:, others].max().item()), 0.5)
+
+
+class TheBatches(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        """loops of noise, half with drums, a note of them gliding, a corpus of drums and a noise bank, and a run's
+        flags that draw a window through each share: shuffled, bent, ringing, through the channel, drums laid over,
+        a corpus mixed in, another drawn and singing among the chunks"""
+        cls.dir = tempfile.TemporaryDirectory()
+        at = lambda name: os.path.join(cls.dir.name, name)
+        rng = np.random.default_rng(1)
+        noise = lambda lab: np.log1p(rng.random((96, ripmodels.MEL_BANDS))).astype(np.float32)
+        hit = lambda f, drum: {"frame": f, "end": f, "drum": drum, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]}
+        loops = [{"bpm": 120, "bars": 1, "events": [note(4, 40, 60, "piano", voice(0.1), 4), note(20, 70, 67, "guitar", cents=[0.0] * 25 + [50.0] * 25)]
+                  + ([hit(8 * k, k % 3) for k in range(12)] if i % 2 else [])} for i in range(6)]
+        for name, labels in (("loops", loops), ("drums", [{"events": [hit(6 * k, k % 3) for k in range(16)]}] * 2)):
+            os.mkdir(at(name))
+            corpus(at(name), labels, 96, noise)
+        np.savez(at("noise.npz"), white=(0.5 + rng.random((400, ripmodels.MEL_BANDS))).astype(np.float32), room=np.zeros(ripmodels.MEL_BANDS, np.float32))
+        cls.flags = ["--corpus", at("loops"), "--out", at("out.bin"), "--holdout", "0", "--batch", "2", "--pcen", "--shuffle", "0.5", "--bend", "0.5",
+                     "--ring", "0.5", "--channel", at("noise.npz") + ":0.5", "--over", at("drums") + ":0.5", "--mix", at("drums") + ":0.2",
+                     "--extra", at("loops") + ":0.3", "--sung", at("loops") + ":0.5"]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.dir.cleanup()
+
+    def test_a_batch_is_the_same_whatever_number_of_builders_builds_it(self):
+        """Batch k is drawn from a stream of the run's seed, its shard and k alone, so a run hands its device the same
+        tensors built by one builder, two or three."""
+        one = handed(*self.flags, steps=6)
+        for builders in ("2", "3"):
+            with self.subTest(builders=builders):
+                self.assertTrue(same(handed(*self.flags, "--builders", builders, steps=6), one))
+
+    def test_a_run_resumed_at_step_k_is_handed_the_batches_the_unbroken_run_was(self):
+        """A run stopped at step 3 and resumed from its checkpoint trains steps 4 to 6 on the batches the run that
+        never stopped trained them on, not on its first three again."""
+        whole = handed(*self.flags, steps=6)
+        with tempfile.TemporaryDirectory() as d:
+            first = handed(*self.flags, "--checkpoint", os.path.join(d, "run.pt"), steps=3)
+            rest = handed(*self.flags, "--checkpoint", os.path.join(d, "run.pt"), "--builders", "2", steps=6)
+        self.assertTrue(same(first + rest, whole))
+        self.assertFalse(same(rest, whole[:3]))
+
+    def test_two_shards_draw_different_batches(self):
+        """Two shards of one seed draw no batch alike."""
+        a, b = (handed(*self.flags, "--shard-seed", shard, steps=3) for shard in ("0", "1"))
+        self.assertFalse(any(torch.equal(x, y) for (x, _), (y, _) in zip(a, b)))
 
 
 if __name__ == "__main__":

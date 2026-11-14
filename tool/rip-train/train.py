@@ -8,19 +8,20 @@ from __future__ import annotations
 
 import argparse
 import array
+import gc
 import json
 import math
 import os
 import random
 import struct
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from itertools import accumulate
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch.utils.data
 
 import ripmodels
 
@@ -347,7 +348,7 @@ def shuffled(pick, window: int, channels: int, rng, channel=None):
     through, noise = channel.draw(total, rng) if channel is not None else (1.0, np.zeros((total, ripmodels.MEL_BANDS)))
     es, outs = [], []
     for at in range(0, total, CHUNK):
-        (ma, la), (mb, lb) = pick(), pick()
+        (ma, la), (mb, lb) = pick(rng), pick(rng)
         ea, sa = clip(ma, rng)
         eb, sb = clip(mb, rng)
         eb = eb * 10 ** ((rng.random() * 12 - 6) / 10) * power(ma) / max(power(mb), 1e-9)
@@ -466,19 +467,34 @@ def stack(samples):
 
 
 def batch(draw, window: int, size: int, rng: random.Random, channels: int, channel=None, share: float = 0.0, pick=None, shuffle: float = 0.0, bend: float = 0.0):
-    """size random windows of `window` frames from the loops draw() picks, a share through the channel, a share shuffled, a share of the rest bent"""
+    """size random windows of `window` frames from the loops draw(rng) picks, a share through the channel, a share shuffled, a share of the rest bent"""
     samples = []
     for _ in range(size):
         heard = channel if channel is not None and rng.random() < share else None
         if pick is not None and rng.random() < shuffle:
             samples.append(shuffled(pick, window, channels, rng, heard))
             continue
-        mel, lab, over = draw()
+        mel, lab, over = draw(rng)
         if rng.random() < bend:
             samples.append(bent(mel, lab, window, channels, over, rng, heard))
             continue
         samples.append(sample(mel, lab, rng.randrange(max(len(mel) - window, 0) + 1), window, channels, over, rng, heard))
     return stack(samples)
+
+
+def stream(seed: int, shard: int, k: int) -> random.Random:
+    """what batch k of a run draws from: a stream of its seed, its shard and k alone, each under 2**32 but k"""
+    return random.Random(seed + (shard << 32) + (k << 64))
+
+
+class Batches:
+    """a run's batches by index, as a builder forked from the run makes them: build(rng) over batch k's stream"""
+
+    def __init__(self, build, seed: int, shard: int):
+        self.build, self.seed, self.shard = build, seed, shard
+
+    def __getitem__(self, k: int):
+        return self.build(stream(self.seed, self.shard, k))
 
 
 def validation(loops, window: int, channels: int):
@@ -793,7 +809,9 @@ def main() -> None:
     ap.add_argument("--family-holdout", choices=ripmodels.FAMILIES, help="a family no head is told the name of: its notes are trained on as sound and scored as notes, and a notes model's lines print the share their surest name reaches, the measure of where a name stops being sure, which its weight file carries")
     ap.add_argument("--sure", type=float, default=0.0, help="the share a family must pass over a note to name it, as a --family-holdout run of the same recipe measured it, for a notes model's weight file to carry; without it the start's is kept, and with neither no family names a note")
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--shard-seed", type=int, default=0, help="offsets the stream the windows are drawn from, so a round's workers see different loops; the starting weights stay --seed's")
+    ap.add_argument("--shard-seed", type=int, default=0, help="moves the streams the batches are drawn from, so a round's workers see different windows; the starting weights stay --seed's")
+    ap.add_argument("--builders", type=int, default=1, help="processes forked from the run that build its batches beside the device, each at most two batches ahead: batch k is drawn "
+                    "from a stream of --seed, --shard-seed and k alone, so the batches are the same whatever builds them and a run resumed at step k draws those the unbroken run drew")
     ap.add_argument("--checkpoint", default="", help="write a .pt every --every steps, and resume from it when present")
     ap.add_argument("--init", default="", help="start from this .pt's model weights, without its optimizer state or step: a training round's common start; a --checkpoint present wins")
     ap.add_argument("--every", type=int, default=200, help="steps between checkpoints and the held-out and validation scores")
@@ -805,7 +823,10 @@ def main() -> None:
     FAMILY_HOLDOUT = ripmodels.FAMILIES.index(args.family_holdout) if args.family_holdout else None
 
     torch.manual_seed(args.seed)
-    rng = random.Random(args.seed + (args.shard_seed << 32))  # a stream per seed and shard; shard 0 is the seed's own
+    if not (0 <= args.seed < 1 << 32 and 0 <= args.shard_seed < 1 << 32):
+        raise SystemExit(f"--seed {args.seed} --shard-seed {args.shard_seed}: each from 0 to 2**32-1, or two runs' batches could share a stream")
+    if args.builders < 1:
+        raise SystemExit(f"--builders {args.builders}: at least one")
     convs = [tuple(int(v) for v in c.replace("/", "x").split("x")) for c in args.convs.split(",") if c]
     if any(len(c) != 4 for c in convs):
         raise SystemExit(f"--convs {args.convs!r}: want channels x frames x features / pool, comma-separated")
@@ -987,7 +1008,7 @@ def main() -> None:
         print(f"{len(loops_x)} loops of {sum(len(m) for m, _ in loops_x)} frames from {d}, {float(sh) * left:.1%} of the windows")
         left *= 1 - float(sh)
 
-    def draw():
+    def draw(rng):
         """a loop, and the drums to lay over it or None"""
         for sh, xs, by in extras:
             if rng.random() < sh:
@@ -1006,7 +1027,7 @@ def main() -> None:
         sung_share, by_sung = float(sh), list(accumulate(len(m) for m, _ in sung))
         print(f"{len(sung)} sung recordings of {sum(len(m) for m, _ in sung)} frames from {d}, {sung_share:.0%} of the chunks")
 
-    def pick():
+    def pick(rng):
         """a recording for a shuffled window's chunk: singing, a loop, or drums alone by length"""
         if sung and rng.random() < sung_share:
             return rng.choices(sung, cum_weights=by_sung)[0]
@@ -1014,12 +1035,15 @@ def main() -> None:
             return rng.choices(drums, cum_weights=by_drums)[0]
         return rng.choice(loops)
 
-    # the next batch is built while the device works on this one; only that thread draws from rng
-    pool = ThreadPoolExecutor(1)
-    ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle, args.bend)
-    while step < args.steps:
-        mel, t = ahead.result()
-        ahead = pool.submit(batch, draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle, args.bend)
+    # Processes, since a batch is Python holding the interpreter's lock; forked, they share the corpora's pages until a
+    # write copies one, and the collector, frozen while they fork, writes to no header of theirs
+    build = lambda rng: batch(draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle, args.bend)
+    loader = torch.utils.data.DataLoader(Batches(build, args.seed, args.shard_seed), batch_size=None, sampler=range(step, args.steps),
+                                         num_workers=args.builders, prefetch_factor=2, multiprocessing_context="fork")
+    gc.freeze()
+    batches = iter(loader)
+    gc.unfreeze()
+    for mel, t in batches:  # in index order, batch k at step k
         mel, t = mel.to(args.device), {k: v.to(args.device) for k, v in t.items()}
         lr = args.lr * 0.5 * (1 + math.cos(math.pi * step / args.steps))  # cosine to zero
         for g in opt.param_groups:

@@ -12,10 +12,11 @@ A collection under the Creative Commons Attribution 4.0 International licence
 disclaimer of warranties and limitation of liability (its section 5). What
 stapes changes in each:
 
-- A recording is read into log-mel frames (22,050 Hz, a hop of 256 samples,
-  229 bands) and cut into training windows, some heard through a simulated
-  speaker, room and phone, some through a codec, some mixed with other
-  windows; its annotations are rewritten as stapes' labels.
+- A recording is read into band frames (22,050 Hz, a hop of 256 samples,
+  315 bands in two planes) and cut into training windows, some heard through a
+  simulated speaker, room and phone, some through a codec, some mixed with
+  other windows; its annotations are rewritten as stapes' labels, without
+  their velocities where its list says they tell nothing.
 - A MIDI file's stretches are played on the engine's voices, and the render is
   read as a recording.
 

@@ -20,7 +20,7 @@ about.
 
 1. **A corpus.** Stapes renders loops from the patterns and voices registered
    in its session and labels every event in them exactly, because the engine
-   played them: the frames a model hears (`loop_NNN.mel`), the events
+   played them: the frames a model hears (`loop_NNN.bands`), the events
    (`loop_NNN.json`: frame, end, drum or MIDI note, the wave and genes of the
    voice, the family it sounds as), and `corpus.json` naming the layout.
    Nothing is hand-labelled; the synthesizer is the ground truth, and the
@@ -123,9 +123,10 @@ hand](#by-hand)), and its steps a second follow what they get.
 - A corpus, before a round trains on it: `python3 tool/rip-train/datacheck.py
   <dir>...` reads a sample of its loops and prints a row a corpus (a row a
   source with `GROUP=1`): files whole and finite, labels inside their loop,
-  notes outside the models' pitches, doubled notes, loops far under the
-  corpus's level, and the lag in frames from labelled starts, hits and beats to
-  where the sound rises. Hand labels read 0 or 1; a tool's labels read its
+  notes outside the piano's keys, doubled notes, notes and hits in their loop's
+  own quiet, and the lag in frames from labelled starts, hits and beats to
+  where the sharp plane rises. It refuses a corpus whose manifest states
+  another layout than the band frames'. Hand labels read 0 or 1; a tool's labels read its
   offset ([agent notes](../../doc/agent-notes.md#corpus-and-bench)).
 - The training lines name each head's loss; the line that matters is the
   held-out one every `EVERY` steps: `step N held-out X, decoders Y (onset ...
@@ -152,8 +153,9 @@ and what to bring back.
 
 **The machine.** A stapes checkout; Go as `go.mod` names it; Python 3.11 or
 later with PyTorch (the
-[setup](#setup) above); 10 GB of free disk for a corpus of 40000 loops of four
-bars (frames and labels; `WAV=` to keep each loop's audio adds about 60 GB)
+[setup](#setup) above); 66 GB of free disk for a corpus of 40000 loops of four
+bars at the default tempos (1.6 MB of frames and 38 KB of labels a loop; `WAV=`
+to keep each loop's audio adds about 60 GB)
 and 50 MB for the checkpoint; memory for the labels' events, each window's
 frames and targets being read and built as the training draws them; four
 cores or more.
@@ -301,8 +303,10 @@ To write your own:
   seconds and Hz as vocadito's or GuitarSet's JAMS file, which places its notes
   for the cents head, and `beats`, the file its beats and bar lines are read
   from, GuitarSet's JAMS file or a MIDI file whose bars are the recording's
-  as E-GMD's, for the beat and downbeat heads: [Rip
-  training](../../doc/rip-training.md) §3), and
+  as E-GMD's, for the beat and downbeat heads, and `velocity`, a word for what
+  the MIDI's velocities say, `none` where they say nothing, as GuitarSet's
+  and the singing set's one constant does, which asks the velocity heads
+  nothing there: [Rip training](../../doc/rip-training.md) §3), and
   `train.py --mix <dir>:<share>` draws that share of the windows from it,
   labelled by the MIDI's notes, velocities and hits, a tom's or a cymbal's an
   onset of no drum, every hit the drums', the voices unknown, and `--over
@@ -328,8 +332,8 @@ To write your own:
   to 65 dB down. `CHANNEL=noise.npz:0.5` hears half the windows through a
   speaker, a room and a phone drawn per window ([Rip
   training §6](../../doc/rip-training.md#6-what-may-change-a-windows-frames)).
-  The noise bank is two minutes of white noise as mel frames and the band shape
-  of a real room, which `python3 tool/rip-train/make_noise.py <quiet.wav>
+  The noise bank is two minutes of white noise as band frames, both planes, and
+  the band shape of a real room, which `python3 tool/rip-train/make_noise.py <quiet.wav>
   <out.npz>` builds from a 16-bit mono WAV of a room with no music, as a phone
   hears it; keep it beside the corpus, out of the checkout.
 - **The frame model's shape.** `--dim`, `--layers`, `--heads`, `--ffn` and
@@ -369,18 +373,18 @@ keeps the starting weights; `average.py --pt next.pt --out next.bin
 and, once it has drawn from every loop, a copy of the run's objects its reads
 write to, so each builder adds to a run's memory with the corpus's loops. The
 defaults are `ripmodels.FrameSpec`:
-230 inputs, the corpus's 229 bands in dB over the frame's mean and the mean
-itself (`ripmodels.features`, derived from the stored frames), width 256, eight
-heads, four layers, feed-forward 1024, a
-window of 64 frames either side, 3.3 million weights. `--convs
+two planes of 316 inputs, the fine plane's 315 bands in dB over the plane's
+mean and the mean itself, then the sharp plane's (`ripmodels.features`, derived
+from the stored frames), width 256, eight heads, four layers, feed-forward
+1024, a window of 64 frames either side, 3.4 million weights. `--convs
 16x3x3/1,32x3x3/2` puts convolutions before the input layer, each its
 channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:10`
 splits the layers into towers over the shared input layer, each its layers and
 the run of heads it computes in `ripmodels.HEADS` order: the onset and the drums
-on two layers, the rest on four. `--pcen` gives the frame model a second channel of
-230 inputs: each band's PCEN, its energy over its own average of the last 0.4
-s, and their mean ([audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)),
-the first convolution taking the two as its channels. Since the average looks
+on two layers, the rest on four. `--pcen` gives the frame model two more planes of
+316 inputs: each band's PCEN, its energy over its own average of the last 0.4
+s, and their mean, the fine plane's and then the sharp one's ([audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)),
+the first convolution taking the four as its channels. Since the average looks
 back, `train.py` computes a window's from 128 frames before it (`WARM`, three
 of its time constants), so a window starts as settled as it would in a rip.
 The losses: onsets, drums, pitches and each pitch's strikes and releases (within a frame of a
@@ -527,18 +531,17 @@ of either model into its file. `--shuffle <share>` and
 `--extra <dir>:<share>,...` are `train.py` flags with no `pipeline.sh` setting,
 as are `--builders <n>` (by hand, above), `--cell <n>`, the notes model's width
 (its channels at each cell, 32, which its weight file carries),
-`--range <lowest>-<highest>`, the pitches a
-model tells apart by their MIDI numbers (21-108, the piano's; 28-96 resumes or
-starts from a model of E1 to C7 without growing it), and `--dip <share>`, the share of the channel's
+and `--dip <share>`, the share of the channel's
 windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room
 hears. `--family-holdout <family>` tells no head a family's name: its notes stay
 in the run as sound, and a notes model's lines say what their surest name reaches,
-the measure a name must pass to be given (below). A checkpoint from before
-a setting existed loads with that setting's default, its pitches as E1 to C7, and
-`--init` takes one of the frame model from before the family head or the beat and
-downbeat heads, of the notes model from before the cents head or the heads of what
-plays each pitch, or of either at fewer pitches: every weight carries over, a new
-head's rows start fresh and a new pitch's silent ([Rip training
+the measure a name must pass to be given (below). A checkpoint states
+the band frames' layout, and `--init`, `--checkpoint` and `average.py` refuse one
+of another layout or of none before they read its shape. One from before a
+setting existed loads with that setting's default, and `--init` takes one of the
+frame model from before the family head or the beat and downbeat heads, or of
+the notes model from before the cents head or the heads of what plays each
+pitch: every weight carries over and a new head's rows start fresh ([Rip training
 §7](../../doc/rip-training.md#7-the-models)), though resuming one is refused.
 
 A notes model has a cents head: for each pitch, how far its sound sits from the
@@ -616,19 +619,20 @@ median, how many of the other families' notes pass the measure and how many of
 those are named right: a measure most named notes fall under is a model that
 tells too little apart yet, and its file names few notes rather than wrong ones.
 
-The trainer's rules for what plays each pitch, for the beat and the bar line, for
-a model's pitches and for the batches are tests of their own, with no corpus, on
+The trainer's rules for the band frames and their layout, for what plays each
+pitch, for the beat and the bar line, for a list's velocities, for the batches
+and for `datacheck.py` are tests of their own, with no corpus, on
 the CPU whatever the machine has: `python3 -m unittest discover tool/rip-train`,
 a minute, most of it the 150 steps that teach a model a note at either end of the
 piano's pitches.
 
-It writes the file's version 6, which states the model's lowest pitch as a
-constant after the heads and, for `--pitchnet`'s cell net, the bins its regions
-pool, and needs transformer v0.7.0 (audio v0.27.0): a stapes built on an older
-audio refuses it. That audio also reads a frame model's file without its last
-heads and a notes model's without the cents head, the heads of what plays each
-pitch or the measure, a frame head of one value whose weights are zero and whose
-bias is the measure.
+It writes the file's version 6, which states the band frames' layout as a
+constant after the heads (`layout`, `ripmodels.LAYOUT`) and, for `--pitchnet`'s
+cell net, no bins for its regions to pool, and needs audio v0.28.0 (transformer
+v0.7.0). That audio refuses a file of another layout or of none, naming its own,
+and a file without a head its specs name but a notes model's cents head, which a
+probe's file lacks; the measure is a frame head of one value whose weights are
+zero and whose bias is the measure.
 A change to either side is a change to both: check a random model's outputs on
 a corpus loop from the two before trusting a trained file, as the module's
 [agent notes](https://github.com/lixenwraith/transformer/blob/main/doc/agent-notes.md)

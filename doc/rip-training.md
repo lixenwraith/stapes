@@ -10,7 +10,7 @@ the reasoning.
 
 Where each part stands:
 
-- **In released code:** `MelFrames`, the first and second input planes, the heads,
+- **In released code:** `BandFrames` and its layout, the four input planes, the heads,
   weight file versions 3 and 4, `corpus`, `corpus <dir> from`, `corpus ... sampled`, `--mix`,
   `--channel`, `--over` with its heard-hit rule, draws by length, `skip.txt`,
   `make_noise.py`, `corpus ... midi`, `--pitchnet` and its `ripnotes.bin`, `--shuffle`, `--extra`,
@@ -19,17 +19,17 @@ Where each part stands:
   `--family-holdout`, `--validate`, `tune ... truth`, a moving note's `cents`, `corpus ... glide`,
   the notes model's cents head, `corpus ... labels` and a `from` list's `pitch` column,
   `rows`, `judge.py` and the root's `ripjudge.bin`, the frame model's beat and downbeat
-  heads and a `from` list's `beats` column.
+  heads, and a `from` list's `beats` and `velocity` columns.
 
 ## 1. The path
 
-1. A corpus is rendered or read: per loop, a `.mel` file and a `.json` file (§2, §3).
+1. A corpus is rendered or read: per loop, a `.bands` file and a `.json` file (§2, §3).
 2. Each training step draws 8 windows of 512 frames, 5.9 s each (§7).
-3. A window's frames may be changed in place, as §6 lists, then become two input
+3. A window's frames may be changed in place, as §6 lists, then become the input
    planes (§4).
 4. A window's events and its loop's grid become per-frame targets for the 12 heads,
    and a notes model's cents head (§5).
-5. The frame model turns frames into 329 numbers a frame, and the losses train it (§7, §8).
+5. The frame model turns frames into 405 numbers a frame, and the losses train it (§7, §8).
 6. The best step is written as a weight file (§9).
 7. At a rip, Go computes the same planes, runs the file and hands the heads to the
    decoders (§10).
@@ -37,34 +37,42 @@ Where each part stands:
    `judge.py` fits a network a stage on them, and the rip's accounting reads its
    file (§13).
 
-## 2. The frames: `loop_NNN.mel`
+## 2. The frames: `loop_NNN.bands`
 
-The file is the header, then every band of every frame as a little-endian float32:
+The file is the header, then every value of every frame as a little-endian float32:
 
 ```
-offset  size            field
-0       u32             frames
-4       u32             bands, always 229
-8       4 x frames x bands   rows, frame 0's 229 values first, nothing padded
+offset  size              field
+0       u32               frames
+4       u32               values, always 630: the fine plane's 315 bands, then the sharp plane's
+8       4 x frames x 630  rows, frame 0's first, nothing padded
 ```
 
-A frame costs 916 bytes. There are 86.13 frames a second, so an hour is 284 MB.
+A frame costs 2,520 bytes. There are 86.13 frames a second, so an hour is 781 MB.
 
-Each value is `log1p(100 e)`, made by `MelFrames`:
+Each value is `log1p(100 e)`, made by audio's `BandFrames`, the layout `RipLayout`
+(1) names:
 
 1. The recording is resampled to 22,050 Hz and scaled so its largest sample is 1.
-2. A 2,048-sample Hann window (93 ms) moves 256 samples (11.6 ms) at a time. Each
-   FFT gives 1,025 magnitudes, 10.8 Hz apart, each scaled by 1 / (2048 / 4), so a
-   full-scale sine's peak reads about 1.
-3. 229 triangular filters, evenly spaced on the mel scale from 30 Hz to 11,025 Hz,
-   each sum weight x magnitude squared. That sum is the band's energy e.
+2. Band k is at MIDI 20 + k/3, 315 bands three a semitone from G#0, under A0, to
+   10.96 kHz (`BandHz`).
+3. Level 0 is the recording; level j, at 22,050 / 2^j Hz, is level j-1 through
+   `Resample`'s low-pass, every other sample, down to level 5 at 689 Hz.
+4. Frame t's window at level j is 2,048 samples of Hann centred on sample t x 256 /
+   2^j, zero past either end of the recording, through an FFT of 4,096 points.
+5. Band k's weights are a triangle over that level's bins from band k-1 to band k+1,
+   a bin either side at least, scaled so a unit cosine at band k reads 1, and its
+   energy e is the sum of weight x magnitude squared.
+6. The fine plane hears band k at the shortest window whose bins fall three a
+   semitone there: level 0 from band 158 (544 Hz) up, a level down for each 36 bands
+   under it, and level 5, a window of 2.97 s, under band 14 (34 Hz). The sharp plane
+   hears every band at level 0, the analysis's 93 ms window, so a strike reads where
+   it comes.
 
 Going back: `e = expm1(v) / 100`. The file holds energy only: with the phase gone, it
-can't be played back exactly.
-
-Bands are about 14 Hz apart at A4, where a semitone is 26 Hz, and about 10 Hz apart at
-A2, where a semitone is 6.5 Hz. So the bottom octaves give the models less than one band
-a semitone, and it must lean on upper partials there.
+can't be played back exactly. Every key from A0 to C8 peaks at its own band, two keys a
+semitone apart read two peaks, and under 270 Hz the sharp plane's bands share bins,
+about twenty a bin at A0, which is what the fine plane is for.
 
 ## 3. The labels: `loop_NNN.json` and `corpus.json`
 
@@ -74,7 +82,7 @@ A label is UTF-8 JSON with no whitespace. The loop's fields:
   length and its time signature, which give the trainer its beats and bar lines (§5).
   A recording's are 0 and absent.
 - `root`, `scale`: how it was drawn. The trainer doesn't read them.
-- `frames`: the length of its `.mel`.
+- `frames`: the length of its `.bands`.
 - `tuning`: cents off A440 it was rendered at, within 50 either way. Events keep the
   written pitch, so at nearly +50 cents a note labelled 55 sounds nearly as much like
   56. It is where every note of an engine voice sits from its pitch's cell
@@ -90,7 +98,9 @@ An event's fields:
 - `frame`, `end`: its start and its release, in frames. A drum's are equal.
 - `drum`: 0 kick, 1 snare, 2 hihat, -1 anything else.
 - `midi`: the pitch, 0 for a drum.
-- `vel`: how hard it was struck, 0 to 1.
+- `vel`: how hard it was struck, 0 to 1, or -1 where its list says the recording's
+  velocities say nothing (a recording's velocities, below), which asks the velocity
+  head nothing.
 - `wave`: an index into the manifest's `waves`, -1 when unknown or for a drum.
 - `family`: an index into the manifest's `families`, what plays it, -1 when unlabelled.
   An engine voice's is its name's (`voiceFamilies` in `tune.go`: the bank's piano and
@@ -136,16 +146,16 @@ The same seeds render the same frames, byte for byte.
 `corpus.json` names the layout for the whole folder:
 
 ```
-{"version":1,"loops":40000,"rate":22050,"hop":256,"mel_bands":229,"min_midi":21,
- "pitches":88,"drums":["kick","snare","hihat"],"waves":["sine","saw","square","string","modal"],
+{"version":1,"loops":40000,"rate":22050,"hop":256,"layout":1,"drums":["kick","snare","hihat"],
+ "waves":["sine","saw","square","string","modal"],
  "families":["piano","guitar","voice","bass","strings","winds","synth","drums","unknown"],"voice_genes":32}
 ```
 
 `loops` counts the files `loop_000` onward; the number grows past three digits as
-needed (`loop_39999`). `min_midi` and `pitches` state the pitches a model is built for,
-the piano's 88 from MIDI 21, or E1 to C7, 69 from 28. A label holds each note's own
-MIDI number whatever they state and the trainer reads neither, so a corpus of either
-trains a model of either. The kinds of corpus:
+needed (`loop_39999`). `layout` is the frames' (§2): the trainer refuses a corpus of
+another, or of none, by name, and one is exported again for a new layout. A label holds
+each note's own MIDI number, and a model's cells are the piano's 88 keys (§5). The kinds
+of corpus:
 
 - **Rendered:** `corpus <dir> 40000 4 aug gen nowav codec`, loops of 4 bars. [Rip
   design §3](rip-design.md#3-learning) lists what `aug` and `gen` draw. `codec` sends
@@ -175,14 +185,14 @@ leaves out.
 
 A corpus's line with `labels` after it writes every `loop_NNN.json` of the line, and
 `corpus.json`, over those on disk, and renders nothing: each is what the line's export
-writes, byte for byte, and no `.mel` or WAV is touched. A field the labels gain
+writes, byte for byte, and no `.bands` or WAV is touched. A field the labels gain
 reaches a corpus that way without its hours of render.
 
 - A loop's events are drawn and never heard: its patterns, key, tempo, meter, voices
   and tuning come from the line's seeded streams, the same with audio and without.
 - A label takes one thing from the render, its length: `frames`, and with it the cut
-  of the events that start past the end. The pass reads it from the loop's `.mel`
-  header (§2), which must agree with the file's size. A loop with no frames whole on
+  of the events that start past the end. The pass reads it from the loop's `.bands`
+  header (§2), which must agree with the file's size and state 630 values a frame. A loop with no frames whole on
   disk is left as it is and counted, and `corpus.json` is then not written.
 - A `sampled` line's labels also say which recorded notes were loud enough to play
   and where each was let go. The pass reads those recordings again from the NSynth
@@ -190,7 +200,7 @@ reaches a corpus that way without its hours of render.
 - `part k/n` labels every n-th loop from the k-th, as it renders them, and leaves
   `corpus.json` to a run without it.
 - A `from` line writes each recording's label again from the list: its family, its
-  MIDI file, its pitch track and its beats. The recording is known by the `source` of the
+  velocity word, its MIDI file, its pitch track and its beats. The recording is known by the `source` of the
   label on disk and its WAV is not read, so it may be gone; a label that does not
   read stops the run, its recording being unknown then.
 
@@ -251,28 +261,43 @@ is, those at or past the recording's last frame left out:
 `labels` after the line writes them into a corpus already exported, from the list
 alone (above). What the trainer asks of them is in §5.
 
-## 4. The input: two planes
+### A recording's velocities
 
-The frame model reads a frame as two planes of 230 values each, laid end to end, 460 in all.
-Plane 1 is the band shape and the level:
+A `from` list's `velocity` column holds a word for each recording, what its MIDI
+file's velocities say of how its notes were played, a row a word (`velocityWords` in
+`tune.go`):
+
+- An empty cell, or no column: they say it, and each note and hit is labelled at its
+  MIDI velocity.
+- `none`: they say nothing, as a lab's one velocity for every note does (GuitarSet's,
+  VocalSet's), and each note and hit is labelled at `vel` -1, which asks the velocity
+  head nothing (§5).
+
+Any other word is refused, naming those the table has.
+
+## 4. The input: four planes
+
+A frame becomes up to four planes of 316 values, laid end to end: the fine plane's
+bands in dB, the sharp plane's, then each one's PCEN. A dB plane is its plane's band
+shape and level, b over its 315 bands:
 
 ```
-e[b]      = expm1(v[b]) / 100
-db[b]     = 10 log10(e[b] + 1e-8)
-level     = mean of db over the 229 bands
-plane1[b] = (db[b] - level) / 80
-plane1[229] = (level + 80) / 80
+e[b]       = expm1(v[b]) / 100
+db[b]      = 10 log10(e[b] + 1e-8)
+level      = mean of db over the plane's 315 bands
+plane[b]   = (db[b] - level) / 80
+plane[315] = (level + 80) / 80
 ```
 
-A gain moves only `plane1[229]`, so a phrase 20 dB softer reaches the models with the
-same shape. Plane 2 is PCEN (per-channel energy normalization), each band over its own
-recent average, worked out per band from the frame's energy:
+A gain moves only `plane[315]`, so a phrase 20 dB softer reaches the models with the
+same shape. A PCEN plane (per-channel energy normalization) is each band of its plane
+over its own recent average, worked out per band from the frame's energy:
 
 ```
 s         = 1 - exp(-(256 / 22050) / 0.4)  = 0.028608
 M[b](t)   = (1 - s) M[b](t-1) + s e[b](t),  M[b](-1) = e[b](0)
-plane2[b] = (e[b] / (1e-6 + M[b])^0.98 + 2)^0.5 - 2^0.5
-plane2[229] = mean of plane2 over the 229 bands
+pcen[b]   = (e[b] / (1e-6 + M[b])^0.98 + 2)^0.5 - 2^0.5
+pcen[315] = mean of pcen over the plane's 315 bands
 ```
 
 - Dividing by M is a gain control: a band that has been loud is turned down.
@@ -291,26 +316,25 @@ struck 6 dB over a band sounding  0.29 before, 0.90 on it
 ```
 
 So steady noise sits near 0.3 at any level and a note on top still rises over it, but
-a note that's still ringing fades towards zero. That's why PCEN is a second plane and
-not a replacement: plane 2 says when something happened, plane 1 what is sounding.
+a note that's still ringing fades towards zero. That's why PCEN is two planes more and
+not a replacement: they say when something happened, the dB planes what is sounding.
 
-Plane 2 lies close enough to plane 1's scale to need no rescaling. A model with one
-channel reads plane 1 alone, 230 values.
+PCEN lies close enough to the dB planes' scale to need no rescaling. A frame model of
+two channels reads the two dB planes, 632 values, and of four (`--pcen`) all four,
+1,264; a notes model reads all four.
 
-`--pitchnet` reads both planes through a harmonic stack it computes itself. A plane's bands
-are read on a log-frequency axis of 36 bins an octave, by interpolation. Each plane then
-gives 8 channels, one per harmonic of 0.5, 1 and 2 to 7, each shifted by -36, 0, 36, 57, 72,
-84, 93 or 101 bins, so a pitch's harmonics line up at its own bin. The axis runs from the
-semitone under the model's lowest pitch to the one over its highest: 270 bins from MIDI 20
-for the piano's pitches, 213 from MIDI 27 for E1 to C7, in 16 channels, each channel ending
-in its plane's scalar.
+`--pitchnet` reads the four planes through a harmonic stack it computes itself. Bin k is
+band k, so nothing is interpolated: each plane gives 8 channels, one per harmonic of 0.5,
+1 and 2 to 7, its bands shifted by -36, 0, 36, 57, 72, 84, 93 or 101, so a pitch's
+harmonics line up at its own bin, zero past the bands. The 270 bins run from MIDI 20, a
+semitone under A0, to a semitone over C8, key 21+i's cell centred at bin 3+3i, in 32
+channels, each ending in its plane's scalar.
 
 ## 5. The targets
 
 `Label.window(a, b)` builds what each head should say for frames a to b. A note's pitch
-index is its MIDI number less the model's lowest pitch (`Config.low`, 21), and one outside
-the model's pitches sets no pitch: the cell is the model's, whatever the corpus's manifest
-states. A note that carries `cents`
+index is its MIDI number less 21, A0's, and one outside the piano's 88 keys sets no pitch.
+A note that carries `cents`
 sounds, is struck and is let go in the cell nearest its frequency at each frame, so a
 glide's pitch target walks the cells it crosses.
 
@@ -320,7 +344,8 @@ glide's pitch target walks the cells it crosses.
 - `voicing`: any pitch on.
 - `strike[p]`: within one frame of a note's start.
 - `release[p]`: within one frame of a note's `end`, unless that's past the loop.
-- `velocity[p]`: the note's `vel` on its strike frames, scored only there.
+- `velocity[p]`: the note's `vel` on its strike frames, scored only there, and nowhere
+  for a `vel` of -1 (§3).
 - `wave`, `voice`: those of the highest note sounding with a known voice, scored only
   on frames that have one.
 - `family`: that of the highest event sounding, a hit or a strike at midi 0 on its own
@@ -386,7 +411,7 @@ A shuffled window (§6) asks a cell its cents where one of its two clips alone s
 within a semitone of it, and what plays it where one of them alone sounds in it.
 
 The grid's rule was checked against what `corpus` writes before it was trusted: no
-event lay off its loop's sixteenths, and every end's line fell on the `.mel`'s last
+event lay off its loop's sixteenths, and every end's line fell on the `.bands`' last
 frame or the one past it.
 
 A window running past a loop's end is padded with zero frames, which a `valid` mask
@@ -396,7 +421,7 @@ leaves out of every loss.
 
 These run on the stored frames during training, so one corpus serves many runs. All
 add in power: `e` is recovered, changed and stored back through `log1p`. Their order in
-`sample` is the overlay, then the channel, then the planes. With two channels, 128
+`sample` is the overlay, then the channel, then the planes. With PCEN's planes, 128
 frames (1.5 s) before the window are read and dropped afterwards, so PCEN's average has
 settled and matches what it would be mid-recording.
 
@@ -410,11 +435,11 @@ room and a phone. It's drawn per window:
 - A steady floor is added: a band mean drawn from -78 to -50 dB, shaped as the real
   room's in 2 draws of 5 and pink, brown or flat otherwise, with up to 4 dB of ripple.
 
-The bank holds two arrays. `white`, 229 bands a frame of float32, is two minutes of
-white noise as mel frames with each band's mean set to 1, so a band keeps its own
-frame-to-frame spread. `room`, 229 float32, is a real room's band shape in dB about its
-mean, as a phone hears it. `make_noise.py` builds it from a WAV of the room with no
-music.
+The bank holds two arrays. `white`, 630 values a frame of float32, is two minutes of
+white noise as band frames, both planes, with each band's mean set to 1, so a band keeps
+its own frame-to-frame spread. `room`, 630 float32, is a real room's band shape in dB
+about its mean, as a phone hears it. `make_noise.py` builds it from a WAV of the room
+with no music; a bank of another width is refused.
 
 A corpus's own noise sits 40 to 65 dB under the loop, a phone's far nearer the music.
 
@@ -423,8 +448,8 @@ a loop with no drums of its own, then a recording from a corpus of drums alone, 
 at random. Its level is -12 to +6 dB of its mean power
 against the loop's, and uncorrelated sounds add in power, so `e = e_loop + gain x e_drums`.
 A hit joins the onset and drum targets only where it can be heard: what it adds, over its
-best ten bands, must top everything else sounding (`stands_out`), judged after the
-channel. The window is asked no beat and no bar line: the drums laid under it keep
+best ten bands of the sharp plane, must top everything else sounding (`stands_out`),
+judged after the channel. The window is asked no beat and no bar line: the drums laid under it keep
 their own.
 
 **`--mix dir:share`** draws a share of the windows from another corpus as it stands.
@@ -460,12 +485,12 @@ audio.
 the same numbers in Go. The shapes through a window, with B the batch:
 
 ```
-input          B x 512 x 460
-reshape        B x 2 x 512 x 230             channels x frames x features
-conv 0         B x 16 x 512 x 230            3x3, GELU
-conv 1         B x 16 x 512 x 115            3x3, GELU, max over 2 features
-conv 2         B x 32 x 512 x 57             3x3, GELU, max over 2 features
-flatten        B x 512 x 1824                the last odd feature dropped by the pool
+input          B x 512 x 1264
+reshape        B x 4 x 512 x 316             channels x frames x features
+conv 0         B x 16 x 512 x 316            3x3, GELU
+conv 1         B x 16 x 512 x 158            3x3, GELU, max over 2 features
+conv 2         B x 32 x 512 x 79             3x3, GELU, max over 2 features
+flatten        B x 512 x 2528
 input layer    B x 512 x 256
 4 blocks       B x 512 x 256                 pre-norm attention and feed-forward 1024
 norm, output   B x 512 x 405                 raw scores
@@ -475,10 +500,10 @@ Attention has 8 heads and looks 64 frames (0.74 s) either side, in every block. 
 are no position embeddings: each head subtracts a slope of `2^(-8(h+1)/8)` per frame of
 distance from its scores (ALiBi), so a window of any length works.
 
-The 3,738,101 weights: 304 + 2,320 + 4,640 in the convolutions, 467,200 in the input
+The 3,918,613 weights: 592 + 2,320 + 4,640 in the convolutions, 647,424 in the input
 layer, 789,760 in each block, 512 in the final norm, 104,085 in the output layer, 2,313
-of them the family head's and 514 the beat's and the downbeat's. A one-channel model has
-144 fewer, all in `convs.0.weight`.
+of them the family head's and 514 the beat's and the downbeat's. A model of the two dB
+planes has 288 fewer, all in `convs.0.weight`.
 
 The 405 outputs, in the order the file lists the heads:
 
@@ -498,22 +523,14 @@ offset    size  head       read as
 404         1   downbeat   sigmoid: a bar line within a frame
 ```
 
-The pitches are the model's own (`--range`, the piano's 21-108 by default; `Config.low`
-and the width of its `pitch` head, which a checkpoint records and the weight file states,
-§9). A model of E1 to C7, as any checkpoint that records no lowest pitch, has 69 where
-this has 88: 329 outputs, 19,532 weights fewer.
-
-A file may lack the last 6 heads and still load: one without `family` hears no family,
-and one without `beat` and `downbeat` has its bars read by the cues' rules. An audio
-before v0.24.0 refuses a file that has the two, its heads being no prefix of the frame
-model's heads it knows.
+Every model's pitches are the piano's 88 keys, MIDI 21 to 108. A file has every head;
+only a notes model's may lack the cents head, as a probe's does (§9).
 
 `--pitchnet` builds another model on the same heads but `family`, the frame model's to hear:
-convolutions only, the same weights at every pitch, so 171,413 weights in all whatever its
-pitches, 66 of them the
+convolutions only, the same weights at every pitch, so 172,181 weights in all, 66 of them the
 cents head's and 1,485 those of what plays each pitch. Its file is `ripnotes.bin` (§9).
 `--dilations 3,9,27` adds a residual 3x3 over the cells for each, its frames that far apart:
-each note head then hears half a second either way instead of 80 ms, 199,157 weights, about
+each note head then hears half a second either way instead of 80 ms, 199,925 weights, about
 1.5 times the compute. Its per-pitch heads are a table, `CELL_HEADS` in `ripmodels.py`, a row
 a head with the values it reads at a pitch; the cents head reads two, the offset in semitones
 and the log of the error it states, and what plays the pitch is three heads: `pitchfamily`,
@@ -525,8 +542,8 @@ the heads; what it could give is fewer bytes a pitch in audio's frames, which ke
 heads at twelve pitches a frame, 552 bytes. The eight names share one softmax.
 
 ```
-input          B x T x 460              the two planes
-stack          B x 16 x T x 271         the harmonic stack of section 4
+input          B x T x 1264             the four planes
+stack          B x 32 x T x 271         the harmonic stack of section 4
 reduce         B x 8 x T x 270          1x1, GELU, the scalars set aside
 wide           B x 16 x T x 270         3x39, thirteen semitones, GELU
 cells          B x 32 x T x 90          7x3, stride 3 over features, one cell a semitone, GELU
@@ -534,25 +551,10 @@ near           B x 32 x T x 90          7x3 with a residual, GELU
 long           B x 32 x T x 90          3x3 dilated in time, one each of --dilations, with a residual, GELU
 notes          B x 51 x T x 88          1x1: pitch, strike, release, velocity, the cents head's two,
                                         and the 8, 5 and 32 of what plays the pitch
-frame          B x T x 42               wide pooled to 16 regions plus the scalars, a 1D conv of 5
+frame          B x T x 42               wide pooled to 16 regions over every bin plus the four
+                                        scalars, a 1D conv of 5
                                         and one of 9 dilated by 2, linear: the other heads
 ```
-
-The regions pool the 213 bins the stack of E1 to C7 holds (`PitchNet.pool`, bins 21 to 233
-of the piano's 270), whatever the model's pitches, so they hold the frequencies they held
-in a model of that range.
-
-**Growing a model's pitches.** `--init` from a checkpoint of fewer pitches grows it
-(`ripmodels.carried`), as it grows one of fewer heads. The body and every other head go
-whole. A frame model's four per-pitch heads keep each pitch's row of the output layer at
-its pitch, seven rows up from E1 to C7 into the piano's, and a pitch new to them starts
-at a zero row under a bias of -10, a sigmoid of 0.00005: it says of its own pitches what
-it said and nothing of the new until they are trained. A notes model has no row a pitch,
-so every weight goes whole and no cell is new to them: a cell reads 19 bins either way
-through the wide convolution and a cell more through each convolution over the cells, so
-a pitch eleven or more from an old edge, with three long convolutions, hears what it
-heard, and the ten at each edge now hear the sound past it, where the old stack ended in
-silence.
 
 ## 8. A training step
 
@@ -678,22 +680,22 @@ numbers, and `Load` checks its shape against its tensors. The trainer writes ver
 a `kind` word
 after the version, 0 for the frame model, twelve heads, `beat` and `downbeat` of one value
 each after `family`, an `out.weight` of 405 x 256, and after the heads the constants it
-states, a count and for each a name and a float32: one, `lowest`, the MIDI number of the
-model's lowest pitch, 21 (audio's `ripmodels.Lowest`). Its pitch head's size is how many
-pitches follow, and a file that states none hears E1 to C7.
+states, a count and for each a name and a float32: one, `layout`, the layout of the
+frames it hears, 1 (audio's `ripmodels.Layout`, §2). Audio refuses a file of another
+layout, or of none, by name, and so do the trainer's `--init` and `average.py`.
 
 `--pitchnet` writes the same version, whose `kind` word, 1, makes the notes model
 transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
 scalars, then the long convolutions' spacings and the bins its regions pool, the first and
-how many (21 and 213, or 0 and 0 for every bin), then the heads, the per-pitch ones first: pitch,
+how many (0 and 0, every bin), then the heads, the per-pitch ones first: pitch,
 strike, release, velocity, cents, pitchfamily, pitchwave and pitchvoice, then onset, drums,
 voicing, wave, voice and sure. `cents` is 176 numbers a frame, the 88 offsets then the 88 log
 errors, `cellout`'s fifth and sixth channels; `pitchfamily` 704, `pitchwave` 440 and
 `pitchvoice` 2,816, a value's 88 pitches together, `cellout`'s next 45. `sure` is the measure
 of §8, written as a frame head of one value whose row of `frameout.weight` is zero and whose
-bias is the measure, so every frame states it. A file without a head lists fewer and loads as before, its
-rip with no glides or with no note's voice. Version 6 needs transformer v0.7.0 (audio
-v0.27.0), which reads the versions before it as it did. The tensors are
+bias is the measure, so every frame states it. A file without the cents head, a probe's,
+loads and rips with no glides. Version 6 needs transformer v0.7.0, and its layout audio
+v0.28.0. The tensors are
 `reduce`, `wide`, `cells`, `near.0`, `long.{i}`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
 `nn.Conv1d` or `nn.Linear` holds it. In the stapes root the file is `ripnotes.bin`.
 Beside the frame model's `ripframe.bin` it gives pitch, voicing, strike, release, velocity

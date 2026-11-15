@@ -9,10 +9,10 @@ read; [`lixenwraith/transformer`](https://github.com/lixenwraith/transformer) is
 the forward pass it runs on and the weight file this writes
 ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)).
 Where the frame model stands in the pipeline, and why its features are made in Go, is
-in [Rip design](../../doc/rip-design.md) §2 and §3; the runs so far and their
-numbers are in its §8. [Rip training](../../doc/rip-training.md) follows the data
-byte by byte, from a loop's frames and labels through the inputs and targets to
-the weight file, with the latest rounds' numbers. This file is the hands-on guide:
+in [Rip design](../../doc/rip-design.md) §2 and §3. [Rip
+training](../../doc/rip-training.md) follows the data byte by byte, from a loop's
+frames and labels through the inputs and targets to the weight file. This file is
+the hands-on guide:
 setup, the pipeline end to end, and how to turn a run toward the music you care
 about.
 
@@ -53,7 +53,7 @@ pip install -r requirements.txt
 `make venv` makes the same `.venv` from the checkout's root, and `PYTHON=` names
 another interpreter to `pipeline.sh` and `make smoke`.
 
-A GPU trains an order of magnitude faster (below): `whl/cu130` for a recent
+A GPU trains much faster: `whl/cu130` for a recent
 NVIDIA card, and `torch==2.14.* --index-url https://download.pytorch.org/whl/cu126`
 for a GTX 10-series (Pascal), whose last build that is; `train.py` picks the
 GPU by itself. The CUDA build is 6 GB installed.
@@ -113,15 +113,8 @@ LOOPS=200 STEPS=300 HOLDOUT=20 EVERY=100 BENCH_LOOPS=4 CORPUS=/tmp/smoke ROOT=/t
 
 `make smoke` runs the same in a fresh temporary folder, which it names and keeps.
 
-What to expect at scale, on a 2017 laptop (an i7-7700HQ, four cores): an
-export renders about 2.5 loops a second on one core and `PARTS=4` 7.0 on the
-four, so 40000 loops of four bars take four and a half hours or 95 minutes
-(`nowav`; the frames and labels are 9.5 GB); a step of batch 8 at the default
-shape takes 1.45 s on the four cores and 0.11 s on its GTX 1060, 0.19 s in a
-whole run, which reads the frames from disk and scores the held-out loops, so
-40000 steps take two hours on the GPU (the first runs' width 128 took 0.65 s
-on the cores); `bench 12 4` grades in a few minutes. Each stage shares the
-cores with anything else the machine does, a run most of all: its batches are
+Each stage shares the cores with anything else the machine does, a run most
+of all: its batches are
 built on the cores beside the device, a core a builder (`--builders`, [by
 hand](#by-hand)), and its steps a second follow what they get.
 
@@ -146,12 +139,7 @@ hand](#by-hand)), and its steps a second follow what they get.
   model learning the corpus by heart; more loops, not more steps, is the cure.
 - `bench` prints four lines: the analysis and the frame model, on clean and on
   augmented loops, each the mean score with its parts (tempo, bars, drums,
-  melody, bass). The fourth run, on 20000 loops rendered at A440, stood at
-  0.45 against the analysis's 0.49 clean and 0.51 against 0.48 augmented,
-  ahead on drums and behind on pitch; the sixth, at 4× on 40000 loops, at
-  0.51 against 0.47 and 0.460 against 0.458, the first to pass both lines,
-  ahead on drums and behind on melodies on the recordings' truths: the
-  design document's §8.
+  melody, bass).
 - A recording: `rip`, then `notes <name>` for the transcript with each note's
   support, `compress`, `refine`, and `song <name> score` for how the song
   sounds against the recording's own frames and how it rips back. The ear is
@@ -176,7 +164,7 @@ unless named:
 
 ```bash
 . tool/rip-train/.venv/bin/activate   # the setup's PyTorch
-export CORPUS=$HOME/ripcorpus6 LOOPS=40000 STEPS=40000 HOLDOUT=400 EVERY=1000 PARTS=4
+export CORPUS=$HOME/corpus LOOPS=40000 STEPS=40000 HOLDOUT=400 EVERY=1000 PARTS=4
 tool/rip-train/round.sh               # corpus, train, bench, logging to $CORPUS/round.log, resumable
 ```
 
@@ -186,15 +174,12 @@ writes last, is there, then trains and benches, every line appended to
 the loops on disk, whose randomness the export draws all the same, and the
 training from `CHECKPOINT`, which carries the best held-out step, drawing from
 its step the batches the unbroken run drew; either way the result is an
-unbroken run's. On the laptop above the corpus takes 95
-minutes in four parts and the 40000 steps two hours on its GPU, about sixteen
-on its cores.
+unbroken run's.
 
 `install` copies the weights into the stapes root (`ROOT`) as `ripframe.bin`;
 do it when the bench says the frame model beats the analysis on both
-lines, which the sixth run was the first to do, and judge it by ear on the
-recordings, whose truths still favour the analysis (Rip design §8). For
-another shape set `DIM`, `HEADS`, `LAYERS`
+lines, and judge it by ear on the recordings. For another shape set `DIM`,
+`HEADS`, `LAYERS`
 and `FFN`, with `LOOPS` and `STEPS` raised together, since a bigger model
 overfits a small corpus sooner; the held-out line every `EVERY` steps is the
 guide, and the run is done when it stops falling.
@@ -302,7 +287,7 @@ To write your own:
   drums the frame model learns.
 - **Tempos and keys.** `TEMPOS` sets the spread; the keys cycle the roots and
   scales the engine knows. A piece whose tempo the sequencer's range does not
-  hold reads at a multiple: the origin recording near 74 bpm reads at 148.
+  hold reads at a multiple.
 - **Rooms, mixes, saturation, tuning.** `AUG` is on by default and is what
   stands between the synthesizer and a recording: leave it on for anything a
   recording will be ripped with; turn it off only to measure the clean case.
@@ -332,11 +317,14 @@ To write your own:
   Weights trained on a corpus carry its licence: a CC BY set asks for credit
   ([CREDITS](../../CREDITS.md)), and a non-commercial or research-only one
   would bind them, so it stays out, as MAESTRO (CC BY-NC-SA 4.0) does. A
+  licence is not enough ([the data rule](../../AGENTS.md#data)): a set trains
+  only where its recordings were made for it and what they play is original
+  to it, improvised or in the public domain, and a song's recording, anything
+  taken from one or a commercial song's transcription only measures. A
   recording without its MIDI is held out, judged by ear and by the two-witness
-  check (two recordings of one piece, their transcripts compared, as
-  `doc/rip-design.md` §8 does).
+  check (two recordings of one piece, their transcripts compared).
 - **Phones.** A phone that hears a laptop's speaker cuts the lows and the highs
-  and holds a room's noise 7 to 15 dB under the music, where a corpus's sits 40
+  and holds a room's noise far nearer the music than a corpus's, which sits 40
   to 65 dB down. `CHANNEL=noise.npz:0.5` hears half the windows through a
   speaker, a room and a phone drawn per window ([Rip
   training §6](../../doc/rip-training.md#6-what-may-change-a-windows-frames)).
@@ -377,10 +365,10 @@ weights, and resumes from the file when it exists, drawing from its step the
 batches the unbroken run drew; `--init` starts from a `.pt`'s weights alone (no
 optimizer state, step 0), and `--shard-seed` moves the streams while `--seed`
 keeps the starting weights; `average.py --pt next.pt --out next.bin
-[--trim 0.1] a.pt b.pt ...` is the merge. A builder holds 50 to 80 MB of its
-own and, once it has drawn from every loop, about 2 KB of the run's a loop,
-whose objects its reads write to: over 100,000 loops two add 0.58 GB to a
-run, three 0.86 GB. The defaults are `ripmodels.FrameSpec`:
+[--trim 0.1] a.pt b.pt ...` is the merge. A builder holds memory of its own
+and, once it has drawn from every loop, a copy of the run's objects its reads
+write to, so each builder adds to a run's memory with the corpus's loops. The
+defaults are `ripmodels.FrameSpec`:
 230 inputs, the corpus's 229 bands in dB over the frame's mean and the mean
 itself (`ripmodels.features`, derived from the stored frames), width 256, eight
 heads, four layers, feed-forward 1024, a
@@ -438,8 +426,8 @@ targets and the loss.
   last, so every frame's shares are even and the file says nothing there.
 - **The lines** give `beats' F1` and `bar lines'`, or `no beat or bar line asked`.
 
-The path at a size four cores train in 42 minutes, which shows that it holds
-together and nothing of recordings:
+The path at a small size, which shows that it holds together and nothing of
+recordings:
 
 ```bash
 printf 'corpus corpus 1600 12 gen meters\n' > "$dir/corpus.slab"   # with its audio: the held-out loops are ripped
@@ -448,15 +436,8 @@ python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripframe.bin"
     --steps 5000 --dim 128 --heads 4 --layers 4 --ffn 512 --pcen --holdout 160 --every 500
 ```
 
-Its exported step reads `beats' F1 0.763, bar lines' 0.631` on the 160 loops held
-out, 0.877 and 0.728 on those with drums and 0.535 and 0.359 on those without.
-Ripped through the file on audio v0.24.0, 56 of the 160 have their bars right with
-the heads, 124 with the same weights' heads left out and 109 through the analysis: a
-head this weak cost the bars, since v0.24.0 took its word alone; since v0.25.2 audio
-reads the heads beside the cues and leaves a clip they give no reading of to them ([Rip
-training §8](../../doc/rip-training.md#the-two-heads-on-a-small-run) has the table
-by meter and what the heads say under it). So read a round's bars with the heads
-and without before its file is installed. The heads are left out of a rip by a
+Read a round's bars with the heads and without before its file is installed,
+since a weak head can cost the bars. The heads are left out of a rip by a
 `RipFrontEnd` that sets the frames' `Beat` and `Downbeat` nil, in a scratch
 program over audio's `Ripper` and `MatchBars`, or by a file of the same step
 exported with ten heads, which stapes itself then benches; the two rip alike.
@@ -478,12 +459,14 @@ go run ./cmd/stapes -headless -config-dir "$dir/root" -s "$dir/rows.slab"       
 python3 tool/rip-train/judge.py --rows "$dir/rows" --leave-out guitar --out "$dir/root/ripjudge.bin"
 ```
 
-- **What a fit may take.** The CC BY collections with truths, the engine's
+- **What a fit may take.** The CC BY collections with truths that train
+  ([CREDITS](../../CREDITS.md): E-GMD, VocalSet, GuitarSet), the engine's
   renders of public-domain scores, and its own mixes (a corpus written with
-  its audio, `WAV=` empty). Never a song's recording, nor a commercial song's
-  transcription such as Lakh's files: no licence covers training on either, so
-  a song only measures, read under a judge with `rip` and `truth`, or listed
-  under a condition every fit leaves out.
+  its audio, `WAV=` empty). Never a set that only measures (MusicNet,
+  vocadito), a song's recording or anything taken from one, nor a commercial
+  song's transcription: no licence covers training on a song, so a song only
+  measures, read under a judge with `rip` and `truth`, or listed under a
+  condition every fit leaves out.
 - **Rows.** `rows <dir> from <list>` rips each recording of a truth list, the
   lines `tune ... truth` reads, and `rows <dir> from <corpus dir>` each loop
   of a corpus that kept its audio, against its label, the corpus one condition
@@ -514,25 +497,9 @@ python3 tool/rip-train/judge.py --rows "$dir/rows" --leave-out guitar --out "$di
 - **Left out.** `--leave-out <condition>...` keeps conditions out of the fit
   and counts each by pitch and onset, as `truth`'s `notes` row counts, under
   the installed verdicts, under the judge's, and under a right verdict on
-  every row, which is what the rows could give at best. A run of the path
-  alone, 360 rendered loops fitted on and 40 of another seed left out,
-  through models trained an hour on CPU, so it says nothing of a judge's
-  worth on recordings:
-
-  ```
-  108933 row(s) of 544 (version 1) read through the notes weights c2f75c44fd18b2e3; fitting on fit
-  reported: 6403 row(s), 0.527 of them right; loss a pass 0.697 0.672 0.611 0.509 0.466 0.436 0.420 0.405 0.393 0.383 0.378 0.376
-  dropped: 90773 row(s), 0.127 of them right; loss a pass 0.478 0.322 0.287 0.271 0.262 0.255 0.248 0.240 0.235 0.229 0.225 0.223
-  held: 40 recording(s), 2838 note(s) given, 1262 of them no strike answers; 11664 strike(s), 801 reported
-    installed  423 heard as given, given 2838, heard 761, F1 0.235
-    judge      740 heard as given, given 2838, heard 1028, F1 0.383
-    right      1576 heard as given, given 2838, heard 1580, F1 0.713
-  ```
-
-  A count from rows is near `truth`'s decode of the same recordings, and
-  `truth` is the reading. Those 40 loops decoded read 424 heard as given of
-  762 under the installed scores (F1 0.236) and 759 of 1059 under the judge
-  (0.390). Under the installed scores a strike listed is the strongest of its
+  every row, which is what the rows could give at best. A count from rows is
+  near `truth`'s decode of the same recordings, and `truth` is the reading.
+  Under the installed scores a strike listed is the strongest of its
   pitch within `strike_gap`, and carries the verdict of the candidates near
   it: two the scores returned around one stronger strike are one row, and a
   returned note may start up to the gap from the strike its row is labelled
@@ -589,26 +556,18 @@ nothing and takes seconds. The held-out line and
 `--validate`'s say what the head reads, in cents, all the placed readings first,
 then those of a cell a glide is in, of a cell a pitch holds in, and of the cell
 beside a sound; of a sounding cell the labels do not place, only the error it
-states (`unplaced 31.0 stated`). A recording with no pitch track is unplaced
+states (`unplaced ... stated`). A recording with no pitch track is unplaced
 throughout, and shows how sure the head is of real sound and not how right. One
 whose list names its track prints the three rows as an engine loop does, a frame
 its track does not voice left unplaced; since no track holds a note still, a
 recorded note's readings are gliding where its track spans half a cell, 50 cents,
-over the note, and steady under that. A small model's after 2,500 steps on 360
-loops of a `glide` corpus:
-
-```
-cents 14.5 off, 21.4 stated, 63% within; gliding 22.5 off, 25.1 stated, 54% within; steady 11.9 off, 19.3 stated, 69% within; beside 16.0 off, 22.8 stated, 59% within
-```
-
-`off` is the median miss, `stated` the median error the head states, and `within`
+over the note, and steady under that. `off` is the median miss, `stated` the median error the head states, and `within`
 the share of readings whose miss is within the error stated for them: 63% for a
 head that states its mean miss of misses spread as a Laplace's. A share well under
 that on the gliding readings is a head too sure of itself where the decoder leans on
 it, since audio joins two cells only where their readings agree within the stated
 errors, with no margin on top. A head that knows nothing of a sound reads a median
-25 cents off, so the line above is a head that has a loop's tuning and little of a
-glide's motion yet: it states as much there, and the decoder joins nothing on its word.
+25 cents off.
 `--even-glides` gives a batch's gliding readings half the cents loss and half the stated
 error's wherever it holds them beside steady ones, which outnumber them many times over.
 
@@ -666,10 +625,10 @@ piano's pitches.
 It writes the file's version 6, which states the model's lowest pitch as a
 constant after the heads and, for `--pitchnet`'s cell net, the bins its regions
 pool, and needs transformer v0.7.0 (audio v0.27.0): a stapes built on an older
-audio refuses it. That audio reads the files written before as it did, a frame
-model's without its last heads and a notes model's without the cents head, the
-heads of what plays each pitch or the measure, a frame head of one value whose
-weights are zero and whose bias is the measure.
+audio refuses it. That audio also reads a frame model's file without its last
+heads and a notes model's without the cents head, the heads of what plays each
+pitch or the measure, a frame head of one value whose weights are zero and whose
+bias is the measure.
 A change to either side is a change to both: check a random model's outputs on
 a corpus loop from the two before trusting a trained file, as the module's
 [agent notes](https://github.com/lixenwraith/transformer/blob/main/doc/agent-notes.md)

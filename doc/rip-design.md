@@ -252,14 +252,14 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   voice near the registered one, a third of the time on another wave, in a
   third of the loops with every release but the bass's three to ten times as
   long, a pedal's ringing, all labelled as played, and renders the loop off
-  A440 by up to a quarter tone either way (`SetTuning`), since recordings are
-  and the sample is forty cents flat; `gen` draws beats, melodies
+  A440 by up to a quarter tone either way (`SetTuning`), since recordings
+  are; `gen` draws beats, melodies
   and bass lines from the key for three loops in five per part, since the bank
   alone repeats its few melodies and a model trained on it learns them, not
   pitch, and for three loops in five an accompaniment in the free slot, a
   broken chord in eighths or sixteenths changing pitch from note to note under
-  a melody that is a slow line of longer notes in half the loops: the texture
-  of the sample recording, a lead over an arpeggio, which the rip has to part.
+  a melody that is a slow line of longer notes in half the loops, a lead over
+  an arpeggio, which the rip has to part.
   A third of the generated melodies and accompaniments play half their length
   6 to 18 dB softer, as a phrase played softly, and `codec` sends a third of
   the loops through Opus, MP3 or AAC and back. Some voices are driven hard, as a
@@ -285,18 +285,16 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   `merge`); `tool/rip-train/README.md` is the guide. A voice carries a vibrato and a vowel's formants for the vocal focus,
   neither a gene, kept by the augmentation when it draws voices near a
   registered one. The step exported is the best by `--validate`, a corpus of
-  recordings none of the tests hold (`~/ripcorpus-val`: GuitarSet's player 04
-  and 19 MusicNet pieces), a notes model's by its strikes' F1 there, since the
-  rendered loops' held-out loss stopped predicting recordings at round 32; `--family-holdout` leaves a family out
+  recordings none of the tests hold (GuitarSet's player 04 and 19 MusicNet
+  pieces), a notes model's by its strikes' F1 there, since the rendered loops'
+  held-out loss need not predict recordings; `--family-holdout` leaves a family out
   for the run that sets unknown's bar; and `tune ... truth <list>` searches
   the decoders' thresholds against real recordings' truths through the loaded
   model, each heard once, writing the `rip.toml` that ships beside the weights.
 - **The frame model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodels.FrameSpec`: 230 inputs
   (229 bands and the level), width 256, eight heads of 32, four layers,
   feed-forward 1024, a window of 64 frames either side, 3.3 million weights
-  (13.2 MB), four times the first five runs' width 128 and four heads, and 3.7
-  million (14.9 MB) with the three convolutions the rounds since 11a put before
-  the input layer; its heads are §2's, of three drums, its pitches (the
+  (13.2 MB); its heads are §2's, of three drums, its pitches (the
   piano's eighty-eight, sixty-nine in a file of E1 to C7), five waves,
   thirty-two genes and nine families. Attention carries ALiBi biases, a
   slope per head on the frame distance, so it has no positions to learn and
@@ -314,8 +312,7 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   the data byte by byte from a loop's frames to the weight file.
 - **Inference** is pure Go, float32, no CGO, the same on every host to float32
   rounding. A three-minute song is 15500 frames, 26 GFLOP a layer at the
-  default width: 70 seconds on one core of a 2017 laptop's i7-7700HQ, against
-  20 at width 128, and the width and depth are the file's to choose.
+  default width, and the width and depth are the file's to choose.
 
 ## 4. Layout
 
@@ -383,58 +380,33 @@ and the checkpoint earn their keep.
 
 ## 7. Plan
 
-What is trained and what is only written, on 12 November 2026:
-
-- The frame model 12a and the notes model 32a are installed, and rounds at
-  their own length are the next step for both.
-- The beat and downbeat heads are on 40a, a frame model not installed.
-- The heads of what plays each pitch were trained in round 38
-  ([rounds](rip-rounds.md#rounds)), first as a probe on the notes model's held
-  body (38a, 38b) and then with the body free (38c to 38e), and name only bass
-  and synth on NSynth's held-out instruments (.86 to .88 of their notes with
-  the body free, piano and guitar under .01, strings and winds none), because
-  an engine voice is asked a family by the name it was drawn under: one far
-  from the bank is asked `synth`, 41% of the asked cells, while solo singing,
-  named one way in every corpus, is named on .96 of its notes (38e). Nothing of
-  it is installed.
-- The judge had a first fit read that day, not installed.
-
-1. Done, through thirteen passes on the sample: the analysis and the decoders;
-   parameters as data and their search; the offline render, the truth and the
-   score; the transformer, `ripmodels`, the corpus, the trainer and training in
-   rounds across machines; the voice fit by analysis-by-synthesis; the
-   dictionary, matching and compression; the song document, rendered offline,
-   a line at a time, and conducted live; the augmented, detuned, saturated
-   corpus with generated parts and the sample's texture, a lead over an
+1. Done: the analysis and the decoders; parameters as data and their search;
+   the offline render, the truth and the score; the transformer, `ripmodels`,
+   the corpus, the trainer and training in rounds across machines; the voice
+   fit by analysis-by-synthesis; the dictionary, matching and compression; the
+   song document, rendered offline, a line at a time, and conducted live; the
+   augmented, detuned, saturated corpus with generated parts, a lead over an
    arpeggio; `bench`, loop by loop; the refinement loop judged by `Fidelity`
    with the voices held to the fit; the recording's tuning, a pickup bar, the
    notes' lag, accidentals; the two melody lines decoded together and parted
    by their character under a lead rule; the bass decoded to A3; a note's
-   brightness; the truths: transcripts corrected by hand, rhythms tapped
-   out, MIDI files, and two rips of one piece as witnesses; and the frame model at
-   four times the size, its sixth run passing the engine's loops and losing
-   the recordings.
-2. Landed from the audit of 9 November (its measurements are in the audit
-   doc, its tools under vif's `tmp/audit`): the bar line's cue that counts the
-   silence before a recording (audio v0.8.9, GuitarSet's downbeats within an
-   eighth of a bar 63% to 72%); the bar phase scored against a score's or a
-   JAMS annotation's downbeats (`MatchBars`, `truth`'s bars row); a step's
+   brightness; and the truths: transcripts corrected by hand, rhythms tapped
+   out, MIDI files, and two rips of one piece as witnesses.
+2. Landed: the bar line's cue that counts the silence before a recording; the
+   bar phase scored against a score's or a JAMS annotation's downbeats
+   (`MatchBars`, `truth`'s bars row); a step's
    `bend`, played by every voice and written and read as MIDI pitch bend; the
    family of every corpus event and the frame model's family head with
    `--family-holdout`; every part of a recording's MIDI in its labels and its
    truth, each note with its program; `--validate` and the validation corpus;
    `tune ... truth`; and `RipStream`, bars frozen two behind the sound from the
    sixth bar on, `Final` the whole rip afterwards.
-3. Landed from the second audit, of 10 November (its doc holds the
-   measurements, vif's `tmp/audit2` its tools, the agent notes what it
-   learned): `--validate` picks a notes model's step by its strikes' F1 at the
+3. Landed: `--validate` picks a notes model's step by its strikes' F1 at the
    decoder's bars; `rip` fits every line's voice, the voice a model heard its
    first seed; and `corpus` takes every word its usage names.
-4. Next, from that audit and Lixen's answers to it. Five rules hold for all of
-   it:
+4. Next. Five rules hold for all of it:
    - A number that picks anything counts a note right by its pitch and onset,
-     whatever line holds it. Within lines strummed guitar read .58 for .79 and
-     rounds were ranked by where they filed a note.
+     whatever line holds it.
    - No constant is turned by hand until a set scores well. It is fitted from
      data by a stated procedure and checked on a condition left out of the
      fit, or it is read from the recording itself, which the rip may loop
@@ -446,14 +418,15 @@ What is trained and what is only written, on 12 November 2026:
      voices, holds within that part and is never carried across a boundary
      into a part it has nothing to do with.
    - Nothing is trained or fitted on a set whose licence is non-commercial or
-     research-only, on a song's recording, bought or not, or on a commercial
-     song's transcription. Such a song measures the rip on real-world music and
-     no more, since no licence covers training on it; a corpus or a fit takes
-     the engine's generated parts and mixes, public-domain scores it renders
-     and the CC BY sets. Lakh's files are such transcriptions: the corpora
-     made from them and every weight trained before they went were deleted on
-     2026-11-14, and the models train again from nothing. A round's notes name
-     every collection it took, for the credits.
+     research-only (MAESTRO, MAPS), on a song's recording, bought or not, or
+     anything taken from one, or on a commercial song's transcription. Such a
+     song measures the rip on real-world music and no more, since no licence
+     covers training on it; a corpus or a fit takes the engine's generated
+     parts and mixes, public-domain scores it renders and the CC BY sets whose
+     recordings were made for them of music original to them, improvised or in
+     the public domain: E-GMD, VocalSet, NSynth and GuitarSet train, and
+     MusicNet and vocadito only measure ([credits](../CREDITS.md)). A round's
+     notes name every collection it took, for the credits.
    Code alone, a thread each, in parallel:
    - **Notes by pitch and onset, and the search under a guard**, landed.
      `Agreement` counts every note as one line (`All`) and `MatchNotes`
@@ -461,22 +434,15 @@ What is trained and what is only written, on 12 November 2026:
      `truth` leads with that row; `tune ... truth` scores by it as the mean
      over the conditions its list names, refuses a set that costs any
      condition more than its guard, keeps the frames it heard (`frames
-     <dir>`) and starts its pool at the thresholds it is improving. It has
-     not run on recordings since: the validation list wants its conditions
-     first ([todo](todo.md#tune-the-rip)). Nothing it writes is installed
-     before every condition has decoded under it: tuned on guitar alone it
-     gave solo guitar .06 and took .02 to .04 from the pianos, the phones and
-     MusicNet.
+     <dir>`) and starts its pool at the thresholds it is improving. The
+     validation list wants its conditions first
+     ([todo](todo.md#tune-the-rip)). Nothing it writes is installed before
+     every condition has decoded under it.
    - **Glides.** Landed: the corpus labels a moving note's cents at every
      frame and `glide` bends, scoops and sways generated notes; a cents head
      on the notes model gives each pitch's offset and the error it states for
      it; the decoder joins two cells where they name one frequency within
-     those errors and keeps a step that lands. Through a small model (360
-     loops, 3,000 steps) a rendered bend, scoop and short slide each came out
-     as one note carrying its motion, stubs without the head, and a fall of
-     three semitones was cut by a strike the notes model was sure of. A full round
-     is not trained: vocadito stands at .69 under a ceiling of .77 to .90,
-     and its truth holds 241 legato steps a merger by adjacency would eat.
+     those errors and keeps a step that lands.
    - **The stream read from outside, and `live`.** Landed: `RipStream` gives
      the frames heard since a frame with the spectrum they were read from
      (`Frames`) and its open bars as last laid out (`Open`); `live` drives it
@@ -484,32 +450,16 @@ What is trained and what is only written, on 12 November 2026:
    - **Each frame once.** Landed: a stream in `transformer` runs each frame
      through each layer once and gives the pass over the whole when it waits
      a model's reach, which the ear does (2.97 s for the frame model), and
-     the GELU runs over a row in the kernels. Through 12a and 32a on twelve
-     recordings a second of audio costs the offline rip 0.17 s of a core
-     where it cost 0.46, and the stream 0.24 where it cost 1.37, the offline
-     rip's note count unchanged on each. Waiting half a second instead leaves
-     the pitched heads as they are and moves the frame model's, the drums by
-     three tenths of their rms: on the pop song from the Pixel the stream's
-     kicks or snares then differ in 10 of 19 bars. So the reach is the
-     default.
-   - **The beat and the bar line heard.** The cues' rules read the bars of 37 of
-     120 GuitarSet clips no round met, and of 58 with the truth's beats given: a
-     guitar alone has no kick, no snare and no bass. Landed: a beat and a
-     downbeat head on the frame model, read as §2 says (audio v0.24.0, by their
-     ranks from v0.24.1, by their level beside the cues since v0.25.2), and
-     their trainer: a rendered loop's targets from its own grid, a recording's
-     from its list's `beats` column, a loss with no weight on a beat, and each
-     head's F1 on the lines ([Rip training §5 and
-     §8](rip-training.md#the-two-heads-on-a-small-run)). 40a's heads read the
-     bars of 24 of the 120 through the ranks and 39 through a plain tracker,
-     where the same weights' cues read 32: the ranks lost what the heads hold,
-     and v0.25.2 reads them as that tracker does. 48a's heads then read 38,
-     and stated six or three beats on 267 of 728 generated loops in 4/4: its
-     downbeat head marks the half bar as it marks the line. Audio v0.26.0's
-     rules of the meter (§2) leave 29 and read 40 of the 120; the place of the
-     line on those loops is what is left, 56% of their bars right where the
-     same frames' cues read 67% ([audio's
-     todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md)). No file is installed on its
+     the GELU runs over a row in the kernels. Waiting half a second instead
+     leaves the pitched heads as they are and moves the frame model's, so the
+     reach is the default.
+   - **The beat and the bar line heard.** A guitar alone has no kick, no snare
+     and no bass for the cues' rules to read its bars by. Landed: a beat and a
+     downbeat head on the frame model, read as §2 says, and their trainer: a
+     rendered loop's targets from its own grid, a recording's from its list's
+     `beats` column, a loss with no weight on a beat, and each head's F1 on the
+     lines ([Rip training §5](rip-training.md#5-the-targets) and
+     [§8](rip-training.md#8-a-training-step)). No file is installed on its
      heads' word before they read more bars right than its cues
      ([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)).
    Then, each waiting on recordings, on a thread above or on a design agreed:
@@ -532,31 +482,20 @@ What is trained and what is only written, on 12 November 2026:
    - **Lines by voice.** Notes gather into lines by their voices and their
      continuity, a line opening when a voice enters and closing when it
      stops: first inside the three lines a rip holds today, then the rip, the
-     song and the game with as many as were heard. Pop's interleaved lines, a
-     solo cello filed on two and a guitar's notes on a bass line wait on it.
-   - **The judge.** Nearly a quarter of the truth's notes are strikes over a
-     half that the decoder drops; a right verdict on each of them and on each
-     reported note would score .96 by pitch and onset where the rip scores .74
-     (427 recordings of five collections; 32a had met thirty, vocadito's first
-     clips, in its singing corpus). The accounting's evidence does not reach
-     that: its logistics fitted again on those recordings, every strike over a
-     half judged, score .739 on the mean of conditions against .744. A small
-     network on the heads around a strike, beside that evidence, takes guitar
-     from .73 to .84 with the player left out of its fit, and on a collection
-     it never met is level to +.05, bar singing (up to .04 down) and a bass
-     line under drums, which it keeps only when its fit is the engine's own
-     mixes. So the judge is a small trained stage whose reach is its fit's
-     breadth: fitted on the notes model in use, from every CC BY
-     collection with truths, renders and the engine's mixes; refitted
-     after each round, reading the note's voice once notes
-     carry one; and installed only when no collection left out of the fit
-     scores under the installed rip by more than its spread, singing apart,
-     which is reported and holds no stage back. A recording is judged in one
-     pass. The decoder then says what it kept and dropped, the live view's
-     last read. The stage stands since audio v0.22.0 and stapes v0.19.0, with
-     no fit installed: the row and the judge's file (library §9), `rows`,
-     `judge.py` and the root's `ripjudge.bin`
-     ([a judge](../tool/rip-train/README.md#a-judge)).
+     song and the game with as many as were heard. A song's interleaved
+     lines, a solo cello filed on two and a guitar's notes on a bass line wait
+     on it.
+   - **The judge.** A small trained stage whose reach is its fit's breadth:
+     fitted on the notes model in use, from the CC BY collections with truths
+     that train, renders and the engine's mixes; refitted after each round,
+     reading the note's voice once notes carry one; and installed only when no
+     collection left out of the fit scores under the installed rip by more
+     than its spread, singing apart, which is reported and holds no stage
+     back. A recording is judged in one pass. The decoder then says what it
+     kept and dropped, the live view's last read. The stage stands since audio
+     v0.22.0 and stapes v0.19.0, with no fit installed: the row and the
+     judge's file (library §9), `rows`, `judge.py` and the root's
+     `ripjudge.bin` ([a judge](../tool/rip-train/README.md#a-judge)).
    - **Sections.** A recording is read in parts, a boundary where tempo,
      density, level or harmony change by more than they vary inside a part;
      tempo, meter, phase and key are decided a part at a time, in the stream
@@ -567,477 +506,31 @@ What is trained and what is only written, on 12 November 2026:
      models are given, the heads, the judge's verdicts, the grid, and the
      bars in a compact lane that a line or a part filters.
    Put off: a second piece of music under the first, which wants the judge to
-   follow instruments as it follows notes; and the phone's bass, where the bar
-   is not the lever and 34d's dip is one run.
-   How a round is judged from here: each set by pitch and onset against its
-   own spread (.01 on the renders, the clean take, MusicNet and the mean, .02
-   on the phones and guitar, .03 on vocadito), a pair sharing all but the one
-   change; the bars row; the strikes' F1 on a validation corpus with a
-   condition a kind; vocadito's fragments, wrong cells and repeats with the
+   follow instruments as it follows notes; and a phone's bass, where the bar
+   is not the lever.
+   How a round is judged: each set by pitch and onset against its own spread,
+   a pair sharing all but the one change; the bars row; the strikes' F1 on a
+   validation corpus with a condition a kind; vocadito's fragments, wrong cells and repeats with the
    legato steps kept; each family's recall on NSynth's held-out instruments
-   and the rip's voice over the fit's distance there (2.3 now); the pop song's
-   bass and kicks, clean and from the Pixel; and `bench`.
+   and the rip's voice over the fit's distance there; a song's bass and
+   kicks, clean and through a phone; and `bench`.
    Dropped by measurement: padding or mirroring a recording's edges (the
    strike head at a loop's first frame scores as mid-song; silence before it
-   and the mirror both cost); more width (34a); soups of rounds; rounds of one
+   and the mirror both cost); more width; soups of rounds; rounds of one
    recipe plus one augmentation judged by the mean; a step picked by the
    validation loss, most of which is a head Go never reads; a `rip.toml`
    tuned on one instrument; `strike_again` or `strike_low` moved by hand for
    a set, each measured to trade one set for another; a recording's
    thresholds searched against `Fidelity`, which puts no price on a wrong
-   note (a third of a right one's worth to it) and so ranks a recording's
-   decodes at chance against their truth: 54 in a hundred of the pairs .02
-   apart in F1, over 91 recordings under eleven threshold sets; the
-   accounting's logistics refitted on more recordings; and a second pass
+   note and so ranks a recording's decodes at chance against their truth;
+   the accounting's logistics refitted on more recordings; and a second pass
    over a recording, its evidence read against its own notes, its fit bent
-   to its sure verdicts or its bar set by its own odds, each within .006 of
-   the single pass on the mean of conditions and trading one family for
-   another.
+   to its sure verdicts or its bar set by its own odds, each trading one
+   family for another.
 5. Then: the weights shipped as data with the `rip.toml` they were judged
    under.
 
-## 8. Measured on the sample recording
-
-The sample's intro in `lixenwraith/scratch` through the built-in analysis, the
-voice fit, the dictionary and the song, nine seconds on four cores:
-
-- The rip: 86 bpm, A# harmonic minor, three full bars from 2.52 s, 25 notes a
-  register, and 19 kicks, 36 snares and 2 hats in a clip with no drums, the
-  bass's and the plucks' attacks ([todo](todo.md#tune-the-rip)).
-- The fit: six notes a register, twelve generations of twenty-four seeded with
-  the shipped five; the melody's voice modal at mel distance 0.107 against the
-  best seed's 0.127, the bass's modal at 0.102 against 0.142.
-- The dictionary: three bars into eight one-bar patterns, the same under a
-  threshold of 5 and of 25 per cent; three bars have nothing to compress, and
-  the assignment search never beat the greedy grouping under `BarDistance`.
-- The score, the rip of a render on its own grid against the recording's rip:
-  the windows through the shipped voices melody 0.64, bass 0.89; through the
-  fitted voices 0.75 and 0.58; the song with its drums 0.60, 0.39, drums 0.56;
-  without them 0.78 and 0.58. The fitted melody voice rips back better than the
-  shipped lead, the fitted bass worse than the shipped bass, fitted as it was to
-  the mix around the low notes; the false drums, played, mask the bass.
-- Before the grid was pinned every render ripped back at 115 bpm, a dotted
-  eighth for the beat, and a beat late: two decoder faults the score of the
-  compression must not carry, and two faults a real recording still pays for.
-- The third pass, `rip ... nodrums` so the false drums stay out: the song rips
-  back at 0.66 (melody 0.90, bass 0.79, drums 0 for the kicks the bass's
-  attacks still read as). `refine` over two rounds, each register's voice
-  searched by that score with the fitted voice and the shipped ones as seeds,
-  then the steps: 0.66 to 0.87 in the first round, all of it from the voices
-  (melody 0.66 to 0.80, bass to 0.87), 0.88 in the second, the steps' search
-  adding nothing either time. Four minutes on four cores. A voice that rips back
-  well is one the analysis hears the same notes from and no drums in, which is
-  not the same as the one nearest the recording's spectrum; the ear decides
-  between `bite_fit.wav` (the mel fit) and `bite_refined.wav` (the score fit).
-- The first training run: 120 augmented loops of four bars from the shipped
-  bank, `ripmodels.FrameSpec` at 818 thousand weights, 3000 steps of batch 8 in twenty
-  minutes on four CPU cores, the loss from 4.8 to 0.44 and the pitch head's
-  still falling. `bench 12 4` on fresh loops, total then tempo, bars, drums,
-  melody, bass: the analysis on clean loops 0.49 (0.75, 0.79, 0.51, 0.18,
-  0.50), the frame model 0.48 (0.83, 0.85, 0.63, 0.06, 0.27); on augmented loops the
-  analysis 0.45 (0.75, 0.75, 0.54, 0.11, 0.31), the frame model 0.47 (0.83, 0.88,
-  0.67, 0.05, 0.16). The frame model already hears onsets and drums better than the
-  analysis and holds up under the room and the mix where the analysis drops;
-  its pitches are far behind, which is the head with the most classes and the
-  least training. The shipped bank's few melodies cap what a corpus can teach:
-  more patterns and more steps before the frame model is trusted with a melody.
-- The bass read from a window four times longer: the loop test's melody rises
-  from 0.92 to 0.95 and its bass holds at 1, the sample's bass notes last two
-  to four steps where they flipped every step between A#2 and A2, and the
-  pinned grid stops reading a bass note a step early once the long window's
-  reading is held to the short window's timing (the geometric mean of the two;
-  the long one alone read onsets early) and the grid takes the two-frame lead
-  the centred windows give every event. A sustained pad under the loop's melody
-  still moves the key estimate, G and B outvoting E, and the rip's own key then
-  snaps the F to E: the pad test's melody number says that, not the paths.
-  With the partials of the bass's near-equal neighbour cancelled as well, the
-  A3 and A#3 the sample's melody carried at the bass's octave on its first
-  steps are gone: 30 melody notes where the fourth pass had 36, the six that
-  went the bass's.
-- The fourth pass, the melody register tracked twice: the sample's melody has 36
-  notes where one path had 25, nine steps carrying two; the song rips back at
-  0.76 through the mel-fitted voices and 0.86 after two rounds of `refine`,
-  the second line costing the melody's own self-consistency (0.67 against
-  0.90), since two notes on a step through one voice do not rip back as two.
-  On a render with a sustained pad under the test loop's melody the second pass
-  finds eight of the pad's sixteen notes where one path found none, the first
-  of each bar and seldom the second, which the first path's note on the same
-  pitch a fifth below the bass's partial has already spent. None of the
-  sample's 36 notes is longer than three steps where the violin holds six to
-  twelve: the path flips between the semitone bins a vibrato crosses, the next
-  decoder item ([todo](todo.md#tune-the-rip)).
-- The second training run, 300 loops with generated parts and the room and
-  mix, 12000 steps of batch 8 in an hour and a half on four CPU cores, the
-  training loss down to 0.31 and the pitch head's to 0.15: worse on fresh
-  loops than the first run and than the analysis. `bench 12 4`, whose loops
-  now carry generated parts: the analysis 0.47 on clean loops (tempo 0.75,
-  bars 0.75, drums 0.52, melody 0.17, bass 0.39) and 0.46 augmented; the frame
-  model 0.40 (0.67, 0.71, 0.50, 0.11, 0.18) and 0.38 (0.58, 0.73, 0.53, 0.07,
-  0.13). Each loop was seen about three hundred times: the frame model learned
-  the corpus, not the music. The trainer now holds loops out, scores them as it
-  goes and exports the step whose decoder heads scored best on them; the
-  number that matters is the held-out loss, not the training loss, and `bench`
-  after it. A 6000-step run with thirty loops held out showed the held-out
-  loss near 3.6 against a training loss near 1.0 by step 2000, the wave head
-  learning each loop's voice by heart and the pitch head's held-out loss not
-  moving from 0.73: with hundreds of loops of random voices and rooms there is
-  too little to generalise from, so the next run takes thousands of loops,
-  each seen a few times.
-- The third run, 3000 loops with generated parts and the room and mix, sixty
-  held out, 6000 steps of batch 8 in forty minutes on four CPU cores, each
-  loop seen sixteen times: the held-out decoders' loss falls the whole way,
-  1.79 at step 1000 to 1.48 at 6000, the pitch head's 0.61 to 0.51, and the
-  last step is the one exported. `bench 12 4`: the analysis 0.47 on clean
-  loops (tempo 0.75, bars 0.75, drums 0.52, melody 0.17, bass 0.39), the frame model
-  0.44 (0.67, 0.75, 0.59, 0.11, 0.25); augmented, the analysis 0.46 (0.83,
-  0.81, 0.50, 0.16, 0.27), the frame model 0.45 (0.75, 0.77, 0.65, 0.11, 0.08). The
-  model is within three hundredths of the analysis overall, ahead on drums,
-  behind on pitch, and still improving when the run ended: more loops and more
-  steps are the next lever, not another head. The sample through it: 115 bpm,
-  F major, five bars from 0.79 s, 38 melody and 15 bass notes; the song rips
-  back at 0.36 and 0.57 after two rounds of `refine`, against the analysis
-  path's 0.59 and 0.88. The analysis path stays the sample's better transcript.
-- The sixth pass, the second melody line with steps, a track and a voice of
-  its own: the sample's melody has 25 notes in its first line and 5 in the
-  second, the bass 14; the mel fit gives the lines a square, a modal voice and
-  a modal bass, the song rips back at 0.54 through them and 0.88 after two
-  rounds of `refine`, each of the three voices searched in turn. The line's
-  own voice is what a violin under a pluck needed; what the first line still
-  mixes is two instruments taking turns as the louder.
-- The sample through that model (`bite_model_*` on the scratch branch): 115 bpm
-  where the analysis heard 86, F major where it heard A# harmonic minor (its
-  fifth), four bars from 1.66 s, 19 melody and 21 bass notes; the song rips
-  back at 0.45 through the mel-fitted voices and 0.63 after two rounds of
-  `refine`, against the analysis path's 0.66 and 0.88. The frame model's transcript
-  is the weaker one today, as `bench` said it would be; the loop lifts either.
-
-- The fourth run, 20000 loops with generated parts, the room and the mix,
-  frames and labels only (`nowav`), 200 held out, 20000 steps of batch 8 in
-  two hours and three quarters on four CPU cores shared with the day's other
-  work, each loop seen eight times: the held-out decoders' loss falls from
-  1.74 at step 1000 to 1.04 at 20000 (the pitch head's 0.60 to 0.40) and is
-  still the best at the last step, so the run was not long. `bench 12 4`
-  through the seventh pass's analysis: the analysis 0.49 on clean loops
-  (tempo 0.75, bars 0.85, drums 0.50, melody 0.20, bass 0.40), the frame model
-  0.45 (0.58, 0.81, 0.54, 0.17, 0.34); augmented, the analysis 0.48 (0.83,
-  0.88, 0.50, 0.17, 0.28), the frame model 0.51 (0.83, 0.88, 0.73, 0.11, 0.20).
-  The frame model passes the analysis for the first time, on the loops with a room
-  and a mix, on the strength of its drums; it loses the clean loops on tempo
-  and both on pitch, and the analysis itself gained two hundredths from the
-  seventh pass. The sample through it (`bite_model_*` on the scratch branch):
-  115 bpm, F major, six bars with a pickup bar from 1.94 s before the
-  recording, 21 melody notes with 27 under and 24 bass notes; the song sounds
-  0.57 like the recording before `refine` and 0.67 after two rounds (pitch
-  0.80, timbre 0.51, onset 0.71), ripping back at 0.66 and 0.71, against the
-  analysis path's 0.75 and 0.81 by fidelity and 0.87 and 0.89 by rip-back. The
-  weights stay out of the tree: a front end that wins on drums and loses on
-  pitch, and hears a clip forty cents flat at A440, is not yet the rip's
-  better ear.
-- The seventh pass, the sample heard on its own tuning: the transcript's note
-  list (stapes' `notes`) showed A#2 taking turns with A2 in sixteenths, G2
-  with G#2 at the chord change, C5 with C#5 in the lead, ten melody notes
-  before the first bar line dropped, and harmonic minor for a scale only the
-  wobble's leakage voted for. A histogram of the spectral peaks' offsets from
-  the nearest semitone put the recording 41 cents flat of A440, three quarters
-  of the weight at one offset: every pitch sat between two salience rows, and
-  no decoder downstream could have repaired that. With the tuning read first,
-  a pickup bar from 0.45 s before the recording and the notes' lag taken out,
-  the rip is A# minor at 86 bpm, four bars, 88 notes, 42 steps in the melody's
-  first line, 27 in the second and 9 in the bass; the bass is a held A#2, C#3
-  and G#2 line where it was 25 wobbling fragments, the lead holds notes for
-  three and four steps, and 3 notes sit off the key where 10 did, kept as
-  accidentals. The song sounds 0.75 like the recording before `refine` (pitch
-  0.81, timbre 0.69, onset 0.73) and rips back at 0.87 without a kit on either
-  side; two rounds judged by fidelity lift it to 0.81 (0.83, 0.74, 0.86) and
-  the rip-back to 0.89 (melody 0.70, bass 0.80), all of it from the voices:
-  the step search, 312 genes over six generations of twelve, kept no move in
-  either round, so the moves or the budget are the next question there. The
-  rip-back is no longer what `refine` maximizes and still passes the sixth
-  pass's 0.88, which a voice could game with attacks the analysis heard the
-  same notes from; the judge and the self-grade agree on this clip.
-
-- The ninth pass, the song at the recording's tuning and the lines uncrossed:
-  the user heard the refined tonals as slightly sharp, a stretched string,
-  which was the render at A440 against the clip's 41 cents flat; and a second
-  recording of the piece, the sample's origin in `lixenwraith/scratch`, in tune
-  (+2 cents), three semitones lower, a second longer and ripped on another
-  metrical level (148 bpm, G minor, eight bars), agrees with the first's
-  transcript on 41 of 49 melody notes, 27 of 29 under notes and all 10 bass notes
-  after transposition and a fitted time map, while both listings show the two
-  lines swapping a held dyad. With the song rendered at the recording's tuning
-  and concurrent notes assigned to the lines by pitch order, the intro sounds
-  0.76 like the recording before `refine` (pitch 0.82, timbre 0.75 where it was
-  0.69, onset 0.72) and rips back at 0.90 (melody 0.74 where it was 0.63); the
-  origin 0.71 (0.71, 0.70, 0.71) and 0.86. Saturation, which the augmentation
-  now puts on a third of the loops, costs the analysis on the bench: 0.475 to
-  0.429 on augmented loops, the melody 0.17 to 0.08. `compress`, the harmonic
-  spectrum raised to a power before the salience, at 0.6 gains a hundredth on
-  clean loops (0.499 against 0.487), loses one on augmented (0.420 against
-  0.429) and loses on both recordings (0.74 against 0.76, 0.67 against 0.71);
-  at 0.45 the bench loses more (0.481, 0.410) while the intro gains in pitch
-  (0.86, ripping back at 0.94) and the origin loses (0.68, 0.79). No setting
-  wins on all four, so the default stays at one and the knob is the search's;
-  what saturation breaks is not the fundamental's weight alone. The sweep
-  judged on a step's own bars, with the rhythm and length moves: two rounds
-  take the intro from 0.76 to 0.85 (pitch 0.85, timbre 0.84, onset 0.85),
-  55 and 37 steps moved, the voices 0.04 of it; the origin from 0.71 to 0.81
-  (0.82, 0.79, 0.83), 70 and 46 steps. The rip-back holds at 0.89 and 0.86
-  while its bass falls (0.80 to 0.67 on the intro): a move the recording's
-  frames like is not always one the rip reads back the same, and fidelity is
-  the judge. The user's ear: the origin's refined render is the first whose
-  melody is recognisably the piece's, with wrong notes here and there and
-  some misses and extras, where none of the earlier renders would have been
-  identified as it; the origin is the primary sample from here, and the
-  intro, shifted and stretched from it, a degraded second witness.
-
-- The tenth pass, the recording's own pitch among the sweep's moves: the
-  origin recording, judged by the user as the first render whose melody is
-  the piece's, with wrong notes here and there and some misses and extras.
-  Four rounds of the sweep as it was converge after three at 0.81, so more
-  rounds were not the lever. With the recording's strongest pitch over a step
-  tried on a step's note and inserted where a line leaves a step empty, the
-  first sweep moves 70 steps and adds 77 for 0.84 (from 0.75 after the
-  voices), the second round reaches 0.87 (pitch 0.91, timbre 0.87, onset
-  0.84), ripping back at 0.89: a note the rip missed had no other way in. The
-  same recipe with one melody line, the second pass off, reaches 0.84 (0.89,
-  0.83, 0.80), so the numbers keep the second line and the ear decides. The
-  intro is left at the ninth pass's 0.85; the origin is the sample now.
-
-- The eleventh pass, the two lines decoded together and the voices held to
-  the fit: the first line was the loudest pitch of each frame and the second
-  what a pass over the rest found, so the lead and a counter line a few notes
-  away traded places wherever one was momentarily louder, which the user
-  heard as a lead render that was the lead in places and the other line in
-  others; and `refine` had drifted every voice toward a driven saw, which the
-  user heard as renders turning electronic where the fit's had sounded like
-  the recording. A stream assignment over the notes already cut, by pitch, a
-  masked harmonic profile and level, made the two recordings' transcripts
-  agree less (the intro's first-line notes with a match in the origin 32 of 36
-  against 41 of 49, the origin's 24 of 44 against 33 of 55), so the change
-  went into the decoder: a hidden path over pairs of pitches, each line its
-  own costs, no pair a unison, a semitone or a harmonic interval apart, the
-  first line paying `cross` (0.003 a frame; 0 and 0.01 agree within a note or
-  two) to be the quieter. On a synthetic pair, a louder lead in quarter notes
-  under and then over a counter line in eighths on the same voice, 31 of 32
-  lead notes land in the first line and none of the counter's, 63 of 64
-  counter notes in the second. The bench is unchanged (analysis 0.485 clean
-  and 0.425 augmented against 0.487 and 0.429). The origin's transcript has
-  77 notes where it had 104 and the intro's 65 where it had 88, the fragments
-  of a line hopping between two gone, and the two agree at the same rate on
-  fewer notes (the origin's first line 23 of 38 against 33 of 55, its second
-  17 of 22 against 23 of 32). The fit picks modal voices for every line of
-  both; `refine` keeps them within a tenth of their floors (the origin's
-  0.115, 0.118 and 0.103 against 0.112, 0.117 and 0.100), and the origin
-  sounds 0.86 (pitch 0.89, timbre 0.86, onsets 0.81) after two rounds from
-  0.69 before, where the tenth pass's drifted voices reached 0.87; the intro
-  0.84 (0.85, 0.84, 0.84) from 0.66, the ninth's 0.85. Each line renders
-  alone now (`song <name> <file> <voice>`), so the user can say which line
-  the lead is and where it changes hands, which the numbers cannot.
-
-- The twelfth pass, the lines parted by their character: the user heard the
-  eleventh's lead render start right and then mix the lines where a loud held
-  F4 of the counter line took the lead's place, the lead being the softer
-  line in this piece, short notes at a steady cadence under held ones. The
-  two decoded lines' notes are parted again by what a line keeps, pitch from
-  note to note, length, strength against the register's reference and no two
-  at once, the lead named by a rule: on a synthetic pair, a softer lead in
-  eighths under a louder counter line in half notes that crosses it, 61 of 64
-  lead notes land in the melody line and none of the counter's; the first
-  parting, with the strength raw, followed loudness alone. On the origin the
-  busier line, the default, is the counter (33 notes against the lead's 27),
-  so the recipes name `lead soft`, and the lead reads G4 A4 A4 D5 D#5 D#5 A#4
-  D#5 D5 A5 D5 G4 A4 ..., the user's first three notes among them; a default
-  that holds for more music is open. The intro's bass, the origin's D#3 and
-  D3 three semitones up, had surfaced as F#3 and F3 in its melody register
-  with no bass under them, so the bass decoder reaches A3 over the melody's
-  rows, a reached row counting for three quarters, a reached note the bass
-  line does not continue dropped, and a note both registers hear going to the
-  line it continues; the intro's bass line reads as the origin's (15 of 17
-  notes heard by both, 10 of 10 before but with the F#3s missing), at a cost
-  of a hundredth on the clean bench (0.477 against 0.485; the parting itself
-  costs nothing). The origin sounds 0.86 after two rounds (pitch 0.90, timbre
-  0.85, onsets 0.82) from 0.71 before, the intro 0.84 (0.86, 0.84, 0.82) from
-  0.73, both with modal voices within their floors. `agree`, the two
-  transcripts line by line under the transposition that matches most: 14 of
-  the lead's notes and 14 of the counter's heard by both (of 25 and 27, 25 and
-  33), 39 of the melody register's as one line, so about seven notes in ten
-  are parted the same way in the two recordings; the earlier script's per-line
-  numbers had matched across lines. `truth` is ready for the melody written
-  out, the number the renders still lack.
-
-- The thirteenth pass, the rhythm from the user's ear: the lead plays
-  quarter, quarter, half, quarter, eighth, half three times and then seven
-  quarters, twenty-five notes on a plucked string; the second line is a piano
-  arpeggio in eighths throughout, fifty-eight notes of changing pitch under
-  pedal, which the user could not write down by pitch; the bass is free. That
-  rhythm, as `unit eighth` and `(1-2-3---4-56---)x3 a-a-a-a-a-a-a`, placed on
-  the time map that matches most (0.999 of the rip's), is the first truth the
-  rip has had: the origin's lead, named by `lead long` (the default, the
-  busier line, is the arpeggio here; soft and long part the same), has 17 of
-  the 25 given notes within half an eighth, 8 missed and 10 extra, 7 of the
-  given cut in two or more, the half notes among them; the second line has 30
-  of 58 eighths, 11 rip notes spanning two or more, the pedal's ringing notes
-  merged, which two lines cannot hold. The intro: 12 of 25 and 24 of 58. A
-  rule that cut a note where its salience rose again by a third after falling
-  off its peak, for a repeated note, heard 32 of 32 repeated piano strikes in
-  a test and on the recording cut 11 of the lead's 25 notes and the bass's
-  held notes, whose strings beat: withdrawn the same hour, the rhythm having
-  shown it in one run. The songs: the origin 0.86 after two rounds (pitch
-  0.90, timbre 0.85, onsets 0.82), the intro 0.84 (0.87, 0.84, 0.80), with
-  modal voices within their floors. The corpus draws the piece's texture for
-  the next run, a broken chord in the free slot under a melody of longer
-  notes; its loops bench at 0.476 clean and 0.457 augmented for the analysis,
-  a new baseline.
-
-- The sixth training run, the first at four times the size (width 256, eight
-  heads of 32, 3.2 million weights), on 40000 loops of the accompaniment
-  corpus without the generative lead (rendered in 95 minutes in four parts on
-  the laptop's four cores), 400 held out, 40000 steps of batch 8 in two hours
-  on its GTX 1060, each loop seen eight times: the held-out decoders' loss
-  falls from 1.82 at step 1000 to 0.99 at 37000 (the pitch head's 0.66 to
-  0.46) and is flat from step 33000. `bench 12 4`, its loops drawn without the
-  generative lead: the analysis 0.470 on clean loops (tempo 0.75, bars 0.88,
-  drums 0.51, melody 0.13, bass 0.38), the frame model 0.510 (0.75, 0.85, 0.71,
-  0.08, 0.38); augmented, the analysis 0.458 (0.83, 0.90, 0.51, 0.06, 0.33),
-  the frame model 0.460 (0.75, 0.81, 0.63, 0.07, 0.27): the first run to pass the
-  analysis on both lines, on its drums, still behind on melody. The truths
-  reverse it: through the frame model the origin's melody register hears 34 of the
-  83 notes the user tapped where the analysis hears 50 (the lead 10 of 25
-  against 17), at 99 bpm where the user's eighth gives the analysis's 148;
-  the intro 34 against 37, at 115 bpm against 86. Two studio recordings
-  scored against MIDI files of their pieces: the whole of Für Elise, 1051
-  notes, has 266 of the 869 above E3 heard through the frame model against 444
-  through the analysis; the pop song's first forty seconds, its drum channel
-  scored hit by hit (`MatchHits`), have 38 of 39 kicks heard with 47 false
-  against 37 with 135, 37 of 39 snares with 18 false against 25, 149 of 155
-  hats against 146, and the bass riff 96 of 138 notes against 94. A truth of
-  that riff written from memory had its first note an octave low, the
-  synthesizer's doubling, and favoured the analysis 110 to 84: a truth is a
-  score, not a recollection. The weights are installed on the development
-  machine to be judged by ear and stay out of the tree; the frame model hears drums
-  better and melodies worse, a synthesizer's domain more steps will not
-  leave, which real recordings with their notes in the corpus are for.
-
-- The seventh round changed one thing a run on the sixth's recipe, each run
-  40000 loops (400 held out) over 40000 steps on the same GPU. 7a heard 229
-  bands in place of eighty: held-out decoders 0.92 against 0.99, the bench
-  under the sixth (0.452 clean, 0.451 augmented), and on the recordings Für
-  Elise's register 363 of 869 against 266 (the analysis 444) and the pop
-  song's riff 127 of 138 against 96. 7b trained the same model on a corpus
-  nearer a real mix (a swell, two equaliser bands, a compressor, halls, a
-  pedal's releases, a noise floor in half the loops, generated loops without
-  their drums or bass at times): level with the sixth on its loops (0.508,
-  0.458), and on the recordings the best model then, Für Elise's register 425
-  and its melody line 240 of 611 against the analysis's 205, the pop song's
-  riff 127 with 67 extra and its kicks 47 false against the analysis's 135,
-  the intro's register 42 against 37, the origin's 32 against 50. 7c put
-  three convolutions before the input layer: held-out 0.86 against 7b's
-  1.13, the bench past the analysis on 7b's rougher loops (0.436 against
-  0.418 clean, 0.448 against 0.400 augmented), the recordings level with
-  7b but the pop song's snare 39 false against 5. 7d split the layers into
-  towers over 7c's convolutions, onset and drums on two layers and the rest
-  on four: held-out 0.86, no better on the bench or the recordings.
-- The eighth round followed Für Elise's soft notes. Counted by the
-  recording's level (`truth`), 7b heard 67% of the register's loudest notes
-  and 11% of those 18 dB or more down, the analysis 76% and none. Of 7b's
-  misses its own pitch output cleared the decoder's floor for 100 of 104
-  loud ones and 122 of 135 at 6 to 12 dB down, which the two-line path
-  dropped where a pedal leaves earlier notes ringing as strongly as the new
-  one; below 18 dB the frame model itself faded, its input (log1p of a hundred
-  times the energy) keeping 0.3% of a loud note's contrast there, a true
-  logarithm 59%. The frame model gained a strike head for each pitch, the melody
-  register's notes read from its strikes any number at once, and an input of
-  each band in dB against the frame's own level, the level an input of its
-  own. 8b, on 7c's convolutions and 7b's corpus: the bench 0.501 clean, its
-  melody 0.16 the first past the analysis's 0.13, and 0.409 augmented. At a
-  strike threshold of 0.5 it heard 739 of Für Elise's 869 register notes and
-  73% of those 18 dB down, with five times too many notes (the register's F1
-  0.26). Swept on Für Elise, the origin and the intro, the F1 is best at 0.9
-  on the three together (0.585, 0.546 and 0.630), the default since, past
-  7b's 0.554, 0.520 and 0.627 on each and under the analysis's 0.633 and
-  0.699 on the first two; there the notes 18 dB down are 19% heard against
-  7b's 11%, and at 0.95 only 5%. A head trained with a
-  positive weight w scores a posterior p as wp/(wp + 1 - p), so the strike
-  head's half-sure is 0.95, and a soft note struck scores as a false strike
-  does. Three filters on the strikes (the pitch must sound at 0.9 of the
-  reference within the shortest note, a stronger strike's octave, twelfth or
-  double octave is its partial, and a strike within 0.12 s of the pitch's
-  last is none) took the mean F1 over the three to 0.616 at a threshold of
-  0.85 (0.600, 0.632, 0.617), against 0.587 at 0.9 without them and the
-  analysis's 0.629. Scored by note onsets instead of order, the F1 agrees
-  with truth's (0.590 against 0.585 for 8b at 0.9), so the extra notes are
-  extra, not chords out of order. On the bench they cost the frame model 0.007
-  clean and 0.004 augmented (its melody 0.15 to 0.13 and 0.11 to 0.09),
-  spread over the filters: none alone accounts for it. Listening to that
-  Für Elise found two of its mistakes in the decoder: the partial filter
-  dropped an A4 struck with the bass A2 two octaves under, and a new note's
-  attack set off strikes of 0.85 to 0.96 on the pitches still ringing under
-  the pedal, where a real strike again read 0.97 or more. With partials
-  compared only inside the melody register and a ringing pitch restarted only
-  over 0.95 (`strike_again`), the threshold came down to 0.8: pooled over the
-  three recordings, F1 0.674 against round nine's 0.604 (precision 0.749
-  against 0.548, recall 0.613 against 0.672) and the analysis's 0.633, the
-  frame model past it for the first time; Für Elise alone 0.680. The bench stays
-  0.491 clean, its augmented melody falling from 0.09 to 0.06; a bar of 0.90
-  keeps the bench whole (0.498, 0.403) at 0.646 pooled. Listening to that
-  clip found a ringing B4 renewed by the attack of a C5 a semitone up (0.98
-  against 0.99) and of an A4 a tone down (0.95 against 0.99), each a false B4
-  on a downbeat; with a renewing strike also the surest within a tone, pooled
-  F1 0.678 (precision 0.765, recall 0.610) and the bench unchanged.
-- The tenth round (10a) gave the frame model release and velocity heads, on a corpus
-  of the string and modal voices that fade as they ring, with soft phrases 20
-  to 30 dB down. Over 8b on the same bench loops: 0.509 clean (melody 0.22
-  against 0.16) and 0.473 augmented (0.16 against 0.12), against 0.502 and
-  0.479. On the recordings it read 0.530 pooled at 8b's thresholds, because the
-  release head ended notes under the pedal and their echoes then restarted them
-  on the lower bar. With a released pitch restarted only over `strike_again` and
-  thresholds of its own (0.8, 0.94, `release` 0.9): 0.650 (precision 0.80, recall
-  0.55), under 8b's 0.678. Its strike peaks alone against the score reach F1 0.51
-  against 8b's 0.53. Better synthesis moved the engine's loops, not the
-  recordings, and a lone line 30 dB under the rest is labelled but inaudible,
-  which may have blurred the strike head. Through a codec, a clip's rip differs
-  from its rip uncoded: F1 between the two 0.93 at Opus 96 kbps and 0.82 at 32 on
-  lossless piano notes, 0.85 and 0.71 on the pop song, though the input moves only
-  about 1 dB; the recordings are themselves Opus at 133 to 141 kbps.
-- The eleventh and twelfth rounds trained one shape on one corpus, each
-  hearing it differently, since a model's input is worked out from the stored
-  frames as it trains: corpus 11 (40000 loops of four bars, `aug gen codec`,
-  400 held out), 40000 steps of batch 8 over windows of 512 frames, seed 1,
-  the convolutions 16x3x3/1, 16x3x3/2 and 32x3x3/2, width 256, eight heads,
-  four layers, feed-forward 1024, 64 frames either side. 11a heard the frames
-  as they are (3,715,598 weights). 12b added a noise floor in training, over
-  the stored frames in half the windows: the bands under a low corner of 60 to
-  400 Hz cut by up to 24 dB over an octave and a half, those over a high
-  corner of 3 to 10 kHz by up to 24 dB an octave, a ripple of up to 6 dB over
-  nine knots, and a steady floor added in power, its band mean -78 to -50 dB,
-  shaped as the phone take's room in two draws of five and otherwise pink,
-  brown or flat with up to 4 dB of ripple, where the corpus's own noise sits
-  40 to 65 dB under the loop (the trainer's `--channel`). 12a
-  added PCEN as a second channel over 12b's floor (3,715,742 weights). The F1
-  pooled over Für Elise, the origin and the intro as above, the melody
-  register as one line, each model at its best `strike` and `strike_again`
-  (release 0.9); then the same three played through laptop speakers and
-  recorded by a phone at 30 cm with a fan audible, cut back into pieces by
-  sync chirps:
-
-  ```
-                            clean   phone take
-  11a  neither              0.676   0.522
-  12b  noise floor          0.687   0.583
-  12a  noise floor, PCEN    0.711   0.623
-  ```
-
-  The sweeps were strike 0.75 to 0.9 by 0.05 against strike_again 0.92, 0.94
-  and 0.96 for 11a, and strike 0.7, 0.8 and 0.9 against strike_again 0.8,
-  0.85, 0.9, 0.94 and 0.96 for 12b and 12a; 11a's phone figure is the better
-  of two settings run by hand (strike 0.8, strike_again 0.8 or 0.94), a
-  narrower search. The phone take is not a clean test: it shaped the training
-  noise. Over the noise floor alone PCEN gained 0.024 clean and 0.040 on the
-  phone take; the floor gained 0.011 and 0.061 over neither. The rounds after,
-  real drums laid over (`--over`) and their labels' audibility, are in [Rip
-  training §11](rip-training.md#11-rounds-on-record).
-
-## 9. Decisions
+## 8. Decisions
 
 - **The decoders stay classical.** Tempo, beats and note cutting are solved
   problems with cheap, inspectable solutions; a model earns its place at the
@@ -1075,37 +568,35 @@ voice fit, the dictionary and the song, nine seconds on four cores:
   and carries the semitones left as `acc`, so the harmony, the chord following
   and the editor's rows keep their meaning while a transcript loses no note.
 - **The front end reads the tuning.** A440 is an assumption a recording need
-  not share: forty cents off put every pitch of the sample between two salience
-  rows, and no decoder downstream could have repaired the wobble that made.
+  not share: forty cents off puts every pitch between two salience rows, and
+  no decoder downstream can repair the wobble that makes.
   And the engine renders at it: a song played at A440 beside a recording forty
   cents flat sounds sharpened, a stretched string, before any note is judged.
 - **Two lines are one decoder, not the louder and the rest.** The louder
   pitch of each frame is not a line: a lead and a counter line a few notes
   apart trade places wherever one is momentarily louder, and a second pass
-  over what the first left finds fragments; the ninth pass assigned concurrent
-  notes by pitch order, which only holds while the lead stays the upper.
+  over what the first left finds fragments, and concurrent notes assigned by
+  pitch order hold only while the lead stays the upper.
   Decoded together, each line keeps its own continuity, and which is the lead
   is a cost, not a rule: the first line pays a little each frame to be the
   quieter, so it follows the louder line through a crossing and gives it up
   only over a rest or an inversion that lasts. A stream assignment after the
-  fact, by pitch, timbre and level over the notes both passes had cut, was
-  tried first and made the two recordings of the piece agree less: the notes
-  were already cut wrong.
+  fact, by pitch, timbre and level over the notes two passes of one line had
+  cut, cannot mend them: those notes are already cut wrong.
 - **The lead is a line's character, named by a rule.** Decoded together, the
   two lines are continuous, but the decoder's first line is the louder, and
-  on the origin recording the lead the user hears is the softer: a steady
-  line of short notes under a counter line of held notes. So the notes are
+  the lead a listener hears may be the softer: a steady line of short notes
+  under a counter line of held notes. So the notes are
   parted again by what each line keeps, pitch, length, strength and no two at
   once, which the decoder's loudness tie-break cannot see, and which line is
   the melody is a rule the listener can set, the busier by default, since no
-  one cue holds for all music: loudness failed here, pitch order failed in
-  the ninth pass. A note's strength is weighed against the register's
-  reference, not raw: raw, it outweighed every other cue by a hundred times
-  and the first parting followed loudness alone.
+  one cue holds for all music, neither loudness nor pitch order. A note's
+  strength is weighed against the register's reference, not raw: raw, it
+  outweighs every other cue and the parting follows loudness alone.
 - **What plays is said a pitch, and named only where a name is sure.** A head
-  a frame names one note of it, the highest, so the bass was asked on 2.6% of
-  a corpus's frames and a line under the melody never; and `unknown` taught as
-  a class was a third of the labels, every engine voice far from the bank. A
+  a frame names one note of it, the highest, so the bass is seldom asked and
+  a line under the melody never; and `unknown` taught as a class takes every
+  engine voice far from the bank. A
   head a pitch says what plays each note, a line under another as the one
   over it, and a voice of genes is what every note gets, a name being extra:
   given where its share over the note passes what the notes of a family the
@@ -1122,7 +613,7 @@ voice fit, the dictionary and the song, nine seconds on four cores:
   `agree` holds two rips of one piece to each other the same way where no
   score is to hand, by line and with the melody register as one, since the
   two may part its lines differently.
-- **A rhythm tapped out is a truth.** The user could write the piece's
+- **A rhythm tapped out is a truth.** A listener can write a piece's
   structure down by ear, the lead's note lengths and that the second line
   runs in eighths, but not the pitches of a fast line under others. A truth
   without pitches, `unit eighth` and `(1-2-3---4-56---)x3 a-a-a-a-a-a-a`,

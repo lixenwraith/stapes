@@ -28,7 +28,7 @@ an entry here that names one links there.
 
 ## C
 
-**candidate** (also: install, the four, a trade) — A round's file as it is read for installing, by [the rule](rip-training.md#reading-a-candidate): notes, drums, bars and voices on recordings no round trained on, under settings fitted for it, each holding, gaining or losing against what is installed beyond chance; a part that gains is installed without the part that does not, a gain beside a loss is a trade for Lixen, and a file that gains nowhere starts the next round. [Rip training §11](rip-training.md#reading-a-candidate)
+**candidate** (also: install, the four, a trade) — A round's file as it is read for installing, by [the rule](rip-training.md#11-reading-a-candidate): notes, drums, bars and voices on recordings no round trained on, under settings fitted for it, each holding, gaining or losing against what is installed beyond chance; a part that gains is installed without the part that does not, a gain beside a loss is a trade for Lixen, and a file that gains nowhere starts the next round. [Rip training §11](rip-training.md#11-reading-a-candidate)
 
 **channel** (also: plane, `--channel`, `CHANNEL`, noise bank, `noise.npz`, `make_noise.py`) — two senses.
 - *Input*: one plane of 230 inputs a frame the rip's models read, the first the bands in dB over the frame's level and the level, a second, when the file has one, each band's **PCEN** and their mean. [Rip training §4](rip-training.md#4-the-input-two-planes) · `tool/rip-train` `ripmodels.features`
@@ -62,7 +62,7 @@ an entry here that names one links there.
 
 ## L
 
-**lead rule** (also: `rip ... lead`) — Which of the melody register's two lines a **rip** calls the melody, the audio library's rule ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#l)), which `rip ... lead` names. [Stapes §4](stapes.md#4-the-rips-verbs) · [Rip design §9](rip-design.md#9-decisions) · `stapes` `cmdRip`
+**lead rule** (also: `rip ... lead`) — Which of the melody register's two lines a **rip** calls the melody, the audio library's rule ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#l)), which `rip ... lead` names. [Stapes §4](stapes.md#4-the-rips-verbs) · [Rip design §8](rip-design.md#8-decisions) · `stapes` `cmdRip`
 
 **labels pass** (also: `corpus ... labels`, `labels`, `melLength`) — A corpus's line run with `labels` after it: every label of the line and `corpus.json` written over those on disk as the line's export writes them, byte for byte, and nothing rendered, so a field the labels gain reaches a corpus in seconds. A label takes only its length from the render, which the pass reads from the loop's `.mel` header; a `sampled` line's recordings are read for their level and length, and a `from` line's recordings are labelled again from the list, each known by its label's `source`. [Rip training §3](rip-training.md#labels-without-a-render) · `stapes` `exportCorpus`, `corpusFrom`, `melLength`
 
@@ -97,7 +97,7 @@ an entry here that names one links there.
 
 **live rip** (also: `live`, `RipStream`, `Bars`, `Close`, `Final`, frozen bar, behind the sound, `pace`, the ear's wait, `FrontEnd.Ahead`) — The library's rip that follows a recording as it plays, each bar frozen once two follow it from the sixth bar on, `Final` the whole rip afterwards, its ear waiting the frame model's reach (2.97 s) so that its frames are the offline rip's, [Rip design §2](rip-design.md#2-stages) and [§7](rip-design.md#7-plan). `live` drives it over a file in blocks, says each bar as it freezes with how far behind the sound, from the bar's end to where the sound is then, and measures the stream against the offline rip, [Stapes §4](stapes.md#4-the-rips-verbs); the host to come is vif's Android app. `stapes` cmd_doc.go
 
-**validation corpus** (also: `--validate`, `~/ripcorpus-val`) — Recordings none of the tests hold (GuitarSet's player 04, 19 MusicNet pieces), cut into fixed windows and scored every `--every` steps; the exported step is the best by that loss, a notes model's by its strikes' F1 there (`struck`: the strike head's peaks over the decoder's bars against the labelled strikes within four frames), [Rip training §8](rip-training.md#8-a-training-step); [Rip design §3](rip-design.md#3-learning).
+**validation corpus** (also: `--validate`) — Recordings none of the tests hold (GuitarSet's player 04, 19 MusicNet pieces), cut into fixed windows and scored every `--every` steps; the exported step is the best by that loss, a notes model's by its strikes' F1 there (`struck`: the strike head's peaks over the decoder's bars against the labelled strikes within four frames), [Rip training §8](rip-training.md#8-a-training-step); [Rip design §3](rip-design.md#3-learning).
 
 **further parts** (also: `RipNote.Further`, `MIDIScore.Further`, every-part row) — A MIDI file's parts past melody, under and bass: in the transcript and the labels since audio v0.13.0 and stapes v0.12.2, matched in the melody register or, under E3, the bass's; `truth` prints an every-part row.
 
@@ -107,7 +107,7 @@ an entry here that names one links there.
 
 **PitchNet** (also: harmonic stack, `--pitchnet`, notes model, `ripnotes.bin`) — The rip's convolutions-only model, the same weights at every pitch, over both input planes stacked by harmonic, [Rip training §4 and §7](rip-training.md#7-the-models); `ripmodels.py`'s `PitchNet`. Its weight file, the **root**'s `ripnotes.bin`, gives the notes beside `ripframe.bin`, [Rip design §2](rip-design.md#2-stages), [Rip training §9](rip-training.md#9-the-weight-file); audio's `ripmodels.NotesSpec`.
 
-**PCEN** (also: `--pcen`, `PCEN`, `WARM`) — The frame model's optional second input channel, each band's per-channel energy normalization and their mean, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#p)): `train.py --pcen`, `PCEN=pcen` to the pipeline, trains a model of two channels, reading 128 frames before each window (`WARM`) so the average has settled where the window starts. See also **frame model**, **channel**. [rip-train README](../tool/rip-train/README.md) · [Rip training §4](rip-training.md#4-the-input-two-planes) · [Rip design §8](rip-design.md#8-measured-on-the-sample-recording) · `tool/rip-train` `ripmodels.features`
+**PCEN** (also: `--pcen`, `PCEN`, `WARM`) — The frame model's optional second input channel, each band's per-channel energy normalization and their mean, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#p)): `train.py --pcen`, `PCEN=pcen` to the pipeline, trains a model of two channels, reading 128 frames before each window (`WARM`) so the average has settled where the window starts. See also **frame model**, **channel**. [rip-train README](../tool/rip-train/README.md) · [Rip training §4](rip-training.md#4-the-input-two-planes) · `tool/rip-train` `ripmodels.features`
 
 ## R
 

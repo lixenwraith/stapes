@@ -696,8 +696,8 @@ about as long as the heaviest test
 - Affected files: every commit
 
 v0.31.1 gave the test songs neutral labels in the docs and the code. Older
-trees, commit messages and squash titles still name the songs and their
-artists. One `git filter-repo` pass with `--replace-text` and
+trees and three commit messages still name the songs, as do PR bodies on
+GitHub. One `git filter-repo` pass with `--replace-text` and
 `--replace-message`, from the mapping kept in the project's files outside the
 repository since it spells the names, takes them out of every branch. What it
 costs, and what it does not reach:

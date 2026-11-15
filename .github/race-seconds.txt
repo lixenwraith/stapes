@@ -5,6 +5,8 @@
 129 TestRipFitsVoicesAndCompressesToASong
 120 TestAJudgeBesideTheModelRulesItsRips
 97 TestLiveKeepsTheRipRipMakes
+87 TestALoopsLevelIsDrawnWhateverItsParts
+79 TestALoopOfRecordedNotesAloneCarriesAir
 66 TestTuneTruthRefusesASetThatCostsACondition
 54 TestTuneTruthSearchesTheModelsThresholds
 50 TestTuneSearchesTheRipParameters
@@ -20,8 +22,6 @@
 24 TestBenchGradesEachMeterAndListsEveryLoop
 23 TestDocumentsMadeHereSaveAsMarshalled
 23 TestLabelsWritesWhatTheExportWrote
-18 TestACorpusOfMetersLabelsItsBars
-14 TestCorpusGeneratesPartsTheBankNeverHad
 13 TestACorpusGoesOnWhereItStopped
 11 TestSampledLinesPlayAsLabelled
 10 TestCompressMergesScatteredFalseHitsNotNotes

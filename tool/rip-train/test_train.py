@@ -40,6 +40,12 @@ def label(events, frames=40, **more) -> train.Label:
     return train.Label({"events": events, **more}, frames, MANIFEST)
 
 
+def rendered(events, frames, bars) -> train.Label:
+    """a rendered loop's label, bars of 4/4 held at 100 bpm from frame 0, its beats and bar lines as corpus lists them"""
+    beats = [int(k * 51.68 + 0.5) for k in range(bars * 4)]
+    return label(events, frames, bpm=100, bars=bars, beats=beats, downbeats=beats[::4])
+
+
 class Frames:
     """a loop's frames in memory, as train.MelFile gives them"""
 
@@ -277,22 +283,19 @@ class Heard(torch.nn.Module):
 
 
 class TheBeatAndTheBarLine(unittest.TestCase):
-    def test_a_rendered_loop_is_asked_the_beats_and_lines_of_its_grid(self):
-        """A loop's beats are its meter's own note, a quarter in 4/4 and 3/4 and an eighth in 6/8, on the frames its
-        tempo's sixteenth of whole samples rounds to (6,615 at 100 bpm, 12.92 frames), a bar line every bar's beats
-        from frame 0, each marked a frame either side and asked to a frame short of the mark of the end's line,
-        which no sound gives; a window takes its share of them."""
-        quarters, eighths = [0, 52, 103, 155, 207, 258, 310, 362], [0, 26, 52, 78, 103, 129, 155, 181, 207, 233, 258, 284]
-        for meter, frames, beats, lines, end in ((None, 414, quarters, [0, 207], 413), ("3/4", 311, quarters[:6], [0, 155], 310), ("6/8", 311, eighths, [0, 155], 310)):
-            with self.subTest(meter=meter):
-                lab = label([], frames, bpm=100, bars=2, **({"meter": meter} if meter else {}))
-                t = lab.window(0, frames)
-                self.assertEqual(t["beat"].tolist(), marks(frames, beats))
-                self.assertEqual(t["downbeat"].tolist(), marks(frames, lines))
-                self.assertEqual(t["metered"].tolist(), [1] * (end - 1) + [0] * (frames - end + 1))
-                part = lab.window(52, 155)
-                for k in ("beat", "downbeat", "metered"):
-                    self.assertEqual(part[k].tolist(), t[k][52:155].tolist())
+    def test_a_rendered_loop_is_asked_the_beats_and_lines_its_label_lists(self):
+        """A rendered loop's beats and bar lines are those its label lists, wherever its tempo and its start put them,
+        a bar line past frame 0 after a pickup, each marked a frame either side; it is asked over all its frames but
+        the last two, which a beat at its end, unlisted, would mark; a window takes its share of them."""
+        frames, beats, lines = 365, [0, 51, 103, 156, 208, 261, 313], [51, 208]  # 3/4 from a beat's pickup, slowing
+        lab = label([], frames, bpm=100, bars=2, meter="3/4", beats=beats[::-1], downbeats=lines)
+        t = lab.window(0, frames)
+        self.assertEqual(t["beat"].tolist(), marks(frames, beats))
+        self.assertEqual(t["downbeat"].tolist(), marks(frames, lines))
+        self.assertEqual(t["metered"].tolist(), [1] * (frames - 2) + [0] * 2)
+        part = lab.window(52, 155)
+        for k in ("beat", "downbeat", "metered"):
+            self.assertEqual(part[k].tolist(), t[k][52:155].tolist())
 
     def test_a_recording_is_asked_the_beats_its_label_lists(self):
         """A recording's beats and bar lines are those its label lists, as its list's beats file gave them, in any
@@ -309,10 +312,10 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         """A window read along a tempo that sways takes the beat and the bar line nearest along its curve, as it
         takes every target: each stays on the hit it fell on, and the beats stand no steady grid apart."""
         frames, kick, hat = 1654, 0, 2  # eight bars of 4/4 at 100 bpm, a hat on every beat and a kick on every line
-        grid = label([], frames, bpm=100, bars=8)
+        grid = rendered([], frames, 8)
         hits = [{"frame": f, "end": f, "drum": hat, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]} for f in grid.beats.tolist()]
         hits += [{**h, "drum": kick} for h in hits[::4]]
-        _, t = train.bent(Frames(frames), label(hits, frames, bpm=100, bars=8), 512, 1, None, random.Random(2), None)
+        _, t = train.bent(Frames(frames), rendered(hits, frames, 8), 512, 1, None, random.Random(2), None)
         asked = t["metered"] > 0
         self.assertGreater(int(asked.sum()), 400)
         self.assertEqual(t["beat"][asked].tolist(), t["drums"][asked, hat].tolist())
@@ -323,8 +326,8 @@ class TheBeatAndTheBarLine(unittest.TestCase):
     def test_a_window_with_no_grid_of_its_own_is_asked_no_beat(self):
         """A window spliced of two clips and one real drums are laid under hold hits of another grid, and the padding
         past a loop's end holds none: each asks the beat and the bar line nothing, where a plain window asks its loop's."""
-        frames, rng = 414, random.Random(1)  # two bars of 4/4 at 100 bpm, the end's line at frame 413
-        mel, lab = Frames(frames), label([{"frame": 52, "end": 52, "drum": 0, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]}], frames, bpm=100, bars=2)
+        frames, rng = 414, random.Random(1)  # two bars of 4/4 at 100 bpm
+        mel, lab = Frames(frames), rendered([{"frame": 52, "end": 52, "drum": 0, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]}], frames, 2)
         _, spliced = train.shuffled(lambda rng: (mel, lab), 256, 1, rng)
         _, laid = train.sample(mel, lab, 0, 256, 1, (mel, lab, 0.0), rng)
         _, plain = train.sample(mel, lab, 200, 256, 1)
@@ -336,7 +339,7 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         that says everywhere the share of those frames a beat marks scores that share's entropy, and no lower saying
         more or less, which is what audio reads a posterior for. Both count whole in the total."""
         frames = 414  # two bars of 4/4 at 100 bpm in a window of 512: 412 frames asked, 23 in a beat's mark and 5 in a line's
-        mels, tgs, _ = train.validation([(Frames(frames), label([], frames, bpm=100, bars=2))], 512, 1)
+        mels, tgs, _ = train.validation([(Frames(frames), rendered([], frames, 2))], 512, 1)
         model = Heard(512)
 
         def loss(beat, downbeat):
@@ -358,7 +361,7 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         peak right within four frames of a beat the labels give, as the strikes' is. Over a corpus that lists no
         beat it says none is asked and gives neither head's loss, which over no frame would read as a perfect one."""
         frames = 414  # two bars of 4/4 at 100 bpm: beats at 0, 52, 103, 155, 207, 258, 310 and 362, lines at 0 and 207
-        loop, recording = label([], frames, bpm=100, bars=2), label([note(0, 10, 60, "guitar")], frames, source="a.wav")
+        loop, recording = rendered([], frames, 2), label([note(0, 10, 60, "guitar")], frames, source="a.wav")
         model = Heard(512)
         beat, downbeat = model.cfg.slice("beat").start, model.cfg.slice("downbeat").start
         model.y[0, [0, 54, 103, 155, 180, 258, 310, 413], beat] = 9.0  # six beats heard, one two frames late; one that is none; one past the frames asked
@@ -371,7 +374,7 @@ class TheBeatAndTheBarLine(unittest.TestCase):
         self.assertEqual((none["beats"], "beat" in none, "downbeat" in none, "onset" in none), (None, False, False, True))
         with tempfile.TemporaryDirectory() as d:
             os.mkdir(os.path.join(d, "recordings"))
-            corpus(d, [{"bpm": 100, "bars": 1, "events": []}] * 2)
+            corpus(d, [{"bpm": 100, "bars": 1, "beats": [0, 52], "downbeats": [0], "events": []}] * 2)
             corpus(os.path.join(d, "recordings"), [{"source": "a.wav", "events": [note(0, 10, 60, "guitar")]}])
             said = run("--corpus", d, "--out", os.path.join(d, "out.bin"), "--holdout", "1", "--validate", os.path.join(d, "recordings")).splitlines()
         held, validation = (next(line for line in said if line.startswith(f"step 1 {name} ")) for name in ("held-out", "validation"))

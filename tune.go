@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"maps"
 	"math"
 	"math/rand/v2"
@@ -32,50 +31,58 @@ import (
 
 // tuneOptions sizes a search: the loops rendered and their bars, the generations
 // run over a pool of candidates, the seed every draw follows, whether the loops
-// are augmented, a room, a mix and random voices behind each, whether parts are
-// generated, beats, melodies and bass lines the bank never had, and whether a
-// share of the loops is in another meter than the bank's 4/4
+// are augmented, a room, a mix and random voices behind each, and whether the
+// arranger writes them in place of the bank's patterns
 type tuneOptions struct {
 	loops, bars, generations, pool int
 	seed                           uint64
 	aug, gen                       bool
-	glide                          bool           // a share of the generated notes bend into the next or scoop, and of the voices sway
-	meters                         bool           // a third of the loops in 3/4 or 6/8, every part generated in it
+	glide                          bool           // a share of the arranged notes bend into the next or scoop, and of the voices sway
+	meters                         bool           // the loops in 2/4 to 12/8 by corpusMeters' shares, and three in ten starting part-way into a bar
+	overlaps                       float64        // the share of the loops of single notes overlapping and no beat; none at 0
+	steady                         bool           // the arranged loops keep their tempo and start on a bar line, as a rip's score asks
 	nowav                          bool           // an export keeps the frames and the labels only
-	codec                          bool           // an export sends a third of its loops through a lossy codec and back
+	codec                          bool           // a third of the loops go through a lossy codec and back
 	labels                         bool           // an export writes each loop's label over the one on disk and renders nothing
 	tempos                         []int          // the tempos the loops cycle through; tuneTempos when nil
 	part, parts                    int            // an export renders the loops i%parts == part; all when parts is 0
 	skip                           func(int) bool // the loops drawn but not rendered
-	samples                        *sampleSet     // recorded notes some tonal slots play on; none when nil
-	midis                          []string       // arrangements most loops play bars of, in place of drawn patterns
-	dense                          bool           // those arrangements play every part, the inner ones softer, on instruments of their own
+	samples                        *sampleSet     // recorded notes some tonal parts play on; none when nil
 	guard                          float64        // the F1 a set tune truth tries may take from any condition's before it is refused
 	frames                         string         // where tune truth keeps each recording's frames between runs; "" hears them every run
 }
 
-// tuneLoop is one rendered loop, what made it, the rip a perfect listener makes
-// of it, and the voices its tonal tracks were played with
+// tuneLoop is one loop, rendered unless an export writes labels alone: what
+// made it, its label, the rip a perfect listener makes of one that starts on a
+// bar line, and the voices its tonal parts were played with
 type tuneLoop struct {
 	audio    []float64
 	want     *audio.Rip
-	slots    [audio.MusicSlots]audio.PatternID
+	label    corpusLoop
+	slots    [audio.MusicSlots]audio.PatternID // a bank loop's patterns
+	texture  string                            // the parts an arranged loop plays, bank or overlap
 	bpm      int
 	meter    audio.Meter
 	root     int
 	scale    audio.ScaleID
 	voices   map[string]*audio.VoiceDef
-	families map[string]int                 // each voice's family, an index into audio.RipFamilies
-	tuning   float64                        // cents off A440 the loop was rendered at
-	sampled  [audio.MusicSlots]*sampledLine // the slots played on recorded notes, nil for the engine's voice
+	families map[string]int // each voice's family, an index into audio.RipFamilies
+	tuning   float64        // cents off A440 the loop was rendered at
+	tonal    int            // its tonal parts
+	sampled  int            // those played on recorded notes
 }
 
 // tempos spread the corpus over the sequencer's range
 var tuneTempos = []int{96, 112, 128, 140, 156, 176}
 
-// tuneMeters are the meters other than 4/4 a corpus of meters draws a third of
-// its loops in: three quarters, and two dotted quarters of three eighths
-var tuneMeters = []audio.Meter{{Num: 3, Den: 4}, {Num: 6, Den: 8}}
+// The level a loop is laid at: its loudest half second's RMS drawn evenly
+// between loopQuiet and loopLoud dBFS, its peak held at loopPeak
+const (
+	loopQuiet  = -32.0
+	loopLoud   = -14.0
+	loopPeak   = -1.0
+	loopWindow = 0.5 // seconds a loop's level is measured over, its loudest window
+)
 
 func cmdTune(s *Session, a []string) error {
 	o := tuneOptions{loops: 12, bars: 4, generations: 8, pool: 16, seed: 1, guard: 0.01}
@@ -138,9 +145,8 @@ func cmdTune(s *Session, a []string) error {
 	return s.tune(o, file)
 }
 
-// corpus renders loops of the registered rhythm, melody and bass patterns, drawn
-// by the seed over the tempos and the keys, each with its expected rip, all held
-// at once: what a search over them wants
+// corpus renders the loops, each with its expected rip, all held at once: what
+// a search over them wants
 func (s *Session) corpus(o tuneOptions) ([]tuneLoop, error) {
 	loops := make([]tuneLoop, 0, o.loops)
 	err := s.eachLoop(o, func(_ int, l tuneLoop) error {
@@ -150,13 +156,16 @@ func (s *Session) corpus(o tuneOptions) ([]tuneLoop, error) {
 	return loops, err
 }
 
-// eachLoop renders the corpus's loops one at a time to visit, so an export of
-// thousands holds one in memory
+// eachLoop makes the corpus's loops one at a time to visit, so an export of
+// thousands holds one in memory: of the registered rhythm, melody and bass
+// patterns, drawn by the seed over the tempos and the keys, or arranged, or
+// single notes overlapping. Each word draws from a stream of its own, so a loop
+// it leaves alone is the same with it and without.
 func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error {
 	var byRole [audio.MusicSlots][]audio.PatternID
 	for _, p := range audio.RegisteredPatterns() {
 		if strings.HasPrefix(p.Name, "corpus_") {
-			continue // a generated part of an earlier loop, not the bank's
+			continue // a part of an earlier loop, not the bank's
 		}
 		if p.ID == audio.PatternMelodyGen {
 			continue // the sequencer writes its lead bar by bar as it plays: no label reads it
@@ -166,14 +175,15 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 			byRole[p.Role-1] = append(byRole[p.Role-1], p.ID)
 		}
 	}
-	if len(byRole[0]) == 0 || len(byRole[1]) == 0 || len(byRole[3]) == 0 {
-		return errors.New("tune needs registered rhythm, melody and bass patterns (builtin pattern, apply)")
+	bank := len(byRole[0]) > 0 && len(byRole[1]) > 0 && len(byRole[3]) > 0
+	if !o.gen && !bank {
+		return errors.New("a corpus without gen needs registered rhythm, melody and bass patterns (builtin pattern, apply)")
 	}
 	rng := rand.New(rand.NewPCG(o.seed, 0x5bd1e995))
 	for i := range o.loops {
 		var slots [audio.MusicSlots]audio.PatternID
 		for slot, pool := range byRole {
-			if len(pool) > 0 {
+			if len(pool) > 0 && bank {
 				slots[slot] = pool[rng.IntN(len(pool))]
 			}
 		}
@@ -187,92 +197,37 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 		if o.skip != nil && o.skip(i) {
 			continue // drawn all the same, so the loops after it are an unbroken run's
 		}
-		// the meter, the augmentation and the generated parts draw from streams
-		// of their own, so a loop's drawn patterns and key are the same with and
-		// without, and a loop in 4/4 the same with meters and without
-		var meter audio.Meter
-		if o.meters {
-			mrng := rand.New(rand.NewPCG(o.seed^0x3e7e3e7e, uint64(i)+1))
-			if mrng.Float64() < 1.0/3 {
-				meter = tuneMeters[mrng.IntN(len(tuneMeters))]
-			}
-		}
-		other := meter != audio.Meter{} // the bank's patterns are 4/4: every part is generated
-		if o.gen || other {
-			grng := rand.New(rand.NewPCG(o.seed^0x5a5a5a5a, uint64(i)+1))
-			glrng := rand.New(rand.NewPCG(o.seed^0x676c6964, uint64(i)+1))
-			degrees := len(audio.ScaleIntervals(scale))
-			for _, g := range []struct {
-				slot int
-				make func(*rand.Rand, int, audio.Meter) *audio.Pattern
-			}{{0, genBeat}, {1, genMelody}, {2, genAccompaniment}, {3, genBass}} {
-				if grng.Float64() >= 0.6 && (!other || g.slot == 2) {
-					continue
-				}
-				p := g.make(grng, degrees, meter)
-				if o.glide {
-					glide(glrng, p, root, scale, float64(audio.SamplesPerStep(bpm))/audio.AudioSampleRate)
-				}
-				p.ID = audio.PatternIDByName(p.Name) // the last loop's, replaced in place
-				if id, err := s.eng.DefinePattern(p); err == nil {
-					slots[g.slot] = id
-				} else if other {
-					slots[g.slot] = audio.PatternSilence
-				}
-			}
-			// much of a recording's music has no drums or no bass, a solo piano
-			// neither, where the bank's loops always had both under the melody
-			if grng.Float64() < 0.3 {
-				slots[0] = audio.PatternSilence
-			}
-			if grng.Float64() < 0.15 {
-				slots[3] = audio.PatternSilence
-			}
-		}
-		if len(o.midis) > 0 {
-			mrng := rand.New(rand.NewPCG(o.seed^0x6d696469, uint64(i)+1))
-			if mrng.Float64() < 0.75 {
-				if got, ok := s.midiLoop(o, mrng); ok {
-					slots, bpm, root, scale, meter = got.slots, got.bpm, got.root, got.scale, got.meter
-				}
-			}
-		}
-		arng, sway := rand.New(rand.NewPCG(o.seed^0xa5a5a5a5, uint64(i)+1)), (*rand.Rand)(nil)
-		if o.glide {
-			sway = rand.New(rand.NewPCG(o.seed^0x73776179, uint64(i)+1))
-		}
-		voices, families, restore := s.loopVoices(slots, o.aug, arng, sway, !o.labels)
-		cents := 0.0
-		if o.aug {
-			cents = arng.Float64()*100 - 50 // a recording's pitch standard, within a quarter tone of A440
-		}
-		played, srng := slots, (*rand.Rand)(nil)
-		var sampled [audio.MusicSlots]*sampledLine
+		stream := func(salt uint64) *rand.Rand { return rand.New(rand.NewPCG(o.seed^salt, uint64(i)+1)) }
+		var srng *rand.Rand
 		if o.samples != nil {
-			srng = rand.New(rand.NewPCG(o.seed^0x3c3c3c3c, uint64(i)+1))
-			var err error
-			if played, sampled, err = o.samples.draw(slots, meter, o.bars, bpm, root, scale, cents, srng, !o.labels); err != nil {
-				restore()
-				return err
-			}
+			srng = stream(0x3c3c3c3c)
 		}
-		l := tuneLoop{slots: slots, bpm: bpm, meter: meter, root: root, scale: scale, voices: voices, families: families, tuning: cents, sampled: sampled}
-		if !o.labels { // a label holds what was drawn, and nothing of how it sounds
-			s.eng.SetTuning(cents)
-			buf, err := s.eng.RenderMusic(played, bpm, meter, o.bars, root, scale, nil, int64(i+1))
-			s.eng.SetTuning(0)
-			restore()
-			if err != nil {
-				return err
+		var (
+			m   *music
+			err error
+		)
+		orng := stream(0x6f766572)
+		a := newArranger(stream(0x5a5a5a5a), stream(0x3e7e3e7e), o.bars, bpm, o.meters, !o.steady)
+		switch {
+		case o.overlaps > 0 && orng.Float64() < o.overlaps:
+			m, err = s.overlap(orng, o.samples)
+		case o.gen || a.m != (audio.Meter{}) || a.bars != o.bars: // the bank is 4/4 from its bar line
+			var glrng *rand.Rand
+			if o.glide {
+				glrng = stream(0x676c6964)
 			}
-			if o.samples != nil {
-				buf = mixSampled(buf, sampled, srng)
-			}
-			if o.aug {
-				buf = degrade(buf, arng)
-			}
-			l.audio, l.want = buf, audio.ExpectedRip(slots, bpm, meter, o.bars, root, scale, nil)
+			m, err = s.arrange(a, o.samples, srng, glrng, o.steady)
+		default:
+			m = bankMusic(slots, bpm, o.bars, root, scale)
 		}
+		if err != nil {
+			return err
+		}
+		l, err := s.play(o, i, m, srng)
+		if err != nil {
+			return err
+		}
+		l.slots = slots
 		if err := visit(i, l); err != nil {
 			return err
 		}
@@ -280,407 +235,390 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 	return nil
 }
 
-// midiPlay is a stretch of an arrangement as a loop's parts
-type midiPlay struct {
-	slots [audio.MusicSlots]audio.PatternID
-	bpm   int
-	root  int
-	scale audio.ScaleID
-	meter audio.Meter
-}
-
-// inner spreads an arrangement's inner notes over up to three tracks by octave,
-// each up to 24 dB under the file's own level, so a soft line sounds under a ring
-func inner(tracks []audio.Track, rng *rand.Rand) []audio.Track {
-	n := 1 + rng.IntN(3)
-	out := make([]audio.Track, n)
-	gain := make([]float64, n)
-	for t := range out {
-		out[t] = audio.Track{Humanize: tracks[0].Humanize}
-		gain[t] = math.Pow(10, -24*rng.Float64()/20)
+// bankMusic is a bank loop: the slots' patterns for bars bars at bpm, a part a track
+func bankMusic(slots [audio.MusicSlots]audio.PatternID, bpm, bars, root int, scale audio.ScaleID) *music {
+	m := &music{kind: "bank", root: root, scale: scale}
+	for range bars {
+		m.timeline, m.heads = append(m.timeline, slots), append(m.heads, audio.BarHead{BPM: bpm})
 	}
-	for _, tr := range tracks {
-		for _, ev := range tr.Events {
-			t := ((ev.Oct % n) + n) % n
-			ev.Vel = max(ev.Vel*gain[t], 0.08)
-			out[t].Events = append(out[t].Events, ev)
+	for slot, id := range slots {
+		if p := audio.GetPattern(id); p != nil {
+			for _, tr := range p.Tracks {
+				m.parts[slot] = append(m.parts[slot], &part{kind: &bankKinds[slot], instr: tr.Instr})
+			}
 		}
 	}
-	return slices.DeleteFunc(out, func(t audio.Track) bool { return len(t.Events) == 0 })
+	starts := audio.BeatStarts(m.heads)
+	m.to = starts[len(starts)-1]
+	return m
 }
 
-// midiLoop is a random stretch of a random file's beat, melody, second line and
-// bass, moved up to half an octave so the file's key says nothing; a file that can't
-// be read or holds no such stretch passes the draw to another.
-func (s *Session) midiLoop(o tuneOptions, rng *rand.Rand) (midiPlay, bool) {
-	for try := 0; try < 8; try++ {
-		f, err := os.Open(o.midis[rng.IntN(len(o.midis))])
-		if err != nil {
-			continue
+// bankKinds are a bank loop's parts' kinds, by slot, named by the slot's role
+var bankKinds = [audio.MusicSlots]partKind{{name: slotRoles[0]}, {name: slotRoles[1], slot: 1}, {name: slotRoles[2], slot: 2}, {name: slotRoles[3], slot: 3}}
+
+// play is a loop of m as the label tells it and, unless o writes labels
+// alone, as it sounds: its tonal parts on the engine's voices, under aug of
+// random genes, or on the recorded notes where those have them, mixed, cut to
+// the loop, through a room, a mix and a codec where the words ask, at its level
+func (s *Session) play(o tuneOptions, i int, m *music, srng *rand.Rand) (tuneLoop, error) {
+	stream := func(salt uint64) *rand.Rand { return rand.New(rand.NewPCG(o.seed^salt, uint64(i)+1)) }
+	events := audio.ExpectedEvents(m.timeline, m.heads, m.root, m.scale, m.prog)
+	slices.SortStableFunc(events, func(x, y audio.RipEvent) int { return cmp.Compare(x.At, y.At) })
+	own := map[*part][]int{}
+	for k, e := range events {
+		p := m.parts[e.Slot][e.Track]
+		own[p] = append(own[p], k)
+	}
+	notes := func(p *part) []audio.RipEvent {
+		var out []audio.RipEvent
+		for _, k := range own[p] {
+			out = append(out, events[k])
 		}
-		score, err := audio.ReadMIDI(f)
-		f.Close()
-		if err != nil {
-			continue
-		}
-		if o.dense { // the further parts play as the under line, spread by octave (inner)
-			for i := range score.Notes {
-				if n := &score.Notes[i]; n.Further {
-					n.Further, n.Bass, n.Second = false, false, true
-				}
+		return out
+	}
+	l := tuneLoop{texture: m.kind, bpm: m.heads[0].BPM, meter: m.heads[0].Meter, root: m.root, scale: m.scale}
+	var instrs []audio.InstrumentType
+	var textures []string
+	for slot, ps := range m.parts {
+		for _, p := range ps {
+			if !slices.Contains(textures, p.kind.name) {
+				textures = append(textures, p.kind.name)
 			}
-		}
-		r, _ := score.Rip()
-		meter, known := r.Meter, r.Meter.Steps() == 16
-		if known {
-			meter = audio.Meter{}
-		} else if _, known = beatsByMeter[meter]; !known {
-			continue
-		}
-		if len(r.Bars) < o.bars {
-			continue
-		}
-		lo, sounding := 0, false
-		for pick := 0; pick < 8 && !sounding; pick++ {
-			lo = rng.IntN(len(r.Bars) - o.bars + 1)
-			for b := lo; b < lo+o.bars && !sounding; b++ {
-				sounding = len(r.Bars[b].Melody)+len(r.Bars[b].Under) > 0
-			}
-		}
-		if !sounding {
-			continue
-		}
-		define := func(p *audio.Pattern) audio.PatternID {
-			p.ID = audio.PatternIDByName(p.Name)
-			id, err := s.eng.DefinePattern(p)
-			if err != nil {
-				return audio.PatternSilence
-			}
-			return id
-		}
-		var play midiPlay
-		for slot := range play.slots {
-			play.slots[slot] = audio.PatternSilence
-		}
-		for _, part := range []audio.RipPart{audio.RipBeat, audio.RipMelody, audio.RipBass} {
-			d := r.Pattern("corpus_midi_"+audio.RipPartNames[part], "corpus", part, lo, lo+o.bars)
-			if d == nil {
+			if p.instr.IsDrum() || len(own[p]) == 0 {
 				continue
 			}
-			p, err := d.Pattern()
-			if err != nil {
-				continue
-			}
-			if part == audio.RipMelody && len(p.Tracks) > 1 {
-				tonal := audio.TonalInstruments()
-				under := *p
-				under.Name, under.Tracks = "corpus_midi_under", slices.Clone(p.Tracks[1:])
-				if o.dense {
-					under.Tracks = inner(under.Tracks, rng)
+			l.tonal++
+			if set := o.samples; set != nil && m.kind == "bank" && slot > 0 && srng.Float64() < set.share {
+				pool := set.other
+				if slot == audio.MusicSlots-1 {
+					pool = set.bass
 				}
-				for t := range under.Tracks {
-					under.Tracks[t].Instr = tonal[rng.IntN(len(tonal))]
-					if under.Tracks[t].Instr == audio.InstrBass {
-						under.Tracks[t].Instr = audio.InstrLead
+				for range sampledDraws * min(len(pool), 1) {
+					in := pool[srng.IntN(len(pool))]
+					if ok, err := set.fits(in, notes(p)); err != nil {
+						return l, err
+					} else if ok {
+						p.sample = in
+						break
 					}
 				}
-				p.Tracks = p.Tracks[:1]
-				play.slots[2] = define(&under)
+			} else if p.sample != nil {
+				if ok, err := set.fits(p.sample, notes(p)); err != nil {
+					return l, err
+				} else if !ok {
+					p.sample = nil // the engine's instrument drawn beside it plays it
+				}
 			}
-			play.slots[audio.RipPartSlots[part]] = define(p)
+			if p.sample != nil {
+				l.sampled++
+			} else {
+				instrs = append(instrs, p.instr)
+			}
 		}
-		play.bpm, play.root, play.scale, play.meter = r.BPM, r.Root+rng.IntN(12)-6, r.Scale, meter
-		return play, true
 	}
-	return midiPlay{}, false
+	if m.kind == "arranged" {
+		l.texture = strings.Join(textures, "+")
+	}
+	arng, sway := stream(0xa5a5a5a5), (*rand.Rand)(nil)
+	if o.glide {
+		sway = stream(0x73776179)
+	}
+	voices, families, restore := s.loopVoices(instrs, o.aug, arng, sway, !o.labels)
+	defer restore()
+	l.voices, l.families = voices, families
+	if o.aug {
+		l.tuning = arng.Float64()*100 - 50 // a recording's pitch standard, within a quarter tone of A440
+	}
+	starts := audio.BeatStarts(m.heads)
+	n := starts[len(starts)-1]
+	ends := map[int]int{}
+	var lines [][]float64
+	pedal := srng != nil && srng.Float64() < 1.0/3
+	cache := map[sampleKey][]float64{}
+	for _, ps := range m.parts {
+		for _, p := range ps {
+			if p.sample == nil {
+				continue
+			}
+			at, x, err := o.samples.play(p.sample, notes(p), n, l.tuning, pedal && p.kind.name != "bass" && p.kind.name != slotRoles[3], cache, !o.labels)
+			if err != nil {
+				return l, err
+			}
+			for j, k := range own[p] {
+				ends[k] = at[j]
+			}
+			if x != nil {
+				g := sampledLevel * math.Pow(10, (8*srng.Float64()-4)/20)
+				for j := range x {
+					x[j] *= g
+				}
+				lines = append(lines, x)
+			}
+		}
+	}
+	l.label = m.label(events, ends, voices, families, l.tuning, o.bars)
+	if o.labels { // a label holds what was drawn, and nothing of how it sounds
+		return l, nil
+	}
+	played := m.played()
+	s.eng.SetTuning(l.tuning)
+	buf, err := s.eng.RenderBars(played, m.heads, m.root, m.scale, m.prog, int64(i+1), nil)
+	s.eng.SetTuning(0)
+	if err != nil {
+		return l, err
+	}
+	engine := slices.ContainsFunc(buf, func(v float64) bool { return v != 0 })
+	for _, x := range lines {
+		for j := range buf {
+			buf[j] += x[j]
+		}
+	}
+	buf = slices.Clip(buf[m.from:m.to])
+	if !engine && len(lines) > 0 {
+		air(buf, stream(0x61697221))
+	}
+	if o.aug {
+		buf = degrade(buf, arng)
+	}
+	if o.codec {
+		if buf, err = codecRoundTrip(buf, audio.AudioSampleRate, stream(0xc0dec)); err != nil {
+			return l, err
+		}
+	}
+	level(buf, stream(0x6c65766c))
+	l.audio = buf
+	if m.from == 0 && m.kind != "overlap" {
+		l.want = audio.ExpectedRipBars(m.timeline, m.heads, m.root, m.scale, m.prog)
+	}
+	return l, nil
 }
 
-// beatPlaces is where genBeat strikes in a meter's bar: the kicks always played,
-// the kicks played now and then, the snares nearly always, the ghost snares, and
-// the hats' spacings, one drawn
-type beatPlaces struct{ kicks, extras, snares, ghosts, every []int }
+// sampledLevel is the RMS a recorded note's loudest window is played at under
+// full velocity, near the engine's voices' own, each part 4 dB either side
+const sampledLevel = 0.25
 
-// beatsByMeter strike 4/4 on one and three against two and four, 3/4 on one
-// against two and three, and 6/8 on its first dotted beat against its second,
-// its hats on the eighths or the dotted beats
-var beatsByMeter = map[audio.Meter]beatPlaces{
-	{}:               {kicks: []int{0, 8}, extras: []int{3, 6, 10, 11, 14}, snares: []int{4, 12}, ghosts: []int{7, 15}, every: []int{2, 4}},
-	{Num: 3, Den: 4}: {kicks: []int{0}, extras: []int{6, 10, 11}, snares: []int{4, 8}, ghosts: []int{7, 11}, every: []int{2, 4}},
-	{Num: 6, Den: 8}: {kicks: []int{0}, extras: []int{4, 8, 10}, snares: []int{6}, ghosts: []int{2, 11}, every: []int{2, 6}},
-}
-
-// genBeat is a beat the bank never had, a bar of meter m: in 4/4 kicks on one
-// and three with extras, the snare on two and four with a ghost now and then,
-// hats on the eighths or the quarters (beatsByMeter), velocities drawn;
-// registered under one name a loop at a time
-func genBeat(rng *rand.Rand, _ int, m audio.Meter) *audio.Pattern {
-	at, bar := beatsByMeter[m], m.Steps()
-	var kick, snare, hat []audio.Step
-	for _, pos := range at.kicks {
-		kick = append(kick, audio.Step{Pos: pos, Vel: 0.9 + rng.Float64()*0.1})
-	}
-	for _, pos := range at.extras {
-		if rng.Float64() < 0.25 {
-			kick = append(kick, audio.Step{Pos: pos, Vel: 0.6 + rng.Float64()*0.3})
-		}
-	}
-	for _, pos := range at.snares {
-		if rng.Float64() < 0.9 {
-			snare = append(snare, audio.Step{Pos: pos, Vel: 0.8 + rng.Float64()*0.2})
-		}
-	}
-	for _, pos := range at.ghosts {
-		if rng.Float64() < 0.2 {
-			snare = append(snare, audio.Step{Pos: pos, Vel: 0.4})
-		}
-	}
-	every := at.every[rng.IntN(len(at.every))]
-	for pos := 0; pos < bar; pos += every {
-		if rng.Float64() < 0.85 {
-			hat = append(hat, audio.Step{Pos: pos, Vel: 0.5 + rng.Float64()*0.3})
-		}
-	}
-	p := &audio.Pattern{Name: "corpus_beat", Steps: bar, Meter: m, Role: audio.RoleRhythm}
-	for _, tr := range []audio.Track{{Instr: audio.InstrKick, Events: kick}, {Instr: audio.InstrSnare, Events: snare}, {Instr: audio.InstrHihat, Events: hat}} {
-		if len(tr.Events) > 0 {
-			p.Tracks = append(p.Tracks, tr)
-		}
-	}
-	return p
-}
-
-// genMelody is a melody the bank never had, one or two bars of meter m: a walk
-// over the key's degrees within two octaves, lengths of one to four steps with
-// a rest now and then, or in half the loops a slow line of two to eight, on a
-// tonal instrument drawn from the registered ones. A compound meter's lengths
-// are its eighths, quarters and dotted quarters, so the line keeps to its eighths.
-func genMelody(rng *rand.Rand, degrees int, m audio.Meter) *audio.Pattern {
-	steps := m.Steps() * (1 + rng.IntN(2))
-	tonal := audio.TonalInstruments()
-	instr := tonal[rng.IntN(len(tonal))]
-	if instr == audio.InstrBass {
-		instr = audio.InstrLead
-	}
-	fast, slow := []int{1, 1, 2, 2, 3, 4}, []int{2, 2, 4, 4, 6, 8}
-	if m.Compound() {
-		fast, slow = []int{2, 2, 2, 4, 4, 6}, []int{2, 4, 4, 6, 6, 12}
-	}
-	lengths := fast
-	if rng.Float64() < 0.5 {
-		lengths = slow
-	}
-	deg, oct := rng.IntN(degrees), 1+rng.IntN(2)
-	var evs []audio.Step
-	for pos := 0; pos < steps; {
-		dur := lengths[rng.IntN(len(lengths))]
-		if rng.Float64() < 0.2 {
-			pos += dur
+// played is the timeline the engine renders: a pattern with a part the recorded
+// notes play is cloned under corpus_played_<slot>_<n>, that part's notes taken out
+func (m *music) played() [][audio.MusicSlots]audio.PatternID {
+	out := slices.Clone(m.timeline)
+	for slot, ps := range m.parts {
+		if !slices.ContainsFunc(ps, func(p *part) bool { return p.sample != nil }) {
 			continue
 		}
-		deg += rng.IntN(5) - 2
-		for deg < 0 {
-			deg, oct = deg+degrees, oct-1
+		clones := map[audio.PatternID]audio.PatternID{}
+		for b := range out {
+			id := out[b][slot]
+			c, ok := clones[id]
+			if src := audio.GetPattern(id); !ok && src != nil {
+				cp := *src
+				cp.ID, cp.Name, cp.Tracks = audio.PatternSilence, fmt.Sprintf("corpus_played_%d_%d", slot, len(clones)), slices.Clone(src.Tracks)
+				for t := range cp.Tracks {
+					if ps[t].sample != nil {
+						cp.Tracks[t].Events = nil
+					}
+				}
+				c = audio.RegisterPattern(&cp)
+				clones[id] = c
+			}
+			out[b][slot] = c
 		}
-		for deg >= degrees {
-			deg, oct = deg-degrees, oct+1
-		}
-		oct = min(max(oct, 1), 2)
-		evs = append(evs, audio.Step{Pos: pos, Vel: 0.5 + rng.Float64()*0.5, Deg: deg, Oct: oct, Dur: min(dur, steps-pos)})
-		pos += dur
 	}
-	if len(evs) == 0 {
-		evs = []audio.Step{{Pos: 0, Vel: 0.8, Deg: 0, Oct: 1, Dur: 4}}
-	}
-	soften(rng, evs, steps)
-	return &audio.Pattern{Name: "corpus_melody", Steps: steps, Meter: m, Role: audio.RoleMelody, Tracks: []audio.Track{{Instr: instr, Events: evs}}}
+	return out
 }
 
-// soften plays half of a third of the generated parts 6 to 18 dB softer, as a
-// pianist plays a phrase, so the model hears soft strikes beside loud ones
-func soften(rng *rand.Rand, evs []audio.Step, steps int) {
-	if rng.Float64() >= 1.0/3 {
+// label is a loop's label: each event where it sounds in the loop's frames, by
+// its part and its instrument, a note with the wave and the genes it was played
+// with, or the recorded instrument's family and where the recording let it go;
+// its beats and bar lines where the render puts them, and an arranged loop's chords
+func (m *music) label(events []audio.RipEvent, ends map[int]int, voices map[string]*audio.VoiceDef, families map[string]int, tuning float64, bars int) corpusLoop {
+	frame := func(at int) int { return int(float64(at-m.from)/audio.AudioSampleRate/audio.RipFrameSec + 0.5) }
+	frames := loopFrames(m.to - m.from)
+	lab := corpusLoop{BPM: m.heads[0].BPM, Root: m.root, Scale: int(m.scale), Bars: bars, Meter: m.heads[0].Meter.Doc(), Frames: frames, Tuning: tuning, Kind: m.kind}
+	if m.kind == "overlap" { // no beat, no bar and no key: as a recording's label with no beat track
+		lab.BPM, lab.Root, lab.Scale, lab.Bars = 0, 0, 0, 0
+	}
+	for k, e := range events {
+		if e.At < m.from || e.At >= m.to {
+			continue
+		}
+		p := m.parts[e.Slot][e.Track]
+		ev := corpusEvent{Frame: frame(e.At), Drum: -1, Vel: e.Vel, Wave: -1, Family: -1, Part: p.kind.name, Instr: audio.InstrumentName(e.Instr)}
+		if e.Instr.IsDrum() {
+			if e.Instr >= audio.InstrClap {
+				continue
+			}
+			ev.Drum, ev.End, ev.Family = int(e.Instr), ev.Frame, familyIndex("drums")
+		} else {
+			ev.MIDI = e.MIDI
+			ev.End = frame(e.At + e.For)
+			if p.sample != nil {
+				ev.End, ev.Family, ev.Instr = frame(ends[k]), p.sample.family, p.sample.name
+			} else if v := voices[ev.Instr]; v != nil {
+				ev.Wave = max(slices.Index(audio.VoiceWaves[:], cmp.Or(v.Wave, "sine")), 0)
+				ev.Voice, ev.Family = v.Genes(), families[ev.Instr]
+				start := float64(e.At-m.from) / audio.AudioSampleRate
+				ev.Cents = noteCents(v, e, start, float64(e.For)/audio.AudioSampleRate, tuning, ev.Frame, ev.End)
+			}
+		}
+		if ev.Frame < frames {
+			lab.Events = append(lab.Events, ev)
+		}
+	}
+	if m.kind == "overlap" {
+		return lab
+	}
+	starts, per := audio.BeatStarts(m.heads), m.heads[0].Meter.Beats()
+	for k, at := range starts[:len(starts)-1] {
+		if f := frame(at); at >= m.from && at < m.to && f < frames {
+			if lab.Beats = append(lab.Beats, f); k%per == 0 {
+				lab.Downbeats = append(lab.Downbeats, f)
+			}
+		}
+	}
+	for b, tones := range m.chords {
+		at := starts[b*per]
+		if at >= m.to {
+			break
+		}
+		f := max(frame(at), 0)
+		if c := len(lab.Chords); c > 0 && slices.Equal(lab.Chords[c-1].Tones, tones) {
+			continue
+		} else if c > 0 && lab.Chords[c-1].Frame == f {
+			lab.Chords = lab.Chords[:c-1]
+		}
+		lab.Chords = append(lab.Chords, corpusChord{Frame: f, Tones: tones})
+	}
+	return lab
+}
+
+// loopFrames is the frames MelFrames makes of n samples at the engine's rate
+func loopFrames(n int) int {
+	return (n*audio.RipRate/audio.AudioSampleRate + audio.RipHop - 1) / audio.RipHop
+}
+
+// loudest is the RMS of x's loudest window of loopWindow, its hop half that
+func loudest(x []float64) float64 {
+	w := min(int(loopWindow*audio.AudioSampleRate), len(x))
+	var best float64
+	for i := 0; i+w <= len(x); i += max(w/2, 1) {
+		var e float64
+		for _, v := range x[i : i+w] {
+			e += v * v
+		}
+		best = max(best, math.Sqrt(e/float64(max(w, 1))))
+	}
+	return best
+}
+
+// level lays a loop at a level drawn whatever its parts: its loudest window's
+// RMS between loopQuiet and loopLoud dBFS, lowered where its peak would pass
+// loopPeak, and a peak that would hold it under loopQuiet bent down to it
+func level(x []float64, rng *rand.Rand) {
+	r := loudest(x)
+	if r == 0 {
 		return
 	}
-	gain, from := math.Pow(10, -(6+12*rng.Float64())/20), rng.IntN(steps/2+1)
-	for i := range evs {
-		if evs[i].Pos >= from && evs[i].Pos < from+steps/2 {
-			evs[i].Vel *= gain
+	var peak float64
+	for _, v := range x {
+		peak = max(peak, math.Abs(v))
+	}
+	top := math.Pow(10, loopPeak/20)
+	g := min(math.Pow(10, (loopQuiet+(loopLoud-loopQuiet)*rng.Float64())/20)/r, top/peak)
+	floor := math.Pow(10, loopQuiet/20) / r
+	bend := g < floor
+	g = max(g, floor)
+	knee := 0.7 * top
+	for i, v := range x {
+		v *= g
+		if a := math.Abs(v); bend && a > knee {
+			v = math.Copysign(knee+(top-knee)*math.Tanh((a-knee)/(top-knee)), v)
 		}
+		x[i] = v
 	}
 }
 
-// genAccompaniment is an accompaniment the bank never had, for the free slot,
-// one or two bars of meter m: a broken chord, the key's first, third and fifth
-// with the seventh now and then, in eighths or sixteenths going up, down or
-// alternating, softer than a lead, on a registered tonal instrument drawn: the
-// line under a slow melody in much music, which the rip has to part from it
-func genAccompaniment(rng *rand.Rand, degrees int, m audio.Meter) *audio.Pattern {
-	steps := m.Steps() * (1 + rng.IntN(2))
-	tonal := audio.TonalInstruments()
-	instr := tonal[rng.IntN(len(tonal))]
-	if instr == audio.InstrBass {
-		instr = audio.InstrLead
-	}
-	chord := []int{0, 2, 4}
-	if rng.Float64() < 0.3 && degrees > 6 {
-		chord = append(chord, 6)
-	}
-	dur := 1 + rng.IntN(2) // sixteenths or eighths
-	base := 1 + rng.IntN(2)
-	order := rng.IntN(3) // up, down, alternating
-	var evs []audio.Step
-	for i, pos := 0, 0; pos < steps; i, pos = i+1, pos+dur {
-		k := i % len(chord)
-		switch order {
-		case 1:
-			k = len(chord) - 1 - k
-		case 2:
-			if i%2 == 1 {
-				k = len(chord) - 1 - i/2%len(chord)
-			} else {
-				k = i / 2 % len(chord)
-			}
-		}
-		oct := base + i/len(chord)%2 // the chord in one octave, then the next
-		deg := chord[k]
-		if deg >= degrees {
-			deg = 0
-		}
-		evs = append(evs, audio.Step{Pos: pos, Vel: 0.4 + rng.Float64()*0.3, Deg: deg, Oct: min(oct, 2), Dur: dur})
-	}
-	soften(rng, evs, steps)
-	return &audio.Pattern{Name: "corpus_accompaniment", Steps: steps, Meter: m, Role: audio.RoleFill, Tracks: []audio.Track{{Instr: instr, Events: evs}}}
-}
-
-// genBass is a bass line the bank never had, a bar of meter m: the root and its
-// neighbours below the fifth, in the root's octave, in halves, quarters and
-// eighths, or in a compound meter dotted halves, dotted quarters, quarters and
-// eighths
-func genBass(rng *rand.Rand, degrees int, m audio.Meter) *audio.Pattern {
-	steps, lengths := m.Steps(), []int{2, 4, 4, 8}
-	if m.Compound() {
-		lengths = []int{2, 4, 6, 12}
-	}
-	var evs []audio.Step
-	for pos := 0; pos < steps; {
-		dur := lengths[rng.IntN(len(lengths))]
-		deg := []int{0, 0, 0, 4, 3, 2}[rng.IntN(6)]
-		if deg >= degrees {
-			deg = 0
-		}
-		evs = append(evs, audio.Step{Pos: pos, Vel: 0.7 + rng.Float64()*0.3, Deg: deg, Oct: 0, Dur: min(dur, steps-pos)})
-		pos += dur
-	}
-	return &audio.Pattern{Name: "corpus_bass", Steps: steps, Meter: m, Role: audio.RoleBass, Tracks: []audio.Track{{Instr: audio.InstrBass, Events: evs}}}
-}
-
-// glideReach is the widest step in semitones a generated note bends into: a fifth
-const glideReach = 7
-
-// glide moves a generated part's pitch between its notes as a singer or a string
-// player does: a fifth of its notes bend into the note that follows them at
-// once, over their last 60 to 250 ms, and a seventh scoop, written a semitone or
-// two under and rising to their pitch over their length, which is all a step's
-// bend holds of a scoop; step is a step's length in seconds
-func glide(rng *rand.Rand, p *audio.Pattern, root int, scale audio.ScaleID, step float64) {
-	for _, tr := range p.Tracks {
-		if tr.Instr.IsDrum() {
-			continue
-		}
-		evs := tr.Events
-		pitch := func(e audio.Step) int { return audio.StepPitch(root, scale, e.Deg, e.Oct, e.Acc) }
-		into := -1 // the note the last bend arrives at, which starts on its pitch
-		for i := range evs {
-			e := &evs[i]
-			switch u := rng.Float64(); {
-			case u < 0.2:
-				if i+1 == len(evs) || evs[i+1].Pos != e.Pos+max(e.Dur, 1) {
-					continue
-				}
-				if d := pitch(evs[i+1]) - pitch(*e); d != 0 && max(d, -d) <= glideReach {
-					e.Bend, e.BendAt, into = float64(d), max(1-(0.06+0.19*rng.Float64())/(float64(max(e.Dur, 1))*step), 0), i+1
-				}
-			case u < 0.2+1.0/7 && i != into:
-				under := 1 + rng.IntN(2)
-				e.Acc, e.Bend, e.BendAt = e.Acc-under, float64(under), 0
-			}
-		}
+// air lays a recording's noise floor over a loop of recorded notes alone,
+// which hold nothing over their 8 kHz: white noise over 7.5 kHz, 45 to 65 dB
+// under the loop's loudest window
+func air(x []float64, rng *rand.Rand) {
+	g := loudest(x) * math.Pow(10, -(45+20*rng.Float64())/20)
+	a := math.Exp(-2 * math.Pi * sampledTop / audio.AudioSampleRate)
+	var lp1, lp2 float64
+	for i := range x {
+		w := rng.NormFloat64()
+		lp1 = a*lp1 + (1-a)*w
+		lp2 = a*lp2 + (1-a)*lp1
+		x[i] += g * (w - lp2) * 1.2
 	}
 }
 
-// loopVoices is the voice each tonal instrument the slotted patterns name plays
-// with and the family it sounds as: the registered one, or under aug one of random
-// genes near it, a third of the time on another wave, a third of the loops under a
-// piano's pedal; sway gives three in ten a vibrato; restore puts the registered ones
-// back. A loop not rendered registers none: the mixer refuses one past its queue.
-func (s *Session) loopVoices(slots [audio.MusicSlots]audio.PatternID, aug bool, rng, sway *rand.Rand, render bool) (map[string]*audio.VoiceDef, map[string]int, func()) {
+// loopVoices is the voice each tonal instrument plays with and the family it
+// sounds as: the registered one, or under aug one of random genes near it, a
+// third of the time on another wave, a third of the loops under a piano's pedal;
+// sway gives three in ten a vibrato; restore puts the registered ones back. A
+// loop not rendered registers none: the mixer refuses one past its queue.
+func (s *Session) loopVoices(instrs []audio.InstrumentType, aug bool, rng, sway *rand.Rand, render bool) (map[string]*audio.VoiceDef, map[string]int, func()) {
 	voices, families, known := map[string]*audio.VoiceDef{}, map[string]int{}, familyVoices()
 	var originals []*audio.VoiceDef
 	pedal := 1.0 // the labels stay the notes as played, however long they ring
 	if aug && rng.Float64() < 1.0/3 {
 		pedal = 3 + rng.Float64()*7
 	}
-	for _, id := range slots {
-		p := audio.GetPattern(id)
-		if p == nil {
+	for _, instr := range instrs {
+		if instr.IsDrum() {
 			continue
 		}
-		for _, tr := range p.Tracks {
-			if tr.Instr.IsDrum() {
-				continue
-			}
-			name := audio.InstrumentName(tr.Instr)
-			v := audio.VoiceDefByName(name)
-			if v == nil || voices[name] != nil {
-				continue
-			}
-			voices[name], families[name] = v, voiceFamily(known, name, v)
-			play, family := v, families[name]
-			if aug {
-				genes := v.Genes()
-				for i := range genes {
-					genes[i] = min(max(genes[i]+rng.NormFloat64()*0.15, 0), 1)
-				}
-				wave := cmp.Or(v.Wave, "sine")
-				if rng.Float64() < 0.3 {
-					wave = audio.VoiceWaves[rng.IntN(len(audio.VoiceWaves))]
-				}
-				r := audio.VoiceFromGenes(wave, genes)
-				// measured before the pedal: its long release is the player's, not the instrument's
-				heard := voiceFamily(known, name, r)
-				if rng.Float64() < 0.15 { // distorted, as a guitar through an amp
-					r.Drive, r.Level = 2+rng.Float64()*14, r.Level*0.6
-					heard = familyIndex("unknown")
-				}
-				if tr.Instr != audio.InstrBass {
-					r.Release = min(r.Release*pedal, 3)
-				}
-				r.VibratoHz, r.VibratoCents, r.VibratoDelay, r.Vowel = v.VibratoHz, v.VibratoCents, v.VibratoDelay, v.Vowel // not genes; kept from the registered voice
-				r.Name = name
-				if audio.ValidateVoice(r) == nil {
-					play, family = r, heard
-				}
-			}
-			// a string and a modal bank hold their pitch, and a voice's own vibrato stays
-			if w := cmp.Or(play.Wave, "sine"); sway != nil && sway.Float64() < 0.3 && w != "string" && w != "modal" && play.VibratoHz == 0 {
-				c := *play
-				c.VibratoHz, c.VibratoCents, c.VibratoDelay = 4.5+2.5*sway.Float64(), 10+70*sway.Float64(), 0.4*sway.Float64()
-				play = &c
-			}
-			if play == v {
-				continue
-			}
-			if !render {
-				if audio.ValidateVoice(play) != nil {
-					continue
-				}
-			} else if _, err := s.eng.DefineVoice(play); err != nil {
-				continue
-			} else {
-				originals = append(originals, v)
-			}
-			voices[name], families[name] = play, family
+		name := audio.InstrumentName(instr)
+		v := audio.VoiceDefByName(name)
+		if v == nil || voices[name] != nil {
+			continue
 		}
+		voices[name], families[name] = v, voiceFamily(known, name, v)
+		play, family := v, families[name]
+		if aug {
+			genes := v.Genes()
+			for i := range genes {
+				genes[i] = min(max(genes[i]+rng.NormFloat64()*0.15, 0), 1)
+			}
+			wave := cmp.Or(v.Wave, "sine")
+			if rng.Float64() < 0.3 {
+				wave = audio.VoiceWaves[rng.IntN(len(audio.VoiceWaves))]
+			}
+			r := audio.VoiceFromGenes(wave, genes)
+			// measured before the pedal: its long release is the player's, not the instrument's
+			heard := voiceFamily(known, name, r)
+			if rng.Float64() < 0.15 { // distorted, as a guitar through an amp
+				r.Drive, r.Level = 2+rng.Float64()*14, r.Level*0.6
+				heard = familyIndex("unknown")
+			}
+			if instr != audio.InstrBass {
+				r.Release = min(r.Release*pedal, 3)
+			}
+			r.VibratoHz, r.VibratoCents, r.VibratoDelay, r.Vowel = v.VibratoHz, v.VibratoCents, v.VibratoDelay, v.Vowel // not genes; kept from the registered voice
+			r.Name = name
+			if audio.ValidateVoice(r) == nil {
+				play, family = r, heard
+			}
+		}
+		// a string and a modal bank hold their pitch, and a voice's own vibrato stays
+		if w := cmp.Or(play.Wave, "sine"); sway != nil && sway.Float64() < 0.3 && w != "string" && w != "modal" && play.VibratoHz == 0 {
+			c := *play
+			c.VibratoHz, c.VibratoCents, c.VibratoDelay = 4.5+2.5*sway.Float64(), 10+70*sway.Float64(), 0.4*sway.Float64()
+			play = &c
+		}
+		if play == v {
+			continue
+		}
+		if !render {
+			if audio.ValidateVoice(play) != nil {
+				continue
+			}
+		} else if _, err := s.eng.DefineVoice(play); err != nil {
+			continue
+		} else {
+			originals = append(originals, v)
+		}
+		voices[name], families[name] = play, family
 	}
 	return voices, families, func() {
 		for _, v := range originals {
@@ -901,6 +839,8 @@ type corpusEvent struct {
 	Family int       `json:"family"` // index into the families of the manifest; -1 unlabelled
 	Voice  []float64 `json:"voice,omitempty"`
 	Cents  centsList `json:"cents,omitempty"` // a note that moves or a pitch track places: cents from MIDI's cell centre at each frame from Frame to End
+	Part   string    `json:"part,omitempty"`  // the line of a rendered loop it plays in
+	Instr  string    `json:"instr,omitempty"` // what it sounds on: a voice's name, a drum's, or a recorded instrument's
 }
 
 // centsList is where a note sits at each of its frames, NaN at a frame its pitch
@@ -928,10 +868,19 @@ type corpusLoop struct {
 	Tuning float64       `json:"tuning"` // cents off A440 the loop sounds at
 	Events []corpusEvent `json:"events"`
 	Source string        `json:"source,omitempty"` // the recording a loop was heard from
-	// a recording's beats and bar lines, in frames, where its list names them; a
-	// rendered loop's are its BPM, Bars and Meter's
-	Beats     []int `json:"beats,omitempty"`
-	Downbeats []int `json:"downbeats,omitempty"`
+	Kind   string        `json:"kind,omitempty"`   // a rendered loop's: bank, arranged or overlap
+	// its beats and bar lines in frames, where the render puts them or a
+	// recording's list names them; a loop of neither, as an overlap, lists none
+	Beats     []int         `json:"beats,omitempty"`
+	Downbeats []int         `json:"downbeats,omitempty"`
+	Chords    []corpusChord `json:"chords,omitempty"`
+}
+
+// corpusChord is the chord an arranged loop sounds from a frame on: its pitch
+// classes, its root's first
+type corpusChord struct {
+	Frame int   `json:"frame"`
+	Tones []int `json:"tones"`
 }
 
 // notes is a label's notes as a truth on the loop's own clock
@@ -956,30 +905,15 @@ func (l corpusLoop) hits() []audio.RipHit {
 	return out
 }
 
-// grid is a label's beats and bar lines in seconds: a recording's as its list
-// named them, a rendered loop's from its tempo, bars and meter, a sixteenth of
-// whole samples as exportCorpus lays an event, the last bar's end no line
-func (l corpusLoop) grid() (beats, downbeats []float64, err error) {
-	if len(l.Beats) > 0 {
-		for _, f := range l.Beats {
-			beats = append(beats, float64(f)*audio.RipFrameSec)
-		}
-		for _, f := range l.Downbeats {
-			downbeats = append(downbeats, float64(f)*audio.RipFrameSec)
-		}
-		return beats, downbeats, nil
+// grid is a label's beats and bar lines in seconds
+func (l corpusLoop) grid() (beats, downbeats []float64) {
+	for _, f := range l.Beats {
+		beats = append(beats, float64(f)*audio.RipFrameSec)
 	}
-	m, err := audio.ParseMeter(l.Meter)
-	if err != nil || l.BPM <= 0 {
-		return nil, nil, err
+	for _, f := range l.Downbeats {
+		downbeats = append(downbeats, float64(f)*audio.RipFrameSec)
 	}
-	step := float64(audio.SamplesPerStep(l.BPM)) / audio.AudioSampleRate
-	for i := range l.Bars * m.Beats() {
-		if beats = append(beats, float64(i*m.Beat())*step); i%m.Beats() == 0 {
-			downbeats = append(downbeats, beats[i])
-		}
-	}
-	return beats, downbeats, nil
+	return beats, downbeats
 }
 
 // corpusManifest names the corpus's layout for the trainer: its pitches are the
@@ -1018,8 +952,6 @@ func cmdCorpus(s *Session, a []string) error {
 			o.nowav = true
 		case a[n-1] == "codec":
 			o.codec = true
-		case a[n-1] == "dense":
-			o.dense = true
 		case a[n-1] == "labels":
 			o.labels = true
 		case n > 2 && a[n-2] == "seed":
@@ -1029,16 +961,14 @@ func cmdCorpus(s *Session, a []string) error {
 			}
 			o.seed = v
 			a = a[:n-1]
-		case n > 2 && a[n-2] == "midi":
-			err := filepath.WalkDir(s.path(a[n-1]), func(path string, d fs.DirEntry, err error) error {
-				if err == nil && !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".mid") {
-					o.midis = append(o.midis, path)
-				}
-				return err
-			})
-			if err != nil {
-				return err
+		case a[n-1] == "overlaps":
+			o.overlaps = overlapShare
+		case n > 2 && a[n-2] == "overlaps":
+			v, err := strconv.ParseFloat(a[n-1], 64)
+			if err != nil || !(v > 0 && v <= 1) {
+				return fmt.Errorf("overlaps %q: want the share of the loops, above 0 to 1", a[n-1])
 			}
+			o.overlaps = v
 			a = a[:n-1]
 		case n > 2 && a[n-2] == "sampled":
 			set, err := loadSampleSet(s.path(a[n-1]))
@@ -1065,6 +995,9 @@ func cmdCorpus(s *Session, a []string) error {
 			continue
 		}
 		a = a[:len(a)-1]
+	}
+	if len(a) > 3 {
+		return fmt.Errorf("%q: not a word of corpus", a[len(a)-1])
 	}
 	for i, p := range []*int{&o.loops, &o.bars} {
 		limit := 65536
@@ -1625,9 +1558,10 @@ func parseTempos(arg string) ([]int, error) {
 
 // exportCorpus writes loops into dir: loop_NNN.wav as rendered, loop_NNN.mel as
 // the log-mel frames a model hears (frames, bands, then float32 rows, little-endian),
-// loop_NNN.json as its events with their frames and voices, and corpus.json naming
-// the layout. A loop whose label is on disk is kept, so an export run again goes on;
-// a part writes no layout. Under labels it writes each loop's label over, by its frames.
+// loop_NNN.json as its label, and corpus.json naming the layout. A loop whose label
+// and frames are on disk is kept, so an export run again goes on; a part writes no
+// layout. Under labels it writes every loop's label over and renders nothing, and
+// writes the layout only where every loop's frames are on disk.
 func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -1638,43 +1572,37 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 		if o.parts > 0 && i%o.parts != o.part {
 			return true
 		}
+		_, whole := melLength(loopFile(i) + ".mel")
 		if o.labels {
-			if _, ok := melLength(loopFile(i) + ".mel"); !ok {
+			if !whole {
 				unheard++
-				return true
 			}
 			return false
 		}
 		_, err := os.Stat(loopFile(i) + ".json") // written last, so its loop is whole
-		if err == nil {
+		if err == nil && whole {
 			kept++
 		}
-		return err == nil
+		return err == nil && whole
 	}
-	sampledLines, tonalLines, metered := 0, 0, 0
+	var sampled, tonal, metered, starts, overlaps, arranged int
 	err := s.eachLoop(o, func(i int, l tuneLoop) error {
 		written++
-		if l.meter != (audio.Meter{}) {
+		sampled, tonal = sampled+l.sampled, tonal+l.tonal
+		switch {
+		case l.texture == "overlap":
+			overlaps++
+		case l.texture != "bank":
+			arranged++
+		}
+		if l.label.Meter != "" {
 			metered++
 		}
-		base := loopFile(i)
-		for k, line := range l.sampled[1:] {
-			tonalLines += min(len(slotEvents(l.slots, k+1, l.meter, o.bars, l.root, l.scale)), 1)
-			if line != nil {
-				sampledLines++
-			}
+		if len(l.label.Downbeats) > 0 && l.label.Downbeats[0] > 0 {
+			starts++
 		}
-		frames := 0 // all a label takes from the render: how many frames it came to
-		if o.labels {
-			frames, _ = melLength(base + ".mel")
-		} else {
-			if o.codec {
-				coded, err := codecRoundTrip(l.audio, audio.AudioSampleRate, rand.New(rand.NewPCG(o.seed^0xc0dec, uint64(i)+1)))
-				if err != nil {
-					return err
-				}
-				l.audio = coded
-			}
+		base := loopFile(i)
+		if !o.labels {
 			if !o.nowav {
 				f, err := os.Create(base + ".wav")
 				if err != nil {
@@ -1689,39 +1617,14 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 				}
 			}
 			mel := audio.MelFrames(l.audio, audio.AudioSampleRate)
+			if len(mel) != l.label.Frames {
+				return fmt.Errorf("loop %d: %d frames heard, its label counted %d", i, len(mel), l.label.Frames)
+			}
 			if err := writeMel(base+".mel", mel); err != nil {
 				return err
 			}
-			frames = len(mel)
 		}
-		lab := corpusLoop{BPM: l.bpm, Root: l.root, Scale: int(l.scale), Bars: o.bars, Meter: l.meter.Doc(), Frames: frames, Tuning: l.tuning}
-		stepSec := float64(audio.SamplesPerStep(l.bpm)) / audio.AudioSampleRate
-		for _, e := range loopEvents(l.slots, l.meter, o.bars, l.root, l.scale) {
-			start := float64(e.Bar*l.meter.Steps()+e.Step) * stepSec
-			ev := corpusEvent{Frame: int(start/audio.RipFrameSec + 0.5), Drum: -1, Vel: e.Vel, Wave: -1, Family: -1}
-			if e.Instr.IsDrum() {
-				if e.Instr >= audio.InstrClap {
-					continue
-				}
-				ev.Drum, ev.End, ev.Family = int(e.Instr), ev.Frame, familyIndex("drums")
-			} else {
-				ev.MIDI = e.MIDI
-				ev.End = int((start+float64(e.Dur)*stepSec)/audio.RipFrameSec + 0.5)
-				name := audio.InstrumentName(e.Instr)
-				if line := l.sampled[e.slot]; line != nil {
-					ev.End = int(line.ends[e.n]/audio.RipFrameSec + 0.5) // where the recording let it go
-					ev.Family = line.family
-				} else if v := l.voices[name]; v != nil {
-					ev.Wave = max(slices.Index(audio.VoiceWaves[:], cmp.Or(v.Wave, "sine")), 0)
-					ev.Voice, ev.Family = v.Genes(), l.families[name]
-					ev.Cents = noteCents(v, e.RipEvent, start, float64(e.Dur)*stepSec, l.tuning, ev.Frame, ev.End)
-				}
-			}
-			if ev.Frame < frames {
-				lab.Events = append(lab.Events, ev)
-			}
-		}
-		return writeJSON(base+".json", lab)
+		return writeJSON(base+".json", l.label)
 	})
 	if err != nil {
 		return err
@@ -1737,20 +1640,23 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	if o.aug {
 		how = "through a room, a mix, voices of random genes and a tuning off A440"
 	}
-	if o.gen {
-		how += ", with generated beats, melodies and bass lines"
+	if arranged > 0 {
+		how += fmt.Sprintf(", %d arranged over the keyboard", arranged)
 	}
 	if o.glide {
-		how += ", a share of the generated notes bending into the next or scooping and of the voices swaying"
+		how += ", a share of the arranged notes bending into the next or scooping and of the voices swaying"
 	}
 	if o.meters {
-		how += fmt.Sprintf(", %d in 3/4 or 6/8 with every part generated", metered)
+		how += fmt.Sprintf(", %d in other meters than 4/4 and %d starting part-way into a bar", metered, starts)
+	}
+	if overlaps > 0 {
+		how += fmt.Sprintf(", %d of single notes overlapping and no beat", overlaps)
 	}
 	if o.codec {
 		how += ", a third through a lossy codec"
 	}
 	if o.samples != nil {
-		how += fmt.Sprintf(", %d of %d tonal line(s) on the recorded notes in %s", sampledLines, tonalLines, o.samples.dir)
+		how += fmt.Sprintf(", %d of %d tonal part(s) on the recorded notes in %s", sampled, tonal, o.samples.dir)
 	}
 	if kept > 0 {
 		how += fmt.Sprintf("; %d were there", kept)
@@ -1759,7 +1665,7 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 		how += "; their labels alone, over those there, and nothing rendered"
 	}
 	if unheard > 0 {
-		how += fmt.Sprintf("; %d with no frames whole on disk were left, so no corpus.json", unheard)
+		how += fmt.Sprintf("; %d with no frames whole on disk, so no corpus.json", unheard)
 	}
 	if o.parts > 0 {
 		how += fmt.Sprintf("; part %d of %d, so no corpus.json", o.part, o.parts)
@@ -1779,30 +1685,6 @@ func noteCents(v *audio.VoiceDef, e audio.RipEvent, start, dur, tuning float64, 
 	}
 	if !moves {
 		return nil
-	}
-	return out
-}
-
-// slotEvent is an expected event with the slot it plays in and its place among that slot's
-type slotEvent struct {
-	audio.RipEvent
-	slot, n int
-}
-
-// loopEvents is ExpectedEvents in its order, each event knowing its slot
-func loopEvents(slots [audio.MusicSlots]audio.PatternID, m audio.Meter, bars, root int, scale audio.ScaleID) []slotEvent {
-	var per [audio.MusicSlots][]audio.RipEvent
-	for k := range slots {
-		per[k] = slotEvents(slots, k, m, bars, root, scale)
-	}
-	var out []slotEvent
-	var at [audio.MusicSlots]int
-	for bar := range bars {
-		for k, evs := range per {
-			for ; at[k] < len(evs) && evs[at[k]].Bar == bar; at[k]++ {
-				out = append(out, slotEvent{evs[at[k]], k, at[k]})
-			}
-		}
 	}
 	return out
 }
@@ -1901,7 +1783,7 @@ func writeJSON(file string, v any) error {
 }
 
 func cmdBench(s *Session, a []string) error {
-	o := tuneOptions{loops: 8, bars: 4, seed: 7, gen: true}
+	o := tuneOptions{loops: 8, bars: 4, seed: 7, gen: true, steady: true}
 	verbose := false
 words:
 	for n := len(a); n > 0; n = len(a) {
@@ -1937,7 +1819,7 @@ words:
 
 // benchRow is one loop as one front end ripped it, for bench's verbose listing
 type benchRow struct {
-	what  string // index, tempo, meter, key, kind, generated parts and front end, in columns
+	what  string // index, tempo, meter, key, kind, parts and front end, in columns
 	sc    audio.RipScore
 	err   error
 	heard string // the meter the rip read, when not the loop's
@@ -1969,10 +1851,10 @@ func (t *benchTally) mean() audio.RipScore {
 }
 
 // bench grades the session's front ends, the analysis and the model when one
-// loaded, on fresh loops rendered with generated parts among the bank's, clean
-// and augmented, by the mean of each rip's score against the loop's expected
-// rip, so a trained model is measured before it is trusted with a recording;
-// under meters each meter's mean with the rips that read it, verbose every loop
+// loaded, on fresh arranged loops at a steady tempo from a bar line, clean and
+// augmented, by the mean of each rip's score against the loop's expected rip,
+// so a trained model is measured before it is trusted with a recording; under
+// meters each meter's mean with the rips that read it, verbose every loop
 func (s *Session) bench(o tuneOptions, verbose bool) error {
 	type front struct {
 		name string
@@ -2012,7 +1894,7 @@ func (s *Session) bench(o tuneOptions, verbose bool) error {
 					}
 				}
 				if verbose {
-					what := fmt.Sprintf("%3d %3d bpm %-4s %-3s %-14s %-9s %-23s %-8s", i, l.bpm, l.meter, noteName(l.root), scaleName(l.scale), kind, generatedParts(l.slots), f.name)
+					what := fmt.Sprintf("%3d %3d bpm %-4s %-3s %-14s %-9s %-34s %-8s", i, l.bpm, l.meter, noteName(l.root), scaleName(l.scale), kind, l.texture, f.name)
 					rows = append(rows, benchRow{what: what, sc: sc, err: err, heard: heard})
 				}
 			}
@@ -2024,8 +1906,9 @@ func (s *Session) bench(o tuneOptions, verbose bool) error {
 			if !o.meters {
 				continue
 			}
-			for _, m := range append([]audio.Meter{{}}, tuneMeters...) {
-				if t := byMeter[m]; t != nil {
+			for _, row := range corpusMeters {
+				if m := row.m; byMeter[m] != nil {
+					t := byMeter[m]
 					fmt.Fprintf(s.out, "  in %s, %d loop(s): %s, the meter read in %d, its bar in %d\n", m, t.n, benchScore(t.mean()), t.heard, t.bar)
 				}
 			}
@@ -2060,20 +1943,6 @@ func (r benchRow) read() string {
 
 func benchScore(sc audio.RipScore) string {
 	return fmt.Sprintf("%.3f (tempo %.2f bars %.2f drums %.2f melody %.2f bass %.2f)", sc.Total, sc.Tempo, sc.Bars, sc.Drums, sc.Melody, sc.Bass)
-}
-
-// generatedParts names the slots a loop's generated patterns fill, bank for none
-func generatedParts(slots [audio.MusicSlots]audio.PatternID) string {
-	var parts []string
-	for k, id := range slots {
-		if p := audio.GetPattern(id); p != nil && strings.HasPrefix(p.Name, "corpus_") {
-			parts = append(parts, slotRoles[k])
-		}
-	}
-	if len(parts) == 0 {
-		return "bank"
-	}
-	return strings.Join(parts, "+")
 }
 
 // tune searches the rip's parameters over the loops the corpus renders, each
@@ -2552,10 +2421,7 @@ func (l truthLine) take(recording []byte, sum [sha256.Size]byte, fe audio.RipFro
 		if err := json.Unmarshal(given, &lab); err != nil {
 			return nil, fmt.Errorf("%s: %w", l.truth, err)
 		}
-		beats, downbeats, err := lab.grid()
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", l.truth, err)
-		}
+		beats, downbeats := lab.grid()
 		notes := lab.notes()
 		t.truth, t.hits, t.beats, t.lines = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }, lab.hits(), beats, downbeats
 		t.drums = true // a label holds every event of its loop, so no hit there is none played

@@ -340,6 +340,21 @@ measure ([credits](../CREDITS.md)). The generator writes every key A0 to C8
 rounds naming every collection they took, and CREDITS.md crediting exactly
 those.
 
+### Bring the rest of the lab in
+
+- Priority: P2
+- Affected files: `tool/rip-lab`
+
+The tools that fetch a set, write its labels and its list and check them are in
+[`tool/rip-lab`](../tool/rip-lab/README.md). What remains:
+
+- The scripts that render a corpus in parts, run a round and read its rips
+  predate the band frames: they go in once a round has run them.
+- No tool there has a test: a smoke test each.
+- The free tracker (`labels/vocal.py`, `trackscore.py`, `trackfit.py`) labels
+  nothing. It stays for a set with no sheet to place, VocalSet's excerpts
+  first, and goes if none is labelled with it.
+
 ### Train the piano's pitches
 
 - Priority: P1

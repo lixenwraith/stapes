@@ -1,0 +1,107 @@
+{
+ "bounds": {
+  "lp": 1300,
+  "ap_max": 0.5,
+  "smooth": 0.0,
+  "fold": 0.5,
+  "split": 1,
+  "ramp": 0.05,
+  "reach": 3.5,
+  "stub": 0.06,
+  "arrive": 0.5,
+  "arrive_share": 1.0,
+  "settle": 0,
+  "near": 1.2,
+  "far": 1.5,
+  "stray": 1.0,
+  "gap": 0.5,
+  "even": 0.2
+ },
+ "first_tried": {
+  "lp": 1300,
+  "ap_max": 0.5,
+  "smooth": 0.0,
+  "fold": 0.0,
+  "split": 0,
+  "ramp": 0.0,
+  "reach": 3.5,
+  "stub": 0.0,
+  "arrive": 0.5,
+  "arrive_share": 1.0,
+  "settle": 0,
+  "near": 0.5,
+  "far": 1.5,
+  "stray": 1.0,
+  "gap": 0.0,
+  "even": 0.0
+ },
+ "moved": {
+  "fold": [
+   0.0,
+   0.5
+  ],
+  "split": [
+   0,
+   1
+  ],
+  "ramp": [
+   0.0,
+   0.05
+  ],
+  "near": [
+   0.5,
+   1.2
+  ],
+  "gap": [
+   0.0,
+   0.5
+  ],
+  "even": [
+   0.0,
+   0.2
+  ],
+  "stub": [
+   0.0,
+   0.06
+  ]
+ },
+ "scores": {
+  "fit": {
+   "first_tried": {
+    "placing": 0.8328,
+    "test": 0.6982,
+    "right_pass": "136 of 282"
+   },
+   "fitted": {
+    "placing": 0.8678,
+    "test": 0.9048,
+    "right_pass": "244 of 282"
+   }
+  },
+  "check": {
+   "first_tried": {
+    "placing": 0.8141,
+    "test": 0.721,
+    "right_pass": "75 of 143"
+   },
+   "fitted": {
+    "placing": 0.8321,
+    "test": 0.8318,
+    "right_pass": "117 of 143"
+   }
+  },
+  "out": {
+   "first_tried": {
+    "placing": 0.8294,
+    "test": 0.7114,
+    "right_pass": "71 of 141"
+   },
+   "fitted": {
+    "placing": 0.8287,
+    "test": 0.8663,
+    "right_pass": "109 of 141"
+   }
+  }
+ },
+ "fitted": "by placefit.py on tracker-truth at 2026-11-15 08:40 UTC"
+}

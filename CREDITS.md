@@ -26,10 +26,13 @@ The corpora take these as [Rip training](doc/rip-training.md) and the
 
 - **The Expanded Groove MIDI Dataset (E-GMD)** v1.0.0, by Lee Callender,
   Curtis Hawthorne and Jesse Engel, made available by Google LLC,
-  <https://magenta.withgoogle.com/datasets/e-gmd>, CC BY 4.0. Its train
-  split's recordings were laid over loops with no drums or drawn as they
-  stand, their MIDI hits the labels (132 recordings' moved by a steady lag, 15
-  left out); its test split measures the drums.
+  <https://magenta.withgoogle.com/datasets/e-gmd>, CC BY 4.0, introduced in
+  "Improving Perceptual Quality of Drum Transcription with the Expanded Groove
+  MIDI Dataset" (Callender, Hawthorne and Engel, 2020, arXiv:2004.00188), as
+  its page asks to be cited. Its train split's recordings were laid over loops
+  with no drums or drawn as they stand, their MIDI hits the labels (132
+  recordings' moved by a steady lag, 15 left out); its test split measures the
+  drums.
 - **VocalSet: A Singing Voice Dataset** v1.2, by Julia Wilkins, Prem
   Seetharaman, Alison Wahl and Bryan Pardo,
   <https://doi.org/10.5281/zenodo.1442513>, CC BY 4.0. Its recordings are in
@@ -41,22 +44,28 @@ The corpora take these as [Rip training](doc/rip-training.md) and the
   notes are in the singing corpus; clips 31 to 40 measure.
 - **The NSynth Dataset**, by Jesse Engel, Cinjon Resnick, Adam Roberts, Sander
   Dieleman, Douglas Eck, Karen Simonyan and Mohammad Norouzi, made available
-  by Google Inc., <https://magenta.withgoogle.com/datasets/nsynth>, CC BY 4.0.
-  Its notes played a rendered loop's tonal lines, a line with a chance of a
-  half (`corpus ... sampled`), each note shifted up to three semitones, its
-  level taken out and cut at its note-off; its held-out instruments measure
-  what the models name.
+  by Google Inc., <https://magenta.withgoogle.com/datasets/nsynth>, CC BY 4.0,
+  introduced in "Neural Audio Synthesis of Musical Notes with WaveNet
+  Autoencoders" (Engel et al., 2017, arXiv:1704.01279), as its page asks to be
+  cited. Its notes played a rendered loop's tonal lines, a line with a chance
+  of a half (`corpus ... sampled`), each note shifted up to three semitones,
+  its level taken out and cut at its note-off; its held-out instruments
+  measure what the models name.
 - **GuitarSet** v1.1.0, by Qingyang Xi, Rachel M. Bittner, Johan Pauwels,
   Xuzhou Ye and Juan P. Bello, <https://doi.org/10.5281/zenodo.3371780>, CC BY
-  4.0. Its recordings are labelled with their notes, pitch contours and beats;
-  players 00 to 03 train, 04 validates and 05 tests.
+  4.0, introduced in "GuitarSet: A Dataset for Guitar Transcription" (ISMIR
+  2018), as its record asks to be cited. Its recordings are labelled with
+  their notes, pitch contours and beats; players 00 to 03 train, 04 validates
+  and 05 tests.
 - **MusicNet** v1.0, by John Thickstun, Zaid Harchaoui and Sham M. Kakade,
   <https://doi.org/10.5281/zenodo.5120004>, CC BY 4.0, whose recordings are
   Creative Commons and public-domain performances from the Isabella Stewart
   Gardner Museum, the European Archive Foundation and Musopen, each one's
   source in its metadata. They are labelled with their aligned scores, each
   onset moved to a model's strike peak where one stands near it; 19 pieces
-  validate and 10 test.
+  validate and 10 test. The Gardner Museum released its own concerts under CC
+  BY-NC-ND 2.0, which the set's record does not repeat: whether those train is
+  open ([todo](doc/todo.md#train-both-models-again-without-lakh)).
 
 ## The engine's sounds
 

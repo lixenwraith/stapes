@@ -422,17 +422,20 @@ targets and the loss.
   `--over` lays drums under.
 - **The loss carries no positive weight**: audio reads each head's level as a
   posterior, which a weight on the marks would lift most where the head is unsure.
-- **A model from before the heads** starts a run through `--init`, which grows
-  them, every other weight carried over; its own file still loads, its bars read
-  by the cues. With `--probe` such a run trains the two heads' rows of the output
-  layer alone: every other weight stays the start's bit for bit, as a notes
-  model's probe holds it ([below](#parity)), so the file's other heads say what
-  the start's did and its rip with the two left out is the start's, and the last
-  step is exported. A fine-tune without it moves the heads the decoders already
-  read. A model from before the family head too grows it with them, since the
-  file lists it before the two, and `--family-unasked` asks it nothing: no term
-  in the loss and its rows of the output layer zero from the first step to the
-  last, so every frame's shares are even and the file says nothing there.
+- **A head added later** grows through `--init` onto weights trained since the
+  refresh but before it, whose heads are the first of the run's: every other
+  weight carries over and the new head's rows of the output layer start fresh.
+  That is what growing is for, since no file from before the refresh starts a
+  run ([below](#parity)). Audio loads a frame model only of `FrameSpec`'s heads
+  exactly ("frame model's heads are [...], want [...]"), so the start's file
+  loads in no audio that knows the new head. With `--probe` a run trains the
+  beat and downbeat heads' rows of the output layer alone: every other weight
+  stays the start's bit for bit, as a notes model's probe holds it
+  ([below](#parity)), so the file's other heads say what the start's did and its
+  rip with the two left out is the start's, and the last step is exported. A fine-tune without it moves the heads the decoders already
+  read. `--family-unasked` asks the family head nothing: no term in the loss and
+  its rows of the output layer zero from the first step to the last, so every
+  frame's shares are even and the file says nothing there.
 - **The lines** give `beats' F1` and `bar lines'`, or `no beat or bar line asked`.
 
 The path at a small size, which shows that it holds together and nothing of
@@ -542,11 +545,11 @@ hears. `--family-holdout <family>` tells no head a family's name: its notes stay
 in the run as sound, and a notes model's lines say what their surest name reaches,
 the measure a name must pass to be given (below). A checkpoint states
 the band frames' layout, and `--init`, `--checkpoint` and `average.py` refuse one
-of another layout or of none before they read its shape. One from before a
-setting existed loads with that setting's default, and `--init` takes one of the
-frame model from before the family head or the beat and downbeat heads, or of
-the notes model from before the cents head or the heads of what plays each
-pitch: every weight carries over and a new head's rows start fresh ([Rip training
+of another layout or of none before they read its shape, so no file from before
+the refresh starts a run. One from before a setting existed loads with that
+setting's default, and `--init` takes one whose heads are the first of the
+run's, weights trained before a head added later: every weight carries over and
+a new head's rows start fresh ([Rip training
 §7](../../doc/rip-training.md#7-the-models)), though resuming one is refused.
 
 A notes model has a cents head: for each pitch, how far its sound sits from the

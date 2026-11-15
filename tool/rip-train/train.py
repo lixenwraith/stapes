@@ -440,9 +440,10 @@ RING_HZ, RING_TAU, RING_DB = (70.0, 160.0), (0.05, 0.3), (-25.0, -8.0)  # its pi
 
 def ringing(e, rng):
     """adds a ring to frames of energy, in place: in each band as a steady tone of its pitch reads there, against the
-    attack's rise in the sharp plane, which hears it when it comes"""
+    attack's rise in the sharp plane, which hears it when it comes, each band's energy over the times the plane
+    counts a tone there, so a low note's counts once"""
     hz = math.exp(rng.uniform(math.log(RING_HZ[0]), math.log(RING_HZ[1])))
-    total = e[:, ripmodels.BANDS:].sum(1)
+    total = (e[:, ripmodels.BANDS:] / ripmodels.sharp_counts()).sum(1)
     kick = np.maximum(np.diff(total, prepend=total[0]), 0)
     keep, y = math.exp(-(256 / 22050) / rng.uniform(*RING_TAU)), 0.0
     out = np.empty(len(e))
@@ -450,7 +451,7 @@ def ringing(e, rng):
         y = v + keep * y
         out[t] = y
     out *= 10 ** (rng.uniform(*RING_DB) / 10)
-    e += out[:, None] * 100 * ripmodels.sine_response(hz)  # a stored frame is log1p of a hundred times the energy
+    e += out[:, None] * ripmodels.sine_response(hz)
 
 
 # Bent windows: a tempo read along a slow curve, so no grid or steady pulse is there to learn

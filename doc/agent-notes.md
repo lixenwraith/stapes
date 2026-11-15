@@ -445,11 +445,13 @@ proves wrong or that a document now states, and link the document instead.
   kit. The analysis hears a kick still ringing at 50 to 60 Hz as the bass line,
   and a snare's fixed modes move the melody's key.
 
-- A frame model's heads are a prefix of audio's `FrameSpec`, unlike a notes model's,
-  which audio reads by name: an audio from before a head refuses a frame
-  model's file that has it ("frame model has 12 heads, want 10"). Take the audio tag
-  that knows a new head before installing weights trained with it; weights
-  without it load in either.
+- A frame model's heads are audio's `FrameSpec`'s exactly, unlike a notes
+  model's, which audio reads by name: `ripmodels.New` refuses a frame model of
+  any other heads ("frame model's heads are [...], want [...]"), so after a head
+  is added the weights trained before it load in no audio that has it, and
+  weights with it in none without it. Install frame weights beside the audio tag
+  whose `FrameSpec` they match; `--init` grows the head onto the weights from
+  before it.
 - **A rendered loop's beats are in its label**, where audio's `BeatStarts`
   puts them under the bars' tempos (`music.label`), and the trainer reads them
   as it reads a recording's, asking every frame of a rendered loop but its last
@@ -706,3 +708,11 @@ proves wrong or that a document now states, and link the document instead.
   heads) is checked on real weights by its held-out line and by a rip: the other
   ten heads' losses print to the digit as the start's, and its file ripped with
   the two heads left out is the start's row for row.
+- **A level set against the sharp plane's summed energy is set against a low
+  note many times over**: its bands share bins under about 270 Hz and count a
+  tone about twenty times at A0 ([audio notes](https://github.com/lixenwraith/audio/blob/main/doc/agent-notes.md#front-ends-and-fidelity)).
+  Against the plain sum a ring stood 13.6 dB over its stated level under a low
+  attack and on it under a treble one; each band over `ripmodels.sharp_counts()`
+  reads a steady tone from A0 to C8 within 0.6 dB of its energy, noise within 3.
+  Energy read back from stored frames (`np.expm1`) is already a hundred times
+  the energy, so what is laid from it takes no other hundred.

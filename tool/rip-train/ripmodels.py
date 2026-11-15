@@ -136,6 +136,13 @@ def sine_response(hz: float) -> np.ndarray:
     return out
 
 
+@functools.cache
+def sharp_counts() -> np.ndarray:
+    """how many times the sharp plane's bands, summed, count a steady cosine at each band's centre: about twenty at
+    A0, where their triangles share bins, near one at the top"""
+    return np.array([sine_response(float(band_hz(k)))[BANDS:].sum() for k in range(BANDS)])
+
+
 # the energy 80 dB under a full-scale sine's, where the model's logarithm floors
 FLOOR = 1e-8
 

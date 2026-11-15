@@ -28,13 +28,12 @@ The search over the parameters is in place (`tune`), as are the corpus the
 engine exports (`corpus`), the frame model and the notes model, their trainer
 (`tool/rip-train`) and the front-end seam. What remains, in the design's order:
 
-1. A corpus beyond the shipped bank: `corpus ... aug gen` puts a room, a mix,
-   saturation and a tuning off A440 behind each loop and draws beats,
-   melodies, bass lines and, in the free slot, a broken-chord accompaniment
-   under a melody of longer notes, and an equaliser, a compressor, halls and a
-   pedal's ringing; what it still lacks is a codec, chords as chords, phrases
-   far softer than the rest of their loop (the soft notes below), chance steps
-   graded as optional rather than as misses, the generative lead (left out
+1. A corpus beyond the shipped bank: `corpus ... aug gen meters overlaps`
+   arranges every loop over the 88 keys in seven meters or lays single notes
+   in none ([Rip training §3](rip-training.md#arranged-loops)), and puts a
+   room, a mix, saturation, a codec and a tuning off A440 behind it; what it
+   still lacks is chance steps graded as optional rather than as misses, the
+   generative lead (left out
    since an offline render plays its first bar as the last render left it and
    labels every bar with its last: regenerate it at bar 0 and label it as
    played), and real recordings with their MIDI in the corpus and held out: a
@@ -188,10 +187,12 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    - A count from rows reads apart from `truth`'s decode (the trainer's README
      says why); audio's own open items are in
      [its todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#close-what-a-judge-leaves-open).
-10. A performance's character, generated: how loudness and timing move in the
-    performances of a set that trains (GuitarSet's annotations against a
-    steady grid), measured there and then drawn in `corpus`, judged as any
-    corpus change, a pair. No round may learn it from a track.
+10. A performance's character, generated: `corpus ... gen` draws one by hand,
+    accents, swells and fades, a feel and a jitter a part and a tempo's drift
+    ([Rip training §3](rip-training.md#arranged-loops)). Left: how loudness
+    and timing move in the performances of a set that trains (GuitarSet's
+    annotations against a steady grid), measured there and the draws set from
+    it, judged as any corpus change, a pair. No round may learn it from a track.
 
 ### Teach the frame model the beat and the bar line
 
@@ -242,7 +243,7 @@ head beside the cues. What is left is the reading on trained weights:
     listener counts is not the label's to say.
   - A corpus cycles six tempos, which its held-out loops share: a round wants
     `tempos` over a list, or `--bend`, before its held-out F1 says anything
-    of a tempo it never met. `pipeline.sh` has no knob for `meters`.
+    of a tempo it never met.
   - The F1 counts a peak right within four frames, the strikes' reach, 46 ms;
     beat trackers are scored at 70 ms. Not taken: a reach of its own, a
     number set by hand for a line audio does not read.
@@ -330,45 +331,27 @@ Left open by what landed, each with the option not taken:
 
 The frame and notes models train again from nothing, on what the [data
 rule](../AGENTS.md#data) lets train: the engine's generated parts and mixes,
-the public-domain scores it renders, and E-GMD, VocalSet, NSynth and
-GuitarSet, while MusicNet and vocadito only measure ([credits](../CREDITS.md)).
-The generator writes the keys under MIDI 32 before a line is asked to learn
-them. What closes it: both models trained from nothing and installed, their
+and E-GMD, VocalSet, NSynth and GuitarSet, while MusicNet and vocadito only
+measure ([credits](../CREDITS.md)). The generator writes every key A0 to C8
+([Rip training §3](rip-training.md#arranged-loops)). What closes it: both models trained from nothing and installed, their
 rounds naming every collection they took, and CREDITS.md crediting exactly
 those.
 
 ### Train the piano's pitches
 
 - Priority: P1
-- Affected files: `tool/rip-train` (a round's recipe), `tune.go` (`midiLoop`);
-  `lixenwraith/audio` (`MIDIScore.Rip`)
+- Affected files: `tool/rip-train` (a round's recipe)
 
 The models are built for MIDI 21 to 108 on band frames whose low bands part
-each key from the next (v0.32.0, audio v0.28.0), and every line trains from
-nothing on them. What is left:
+each key from the next (v0.34.0, audio v0.30.0), and every line trains from
+nothing on them; a corpus's arranged loops play every key of the 88 ([Rip
+training §3](rip-training.md#arranged-loops)). What is left:
 
-- `corpus ... midi` still drops a file's notes outside E1 to C7 before it
-  transposes a loop (`MIDIScore.Rip`), which is why a corpus's notes under E1
-  are all at MIDI 22 to 27: keeping them changes every such corpus's bytes, so
-  it goes with the next corpus rendered.
 - `truth` counts a note given outside the rip's pitches as only given, where
   `tune ... truth` and `rows` leave it out (`matchHeard`): a score read
   against its own file shows the note it dropped that way
   (`TestRipReadsAMIDIFileAsAScore`). Decide whether the verb follows, with a
   line saying how many it left out.
-
-### Gather the scores `corpus ... midi` plays
-
-- Priority: P2
-- Affected files: `CREDITS.md`, `doc/rip-training.md`
-
-The folder `midi <dir>` names may hold generated MIDI and public-domain
-scores, never a commercial song's transcription (AGENTS, Data). A score's file
-has rights of its own apart from its work's, its sequencer's or its
-engraver's, so a file joins only when its own page puts it in the public domain
-or under CC BY, listed with its source and licence for the
-[credits](../CREDITS.md). What closes it: such a folder, and the next corpus
-with `midi` rendered from it, its notes past E1 to C7 kept (the item above).
 
 ### A live rip
 

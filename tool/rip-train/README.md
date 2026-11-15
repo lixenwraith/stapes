@@ -80,11 +80,13 @@ tool/rip-train/pipeline.sh install
 | `LOOPS`, `BARS` | 20000, 4 | loops rendered, bars a loop; 200 loops is a smoke test |
 | `PARTS` | 1 | exports at once, each rendering every `PARTS`-th loop on a core of its own; a last export renders any loop they left and writes `corpus.json` |
 | `AUG` | `aug` | a room, a mix, voices of random genes near the registered ones, a pedal's ringing in a third of the loops, a soft clip in a third, a compressor and a noise floor in half, each loop rendered off A440 by up to a quarter tone; empty for clean renders |
-| `GEN` | `gen` | beats, melodies, bass lines and accompaniments the bank never had, three loops in five per part: a broken chord in eighths or sixteenths in the free slot, and in half the loops a melody of longer notes over it; a third of the generated melodies and accompaniments half 6 to 18 dB softer; three generated loops in ten without their drums and one in seven without its bass; empty for the bank alone |
-| `GLIDE` | empty | `glide`: a fifth of the generated notes bend into the note that follows, a seventh scoop into their pitch and three in ten of a loop's oscillator voices sway, each such note labelled with its cents at every frame, which is what teaches the notes model's cents head a glide |
+| `GEN` | `gen` | every loop but an overlap arranged over the whole keyboard in place of the bank's patterns: a key and its chords, a line alone to six parts (drums, bass, a keyboard's two hands, a guitar's strokes, a pad, an arpeggio, a melody from its motif, its double, a counter-line), parts entering and dropping out, swing, triplets, rests and breaks, played with accents, swells, a feel off the grid and a drifting tempo ([Rip training §3](../../doc/rip-training.md#arranged-loops)); empty for the bank alone |
+| `METERS` | `meters` | the arranged loops in 4/4, 3/4, 6/8, 12/8, 2/4, 7/8 and 5/4 by share, three in ten starting part-way into a bar; empty for 4/4 from a bar line |
+| `OVERLAPS` | `overlaps` | a quarter of the loops single notes of one to eight instruments overlapping in no meter and labelled with no beat; `overlaps <share>` for another share, empty for none |
+| `GLIDE` | empty | `glide`: a fifth of an arranged loop's melody, double, counter-line and bass notes bend into the note that follows, a seventh scoop into their pitch and three in ten of a loop's oscillator voices sway, each such note labelled with its cents at every frame, which is what teaches the notes model's cents head a glide |
 | `WAV` | `nowav` | frames and labels only; empty keeps each loop's WAV too (300 MB per 200 loops) |
 | `CODEC` | empty | `codec`: a third of the loops through Opus, MP3 or AAC at 64 to 192 kbps and back, by ffmpeg, which the export then needs |
-| `SAMPLED` | empty | a directory of NSynth notes (`family_source_NNN-pitch-velocity.wav`, a partial set too): each tonal line plays on one of its instruments in half the loops, labelled with no voice and by its instrument's family; empty for the engine's voices alone |
+| `SAMPLED` | empty | a directory of NSynth notes (`family_source_NNN-pitch-velocity.wav`, a partial set too): each tonal part plays on one of its instruments in half the loops, and an overlap draws among them and the engine's voices alike, labelled with no voice and by its instrument's family; empty for the engine's voices alone |
 | `TEMPOS` | the default spread | `80-120` for six tempos over a range, `96,128,160` for a list; the sequencer's range is 80 to 200 |
 | `FOCUS` | none | a stapes script run before the corpus renders: the voices and patterns the loops draw from, see below |
 | `STEPS`, `BATCH` | 20000, 8 | training steps and windows a step |
@@ -154,9 +156,9 @@ and what to bring back.
 
 **The machine.** A stapes checkout; Go as `go.mod` names it; Python 3.11 or
 later with PyTorch (the
-[setup](#setup) above); 66 GB of free disk for a corpus of 40000 loops of four
-bars at the default tempos (1.6 MB of frames and 38 KB of labels a loop; `WAV=`
-to keep each loop's audio adds about 60 GB)
+[setup](#setup) above); 63 GB of free disk for a corpus of 40000 loops of four
+bars at the default tempos (1.5 MB of frames and 31 KB of labels a loop; `WAV=`
+to keep each loop's audio adds about 50 GB)
 and 50 MB for the checkpoint; memory for the labels' events, each window's
 frames and targets being read and built as the training draws them; four
 cores or more.
@@ -262,8 +264,8 @@ draws from the same bank). Two are in `focus/`:
   and onsets per frame, never words; nothing here transcribes lyrics, and the
   models have no notion of them. What the models need is lines that sound like
   voices among its loops, so the focus adds a sung-line voice and a choir pad
-  (`focus/vocal.toml`) beside the shipped lead and bass; the generated melodies
-  draw any tonal instrument, these among them, and the augmentation redraws
+  (`focus/vocal.toml`) beside the shipped lead and bass; the arranged parts
+  draw their instruments by family, these among them, and the augmentation redraws
   each voice's genes near the registered one, keeping its vowel and vibrato,
   so the loops hold many voices like them. A voice has a `vowel` (a, e, i, o
   or u: three formants the oscillator passes through) and a vibrato (a rate,
@@ -280,14 +282,15 @@ To write your own:
   with the voices and `merge sound file.toml` then `apply name` for each, or
   make them in the REPL with `new voice`, `set` and `apply`; `fit` and `refine`
   find voices for a recording's lines, and `write` exports any voice as a
-  document to start from. Every registered tonal voice is one the generated
-  melodies and bass lines are played with.
-- **Music.** The shipped pattern bank is `audio/bank`'s; `load pattern file.toml`
-  or `merge pattern` brings in yours, in the pattern document's form
-  (`[[pattern]]` with tracks of steps), and `gen` adds parts the bank never
-  had. A bank that is all one genre makes a corpus of that genre; `gen` keeps
-  it from being only that bank's few melodies. The rhythm patterns set the
-  drums the frame model learns.
+  document to start from. Every registered tonal voice plays the arranged
+  parts: by its family where `voiceFamilies` in `tune.go` names one, else as
+  any part's.
+- **Music.** `gen` arranges every loop itself; with `GEN` empty the loops play
+  the shipped pattern bank, `audio/bank`'s, or yours: `load pattern file.toml`
+  or `merge pattern` brings it in, in the pattern document's form
+  (`[[pattern]]` with tracks of steps). A bank that is all one genre makes a
+  corpus of that genre, and its rhythm patterns set the drums the frame model
+  learns.
 - **Tempos and keys.** `TEMPOS` sets the spread; the keys cycle the roots and
   scales the engine knows. A piece whose tempo the sequencer's range does not
   hold reads at a multiple.
@@ -351,7 +354,7 @@ The stages are three commands; the script only strings them together.
 ```bash
 dir=$HOME/.local/state/stapes/byhand   # outside the checkout: the corpus, the weights, a root to bench in
 mkdir -p "$dir/root"
-printf 'corpus corpus 20000 4 aug gen nowav\n' > "$dir/corpus.slab"   # read from the script's folder
+printf 'corpus corpus 20000 4 aug gen meters overlaps nowav\n' > "$dir/corpus.slab"   # read from the script's folder
 go run ./cmd/stapes -headless -s "$dir/corpus.slab"
 python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripframe.bin" --steps 20000 --batch 8 --every 1000 --holdout 200 --checkpoint "$dir/ripframe.pt"
 printf 'bench 12 4\n' > "$dir/bench.slab"
@@ -407,9 +410,10 @@ head and the bar lines from the downbeat head beside the cues' rules ([audio §9
 [Rip training](../../doc/rip-training.md) §3, §5 and §8 follow the labels, the
 targets and the loss.
 
-- **A rendered loop** needs nothing: its label's `bpm`, `bars` and `meter` are its
-  grid, so a corpus on disk teaches the heads as it stands. `corpus ... meters`
-  renders a third of the loops in 3/4 or 6/8.
+- **A rendered loop** is asked the beats and bar lines its label lists, where its
+  tempos put them, over all its frames but the last two; `corpus ... labels`
+  writes them into a corpus already on disk. `corpus ... meters` draws the loops
+  in seven meters, and an overlap lists none and is asked none.
 - **A recording** is asked where its list's `beats` column names the file its
   beats are read from, a JAMS file's `beat_position` annotation or a MIDI file
   whose bars are the recording's; the line with `labels` after it writes them into
@@ -629,7 +633,7 @@ piano's pitches.
 
 It writes the file's version 6, which states the band frames' layout as a
 constant after the heads (`layout`, `ripmodels.LAYOUT`) and, for `--pitchnet`'s
-cell net, no bins for its regions to pool, and needs audio v0.28.0 (transformer
+cell net, no bins for its regions to pool, and needs audio v0.30.0 (transformer
 v0.7.0). That audio refuses a file of another layout or of none, naming its own,
 and a file without a head its specs name but a notes model's cents head, which a
 probe's file lacks; the measure is a frame head of one value whose weights are

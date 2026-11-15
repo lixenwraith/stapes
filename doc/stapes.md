@@ -185,8 +185,8 @@ Over the library's rip (library
   drawn near the current thresholds (`search`'s `near`). A truth gives notes,
   and may give
   drum hits (a `.mid`'s drum channel, a corpus label's) and bars (a label's
-  alone: a rendered loop's from its tempo, bars and meter, `corpusLoop.grid`;
-  a transcription's `.mid` holds its writer's default signature). Each
+  alone, its `beats` and `downbeats`, `corpusLoop.grid`; a transcription's
+  `.mid` holds its writer's default signature). Each
   condition then carries up to three scores (`truthCount`, `scores`): its
   notes' F1 by pitch and onset, its drums' F1 (`MatchHits`, as `truth` counts
   them) and its bars, the share of the downbeats given on a bar line of a rip
@@ -228,10 +228,11 @@ Over the library's rip (library
   only when it rises, each voice held within a tenth of its tonal floor, the
   fit's own distance from the recording's notes, so the score of the mix does not
   drift a voice into one that fills the mix.
-- `bench` grades the analysis and the loaded models on fresh renders, clean and
-  augmented (`corpus ... aug`), and with `meters` each meter apart, a third of
-  the loops in 3/4 or 6/8 with every part generated in it, so the bars of a loop
-  match its meter (`ExpectedRip`'s). With `sampled <dir>`, both play half of a loop's
+- `bench` grades the analysis and the loaded models on fresh loops arranged as
+  `corpus ... gen` arranges them, each at a steady tempo from a bar line, clean
+  and augmented (`corpus ... aug`), and with `meters` each meter apart, the loops
+  in the corpus's seven meters by its shares, so the bars of a loop match its
+  meter (`ExpectedRip`'s). With `sampled <dir>`, both play half of a loop's
   tonal lines on NSynth's recorded notes in place of the voices: an instrument
   whose pitches reach the line's notes within three semitones, each note shifted
   from the nearest, cut into its recording's release at the note-off, mixed

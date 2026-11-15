@@ -100,17 +100,14 @@ class Label:
                 d = np.abs(np.diff(c)) > 0  # false beside a frame that is not placed
                 self.moves[at + 1:at + len(c)] |= d
                 self.moves[at:at + len(c) - 1] |= d
-        # A recording's beats are those its list's beats file gave its label, asked from the first one's mark to the last one's:
-        # past them the list says nothing. A rendered loop's are its grid's: a sixteenth of whole samples (audio's
-        # SamplesPerStep), a beat the meter's own note, a bar line every num beats from frame 0, each on the frame corpus
-        # rounds an event's to, asked to a frame short of the mark of the end's line, a beat no sound gives
+        # A loop's beats and bar lines are those its label lists. A recording's are asked from the first one's mark to the
+        # last one's: past them its list says nothing. A rendered loop's, where its tempo and its start put them, are asked
+        # over all its frames but the last two, which a beat at its end, past the list, would mark. Notes overlapping in no
+        # meter list none and are asked none
         self.beats, self.lines = (np.unique(np.asarray(label.get(k, []), np.int64)) for k in ("beats", "downbeats"))
         self.metered = (int(self.beats[0]) - 1, int(self.beats[-1]) + 2) if len(self.beats) else (0, 0)
-        if label.get("bpm"):
-            num, den = (int(v) for v in label.get("meter", "4/4").split("/"))
-            step = (44100 * 60 // (label["bpm"] * 4)) / 44100
-            grid = np.array([int(k * (16 // den) * step / ripmodels.FRAME_SEC + 0.5) for k in range(label["bars"] * num + 1)])
-            self.beats, self.lines, self.metered = grid[:-1], grid[:-1:num], (0, int(grid[-1]) - 1)
+        if label.get("bars") and len(self.beats):
+            self.metered = (0, frames - 2)
         self.order = np.argsort(self.t, kind="stable")
         self.sorted = self.t[self.order]
         # how far past its frame an event's targets reach

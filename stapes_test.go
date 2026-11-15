@@ -2,12 +2,14 @@ package stapes
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"maps"
 	"math"
+	"math/cmplx"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -15,8 +17,10 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -2142,14 +2146,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := loops[0]
-	step := float64(audio.SamplesPerStep(l.bpm)) / audio.AudioSampleRate
-	var notes []audio.RipNote
-	for _, e := range audio.ExpectedEvents(l.slots, l.meter, bars, l.root, l.scale, nil) {
-		if !e.Instr.IsDrum() {
-			start := float64(e.Bar*l.meter.Steps()+e.Step) * step
-			notes = append(notes, audio.RipNote{Start: start, End: start + float64(e.Dur)*step, MIDI: e.MIDI, Vel: e.Vel, Bass: e.MIDI < audio.RipBassTop})
-		}
-	}
+	notes := l.label.notes()
 	var mid bytes.Buffer
 	if err := audio.WriteMIDI(&mid, notes, nil, l.bpm, l.meter); err != nil {
 		t.Fatal(err)
@@ -2318,15 +2315,11 @@ func (analysisEar) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFra
 }
 
 // TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem: a label gives its loop's
-// hits and bars beside its notes, a rendered loop's bars from its tempo and
-// meter; one written from a rip's own scores one on each, tune truth says the
-// three apart and searches the drums' and the bars' genes, and those no score
-// of so short a loop sees are written as the start's
+// hits and the bars it lists beside its notes; one written from a rip's own
+// scores one on each, tune truth says the three apart and searches the drums'
+// and the bars' genes, and those no score of so short a loop sees are written
+// as the start's
 func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
-	bar := 12 * float64(audio.SamplesPerStep(120)) / audio.AudioSampleRate
-	if beats, downbeats, err := (corpusLoop{BPM: 120, Bars: 2, Meter: "3/4"}).grid(); err != nil || len(beats) != 6 || !slices.Equal(downbeats, []float64{0, bar}) {
-		t.Fatalf("two bars of 3/4 at 120 give beats %v and bar lines %v (%v), want six beats and lines at 0 and %g s", beats, downbeats, err, bar)
-	}
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
@@ -2954,72 +2947,57 @@ corpus %[2]s 5 1 aug gen nowav part 1/2
 
 // TestLabelsWritesWhatTheExportWrote: corpus ... labels writes every label and
 // the layout as the export of its line did, byte for byte, over labels cut short,
-// changed and gone, in parts too, and writes no frames: for a gliding corpus and
-// for one playing a MIDI file that bends a note. A loop with no frames is left,
-// and the layout with it.
+// changed and gone, in parts too, and writes no frames. A loop with no frames on
+// disk is labelled all the same, its length the render's, and the layout is left.
 func TestLabelsWritesWhatTheExportWrote(t *testing.T) {
 	dir := t.TempDir()
-	var notes []audio.RipNote
-	for b := range 4 {
-		at := 2 * float64(b)
-		notes = append(notes, audio.RipNote{Start: at, End: at + 0.5, MIDI: 64, Vel: 0.8}, audio.RipNote{Start: at + 0.5, End: at + 1.5, MIDI: 67, Vel: 0.8, Bend: 2, BendAt: 0.5},
-			audio.RipNote{Start: at, End: at + 1, MIDI: 40, Vel: 0.8, Bass: true})
-	}
-	var mid bytes.Buffer
-	if err := audio.WriteMIDI(&mid, notes, nil, 120, audio.Meter{}); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(dir, "mid", "bent.mid"), mid.String())
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	runOrFatal(t, s, &out, "builtin pattern\n")
-	at := func(corpus, name string) string { return filepath.Join(dir, corpus, name) }
-	for _, c := range [][2]string{{"gliding", "6 2 aug gen glide nowav"}, {"midi", "6 2 nowav midi " + filepath.Join(dir, "mid")}} {
-		corpus, line := c[0], fmt.Sprintf("corpus %s %s", filepath.Join(dir, c[0]), c[1])
-		runOrFatal(t, s, &out, line+"\n")
-		files, err := os.ReadDir(filepath.Join(dir, corpus))
-		if err != nil {
-			t.Fatal(err)
+	at := func(name string) string { return filepath.Join(dir, name) }
+	line := fmt.Sprintf("corpus %s 6 2 aug gen meters overlaps glide nowav", dir)
+	runOrFatal(t, s, &out, line+"\n")
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, stamps, moving := map[string][]byte{}, map[string]time.Time{}, false
+	for _, f := range files {
+		want[f.Name()], _ = os.ReadFile(at(f.Name()))
+		info, _ := f.Info()
+		stamps[f.Name()], moving = info.ModTime(), moving || bytes.Contains(want[f.Name()], []byte(`"cents":[`))
+	}
+	if len(want) != 13 || !moving {
+		t.Fatalf("%d file(s), a note that moves labelled: %v", len(want), moving)
+	}
+	writeFile(t, at("loop_000.json"), string(want["loop_000.json"][:40]))
+	writeFile(t, at("loop_001.json"), strings.ReplaceAll(string(want["loop_001.json"]), `"family":`, `"was":`))
+	os.Remove(at("loop_002.json"))
+	os.Remove(at("corpus.json"))
+	runOrFatal(t, s, &out, line+" labels part 0/2\n"+line+" part 1/2 labels\n")
+	if _, err := os.Stat(at("corpus.json")); err == nil {
+		t.Error("a part wrote corpus.json")
+	}
+	runOrFatal(t, s, &out, line+" labels\n")
+	for name, data := range want {
+		got, _ := os.ReadFile(at(name))
+		info, err := os.Stat(at(name))
+		if !bytes.Equal(got, data) {
+			t.Errorf("%s differs from the export's", name)
 		}
-		want, stamps, moving := map[string][]byte{}, map[string]time.Time{}, false
-		for _, f := range files {
-			want[f.Name()], _ = os.ReadFile(at(corpus, f.Name()))
-			info, _ := f.Info()
-			stamps[f.Name()], moving = info.ModTime(), moving || bytes.Contains(want[f.Name()], []byte(`"cents":[`))
-		}
-		if len(want) != 13 || !moving {
-			t.Fatalf("%s: %d file(s), a note that moves labelled: %v", corpus, len(want), moving)
-		}
-		writeFile(t, at(corpus, "loop_000.json"), string(want["loop_000.json"][:40]))
-		writeFile(t, at(corpus, "loop_001.json"), strings.ReplaceAll(string(want["loop_001.json"]), `"family":`, `"was":`))
-		os.Remove(at(corpus, "loop_002.json"))
-		os.Remove(at(corpus, "corpus.json"))
-		runOrFatal(t, s, &out, line+" labels part 0/2\n"+line+" part 1/2 labels\n")
-		if _, err := os.Stat(at(corpus, "corpus.json")); err == nil {
-			t.Errorf("%s: a part wrote corpus.json", corpus)
-		}
-		runOrFatal(t, s, &out, line+" labels\n")
-		for name, data := range want {
-			got, _ := os.ReadFile(at(corpus, name))
-			info, err := os.Stat(at(corpus, name))
-			if !bytes.Equal(got, data) {
-				t.Errorf("%s: %s differs from the export's", corpus, name)
-			}
-			if strings.HasSuffix(name, ".bands") && (err != nil || !info.ModTime().Equal(stamps[name])) {
-				t.Errorf("%s: %s was written again", corpus, name)
-			}
+		if strings.HasSuffix(name, ".bands") && (err != nil || !info.ModTime().Equal(stamps[name])) {
+			t.Errorf("%s was written again", name)
 		}
 	}
 	for _, name := range []string{"loop_004.bands", "loop_004.json", "corpus.json"} {
-		os.Remove(at("gliding", name))
+		os.Remove(at(name))
 	}
 	out.Reset()
-	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s 6 2 aug gen glide nowav labels\n", filepath.Join(dir, "gliding")))
-	_, err1 := os.Stat(at("gliding", "loop_004.json"))
-	_, err2 := os.Stat(at("gliding", "corpus.json"))
-	if err1 == nil || err2 == nil || !strings.Contains(out.String(), "wrote 5 loop(s)") || !strings.Contains(out.String(), "1 with no frames") {
-		t.Errorf("a loop with no frames: its label %v, the layout %v:\n%s", err1, err2, out.String())
+	runOrFatal(t, s, &out, line+" labels\n")
+	got, _ := os.ReadFile(at("loop_004.json"))
+	_, err = os.Stat(at("corpus.json"))
+	if !bytes.Equal(got, want["loop_004.json"]) || err == nil || !strings.Contains(out.String(), "wrote 6 loop(s)") || !strings.Contains(out.String(), "1 with no frames whole on disk") {
+		t.Errorf("a loop with no frames: its label as the export's %v, the layout %v:\n%s", bytes.Equal(got, want["loop_004.json"]), err, out.String())
 	}
 }
 
@@ -3604,8 +3582,13 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 		}
 	}
 	driven := 0
+	var instrs []audio.InstrumentType
+	for _, name := range slices.Sorted(maps.Keys(clean[0].voices)) {
+		i, _ := audio.InstrumentByName(name)
+		instrs = append(instrs, i)
+	}
 	for k := range 40 {
-		voices, families, restore := s.loopVoices(clean[0].slots, true, rand.New(rand.NewPCG(uint64(k), 1)), nil, true)
+		voices, families, restore := s.loopVoices(instrs, true, rand.New(rand.NewPCG(uint64(k), 1)), nil, true)
 		restore()
 		for name, v := range voices {
 			if v.Drive > 4 {
@@ -3664,46 +3647,24 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 }
 
 // TestAGlidingCorpusLabelsWhereEachMovingNoteSits: under glide a share of the
-// notes bend, scoop or sway, each labelled with its cents from its cell's centre
-// at every frame, the tuning in them; a note that holds its pitch carries none,
-// nor does any without the word, whose loops are drawn as with it, and the
-// registered voices are as they were afterwards
+// arranged notes bend or scoop and of the voices sway, each such note labelled
+// with its cents from its cell's centre at every frame, the tuning in them; a
+// note that holds its pitch carries none, and a render leaves the registered
+// voices as they were
 func TestAGlidingCorpusLabelsWhereEachMovingNoteSits(t *testing.T) {
+	gliding := labelCorpus(t)
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
 	lead := *audio.VoiceDefByName("lead")
-	dir := t.TempDir()
-	o := tuneOptions{loops: 6, bars: 2, seed: 5, gen: true, aug: true, nowav: true}
-	labels := func(name string) []corpusLoop {
-		if err := s.exportCorpus(filepath.Join(dir, name), o); err != nil {
-			t.Fatal(err)
-		}
-		labs := make([]corpusLoop, o.loops)
-		for i := range labs {
-			data, _ := os.ReadFile(filepath.Join(dir, name, fmt.Sprintf("loop_%03d.json", i)))
-			if err := json.Unmarshal(data, &labs[i]); err != nil {
-				t.Fatal(err)
-			}
-		}
-		return labs
+	if err := s.exportCorpus(t.TempDir(), tuneOptions{loops: 4, bars: 1, seed: 5, gen: true, aug: true, glide: true, nowav: true}); err != nil {
+		t.Fatal(err)
 	}
-	plain := labels("plain")
-	o.glide = true
-	gliding := labels("gliding")
 	if *audio.VoiceDefByName("lead") != lead {
 		t.Error("the registered lead was not put back")
 	}
 	bent, swaying, held := 0, 0, 0
-	for i, lab := range gliding {
-		if p := plain[i]; p.BPM != lab.BPM || p.Root != lab.Root || p.Scale != lab.Scale || p.Tuning != lab.Tuning {
-			t.Errorf("loop %d drawn at %d bpm on %d, at %d on %d without the word", i, lab.BPM, lab.Root, p.BPM, p.Root)
-		}
-		for _, e := range plain[i].Events {
-			if e.Cents != nil {
-				t.Fatalf("loop %d: a note labelled with cents without the word", i)
-			}
-		}
+	for i, lab := range gliding.loops {
 		for _, e := range lab.Events {
 			switch {
 			case e.Cents == nil:
@@ -3740,33 +3701,24 @@ func TestAGlidingCorpusLabelsWhereEachMovingNoteSits(t *testing.T) {
 // no track is as without the column, and a finer track is read along its line.
 func TestAPitchTrackPlacesARecordingsNotes(t *testing.T) {
 	dir := t.TempDir()
-	var notes []audio.RipNote
-	for b := range 4 {
-		at := 2 * float64(b)
-		notes = append(notes, audio.RipNote{Start: at, End: at + 0.5, MIDI: 64, Vel: 0.8, Bend: 0.8, BendAt: 0.25},
-			audio.RipNote{Start: at + 0.5, End: at + 1.5, MIDI: 67, Vel: 0.8, Bend: 2, BendAt: 0.5})
-	}
-	var mid bytes.Buffer
-	if err := audio.WriteMIDI(&mid, notes, nil, 120, audio.Meter{}); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(dir, "mid", "bent.mid"), mid.String())
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	runOrFatal(t, s, &out, fmt.Sprintf("builtin pattern\ncorpus %s 4 2 midi %s\n", filepath.Join(dir, "engine"), filepath.Join(dir, "mid")))
-	var eng corpusLoop // the first loop that is the file's voice alone
-	wav, hole, cut := []byte(nil), -1, -1
-	for i := 0; i < 4 && hole < 0; i++ {
-		data, _ := os.ReadFile(filepath.Join(dir, "engine", fmt.Sprintf("loop_%03d.json", i)))
+	labels, engine := filepath.Join(dir, "labels"), filepath.Join(dir, "engine")
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s 200 2 gen glide labels\n", labels))
+	var eng corpusLoop // the first loop that is a gliding voice alone
+	at, hole, cut := -1, -1, -1
+	for i := 0; i < 200 && at < 0; i++ {
+		data, _ := os.ReadFile(filepath.Join(labels, fmt.Sprintf("loop_%03d.json", i)))
 		if eng = (corpusLoop{}); json.Unmarshal(data, &eng) != nil {
 			t.Fatalf("loop %d: %s", i, data)
 		}
-		alone := true
+		alone := len(eng.Events) > 0
 		for k, e := range eng.Events {
 			alone = alone && e.Drum < 0 && e.Voice != nil && (k == 0 || eng.Events[k-1].End <= e.Frame)
 		}
 		// the tracks leave a frame of one moving note unvoiced and hold another a semitone and a half off, and never voice a second
+		hole, cut = -1, -1
 		for k, e := range eng.Events {
 			if !alone || e.Cents == nil {
 				continue
@@ -3777,10 +3729,19 @@ func TestAPitchTrackPlacesARecordingsNotes(t *testing.T) {
 				cut = k
 			}
 		}
-		wav, _ = os.ReadFile(filepath.Join(dir, "engine", fmt.Sprintf("loop_%03d.wav", i)))
+		if hole >= 0 && cut >= 0 {
+			at = i
+		}
 	}
-	if hole < 0 || cut < 0 || len(wav) == 0 {
-		t.Fatalf("no loop of the gliding voice alone: %+v", eng.Events)
+	if at < 0 {
+		t.Fatal("no loop of a gliding voice alone")
+	}
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s 200 2 gen glide part %d/200\n", engine, at))
+	name := fmt.Sprintf("loop_%03d", at)
+	wav, _ := os.ReadFile(filepath.Join(engine, name+".wav"))
+	rendered, _ := os.ReadFile(filepath.Join(engine, name+".json"))
+	if alone, _ := os.ReadFile(filepath.Join(labels, name+".json")); len(wav) == 0 || !bytes.Equal(rendered, alone) {
+		t.Fatalf("%s rendered labelled %s, its labels alone %s", name, rendered, alone)
 	}
 	sits := func(e corpusEvent, i int) float64 { // where the engine's note sits at its frame i
 		if e.Cents == nil {
@@ -3845,7 +3806,7 @@ func TestAPitchTrackPlacesARecordingsNotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mid.Reset()
+	var mid bytes.Buffer
 	if err := audio.WriteMIDI(&mid, recorded, nil, 120, audio.Meter{}); err != nil {
 		t.Fatal(err)
 	}
@@ -3957,32 +3918,17 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 		dir, name string
 		amp       float64
 	}{{dir, "bass_synthetic_000", 0.5}, {dir, "synth_lead_synthetic_001", 0.5}, {quiet, "keyboard_acoustic_002", 0}} {
-		for p := 21; p <= 108; p += 4 { // a partial set, as a train slice holds
-			pcm := make([]byte, 44+2*4*nsynthRate)
-			copy(pcm, "RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00")
-			le := binary.LittleEndian
-			le.PutUint32(pcm[24:], nsynthRate)
-			le.PutUint32(pcm[28:], 2*nsynthRate)
-			le.PutUint16(pcm[32:], 2)
-			le.PutUint16(pcm[34:], 16)
-			copy(pcm[36:], "data")
-			le.PutUint32(pcm[40:], 2*4*nsynthRate)
-			for i := range 4 * nsynthRate {
-				env := min(1, 4-float64(i)/nsynthRate) // held 3 s, released over the last
-				v := in.amp * env * math.Sin(2*math.Pi*audio.NoteFreq(p)*float64(i)/nsynthRate)
-				le.PutUint16(pcm[44+2*i:], uint16(int16(v*32767)))
-			}
-			if err := os.WriteFile(filepath.Join(in.dir, fmt.Sprintf("%s-%03d-100.wav", in.name, p)), pcm, 0o644); err != nil {
-				t.Fatal(err)
-			}
+		if err := writeNSynth(in.dir, in.name, in.amp, 21, 108, 4); err != nil { // a partial set, as a train slice holds
+			t.Fatal(err)
 		}
 	}
 	set, err := loadSampleSet(dir)
 	if err != nil || len(set.bass) != 1 || len(set.other) != 1 {
 		t.Fatalf("index: %v, %d bass and %d other instrument(s)", err, len(set.bass), len(set.other))
 	}
-	notes := []audio.RipEvent{{Step: 2, Dur: 2, MIDI: 62, Vel: 0.8}, {Step: 14, Dur: 2, MIDI: 58, Vel: 0.5}, {Bar: 1, Step: 10, Dur: 2, MIDI: 71, Vel: 1}}
-	line, err := set.line(set.other[0], notes, audio.Meter{}, 2, 120, cents, false, map[sampleKey][]float64{}, true)
+	sps := audio.SamplesPerStep(120)
+	notes := []audio.RipEvent{{At: 2 * sps, For: 2 * sps, MIDI: 62, Vel: 0.8}, {At: 14*sps + 1234, For: 2 * sps, MIDI: 58, Vel: 0.5}, {At: 26 * sps, For: 2 * sps, MIDI: 71, Vel: 1}}
+	_, line, err := set.play(set.other[0], notes, 32*sps, cents, false, map[sampleKey][]float64{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3996,15 +3942,14 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 		return s1*s1 + s2*s2 - c*s1*s2
 	}
 	for _, e := range notes {
-		at := int(float64(e.Bar*audio.StepsPerBar+e.Step) * float64(audio.SamplesPerStep(120)))
-		onset := at - int(frame)
-		for math.Abs(line.audio[onset]) < 0.05 {
+		onset := e.At - int(frame)
+		for math.Abs(line[onset]) < 0.05 {
 			onset++
 		}
-		if d := float64(onset - at); d < -frame || d > frame {
+		if d := float64(onset - e.At); d < -frame || d > frame {
 			t.Errorf("midi %d sounds %.0f samples from its label, past a frame", e.MIDI, d)
 		}
-		win, heard := line.audio[at+1000:at+5000], 0
+		win, heard := line[e.At+1000:e.At+5000], 0
 		for m := 40; m < 90; m++ {
 			if power(win, audio.NoteFreq(m)*math.Exp2(cents/1200.0)) > power(win, audio.NoteFreq(heard)*math.Exp2(cents/1200.0)) {
 				heard = m
@@ -4019,12 +3964,13 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
 	corpus := filepath.Join(dir, "corpus")
-	if err := s.exportCorpus(corpus, tuneOptions{loops: 3, bars: 2, seed: 2, gen: true, aug: true, samples: set}); err != nil {
+	o := tuneOptions{loops: 3, bars: 2, seed: 2, gen: true, aug: true, samples: set}
+	if err := s.exportCorpus(corpus, o); err != nil {
 		t.Fatal(err)
 	}
-	m := regexp.MustCompile(`(\d+) of (\d+) tonal line\(s\)`).FindStringSubmatch(out.String())
+	m := regexp.MustCompile(`(\d+) of (\d+) tonal part\(s\)`).FindStringSubmatch(out.String())
 	if m == nil || m[1] != m[2] || m[1] == "0" {
-		t.Fatalf("not every tonal line played on the recorded notes:\n%s", out.String())
+		t.Fatalf("not every tonal part played on the recorded notes:\n%s", out.String())
 	}
 	var labels [3][]byte
 	for i := range 3 {
@@ -4045,7 +3991,8 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 	}
 	// a labels pass reads where each recorded note ends and shifts none
 	writeFile(t, filepath.Join(corpus, "loop_001.json"), "cut")
-	if err := s.exportCorpus(corpus, tuneOptions{loops: 3, bars: 2, seed: 2, gen: true, aug: true, samples: set, labels: true}); err != nil {
+	o.labels = true
+	if err := s.exportCorpus(corpus, o); err != nil {
 		t.Fatal(err)
 	}
 	for i, want := range labels {
@@ -4063,8 +4010,10 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 		t.Fatalf("a silent note ended the corpus: %v", err)
 	}
 	for i, l := range loops {
-		if l.sampled[1] != nil || l.sampled[2] != nil {
-			t.Errorf("loop %d played a line on the silent instrument", i)
+		for _, e := range l.label.Events {
+			if e.Instr == silent.other[0].name {
+				t.Errorf("loop %d played a note on the silent instrument", i)
+			}
 		}
 	}
 }
@@ -4078,14 +4027,14 @@ func TestBenchGradesEachMeterAndListsEveryLoop(t *testing.T) {
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
 	const loops = 2
-	runOrFatal(t, s, &out, fmt.Sprintf("bench %d 3 meters verbose\n", loops)) // the seed's first loop is 6/8
+	runOrFatal(t, s, &out, fmt.Sprintf("bench %d 3 meters verbose\n", loops)) // the seed's second loop is 12/8
 	said := out.String()
-	for _, row := range []string{"analysis on 2 clean loop(s): ", "analysis on 2 augmented loop(s): ", "  in 6/8, 1 loop(s): ", "  in 4/4, 1 loop(s): ", ", its bar in "} {
+	for _, row := range []string{"analysis on 2 clean loop(s): ", "analysis on 2 augmented loop(s): ", "  in 12/8, 1 loop(s): ", "  in 4/4, 1 loop(s): ", ", its bar in "} {
 		if !strings.Contains(said, row) {
 			t.Errorf("no %q in what bench graded:\n%s", row, said)
 		}
 	}
-	if !regexp.MustCompile(`(?m)^loop +0 +96 bpm 6/8 `).MatchString(said) {
+	if !regexp.MustCompile(`(?m)^loop +1 +112 bpm 12/8 `).MatchString(said) {
 		t.Errorf("no loop listed with its meter:\n%s", said)
 	}
 	var listed, worst int
@@ -4162,102 +4111,6 @@ func TestLongVerbsRunBehindTheScreen(t *testing.T) {
 	lines := strings.Join(lb.Lines(), "\n")
 	if !strings.Contains(lines, `created pattern "behind"`) || !strings.Contains(lines, "keys wait") {
 		t.Errorf("the log after:\n%s", lines)
-	}
-}
-
-// TestCorpusGeneratesPartsTheBankNeverHad: gen draws a beat, a melody or a bass
-// line of its own for some loops, each valid, labelled with its notes, and
-// different from the bank's draw; the aug property, the same music with and
-// without, holds with gen on both sides
-func TestCorpusGeneratesPartsTheBankNeverHad(t *testing.T) {
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	plain, err := s.corpus(tuneOptions{loops: 6, bars: 1, seed: 5})
-	if err != nil {
-		t.Fatal(err)
-	}
-	gen, err := s.corpus(tuneOptions{loops: 6, bars: 1, seed: 5, gen: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	both, err := s.corpus(tuneOptions{loops: 6, bars: 1, seed: 5, gen: true, aug: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	changed, notes := 0, 0
-	accompanied := 0
-	for i := range gen {
-		if gen[i].slots[2] != audio.PatternSilence {
-			accompanied++
-		}
-		if gen[i].slots != plain[i].slots {
-			changed++
-		}
-		if gen[i].slots != both[i].slots {
-			t.Errorf("loop %d: gen drew %v alone and %v with aug", i, gen[i].slots, both[i].slots)
-		}
-		for _, b := range gen[i].want.Bars {
-			notes += len(b.Melody) + len(b.Bass)
-		}
-	}
-	if changed == 0 || notes == 0 {
-		t.Errorf("%d loop(s) changed by gen, %d note(s) labelled", changed, notes)
-	}
-	if accompanied == 0 {
-		t.Errorf("no loop got an accompaniment in the free slot")
-	}
-	for _, n := range []string{"corpus_beat", "corpus_melody", "corpus_bass"} {
-		if id := audio.PatternIDByName(n); id != audio.PatternSilence {
-			if p := audio.GetPattern(id); p == nil || audio.ValidatePattern(p) != nil {
-				t.Errorf("%s does not validate", n)
-			}
-		}
-	}
-	runOrFatal(t, s, &out, "corpus "+t.TempDir()+" 1 1 gen aug\n")
-	if !strings.Contains(out.String(), "generated beats") {
-		t.Errorf("corpus did not say it generated:\n%s", out.String())
-	}
-}
-
-// TestACorpusOfMetersLabelsItsBars: corpus ... meters renders a share of its
-// loops in 3/4 or 6/8, every part generated in that meter and labelled in its
-// bars, and leaves each 4/4 loop as a corpus without meters has it
-func TestACorpusOfMetersLabelsItsBars(t *testing.T) {
-	dir := t.TempDir()
-	plain, metered := filepath.Join(dir, "plain"), filepath.Join(dir, "metered")
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s 5 2 nowav\ncorpus %s 5 2 nowav meters\n", plain, metered))
-	read := func(dir string, i int, ext string) []byte {
-		data, _ := os.ReadFile(filepath.Join(dir, fmt.Sprintf("loop_%03d%s", i, ext)))
-		return data
-	}
-	for i := range 4 { // the seed draws 4/4 for these, and 6/8 for the last
-		if !bytes.Equal(read(plain, i, ".json"), read(metered, i, ".json")) || !bytes.Equal(read(plain, i, ".bands"), read(metered, i, ".bands")) {
-			t.Errorf("4/4 loop %d differs with meters", i)
-		}
-	}
-	var was, l corpusLoop
-	json.Unmarshal(read(plain, 4, ".json"), &was)
-	json.Unmarshal(read(metered, 4, ".json"), &l)
-	beat, bass := audio.GetPattern(audio.PatternIDByName("corpus_beat")), audio.GetPattern(audio.PatternIDByName("corpus_bass"))
-	if l.Meter != "6/8" || l.Frames >= was.Frames || beat == nil || beat.Meter != (audio.Meter{Num: 6, Den: 8}) || bass == nil || bass.Steps != 12 || !strings.Contains(out.String(), "1 in 3/4 or 6/8") {
-		t.Fatalf("loop 4 in %q over %d frames (%d in 4/4), its beat %+v:\n%s", l.Meter, l.Frames, was.Frames, beat, out.String())
-	}
-	// the beat's downbeat kick lands on the second bar line, twelve steps in
-	at := int(12*float64(audio.SamplesPerStep(l.BPM))/audio.AudioSampleRate/audio.RipFrameSec + 0.5)
-	var kicks []int
-	drums := false
-	for _, e := range l.Events {
-		drums = drums || e.Drum >= 0
-		if e.Drum == 0 {
-			kicks = append(kicks, e.Frame)
-		}
-	}
-	if drums && !slices.Contains(kicks, at) {
-		t.Errorf("no kick at frame %d, the second bar line of 6/8: kicks at %v", at, kicks)
 	}
 }
 
@@ -4526,4 +4379,1060 @@ func TestTheBanksTextFollowsItsDocumentThroughUndo(t *testing.T) {
 	if moved := linesMoved(own, got); len(got) == 0 || len(moved) != 0 {
 		t.Errorf("undo brought the patterns back without the bank's text: %d bytes for its %d, %d line(s) differ", len(got), len(own), len(moved))
 	}
+}
+
+// writeNSynth writes an instrument's recorded notes as NSynth names them, every
+// step semitones from lo to hi: a sine at amp, at the set's rate, held 3 s and
+// released over the last
+func writeNSynth(dir, name string, amp float64, lo, hi, step int) error {
+	for p := lo; p <= hi; p += step {
+		pcm := make([]byte, 44+2*4*nsynthRate)
+		copy(pcm, "RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00")
+		le := binary.LittleEndian
+		le.PutUint32(pcm[24:], nsynthRate)
+		le.PutUint32(pcm[28:], 2*nsynthRate)
+		le.PutUint16(pcm[32:], 2)
+		le.PutUint16(pcm[34:], 16)
+		copy(pcm[36:], "data")
+		le.PutUint32(pcm[40:], 2*4*nsynthRate)
+		for i := range 4 * nsynthRate {
+			env := min(1, 4-float64(i)/nsynthRate)
+			v := amp * env * math.Sin(2*math.Pi*audio.NoteFreq(p)*float64(i)/nsynthRate)
+			le.PutUint16(pcm[44+2*i:], uint16(int16(v*32767)))
+		}
+		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%s-%03d-100.wav", name, p)), pcm, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// corpusLabels is a corpus's labels read back, what the export said, and the
+// recorded set it played on
+type corpusLabels struct {
+	loops []corpusLoop
+	said  string
+	set   *sampleSet
+}
+
+// theLabels is what the tests of an arranged corpus read: `corpus <dir> 2000 4`
+// under every word, on four recorded instruments of partial ranges, labelled and
+// not rendered, made once and its folders gone
+var theLabels = sync.OnceValues(func() (corpusLabels, error) {
+	dir, err := os.MkdirTemp("", "stapes-labels")
+	if err != nil {
+		return corpusLabels{}, err
+	}
+	defer os.RemoveAll(dir)
+	set, corpus := filepath.Join(dir, "set"), filepath.Join(dir, "corpus")
+	if err := os.MkdirAll(set, 0o755); err != nil {
+		return corpusLabels{}, err
+	}
+	for _, in := range []struct {
+		name          string
+		lo, hi, every int
+	}{{"bass_synthetic_000", 28, 55, 3}, {"keyboard_acoustic_001", 21, 108, 4}, {"guitar_acoustic_002", 40, 84, 2}, {"string_acoustic_003", 36, 96, 3}} {
+		if err := writeNSynth(set, in.name, 0.5, in.lo, in.hi, in.every); err != nil {
+			return corpusLabels{}, err
+		}
+	}
+	var out bytes.Buffer
+	s, err := NewSession(Options{Backend: "null", Out: &out})
+	if err != nil {
+		return corpusLabels{}, err
+	}
+	defer func() {
+		s.Close()
+		for deadline := time.Now().Add(time.Minute); !s.eng.Stopped() && time.Now().Before(deadline); {
+			time.Sleep(5 * time.Millisecond)
+		}
+		audio.ResetRegistries()
+	}()
+	if err := RunScript(s, strings.NewReader(fmt.Sprintf("corpus %s 2000 4 gen meters overlaps aug glide sampled %s labels\n", corpus, set))); err != nil {
+		return corpusLabels{}, err
+	}
+	c := corpusLabels{loops: make([]corpusLoop, 2000), said: out.String()}
+	for i := range c.loops {
+		data, err := os.ReadFile(filepath.Join(corpus, fmt.Sprintf("loop_%03d.json", i)))
+		if err != nil {
+			return corpusLabels{}, err
+		}
+		if err := json.Unmarshal(data, &c.loops[i]); err != nil {
+			return corpusLabels{}, err
+		}
+	}
+	c.set, err = loadSampleSet(set)
+	return c, err
+})
+
+func labelCorpus(t *testing.T) corpusLabels {
+	t.Helper()
+	c, err := theLabels()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// beatOf is where frame f falls in a loop's beats, the share of a beat past the
+// beat it is in, between its listed beats and past them at the nearest's spacing
+func beatOf(l corpusLoop, f int) float64 {
+	k := min(max(sort.SearchInts(l.Beats, f+1)-1, 0), len(l.Beats)-2)
+	return float64(k) + float64(f-l.Beats[k])/float64(l.Beats[k+1]-l.Beats[k])
+}
+
+// byPart is a loop's events by the part they play in, in onset order
+func byPart(l corpusLoop) map[string][]corpusEvent {
+	out := map[string][]corpusEvent{}
+	for _, e := range l.Events {
+		out[e.Part] = append(out[e.Part], e)
+	}
+	for _, evs := range out {
+		slices.SortStableFunc(evs, func(x, y corpusEvent) int { return x.Frame - y.Frame })
+	}
+	return out
+}
+
+// chordAt is the chord a loop sounds at frame f
+func chordAt(l corpusLoop, f int) []int {
+	k := sort.Search(len(l.Chords), func(k int) bool { return l.Chords[k].Frame > f }) - 1
+	return l.Chords[max(k, 0)].Tones
+}
+
+// onLine is whether frame f is within two of one of a loop's bar lines
+func onLine(l corpusLoop, f int) bool {
+	return slices.ContainsFunc(l.Downbeats, func(d int) bool { return abs(d-f) <= 2 })
+}
+
+// TestACorpusSoundsEveryKeyWhereMusicLies: over 2,000 loops every key A0 to C8
+// starts at least 50 notes and no other pitch one, bass lines reach the lowest
+// octave and melodies and arpeggios the highest, C4 to C6 holds the most, and a
+// recorded instrument plays only within a shift of a note it has
+func TestACorpusSoundsEveryKeyWhereMusicLies(t *testing.T) {
+	c := labelCorpus(t)
+	recorded := map[string][]int{}
+	for _, in := range append(slices.Clip(c.set.bass), c.set.other...) {
+		recorded[in.name] = in.pitches
+	}
+	var keys [128]int
+	low, high, total := 0, 0, 0
+	for _, l := range c.loops {
+		for _, e := range l.Events {
+			if e.Drum >= 0 {
+				continue
+			}
+			if e.MIDI < 21 || e.MIDI > 108 {
+				t.Fatalf("a %s note at midi %d", e.Part, e.MIDI)
+			}
+			keys[e.MIDI]++
+			total++
+			if e.Part == "bass" && e.MIDI < 33 {
+				low++
+			}
+			if (e.Part == "melody" || e.Part == "arpeggio") && e.MIDI > 96 {
+				high++
+			}
+			if ps, ok := recorded[e.Instr]; ok && !slices.ContainsFunc(ps, func(p int) bool { return abs(p-e.MIDI) <= sampledReach }) {
+				t.Errorf("%s played midi %d, past a shift of the notes it has", e.Instr, e.MIDI)
+			}
+		}
+	}
+	share := func(lo, hi int) float64 {
+		n := 0
+		for _, k := range keys[lo : hi+1] {
+			n += k
+		}
+		return float64(n) / float64(total)
+	}
+	fewest := slices.Min(keys[21:109])
+	t.Logf("%d notes, the fewest on a key %d; A0-G#1 %.3f, A1-B3 %.3f, C4-C6 %.3f, C#6-C8 %.3f", total, fewest, share(21, 32), share(33, 59), share(60, 84), share(85, 108))
+	if fewest < 50 || low < 500 || high < 500 {
+		t.Errorf("the fewest notes on a key %d, bass notes under A1 %d, melody and arpeggio notes over C7 %d", fewest, low, high)
+	}
+	if mid := share(60, 84); mid < share(21, 59) || mid < share(85, 108) {
+		t.Errorf("C4 to C6 holds %.3f of the notes, under the keys below or above it", mid)
+	}
+}
+
+// TestAnArrangedLoopsHarmonyMovesUnderItsParts: every arranged loop's chords
+// change in its bars, each of its key; its chordal parts sound the chord that
+// sounds, its bass the chord's root on each bar line, and its melody one of the
+// chord's tones on more bar lines than notes of the scale alone would
+func TestAnArrangedLoopsHarmonyMovesUnderItsParts(t *testing.T) {
+	c := labelCorpus(t)
+	chordal := []string{"chords", "left", "strum", "pad", "arpeggio"}
+	var in, out, roots, lines, melodyIn, melodyLines int
+	for i, l := range c.loops {
+		if l.Kind != "arranged" {
+			continue
+		}
+		k := slices.IndexFunc(corpusKeys, func(k struct {
+			scale, chords audio.ScaleID
+			weight        float64
+			progs         [][]int
+		}) bool {
+			return k.scale == audio.ScaleID(l.Scale)
+		})
+		if k < 0 || len(l.Chords) < 2 {
+			t.Fatalf("loop %d: scale %d, %d chord(s)", i, l.Scale, len(l.Chords))
+		}
+		var scale []int
+		for _, iv := range audio.ScaleIntervals(corpusKeys[k].chords) {
+			scale = append(scale, (l.Root+iv)%12)
+		}
+		for _, ch := range l.Chords {
+			for _, pc := range ch.Tones {
+				if !slices.Contains(scale, pc) {
+					t.Errorf("loop %d: chord %v off its key", i, ch.Tones)
+				}
+			}
+		}
+		for _, e := range l.Events {
+			if e.Drum >= 0 || e.Cents != nil {
+				continue
+			}
+			heard := slices.Contains(chordAt(l, e.Frame), e.MIDI%12) || slices.Contains(chordAt(l, e.Frame+2), e.MIDI%12)
+			switch {
+			case slices.Contains(chordal, e.Part):
+				if heard {
+					in++
+				} else {
+					out++
+				}
+			case e.Part == "bass" && onLine(l, e.Frame):
+				lines++
+				if e.MIDI%12 == chordAt(l, e.Frame+2)[0] {
+					roots++
+				}
+			case e.Part == "melody" && onLine(l, e.Frame):
+				melodyLines++
+				if heard {
+					melodyIn++
+				}
+			}
+		}
+	}
+	t.Logf("chordal notes in the chord %d of %d, bass roots on the lines %d of %d, melody notes in the chord on them %d of %d", in, in+out, roots, lines, melodyIn, melodyLines)
+	if float64(out) > 0.005*float64(in+out) || float64(roots) < 0.97*float64(lines) || float64(melodyIn) < 0.6*float64(melodyLines) {
+		t.Error("a part does not follow the chords")
+	}
+}
+
+// strikes groups notes, in onset order, struck within d frames of the first
+func strikes(evs []corpusEvent, d int) [][]corpusEvent {
+	var out [][]corpusEvent
+	for _, e := range evs {
+		if n := len(out); n > 0 && e.Frame-out[n-1][0].Frame <= d {
+			out[n-1] = append(out[n-1], e)
+			continue
+		}
+		out = append(out, []corpusEvent{e})
+	}
+	return out
+}
+
+// TestChordsSoundAsHandsAndStringsPlayThem: a chord is struck three to five
+// notes at once, inverted in a share, short or held a bar; a strum's strings
+// sound one after another, down the chord or up it; and a keyboard's left hand
+// plays under its right on the same instrument
+func TestChordsSoundAsHandsAndStringsPlayThem(t *testing.T) {
+	c := labelCorpus(t)
+	sizes := map[int]int{}
+	var struck, inverted, chorded, short, held, strokes, apart, down, up int
+	for i, l := range c.loops {
+		parts := byPart(l)
+		if l.Kind != "arranged" || len(l.Downbeats) < 2 {
+			continue
+		}
+		bar := l.Downbeats[1] - l.Downbeats[0]
+		beat := float64(l.Beats[len(l.Beats)-1]-l.Beats[0]) / float64(len(l.Beats)-1)
+		for _, g := range strikes(parts["chords"], 3) {
+			sizes[len(g)]++
+			if len(g) >= 3 {
+				struck++
+				lowest := slices.MinFunc(g, func(x, y corpusEvent) int { return x.MIDI - y.MIDI })
+				if lowest.MIDI%12 != chordAt(l, g[0].Frame+2)[0] {
+					inverted++
+				}
+			}
+		}
+		if chords := parts["chords"]; len(chords) > 0 {
+			var s, h int
+			for _, e := range chords {
+				d := float64(e.End - e.Frame)
+				s, h = s+b2i(d <= 0.6*beat), h+b2i(d >= 0.9*float64(bar))
+			}
+			chorded, short, held = chorded+1, short+b2i(2*s >= len(chords)), held+b2i(2*h >= len(chords))
+		}
+		for _, g := range strikes(parts["strum"], 6) {
+			if len(g) < 3 {
+				continue
+			}
+			strokes++
+			lo := slices.MinFunc(g, func(x, y corpusEvent) int { return x.MIDI - y.MIDI })
+			hi := slices.MaxFunc(g, func(x, y corpusEvent) int { return x.MIDI - y.MIDI })
+			switch {
+			case lo.Frame < hi.Frame:
+				apart, down = apart+1, down+1
+			case lo.Frame > hi.Frame:
+				apart, up = apart+1, up+1
+			}
+		}
+		if left := parts["left"]; len(left) > 0 {
+			right := parts["chords"]
+			pitch := func(evs []corpusEvent) float64 {
+				var m float64
+				for _, e := range evs {
+					m += float64(e.MIDI) / float64(len(evs))
+				}
+				return m
+			}
+			if len(right) == 0 || left[0].Instr != right[0].Instr || pitch(left) >= pitch(right) {
+				t.Errorf("loop %d: a left hand on %s about midi %.0f under chords on %v", i, left[0].Instr, pitch(left), right)
+			}
+		}
+	}
+	t.Logf("strikes by size %v; %d of %d of three or more inverted; of %d loops of chords %d mostly short and %d mostly held a bar; %d strokes, %d apart, %d down and %d up", sizes, inverted, struck, chorded, short, held, strokes, apart, down, up)
+	if sizes[3] == 0 || sizes[4] == 0 || sizes[5] == 0 || sizes[6] > 0 || inverted < struck/5 || inverted > struck*4/5 {
+		t.Error("chords are not struck three to five notes at once in their inversions")
+	}
+	if short < chorded/10 || held < chorded/10 || apart < strokes*7/10 || down < strokes/10 || up < strokes/10 {
+		t.Error("chords are not short and held, or strokes not spread down and up")
+	}
+}
+
+// TestAMelodyGrowsFromItsMotif: the first bar of a melody from a bar line is a
+// motif more of its other bars play the rhythm of again than not: as it was,
+// moved with the chord or varied; the rest answer it. A bar of 2/4 is half a
+// motif, and is not read
+func TestAMelodyGrowsFromItsMotif(t *testing.T) {
+	c := labelCorpus(t)
+	var again, repeated, moved, varied, answered int
+	for _, l := range c.loops {
+		if l.Kind != "arranged" || l.Meter == "2/4" || len(l.Downbeats) < 3 || l.Downbeats[0] > 0 {
+			continue
+		}
+		n := len(audio.ScaleIntervals(audio.ScaleID(l.Scale)))
+		bars := make([][][2]float64, len(l.Downbeats)) // a bar's notes: beats past its line, step of the scale
+		for _, e := range byPart(l)["melody"] {
+			k := sort.SearchInts(l.Downbeats, e.Frame+3) - 1
+			if k < 0 {
+				continue
+			}
+			deg, oct, _ := audio.PitchStep(l.Root, audio.ScaleID(l.Scale), e.MIDI)
+			step := float64(oct*n + deg)
+			if e.Cents != nil {
+				step = math.NaN() // a bent or scooped note's pitch is no step
+			}
+			bars[k] = append(bars[k], [2]float64{beatOf(l, e.Frame) - beatOf(l, l.Downbeats[k]), step})
+		}
+		last := len(bars)
+		motif := bars[0]
+		if len(motif) < 2 {
+			continue
+		}
+		for _, b := range bars[1:last] {
+			if len(b) == 0 {
+				continue
+			}
+			same := len(b) == len(motif)
+			for j := 0; same && j < len(b); j++ {
+				same = math.Abs(b[j][0]-motif[j][0]) <= 0.2
+			}
+			if !same {
+				answered++
+				continue
+			}
+			again++
+			d, steady := math.NaN(), true
+			for j := range b {
+				if x := b[j][1] - motif[j][1]; math.IsNaN(d) {
+					d = x
+				} else if !math.IsNaN(x) {
+					steady = steady && x == d
+				}
+			}
+			switch {
+			case math.IsNaN(d):
+				again--
+			case steady && d == 0:
+				repeated++
+			case steady:
+				moved++
+			default:
+				varied++
+			}
+		}
+	}
+	t.Logf("bars playing the motif's rhythm again %d (%d as it was, %d moved, %d varied), answering it %d", again, repeated, moved, varied, answered)
+	if again < answered || repeated == 0 || moved == 0 || varied == 0 || answered == 0 {
+		t.Error("melodies do not grow from their motifs")
+	}
+}
+
+// TestPartsDoubleEnterAndDropOut: a double plays the melody's notes at the
+// unison or an octave over some or all of a loop; a part comes in part-way or
+// drops out in a share of the loops of more than one; and a loop is a line
+// alone to six parts, each size in a share
+func TestPartsDoubleEnterAndDropOut(t *testing.T) {
+	c := labelCorpus(t)
+	sizes := map[int]int{}
+	var arranged, doubled, unison, octave, partly, several, enters, drops int
+	for i, l := range c.loops {
+		if l.Kind != "arranged" || len(l.Downbeats) < 2 {
+			continue
+		}
+		arranged++
+		parts := byPart(l)
+		sizes[len(parts)]++
+		if dbl := parts["double"]; len(dbl) > 0 {
+			doubled++
+			mel := parts["melody"]
+			for _, e := range dbl {
+				near := func(m corpusEvent) bool { return abs(m.Frame-e.Frame) <= 6 }
+				j := slices.IndexFunc(mel, func(m corpusEvent) bool { return near(m) && (m.MIDI-e.MIDI)%12 == 0 })
+				switch {
+				case j >= 0 && mel[j].MIDI == e.MIDI:
+					unison++
+				case j >= 0:
+					octave++
+				case e.Cents == nil && e.Frame < l.Frames-8 && !slices.ContainsFunc(mel, func(m corpusEvent) bool { return near(m) && m.Cents != nil }):
+					t.Errorf("loop %d: the double's midi %d at frame %d, no melody note there", i, e.MIDI, e.Frame)
+				}
+			}
+			if dbl[len(dbl)-1].Frame-dbl[0].Frame < (mel[len(mel)-1].Frame-mel[0].Frame)*3/4 {
+				partly++
+			}
+		}
+		if len(parts) < 2 {
+			continue
+		}
+		several++
+		bar := l.Downbeats[1] - l.Downbeats[0]
+		first, last := l.Frames, 0
+		for _, e := range l.Events {
+			first, last = min(first, e.Frame), max(last, e.End)
+		}
+		in, out := false, false
+		for name, evs := range parts {
+			if name == "double" {
+				continue
+			}
+			end := 0
+			for _, e := range evs {
+				end = max(end, e.End)
+			}
+			in = in || evs[0].Frame >= first+bar-3
+			out = out || end <= last-bar+3
+		}
+		enters += b2i(in)
+		drops += b2i(out)
+	}
+	t.Logf("%d arranged loops by their parts %v; %d doubled, %d notes at the unison and %d an octave apart, %d over part of the melody; of %d of more than one part a part enters in %d and drops out in %d", arranged, sizes, doubled, unison, octave, partly, several, enters, drops)
+	if unison == 0 || octave == 0 || partly == 0 || partly == doubled || enters < several/8 || drops < several/8 {
+		t.Error("doubles, entries or drops are missing")
+	}
+	for n := 1; n <= 6; n++ {
+		if sizes[n] < arranged/25 {
+			t.Errorf("%d loop(s) of %d part(s)", sizes[n], n)
+		}
+	}
+	if sizes[7] > 0 {
+		t.Errorf("%d loop(s) of seven parts", sizes[7])
+	}
+}
+
+func mean(xs []float64) float64 {
+	var m float64
+	for _, x := range xs {
+		m += x / float64(len(xs))
+	}
+	return m
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// quarters is whether a loop's beat is a quarter
+func quarters(l corpusLoop) bool { return l.Meter == "" || strings.HasSuffix(l.Meter, "/4") }
+
+// offsets are a part's onsets as shares of a beat past the beat, its feel taken
+// out: the median share its notes on a beat sit at
+func offsets(l corpusLoop, evs []corpusEvent) []float64 {
+	var on, out []float64
+	for _, e := range evs {
+		x := beatOf(l, e.Frame)
+		f := x - math.Floor(x+0.15)
+		out = append(out, f)
+		if math.Abs(f) < 0.15 {
+			on = append(on, f)
+		}
+	}
+	if len(on) == 0 {
+		return nil
+	}
+	slices.Sort(on)
+	feel := on[len(on)/2]
+	for i := range out {
+		out[i] -= feel
+		out[i] -= math.Floor(out[i])
+	}
+	return out
+}
+
+// TestRhythmsSwingSyncopateRestAndBreak: in a share of the loops in quarters the
+// eighths swing; triplets sound in a share; notes struck off the beat hold over
+// the next; melodies rest a beat or more; and a share of the loops with drums
+// stop them for a beat or two before a bar line: a break
+func TestRhythmsSwingSyncopateRestAndBreak(t *testing.T) {
+	c := labelCorpus(t)
+	var inQuarters, swung, straight, triplets, syncopated, melodies, rests, drummed, breaks, arranged int
+	for _, l := range c.loops {
+		if l.Kind != "arranged" || len(l.Downbeats) < 2 {
+			continue
+		}
+		arranged++
+		parts := byPart(l)
+		beatLen := float64(l.Beats[len(l.Beats)-1]-l.Beats[0]) / float64(len(l.Beats)-1)
+		swings, threes := false, false
+		var straights, all int
+		for name, evs := range parts {
+			fs := offsets(l, evs)
+			var eighths []float64
+			for _, f := range fs {
+				if f > 0.4 && f < 0.75 {
+					eighths = append(eighths, f)
+				}
+			}
+			thirds := slices.ContainsFunc(fs, func(f float64) bool { return f > 0.28 && f < 0.38 })
+			if quarters(l) && len(eighths) >= 6 && !thirds {
+				slices.Sort(eighths)
+				m := eighths[len(eighths)/2]
+				swings = swings || m >= 0.54 && m <= 0.72
+				straights += b2i(math.Abs(m-0.5) <= 0.03)
+				all++
+			}
+			for b := range len(l.Beats) {
+				third := func(at float64) bool {
+					return slices.ContainsFunc(evs, func(e corpusEvent) bool { return math.Abs(beatOf(l, e.Frame)-float64(b)-at) <= 0.05 })
+				}
+				threes = threes || quarters(l) && name != "drums" && third(1.0/3) && third(2.0/3)
+			}
+		}
+		if quarters(l) && all > 0 {
+			inQuarters++
+			swung += b2i(swings)
+			straight += b2i(straights == all)
+		}
+		triplets += b2i(threes)
+		synced := false
+		for _, name := range []string{"melody", "bass", "chords", "strum"} {
+			for _, e := range parts[name] {
+				x := beatOf(l, e.Frame)
+				if f := x - math.Floor(x); f > 0.2 && f < 0.8 && beatOf(l, e.End) >= math.Ceil(x)+0.25 {
+					synced = true
+				}
+			}
+		}
+		syncopated += b2i(synced)
+		if mel := parts["melody"]; len(mel) > 1 {
+			melodies++
+			rested := false
+			for j := 1; j < len(mel); j++ {
+				rested = rested || float64(mel[j].Frame-mel[j-1].End) >= beatLen
+			}
+			rests += b2i(rested)
+		}
+		if drums := parts["drums"]; len(drums) > 0 {
+			drummed++
+			pulse := beatLen // a pulse of the quarters, or three eighths
+			if !quarters(l) {
+				pulse *= 3
+			}
+			broke := false
+			for _, d := range l.Downbeats[1:] {
+				from := d - int(pulse) - 2
+				before := slices.ContainsFunc(drums, func(e corpusEvent) bool { return e.Frame < from-int(pulse) })
+				gap := !slices.ContainsFunc(drums, func(e corpusEvent) bool { return e.Frame >= from && e.Frame < d-2 })
+				on := slices.ContainsFunc(drums, func(e corpusEvent) bool { return abs(e.Frame-d) <= 2 })
+				broke = broke || before && gap && on
+			}
+			breaks += b2i(broke)
+		}
+	}
+	t.Logf("of %d in quarters %d swing and %d are straight; of %d arranged %d play triplets and %d syncopate; %d of %d melodies rest; %d of %d with drums break", inQuarters, swung, straight, arranged, triplets, syncopated, rests, melodies, breaks, drummed)
+	if swung < inQuarters/12 || straight < inQuarters/2 || triplets < arranged/20 || syncopated < arranged/5 || rests < melodies/4 || breaks < drummed/30 || breaks > drummed/3 {
+		t.Error("a rhythm is missing")
+	}
+}
+
+// TestAPerformanceShapesItsLoudnessAndTime: a part's notes on a bar line sound
+// louder than its notes off the beat, parts swell and fade over a loop, onsets
+// fall off the grid but the kick's, the tempo drifts in a share of the loops,
+// and each labelled bar line the drums play over has the kick on it
+func TestAPerformanceShapesItsLoudnessAndTime(t *testing.T) {
+	c := labelCorpus(t)
+	db := func(v float64) float64 { return 20 * math.Log10(v) }
+	var accent float64
+	var accented, shaped, swells, fades, onsets, off, kicks, kicksOff, arranged, drifting, steady, lines, kicked int
+	for _, l := range c.loops {
+		if l.Kind != "arranged" || len(l.Downbeats) < 2 {
+			continue
+		}
+		arranged++
+		for name, evs := range byPart(l) {
+			if name == "drums" {
+				continue
+			}
+			var onLines, offBeat []float64
+			for _, e := range evs {
+				x := beatOf(l, e.Frame)
+				switch f := x - math.Floor(x); {
+				case onLine(l, e.Frame):
+					onLines = append(onLines, db(e.Vel))
+				case f > 0.15 && f < 0.85:
+					offBeat = append(offBeat, db(e.Vel))
+				}
+			}
+			if len(onLines) >= 2 && len(offBeat) >= 2 {
+				accent += mean(onLines) - mean(offBeat)
+				accented++
+			}
+			if n := len(evs); n >= 12 {
+				var head, tail []float64
+				for _, e := range evs[:n/3] {
+					head = append(head, db(e.Vel))
+				}
+				for _, e := range evs[n-n/3:] {
+					tail = append(tail, db(e.Vel))
+				}
+				shaped++
+				swells += b2i(mean(tail)-mean(head) >= 3)
+				fades += b2i(mean(head)-mean(tail) >= 3)
+			}
+		}
+		sixteenth := 4.0
+		if !quarters(l) {
+			sixteenth = 2
+		}
+		for _, e := range l.Events {
+			x := beatOf(l, e.Frame) * sixteenth
+			beatSec := float64(l.Beats[len(l.Beats)-1]-l.Beats[0]) / float64(len(l.Beats)-1) * audio.RipFrameSec
+			ms := math.Abs(x-math.Round(x)) / sixteenth * beatSec * 1000
+			switch b := beatOf(l, e.Frame); {
+			case e.Instr == "kick" && math.Abs(b-math.Round(b)) < 0.15:
+				kicks++
+				kicksOff += b2i(ms > 1.5*audio.RipFrameSec*1000)
+			case e.Drum < 0:
+				onsets++
+				off += b2i(ms > 15)
+			}
+		}
+		m, _ := audio.ParseMeter(cmp.Or(l.Meter, "4/4"))
+		held := float64(m.Beat()*audio.SamplesPerStep(l.BPM)) / audio.AudioSampleRate / audio.RipFrameSec // a beat at the label's tempo
+		var off float64
+		for k, b := range l.Beats {
+			off = max(off, math.Abs(float64(b-l.Beats[0])-float64(k)*held))
+		}
+		drifting += b2i(off >= 3)
+		steady += b2i(off <= 1)
+		var kick []int
+		for _, e := range l.Events {
+			if e.Instr == "kick" {
+				kick = append(kick, e.Frame)
+			}
+		}
+		for _, d := range l.Downbeats {
+			if len(kick) > 0 && d >= kick[0]-2 && d <= kick[len(kick)-1]+2 {
+				lines++
+				kicked += b2i(slices.ContainsFunc(kick, func(k int) bool { return abs(k-d) <= 1 }))
+			}
+		}
+	}
+	t.Logf("a bar line's notes %.1f dB over the off beat's in %d parts; of %d parts of 12 notes or more %d swell and %d fade; %d of %d onsets past 15 ms off the grid and %d of %d kicks past a frame and a half; of %d loops %d drift and %d hold; %d of %d bar lines under drums have a kick", accent/float64(accented), accented, shaped, swells, fades, off, onsets, kicksOff, kicks, arranged, drifting, steady, kicked, lines)
+	if accent/float64(accented) < 2.5 || swells < shaped/12 || fades < shaped/12 || off < onsets/5 || kicksOff > kicks/100 || drifting < arranged*2/5 || steady < arranged/6 || steady > arranged/2 || kicked < lines*98/100 {
+		t.Error("the performance is missing an accent, a swell, a fade, its feel, its drift or a bar line's kick")
+	}
+}
+
+// TestMetersAndPickupsAreDrawnInTheirShares: the arranged loops are in each of
+// corpusMeters by its share, within three points, and start part-way into a bar
+// in three of ten; a label names its meter and lists a bar line every bar's
+// beats, a part-way start less than a bar's before its first
+func TestMetersAndPickupsAreDrawnInTheirShares(t *testing.T) {
+	c := labelCorpus(t)
+	counts := map[string]int{}
+	arranged, partway := 0, 0
+	for i, l := range c.loops {
+		if l.Kind != "arranged" {
+			continue
+		}
+		arranged++
+		counts[l.Meter]++
+		m, err := audio.ParseMeter(cmp.Or(l.Meter, "4/4"))
+		if err != nil {
+			t.Fatalf("loop %d: meter %q: %v", i, l.Meter, err)
+		}
+		for k := 1; k < len(l.Downbeats); k++ {
+			if n := sort.SearchInts(l.Beats, l.Downbeats[k]) - sort.SearchInts(l.Beats, l.Downbeats[k-1]); n != m.Beats() || !slices.Contains(l.Beats, l.Downbeats[k]) {
+				t.Fatalf("loop %d in %s: %d beats from bar line %d to %d", i, l.Meter, n, l.Downbeats[k-1], l.Downbeats[k])
+			}
+		}
+		if l.Downbeats[0] > 0 {
+			partway++
+			if n := sort.SearchInts(l.Beats, l.Downbeats[0]); n >= m.Beats() {
+				t.Errorf("loop %d starts %d beats before its first bar line", i, n)
+			}
+		}
+	}
+	for _, r := range corpusMeters {
+		name := ""
+		if r.m != (audio.Meter{}) {
+			name = fmt.Sprintf("%d/%d", r.m.Num, r.m.Den)
+		}
+		if got := float64(counts[name]) / float64(arranged); math.Abs(got-r.share) > 0.03 {
+			t.Errorf("%s: %.3f of the arranged loops, want %.2f", cmp.Or(name, "4/4"), got, r.share)
+		}
+	}
+	t.Logf("%d arranged loops by meter %v, %d part-way", arranged, counts, partway)
+	if got := float64(partway) / float64(arranged); math.Abs(got-0.3) > 0.04 {
+		t.Errorf("%.3f of the arranged loops start part-way into a bar, want 0.3", got)
+	}
+}
+
+// TestOverlapsStrikeSingleNotesInNoMeter: a quarter of the loops are single
+// notes of one to eight instruments, the engine's and the recorded, sounding up
+// to eight at once, their pitches even over each instrument's range, their levels
+// over 30 dB, struck again while they ring, at unisons, octaves, fifths and
+// thirds far more than other intervals, and labelled with no beat
+func TestOverlapsStrikeSingleNotesInNoMeter(t *testing.T) {
+	c := labelCorpus(t)
+	byCount, polyphony, related := map[int]int{}, map[int]int{}, map[int]int{}
+	recorded, engine, overlaps, restruck, quiet, notes, unisons := 0, 0, 0, 0, 0, 0, 0
+	ranges := map[string][]int{}
+	for i, l := range c.loops {
+		if l.Kind != "overlap" {
+			continue
+		}
+		overlaps++
+		if l.BPM != 0 || l.Bars != 0 || l.Meter != "" || len(l.Beats) > 0 || len(l.Downbeats) > 0 || len(l.Chords) > 0 {
+			t.Errorf("loop %d: overlapping notes labelled %d bpm, %d bars, meter %q, %d beats", i, l.BPM, l.Bars, l.Meter, len(l.Beats))
+		}
+		instrs := map[string]bool{}
+		most := 0
+		for j, e := range l.Events {
+			instrs[e.Instr] = true
+			ranges[e.Instr] = append(ranges[e.Instr], e.MIDI)
+			notes++
+			if e.Vel < math.Pow(10, -15.0/20) {
+				quiet++
+			}
+			sounding := 0
+			for _, o := range l.Events[:j] {
+				if o.Frame <= e.Frame && o.End > e.Frame {
+					sounding++
+					related[e.MIDI-o.MIDI]++
+					if o.Instr == e.Instr && o.MIDI == e.MIDI {
+						restruck++
+					} else if o.MIDI == e.MIDI && o.Frame == e.Frame {
+						unisons++
+					}
+				}
+			}
+			most = max(most, sounding+1)
+		}
+		byCount[len(instrs)]++
+		polyphony[min(most, 9)]++
+		for name := range instrs {
+			if _, ok := recordedInstr(c.set, name); ok {
+				recorded++
+			} else {
+				engine++
+			}
+		}
+	}
+	var near, far float64
+	for _, d := range []int{0, 12, -12, 7, -7, 3, -3, 4, -4} {
+		near += float64(related[d]) / 9
+	}
+	for _, d := range []int{1, -1, 2, -2, 5, -5, 6, -6, 10} {
+		far += float64(related[d]) / 9
+	}
+	t.Logf("%d of %d loops overlapping, by instruments %v, by most sounding %v; %d recorded and %d engine instruments; %d of %d notes 15 dB down, %d struck again ringing; %.0f a related interval, %.0f another, %d unisons struck at once", overlaps, len(c.loops), byCount, polyphony, recorded, engine, quiet, notes, restruck, near, far, unisons)
+	if got := float64(overlaps) / float64(len(c.loops)); math.Abs(got-overlapShare) > 0.03 {
+		t.Errorf("%.3f of the loops overlap, want %.2f", got, overlapShare)
+	}
+	for k := 1; k <= 8; k++ {
+		if byCount[k] == 0 || polyphony[k] == 0 {
+			t.Errorf("no loop of %d instrument(s), or of %d sounding", k, k)
+		}
+	}
+	if polyphony[9] > 0 || recorded == 0 || engine == 0 || quiet < notes/3 || quiet > notes*2/3 || restruck == 0 || unisons == 0 || near < 3*far {
+		t.Error("overlapping notes miss an instrument, a level, a restrike or their intervals")
+	}
+	for name, ps := range ranges {
+		lo, hi := slices.Min(ps), slices.Max(ps)
+		if len(ps) < 300 || hi-lo < 24 {
+			continue
+		}
+		var thirds [3]int
+		for _, p := range ps {
+			thirds[min((p-lo)*3/(hi-lo+1), 2)]++
+		}
+		if slices.Min(thirds[:]) < slices.Max(thirds[:])*2/3 {
+			t.Errorf("%s's pitches over %d to %d by third %v", name, lo, hi, thirds)
+		}
+	}
+}
+
+// recordedInstr is the set's instrument of that name
+func recordedInstr(set *sampleSet, name string) (*sampleInstr, bool) {
+	for _, in := range append(slices.Clip(set.bass), set.other...) {
+		if in.name == name {
+			return in, true
+		}
+	}
+	return nil, false
+}
+
+// TestEachWordDrawsWhatItNamesAlone: meters changes only the loops it puts in
+// another meter or starts part-way, overlaps only those it gives single notes,
+// glide only a moving note's cents and a scoop's pitch, aug only the voices and
+// sampled only the instruments; without gen a loop is the bank's, and corpus
+// refuses a word it has not
+func TestEachWordDrawsWhatItNamesAlone(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeNSynth(dir, "keyboard_acoustic_000", 0.5, 21, 108, 2); err != nil {
+		t.Fatal(err)
+	}
+	set, err := loadSampleSet(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	draw := func(change func(o *tuneOptions)) []corpusLoop {
+		o := tuneOptions{loops: 80, bars: 4, seed: 9, gen: true, labels: true}
+		change(&o)
+		loops, err := s.corpus(o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []corpusLoop
+		for _, l := range loops {
+			out = append(out, l.label)
+		}
+		return out
+	}
+	plain := draw(func(*tuneOptions) {})
+	played := func(l corpusLoop) []corpusEvent {
+		evs := slices.Clone(l.Events)
+		for i := range evs {
+			evs[i].Voice, evs[i].Wave, evs[i].Family, evs[i].Cents = nil, 0, 0, nil
+		}
+		return evs
+	}
+	for _, w := range []struct {
+		word   string
+		change func(o *tuneOptions)
+		same   func(l, p corpusLoop) bool
+	}{
+		{"meters", func(o *tuneOptions) { o.meters = true }, func(l, p corpusLoop) bool {
+			return l.Meter != "" || l.Downbeats[0] > 0 || reflect.DeepEqual(l, p)
+		}},
+		{"overlaps", func(o *tuneOptions) { o.overlaps = overlapShare }, func(l, p corpusLoop) bool {
+			return l.Kind == "overlap" || reflect.DeepEqual(l, p)
+		}},
+		{"glide", func(o *tuneOptions) { o.glide = true }, func(l, p corpusLoop) bool {
+			evs := slices.Clone(l.Events)
+			for i, e := range evs {
+				if d := p.Events[min(i, len(p.Events)-1)].MIDI - e.MIDI; e.Cents != nil && d >= 0 && d <= 2 {
+					evs[i].MIDI += d
+				}
+				evs[i].Cents = nil
+			}
+			l.Events = evs
+			return reflect.DeepEqual(l, p)
+		}},
+		{"aug", func(o *tuneOptions) { o.aug = true }, func(l, p corpusLoop) bool {
+			l.Tuning = p.Tuning
+			return reflect.DeepEqual(played(l), played(p)) && reflect.DeepEqual(l.Beats, p.Beats) && l.Frames == p.Frames
+		}},
+		{"sampled", func(o *tuneOptions) { o.samples = set }, func(l, p corpusLoop) bool {
+			names := func(l corpusLoop) []string { return slices.Sorted(maps.Keys(byPart(l))) }
+			return l.BPM == p.BPM && l.Root == p.Root && l.Meter == p.Meter && reflect.DeepEqual(l.Chords, p.Chords) && reflect.DeepEqual(names(l), names(p))
+		}},
+	} {
+		changed := 0
+		for i, l := range draw(w.change) {
+			if !w.same(l, plain[i]) {
+				t.Errorf("%s: loop %d is drawn otherwise than without it", w.word, i)
+			}
+			changed += b2i(!reflect.DeepEqual(l, plain[i]))
+		}
+		if changed == 0 {
+			t.Errorf("%s changed no loop", w.word)
+		}
+	}
+	runOrFatal(t, s, &out, "builtin pattern\n")
+	bank, err := s.corpus(tuneOptions{loops: 8, bars: 2, seed: 9, labels: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, l := range bank {
+		if l.label.Kind != "bank" {
+			t.Errorf("loop %d without gen is %s", i, l.label.Kind)
+		}
+	}
+	for _, word := range []string{"dense", "midi"} {
+		if err := Execute(s, fmt.Sprintf("corpus %s 4 1 gen %s", dir, word)); err == nil || !strings.Contains(err.Error(), word) {
+			t.Errorf("corpus took %q: %v", word, err)
+		}
+	}
+}
+
+// TestAVoiceASessionAddsPlaysInArrangedParts: a voice no family names, as one a
+// focus script adds, is drawn for the arranged parts beside the bank's voices
+func TestAVoiceASessionAddsPlaysInArrangedParts(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, "new voice glass\nset glass.wave modal\nset glass.partials 16\nset glass.decay_time 1.5\napply all\n")
+	loops, err := s.corpus(tuneOptions{loops: 60, bars: 2, seed: 3, gen: true, labels: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := map[string]int{}
+	for _, l := range loops {
+		for _, e := range l.label.Events {
+			if e.Instr == "glass" {
+				parts[e.Part]++
+			}
+		}
+	}
+	if len(parts) < 2 {
+		t.Errorf("glass played in %v", parts)
+	}
+}
+
+// TestALoopsLevelIsDrawnWhateverItsParts: a rendered loop's loudest half second
+// sits between loopQuiet and loopLoud dBFS and its peak at loopPeak or under,
+// spread over the range, whatever it plays: arranged, recorded or single notes
+func TestALoopsLevelIsDrawnWhateverItsParts(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeNSynth(dir, "guitar_acoustic_000", 0.5, 40, 84, 2); err != nil {
+		t.Fatal(err)
+	}
+	set, err := loadSampleSet(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	loops, err := s.corpus(tuneOptions{loops: 24, bars: 2, seed: 4, gen: true, meters: true, overlaps: 0.3, aug: true, samples: set})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quietest, loudest := 0.0, -100.0
+	kinds := map[string]bool{}
+	for i, l := range loops {
+		kinds[l.label.Kind] = true
+		var peak, best float64
+		w := int(loopWindow * audio.AudioSampleRate)
+		for k := 0; k+w <= len(l.audio); k += w / 4 {
+			var e float64
+			for _, v := range l.audio[k : k+w] {
+				e += v * v
+				peak = max(peak, math.Abs(v))
+			}
+			best = max(best, e/float64(w))
+		}
+		db := 10 * math.Log10(best)
+		quietest, loudest = min(quietest, db), max(loudest, db)
+		if db < loopQuiet-0.5 || db > loopLoud+0.5 || 20*math.Log10(peak) > loopPeak+0.01 {
+			t.Errorf("loop %d (%s): its loudest half second at %.1f dBFS, its peak at %.1f", i, l.texture, db, 20*math.Log10(peak))
+		}
+	}
+	t.Logf("the loops of %v lie from %.1f to %.1f dBFS", kinds, quietest, loudest)
+	if loudest-quietest < 8 || len(kinds) < 2 {
+		t.Error("the loops' levels are not spread over the range")
+	}
+}
+
+// TestALoopOfRecordedNotesAloneCarriesAir: recorded notes hold nothing over
+// their 8 kHz, so a loop of them alone gets a noise floor laid over it, which
+// reads 45 to 65 dB under its loudest window above 9 kHz
+func TestALoopOfRecordedNotesAloneCarriesAir(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeNSynth(dir, "string_acoustic_000", 0.5, 36, 84, 2); err != nil {
+		t.Fatal(err)
+	}
+	set, err := loadSampleSet(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set.share = 1
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	loops, err := s.corpus(tuneOptions{loops: 16, bars: 2, seed: 6, gen: true, samples: set})
+	if err != nil {
+		t.Fatal(err)
+	}
+	alone := 0
+	for i, l := range loops {
+		recorded := len(l.label.Events) > 0
+		for _, e := range l.label.Events {
+			recorded = recorded && e.Instr == set.other[0].name
+		}
+		if !recorded {
+			continue
+		}
+		alone++
+		const n = 1 << 15
+		seg := slices.Clone(l.audio[(len(l.audio)-n)/2:][:n])
+		var ww float64
+		for k := range seg {
+			w := 0.5 - 0.5*math.Cos(2*math.Pi*float64(k)/n)
+			seg[k], ww = seg[k]*w, ww+w*w/n
+		}
+		x := fft(seg)
+		var band float64
+		for k := 9000 * n / audio.AudioSampleRate; k < n/2; k++ {
+			band += 2 * real(x[k]*cmplx.Conj(x[k])) / n / n / ww
+		}
+		db := 10*math.Log10(band) - 20*math.Log10(loudest(l.audio))
+		t.Logf("loop %d of recorded notes alone: %.1f dB over 9 kHz under its loudest window", i, db)
+		if db < -68 || db > -43 {
+			t.Errorf("loop %d: its air is %.1f dB under its loudest window", i, db)
+		}
+	}
+	if alone == 0 {
+		t.Error("no loop of recorded notes alone")
+	}
+}
+
+// fft is x's discrete Fourier transform, len(x) a power of two
+func fft(x []float64) []complex128 {
+	n := len(x)
+	if n == 1 {
+		return []complex128{complex(x[0], 0)}
+	}
+	even, odd := make([]float64, n/2), make([]float64, n/2)
+	for i := range n / 2 {
+		even[i], odd[i] = x[2*i], x[2*i+1]
+	}
+	e, o := fft(even), fft(odd)
+	out := make([]complex128, n)
+	for k := range n / 2 {
+		t := cmplx.Exp(complex(0, -2*math.Pi*float64(k)/float64(n))) * o[k]
+		out[k], out[k+n/2] = e[k]+t, e[k]-t
+	}
+	return out
 }

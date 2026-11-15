@@ -13,13 +13,16 @@ Where each part stands:
 - **In released code:** `BandFrames` and its layout, the four input planes, the heads,
   weight file versions 3 and 4, `corpus`, `corpus <dir> from`, `corpus ... sampled`, `--mix`,
   `--channel`, `--over` with its heard-hit rule, draws by length, `skip.txt`,
-  `make_noise.py`, `corpus ... midi`, `--pitchnet` and its `ripnotes.bin`, `--shuffle`, `--extra`,
+  `make_noise.py`, `--pitchnet` and its `ripnotes.bin`, `--shuffle`, `--extra`,
   `--cell`, `--dip`, `--ring`, `--bend`, `--dilations`, `--sung`, each event's family (`families`,
   the list's `family` cell, each note's program, every part of a file), the family head and
   `--family-holdout`, `--validate`, `tune ... truth`, a moving note's `cents`, `corpus ... glide`,
   the notes model's cents head, `corpus ... labels` and a `from` list's `pitch` column,
   `rows`, `judge.py` and the root's `ripjudge.bin`, the frame model's beat and downbeat
-  heads, and a `from` list's `beats` and `velocity` columns.
+  heads, a `from` list's `beats` and `velocity` columns, `corpus ... gen`'s arranged
+  loops, `corpus ... meters`, `corpus ... overlaps`, a loop's level and air, and a label's
+  `kind`, `chords`, an event's `part` and `instr`, and a rendered loop's `beats` and
+  `downbeats`.
 
 ## 1. The path
 
@@ -27,7 +30,7 @@ Where each part stands:
 2. Each training step draws 8 windows of 512 frames, 5.9 s each (§7).
 3. A window's frames may be changed in place, as §6 lists, then become the input
    planes (§4).
-4. A window's events and its loop's grid become per-frame targets for the 12 heads,
+4. A window's events and its loop's beats become per-frame targets for the 12 heads,
    and a notes model's cents head (§5).
 5. The frame model turns frames into 405 numbers a frame, and the losses train it (§7, §8).
 6. The best step is written as a weight file (§9).
@@ -78,19 +81,31 @@ about twenty a bin at A0, which is what the fine plane is for.
 
 A label is UTF-8 JSON with no whitespace. The loop's fields:
 
-- `bpm`, `bars`, and `meter` when it is not 4/4 (`"3/4"`, `"6/8"`): its tempo, its
-  length and its time signature, which give the trainer its beats and bar lines (§5).
-  A recording's are 0 and absent.
-- `root`, `scale`: how it was drawn. The trainer doesn't read them.
+- `bpm`, `bars`, and `meter` when it is not 4/4 (`"3/4"`, `"7/8"`): the tempo it was
+  drawn at, its length in bars and its time signature. A drifting loop's beats keep
+  tempos of their own about `bpm`, which `beats` places. A recording's and an
+  overlap's are 0 and absent.
+- `root`, `scale`: how it was drawn, an overlap's 0. The trainer doesn't read them.
+- `kind`: a rendered loop's, `bank` for the bank's patterns, `arranged` for one the
+  arranger wrote (below) and `overlap` for single notes in no meter (below); absent
+  from a recording's.
 - `frames`: the length of its `.bands`.
 - `tuning`: cents off A440 it was rendered at, within 50 either way. Events keep the
   written pitch, so at nearly +50 cents a note labelled 55 sounds nearly as much like
   56. It is where every note of an engine voice sits from its pitch's cell
   centre, unless the note carries `cents`.
 - `source`: in a corpus of recordings, the file it was heard from.
-- `beats`, `downbeats`: a recording's beats and bar lines, in frames, where its list
-  names the file they are read from (a recording's beats, below); absent otherwise, and
-  from every rendered loop, whose grid says them.
+- `beats`, `downbeats`: its beats and bar lines, in frames. A rendered loop's are where
+  the render puts them, each beat on the sample audio's `BeatStarts` gives it under
+  its bars' tempos and rounded as an event's frame is, from the loop's first frame to
+  the last beat before its end, the end's own mark left out: a loop that starts
+  part-way lists its first beat where it falls and its first bar line at the bar's.
+  A recording's are those its list names the file of (a recording's beats, below). An
+  overlap and a recording of no such file list none.
+- `chords`: an arranged loop's harmony, each chord from the frame its bar starts on
+  (0 for the first, a pickup's), as `{"frame":f,"tones":[t,...]}`, its pitch classes
+  from C with its root's first; a chord the bar before already holds is not listed
+  again.
 - `events`: in no time order; the trainer sorts them.
 
 An event's fields:
@@ -117,6 +132,11 @@ An event's fields:
   parts past the score's melody, under and bass too (`RipNote.Further`), so all five
   parts of a quintet sound in its labels.
 - `voice`: the 32 genes of the voice that played it, absent when unknown.
+- `part`: a rendered loop's, the line it plays in: an arranged loop's `drums`, `bass`,
+  `left`, `chords`, `strum`, `pad`, `arpeggio`, `melody`, `double` or `counter`, a bank
+  loop's slot (`rhythm`, `melody`, `fill`, `bass`), an overlap's `single`.
+- `instr`: a rendered loop's, what it sounds on: the engine's instrument (`piano`,
+  `kick`), or the recorded instrument's name in NSynth (`guitar_acoustic_002`).
 - `cents`: on a note that moves, where it sits at each frame from `frame` to `end`, one
   frame at least, in cents from `midi`'s cell centre to a tenth, the tuning in it: its
   step's bend and its voice's vibrato as the engine played them (audio's
@@ -134,8 +154,9 @@ a note that moves, with its `cents`; and a tracked note, a recorded note whose `
 its pitch track writes (below). `glide` draws from two streams of its own, so a loop's patterns, key, voices and tuning are those
 the same line draws without it:
 
-- A fifth of the generated notes bend into the note that follows them at once, when
-  that is a fifth away or nearer, over their last 60 to 250 ms.
+- A fifth of the notes of an arranged loop's melody, double, counter-line and bass on
+  the engine's voices bend into the note that follows them at once, when that is a
+  fifth away or nearer, over their last 60 to 250 ms.
 - A seventh scoop: written a semitone or two under and rising to their pitch over
   their length, which is all a step's bend holds of a scoop.
 - Three in ten of a loop's oscillator voices take a vibrato of 4.5 to 7 Hz, 10 to 80
@@ -157,19 +178,21 @@ another, or of none, by name, and one is exported again for a new layout. A labe
 each note's own MIDI number, and a model's cells are the piano's 88 keys (§5). The kinds
 of corpus:
 
-- **Rendered:** `corpus <dir> 40000 4 aug gen nowav codec`, loops of 4 bars. [Rip
-  design §3](rip-design.md#3-learning) lists what `aug` and `gen` draw. `codec` sends
-  a third through Opus, MP3 or AAC at 64 to 192 kbps and back.
+- **Rendered:** `corpus <dir> 40000 4 aug gen meters overlaps nowav codec`, loops of 4
+  bars: three in four arranged over the whole keyboard in seven meters, one in four
+  single notes overlapping in none (below). [Rip design §3](rip-design.md#3-learning)
+  lists what `aug` draws. `codec` sends a third through Opus, MP3 or AAC at 64 to 192
+  kbps and back.
 - **Sampled:** the same with `sampled <dir>`, so the same seeds draw the same notes.
-  Each tonal line plays on NSynth's recorded notes with a chance of a half, each
-  shifted at most 3 semitones and cut at its note-off by a 60 ms fade.
-- **Scored:** `midi <dir>` plays three quarters of the loops from a random 4-bar
-  stretch of a random file of the folder: its beat, melody, second line and bass, moved
-  up to half an octave, the second line on a random tonal instrument. `dense` plays
-  every part of the file, the parts past its melody, second line and bass spread by
-  octave over up to three tracks on instruments of their own, each up to 24 dB under
-  the file's level, so a soft inner line sounds under a ring. The folder holds
-  public-domain scores, as the [data rule](../AGENTS.md#data) asks.
+  Each tonal part plays on NSynth's recorded notes with a chance of a half, an
+  overlap's instruments are drawn among the recorded ones and the engine's alike, and
+  a part on a recorded instrument keeps to the pitches within 3 semitones of a note
+  it has, each shifted at most that far and cut at its note-off by a 60 ms fade.
+  NSynth is recorded at 16 kHz, so a recorded note holds nothing over 8 kHz, where 17
+  of the 315 bands' centres lie, the top one at 10,962 Hz. Where the engine plays
+  beside it, its voices, drums and room fill those bands; a loop of recorded notes
+  alone would be empty there, a tell no recording has, so it is laid with air (a
+  loop's level, below).
 - **E-GMD:** `corpus <dir> from <list.csv> split train codec`. Each loop is one
   recording, with its hits from the MIDI file. Its keys are mapped by
   `midiInstruments`: edges, ride, tambourine and shaker read as hihat, cross-stick as
@@ -181,6 +204,152 @@ performance's kits and with no drift over time. Such labels are moved by that la
 those too far off go in the corpus's `skip.txt`, a list of loop names the trainer
 leaves out.
 
+### Arranged loops
+
+`gen` arranges every loop that is not an overlap; without it a loop plays the bank's
+rhythm, melody and bass patterns, in 4/4 from a bar line. The arranger (`arrange.go`)
+writes a loop's parts in steps, plays them as a player would, and lays them out as
+patterns the engine renders (audio's `Step.Late` holds an onset off its step). It
+draws from a stream of its own, its meter and its start from another (`meters`), and
+each rule below has its test in `stapes_test.go` on the labels of `corpus <dir> 2000 4
+gen meters overlaps aug glide sampled <set> labels` over a set of four recorded
+instruments, no render and no weights needed. The figures are those 2,000 loops',
+1,478 of them arranged.
+
+1. **The whole keyboard.** A loop's key has its root among C1 to B1 and its scale's
+   steps run on under it and over it, so a part reaches every key of the 88 its scale
+   holds. Each part keeps a register: the bass over a floor between A0 and G2, the
+   left hand over one between C1 and A2, a chord's bottom between B♭2 and B♭4, two
+   octaves at least over its instrument's lowest key where a left hand plays under it,
+   a strum's between E2 and E3, a pad's between E3 and F♯4, an arpeggio two octaves
+   from between C3 and E5, a counter-line between G3 and G5, the melody centred
+   between D4 and D6 in three loops of four and between C6 and D♭7 in the rest. A note
+   is folded by octaves into its instrument's range (`familyRanges`: the 88 keys for a
+   keyboard and a synthesizer, A0 to G4 a bass, E2 to E6 a guitar, C2 to C6 a voice,
+   E1 to E7 strings, B♭1 to D7 winds), and a recorded instrument plays only within 3
+   semitones of a note it has. Every key of the 88 starts at least 50 notes and no
+   other pitch one: of 118,769 notes the fewest on a key are 76, and A0 to G♯1 hold
+   4.2%, A1 to B3 30.6%, C4 to C6 53.9% and C♯6 to C8 11.3%. The middle holds most
+   because most parts live there, as in arranged music: melody, chords, pads,
+   arpeggios and counter-lines all cross it, the bass and the left hand reach under it
+   and high melodies and arpeggios over it. The ends hold enough that no key's cell
+   goes untaught.
+2. **Harmony.** Each bar's chord comes from a progression of four degrees drawn for
+   the key (`corpusKeys`: major, minor, dorian, harmonic minor, a minor pentatonic
+   tune over its minor's chords, phrygian), a chord held two bars in a loop in five, a
+   seventh on a quarter of them. The chordal parts sound the chord that sounds (54,345
+   of 54,346 notes), the bass its root on every bar line (2,850 of 2,850) and the
+   melody one of its tones on most of them (3,187 of 3,493). The label lists the
+   chords (`chords`, above).
+3. **Chords, hands and strings.** A chord is three to five notes struck at once, its
+   inversion the one nearest the last, held, on the pulses, on their offbeats, as a
+   charleston, syncopated, or rolled up half a sixteenth a note, held to the next or
+   short. A keyboard's left hand plays under its right on one instrument: octaves or
+   fifths held, the chord broken in eighths, or a stride, each note an octave down
+   while it would reach the right hand's lowest. A strum is four or five strings, down
+   on the pulses and up between them over the top three mostly, spread 15 to 60 ms
+   down and 10 to 35 up. Struck within three frames: 2,337 chords of three notes,
+   2,535 of four and 1,175 of five, and 1,047 single notes and 135 pairs, a rolled
+   chord's struck apart; 3,933 of the 6,047 of three or more inverted; of 733 loops of
+   chords 269 mostly short and 134 mostly held a bar; of 4,310 strokes 4,175 spread,
+   2,997 down and 1,178 up.
+4. **A melody from its motif.** A motif is a span's rhythm of cells and a contour of
+   steps, leaps now and then, its strong pulses on the chord's tones; a fifth tie a
+   note over a pulse and a quarter strike one early. Each span of the phrase plays it
+   again, moved with its chord, varied, or answered, by a form drawn, and a pickup's
+   last pulse leads into it. Of the bars after a melody's first, 1,090 play its rhythm
+   again (104 as it was, 655 moved, 331 varied) and 880 answer it.
+5. **Texture.** A loop is a line alone to six parts (`textures`: one in 12 loops of
+   100, two in 18, three in 25, four in 25, five in 12, six in 8), so the arranged
+   loops hold 190 of one part, 274 of two, 364 of three, 361 of four, 194 of five and
+   95 of six. A double plays the melody's notes on another instrument, at the unison
+   in half the loops, an octave up in three of ten and down in the rest, over some
+   bars or all: 187 loops, 1,039 notes at the unison and 917 an octave apart, 156 over
+   part of the melody. One part comes in part-way in a third of the loops and another
+   drops out in a quarter: of 1,288 of more than one part, 430 and 309.
+6. **Rhythm.** A quarter of the loops not in a compound meter swing, the first of a
+   pair 56 to 68% of it, three in ten of them on the sixteenths: of 787 in quarters,
+   129 swing and 629 are straight. Triplets sound in 397 of the 1,478, notes struck
+   off the beat and held over the next in 759; 510 of 1,244 melodies rest a beat or
+   more, and in a loop in seven every part stops for a pulse or two before a bar line,
+   the melody playing on in half of them, a break: 105 of 765 with drums.
+7. **Performance.** A part is played as a player would: the strong pulses accented,
+   its velocities swelling, fading or both over the loop, its onsets off the grid by a
+   feel of its own and a jitter of its kind's, the kick's feel none so it anchors the
+   beat; the tempo steady in three loops of ten, else walking a beat at a time within
+   6% or slowing or quickening to 3 to 8% off by the end. A bar line's notes sound 4.2
+   dB over the off beat's, of 3,199 parts of 12 notes or more 584 swell and 625 fade,
+   22,393 of 103,969 onsets fall more than 15 ms off the grid and none of 4,878
+   on-beat kicks more than a frame and a half; 754 loops drift three frames or more
+   off a steady beat and 459 hold within one. The label says where each note falls as
+   played, and its beats and bar lines where the tempos put them: all 2,824 bar lines
+   the drums play over carry a kick.
+8. **Meters.** `meters` draws a loop's meter by share (`corpusMeters`): 4/4 40%, 3/4
+   15%, 6/8 12%, 12/8 10%, 2/4 8%, 7/8 8% (2+2+3, 3+2+2 or 2+3+2 eighths), 5/4 7% (3+2
+   or 2+3), and starts three loops in ten part-way into a bar: half an anacrusis, the
+   melody leading in, the rest cut out of the music at a pulse, half of them half a
+   pulse further in. Of the 1,478: 582 in 4/4, 230 3/4, 194 6/8, 166 12/8, 116 2/4,
+   104 7/8 and 86 5/4; 413 start part-way. The label names the meter and lists a bar
+   line every bar's beats, a part-way start less than a bar's before its first.
+
+### Overlapping notes
+
+`overlaps` gives a quarter of the loops single notes in no meter, or the share it is
+given (`overlaps 0.4`), drawn from a stream of its own, so the loops it leaves are
+those the line draws without it. Such a loop is 4 to 9 s of one to eight instruments
+(by weights 30, 20, 15, 12, 8, 6, 5 and 4), the engine's tonal voices and, with
+`sampled`, the recorded ones alike, each striking at a pace of its own, 0.15 to 1.5 s
+apart on average and at no grid. Each note is held 0.12 to 2.5 s, its pitch drawn
+evenly over its instrument's and its velocity 0 to 30 dB down, eight sounding at most.
+A fifth strike again a pitch their instrument still rings, and three in five take the
+nearest pitch within a tone of the one drawn that is the unison, an octave, a fifth or
+a third of a note sounding. Its test counts 522 of the 2,000 loops: 177 of one
+instrument, 94 of two, then 76, 60, 40, 31, 33 and 11 of three to eight, 232 sounding
+eight notes at once at their fullest; 655 recorded instruments and 883 of the engine's
+over them all; 7,404 of 14,800 notes 15 dB down or more, and 2,843 struck again
+ringing. A note's interval to each note it sounds over is each related one 1,533 times
+and each other one 358, 4.3 times as often.
+
+An overlap is labelled as a recording with no beats file: `bpm`, `bars`, `root` and
+`scale` 0, no `meter`, `beats`, `downbeats` or `chords`, its events' `part` `single`,
+so the trainer asks it no beat (§5). No loop plays a beat without a beat track: every
+arranged and bank loop lists its beats.
+
+Two instruments on one pitch at once, an overlap's unison (12 in the test) or a
+double's, are two events in the label, each with its own `part`, `instr`, `vel`,
+family and voice, both struck; a label never merges them. What the trainer asks of
+such a cell is §5's (two notes on one pitch).
+
+### A loop's level
+
+Every rendered loop, after its room, its mix and its codec, is laid at a level drawn
+from a stream of its own whatever it plays: its loudest half second's RMS evenly
+between -32 and -14 dBFS (`loopQuiet`, `loopLoud`), lowered where its peak would pass
+-1 dBFS (`loopPeak`); a loop whose peak would hold it under -32 dBFS is laid at -32
+with its peaks bent under -1 from 70% of it. Its test renders 24 loops, arranged,
+recorded and overlapping, which lie from -31.3 to -15.2 dBFS.
+
+A loop of recorded notes alone, whose engine render is silent, gets air before that:
+white noise over 7.5 kHz, 45 to 65 dB under its loudest window, a recording's noise
+floor, from a stream of its own. Its test reads three such loops at -63.6, -63.3 and
+-49.1 dB under their loudest windows over 9 kHz.
+
+### The words
+
+- `gen` is one word for rules 1 to 7: they are one arrangement, its parts, chords,
+  motif, texture, rhythm and performance drawn together, and none alone is music with
+  a real arrangement's textures.
+- `meters` is a word of its own: it moves every beat and bar line, so a run can keep
+  4/4 and `bench ... meters` grade each meter alone. It changes only the loops it puts
+  in another meter or starts part-way.
+- `overlaps` is a word of its own: notes in no meter teach the beat heads silence and
+  the pitch heads chords no harmony wrote, a share a run sets. It changes only the
+  loops it takes.
+- `glide`, `aug` and `sampled` keep their words: each changes only what it names, as
+  its test checks, a moving note's cents, the voices, the instruments.
+- `dense` and `midi <dir>` are gone with the MIDI files they played: the corpus plays
+  generated music only, and the arranger writes the textures they were for.
+
 ### Labels without a render
 
 A corpus's line with `labels` after it writes every `loop_NNN.json` of the line, and
@@ -188,12 +357,15 @@ A corpus's line with `labels` after it writes every `loop_NNN.json` of the line,
 writes, byte for byte, and no `.bands` or WAV is touched. A field the labels gain
 reaches a corpus that way without its hours of render.
 
-- A loop's events are drawn and never heard: its patterns, key, tempo, meter, voices
-  and tuning come from the line's seeded streams, the same with audio and without.
-- A label takes one thing from the render, its length: `frames`, and with it the cut
-  of the events that start past the end. The pass reads it from the loop's `.bands`
-  header (§2), which must agree with the file's size and state 630 values a frame. A loop with no frames whole on
-  disk is left as it is and counted, and `corpus.json` is then not written.
+- A loop's events are drawn and never heard: its arrangement or patterns, key,
+  tempo, meter, voices and tuning come from the line's seeded streams, the same with
+  audio and without.
+- A label takes nothing from the render. Its length, `frames`, and with it the cut
+  of the events that start past the end, is counted from the samples the loop is
+  cut to as `BandFrames` makes frames of them (`loopFrames`), which a render checks
+  against the frames it heard. A loop with no frames whole on disk (§2's header
+  against the file's size, 630 values a frame) is labelled all the same and counted,
+  and `corpus.json` is then not written.
 - A `sampled` line's labels also say which recorded notes were loud enough to play
   and where each was let go. The pass reads those recordings again from the NSynth
   folder, their level and length only: none is shifted or mixed.
@@ -353,19 +525,19 @@ glide's pitch target walks the cells it crosses.
   unlabelled note over it.
 - `beat`, `downbeat`: within one frame of a beat of the meter and of a bar line, the
   frame model's alone, scored where `metered` says. A beat is the meter's own note, a
-  quarter in 4/4 and 3/4 and an eighth in 6/8, six to the bar, as audio's `Rip.Beats`
-  lists them. A rendered loop's are derived from its label, so no corpus gains a
-  field: a sixteenth is `44100 * 60 // (bpm * 4)` samples, whole (audio's
-  `SamplesPerStep`), a beat `16 / den` of them, a bar line every `num` beats from
-  frame 0, each on frame `int(steps * step / (256 / 22050) + 0.5)`, as `corpus`
-  rounds an event's. A recording's are its label's `beats` and `downbeats` (§3).
+  quarter in 2/4, 3/4, 4/4 and 5/4 and an eighth in 6/8, 7/8 and 12/8, as audio's
+  `Rip.Beats` lists them. Every loop's are its label's `beats` and `downbeats` (§3):
+  a rendered loop's where its tempos put them, a recording's where its list says.
 - `metered`: the frames those two are asked at.
-  - A rendered loop: from frame 0 to a frame short of the mark of its end's line,
-    a beat no sound gives, since the render ends on it.
+  - A rendered loop: every frame but its last two, which a beat on the end's mark,
+    past the list, would light. A loop that starts part-way is asked from frame 0:
+    the beat it starts after is past, and its first listed beat is where the next
+    falls.
   - A recording: from the first frame of its first listed beat's mark to the last
     frame of its last's, and no further. Past them the list says nothing: where the
     next beat of a played tempo would fall is a guess, and a zero there could teach
-    silence on a beat nobody listed. A recording that lists none is asked nothing.
+    silence on a beat nobody listed. A recording that lists none is asked nothing,
+    and so is an overlap, whose notes keep no meter.
   - None of a shuffled window or of one `--over` lays drums under (§6), whose hits
     keep another grid, nor the padding past a loop's end.
 - `cents[p]`: how far the sound nearest the cell sits from its centre, in semitones,
@@ -403,16 +575,18 @@ listed where that note is doubled: one name of two, which no decoder reads, and 
 there is a todo. A truth a rip is scored against holds one note a frame and pitch, as a rip
 reports one; a name is right there when it is any family sounding in the cell, and doubled
 notes' names are read apart. What a rip says of a doubled note is untaught. Its name is to
-be decided over its line within a section, in the decoder; teaching two names at once, a
-yes or no a family rather than one share among them, waits until a song can play two
-voices on one note.
+be decided over its line within a section, in the decoder. The corpus plays two
+instruments on one note, a double at the unison and an overlap's unisons, each listed as
+its own event (§3); teaching two names at once, a yes or no a family rather than one share
+among them, is a todo.
 
 A shuffled window (§6) asks a cell its cents where one of its two clips alone sounds
 within a semitone of it, and what plays it where one of them alone sounds in it.
 
-The grid's rule was checked against what `corpus` writes before it was trusted: no
-event lay off its loop's sixteenths, and every end's line fell on the `.bands`' last
-frame or the one past it.
+A rendered loop's beats are where its notes sound: audio's tests render late and
+drifting steps and find each on the sample its expected event names, the render
+ending on the last beat's mark, and stapes' find a kick within a frame of every bar
+line an arranged loop's drums play over.
 
 A window running past a loop's end is padded with zero frames, which a `valid` mask
 leaves out of every loss.
@@ -695,7 +869,7 @@ errors, `cellout`'s fifth and sixth channels; `pitchfamily` 704, `pitchwave` 440
 of §8, written as a frame head of one value whose row of `frameout.weight` is zero and whose
 bias is the measure, so every frame states it. A file without the cents head, a probe's,
 loads and rips with no glides. Version 6 needs transformer v0.7.0, and its layout audio
-v0.28.0. The tensors are
+v0.30.0. The tensors are
 `reduce`, `wide`, `cells`, `near.0`, `long.{i}`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
 `nn.Conv1d` or `nn.Linear` holds it. In the stapes root the file is `ripnotes.bin`.
 Beside the frame model's `ripframe.bin` it gives pitch, voicing, strike, release, velocity

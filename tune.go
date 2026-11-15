@@ -1557,11 +1557,10 @@ func parseTempos(arg string) ([]int, error) {
 }
 
 // exportCorpus writes loops into dir: loop_NNN.wav as rendered, loop_NNN.mel as
-// the log-mel frames a model hears (frames, bands, then float32 rows, little-endian),
-// loop_NNN.json as its label, and corpus.json naming the layout. A loop whose label
-// and frames are on disk is kept, so an export run again goes on; a part writes no
-// layout. Under labels it writes every loop's label over and renders nothing, and
-// writes the layout only where every loop's frames are on disk.
+// the log-mel frames a model hears (frames, bands, float32 rows, little-endian),
+// loop_NNN.json as its label and corpus.json naming the layout. A loop whose label
+// and frames are on disk is kept, so a rerun goes on; a part writes no layout, and
+// labels renders nothing, writes each label over, and the layout once all frames are.
 func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err

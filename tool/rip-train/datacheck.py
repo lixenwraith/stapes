@@ -2,9 +2,8 @@
 """datacheck.py <corpus dir>...: a shallow check of a corpus's labels against its sound, on a sample of loops (SAMPLE,
 160; GROUP=1 splits a corpus by where each recording came from): the frames' layout, file sizes, finite frames, labels
 within their loop and the piano's keys, doubled (frame, pitch) labels, loops with no label, notes and hits in a loop's
-own quiet (a frame's energy over the sharp plane, in dB, within 8% of the loop's range over its quietest), and the lag
-in 11.6 ms frames at which the sharp plane rises most after a labelled start, hit or beat, with how far over the
-median it stands. A frame is peak-normalized, so a loop reads the same at any scale."""
+own quiet (a frame's sharp-plane energy in dB within 8% of the loop's range over its quietest), and the lag in frames at
+which the sharp plane rises most after a labelled start, hit or beat, and its lift over the median, at any level."""
 import json
 import os
 import sys

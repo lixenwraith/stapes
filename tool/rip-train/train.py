@@ -265,7 +265,7 @@ class Channel:
     """What a small speaker, a room and a phone do to frames, drawn per window: the
     bands under a low corner and over a high one cut, a ripple across them, and a
     steady noise floor added, in power. A corpus's noise sits 40 to 65 dB under the
-    loop; a phone's floor reached 7 to 15 dB under the music, which cost 8b half its recall."""
+    loop, a phone's far nearer the music."""
 
     def __init__(self, path: str):
         d = np.load(path)
@@ -661,7 +661,7 @@ def evaluate(model: ripmodels.FrameModel, mels, tgs, device: str, low: int | Non
 
 
 STRIKE_POS = 20.0  # a strike's weight against the frames without one
-DIP = 0.0  # the share of the channel's windows given a dip under the melody, as phones across a room measured 15 dB at 160-320 Hz
+DIP = 0.0  # the share of the channel's windows given a dip under the melody, as a phone across a room hears one
 STRIKE_AGAIN = 1.0  # and a strike of a pitch still sounding, the most missed of all, by this much more
 CENTS_GRAIN = 0.001  # a label's cents are written to a tenth: a miss under it, in semitones, says no more
 EVEN_GLIDES = False  # the gliding readings half the cents loss wherever a batch holds them, a few in a hundred of its readings

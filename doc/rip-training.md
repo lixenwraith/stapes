@@ -1,13 +1,12 @@
 # Rip training: the data, byte by byte
 
 How a recording or a rendered loop becomes the numbers the rip's models train on,
-and how the trained models read back into the rip. Every sample below is real:
-corpus 11's first loop and the weights of round 12a. The audio library holds the
+and how the trained models read back into the rip. The audio library holds the
 frames, the input planes and the heads; [transformer's
 format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md) is the
 weight file's contract; stapes holds the corpus verb and the trainer
 ([rip-train](../tool/rip-train/README.md)), and [Rip design](rip-design.md) keeps
-the reasoning and the history of the rounds.
+the reasoning.
 
 Where each part stands:
 
@@ -21,9 +20,6 @@ Where each part stands:
   the notes model's cents head, `corpus ... labels` and a `from` list's `pitch` column,
   `rows`, `judge.py` and the root's `ripjudge.bin`, the frame model's beat and downbeat
   heads and a `from` list's `beats` column.
-- **In no repository yet:** the phone take's scripts, which play, align and cut a
-  recording of a known file, and the wide test's harness (vif's `tmp/round32`: `cmpn.sh`,
-  `table.py`, the timed scorer) with the validation corpus's build (`tmp/audit/valbuild.py`).
 
 ## 1. The path
 
@@ -52,18 +48,6 @@ offset  size            field
 8       4 x frames x bands   rows, frame 0's 229 values first, nothing padded
 ```
 
-Corpus 11's `loop_000.mel` is 789,600 bytes: 8 + 4 x 862 x 229. Its first 40 bytes:
-
-```
-00000000  5e 03 00 00 e5 00 00 00 8d 0e a5 3e 8f 4e 8d 3f  ^..........>.N.?
-00000010  0a 25 e5 3f 6a 90 0d 40 71 23 0e 40 74 72 c8 3f  .%.?j..@q#.@tr.?
-00000020  1c c1 96 3f 33 df 6b 3f                          ...?3.k?
-```
-
-- `5e 03 00 00` is 862 frames, 10.0 s of music, and `e5 00 00 00` is 229 bands.
-- `8d 0e a5 3e` is 0x3ea50e8d, the float 0.32238: frame 0, band 0.
-- `8f 4e 8d 3f` is 1.10396: frame 0, band 1, and so on up the bands.
-
 A frame costs 916 bytes. There are 86.13 frames a second, so an hour is 284 MB.
 
 Each value is `log1p(100 e)`, made by `MelFrames`:
@@ -75,9 +59,8 @@ Each value is `log1p(100 e)`, made by `MelFrames`:
 3. 229 triangular filters, evenly spaced on the mel scale from 30 Hz to 11,025 Hz,
    each sum weight x magnitude squared. That sum is the band's energy e.
 
-Going back: `e = expm1(v) / 100`. The first value above is e = 0.0038, or -24.2 dB
-against a full-scale sine. The file holds energy only: with the phase gone, it can't
-be played back exactly.
+Going back: `e = expm1(v) / 100`. The file holds energy only: with the phase gone, it
+can't be played back exactly.
 
 Bands are about 14 Hz apart at A4, where a semitone is 26 Hz, and about 10 Hz apart at
 A2, where a semitone is 6.5 Hz. So the bottom octaves give the models less than one band
@@ -85,14 +68,7 @@ a semitone, and it must lean on upper partials there.
 
 ## 3. The labels: `loop_NNN.json` and `corpus.json`
 
-A label is UTF-8 JSON with no whitespace. The start of corpus 11's `loop_000.json`,
-as `corpus` writes it now:
-
-```
-{"bpm":96,"root":36,"scale":1,"bars":4,"frames":862,"tuning":49.64392715869181,"events":[{"frame":0,"end":0,"drum":0,"midi":0,"vel":0.9871591431922611,"wave":-1,"family":7},{"frame":108,"end":108,"drum":0,...
-```
-
-The loop's fields:
+A label is UTF-8 JSON with no whitespace. The loop's fields:
 
 - `bpm`, `bars`, and `meter` when it is not 4/4 (`"3/4"`, `"6/8"`): its tempo, its
   length and its time signature, which give the trainer its beats and bar lines (§5).
@@ -100,8 +76,8 @@ The loop's fields:
 - `root`, `scale`: how it was drawn. The trainer doesn't read them.
 - `frames`: the length of its `.mel`.
 - `tuning`: cents off A440 it was rendered at, within 50 either way. Events keep the
-  written pitch, so at nearly +50 cents as here, a note labelled 55 sounds nearly as
-  much like 56. It is where every note of an engine voice sits from its pitch's cell
+  written pitch, so at nearly +50 cents a note labelled 55 sounds nearly as much like
+  56. It is where every note of an engine voice sits from its pitch's cell
   centre, unless the note carries `cents`.
 - `source`: in a corpus of recordings, the file it was heard from.
 - `beats`, `downbeats`: a recording's beats and bar lines, in frames, where its list
@@ -140,21 +116,12 @@ An event's fields:
   recording's pitch track, `null` at a frame the track does not place (a recording's
   pitch track, below); where any other recorded note sits is not known.
 
-The six kinds of event in use, each from a real file but the last, a test's:
-
-```
-a drum hit          {"frame":0,"end":0,"drum":0,"midi":0,"vel":0.987,"wave":-1,"family":7}
-a note on a voice   {"frame":0,"end":40,"drum":-1,"midi":55,"vel":0.662,"wave":1,"family":8,"voice":[0.5,0.417,0,0.157,...]}
-a recorded note     {"frame":0,"end":40,"drum":-1,"midi":55,"vel":0.662,"wave":-1}
-a strike, no line   {"frame":23,"end":23,"drum":-1,"midi":0,"vel":0.787,"wave":-1}
-a note that moves   {"frame":0,"end":9,"drum":-1,"midi":52,"vel":0.506,"wave":2,"family":8,"voice":[...],"cents":[-35.9,-3.4,29.1,61.7,94.2,126.7,159.2,191.7,224.2]}
-a tracked note      {"frame":0,"end":43,"drum":-1,"midi":65,"vel":0.803,"wave":-1,"family":6,"cents":[0,0,0,null,0,null,0,0,0,0,0,0.6,3.1,5.5,...]}
-```
-
-The note that moves is from `corpus <dir> 24 4 aug gen glide nowav`, loop 003, tuned
-35.9 cents flat: a broken chord's 52 bending three semitones into the 55 that follows,
-over the whole of its 104 ms, a quarter tone over 54 by its last frame. `glide` draws
-from two streams of its own, so a loop's patterns, key, voices and tuning are those
+Six kinds of event are in use: a drum hit, `drum` 0 to 2 at `midi` 0; a note on a
+voice, with its `wave` and `voice`; a recorded note, such as one of NSynth's, whose
+`wave` is -1 and whose voice is unknown; a strike of no line, `drum` -1 at `midi` 0,
+something struck that no drum head or pitch owns, such as a tom or a crash from E-GMD;
+a note that moves, with its `cents`; and a tracked note, a recorded note whose `cents`
+its pitch track writes (below). `glide` draws from two streams of its own, so a loop's patterns, key, voices and tuning are those
 the same line draws without it:
 
 - A fifth of the generated notes bend into the note that follows them at once, when
@@ -164,19 +131,7 @@ the same line draws without it:
 - Three in ten of a loop's oscillator voices take a vibrato of 4.5 to 7 Hz, 10 to 80
   cents either way, coming in over up to 0.4 s; a voice that has its own keeps it.
 
-A recorded note is one of NSynth's, so its voice is unknown. The strike of no line is
-a tom or a crash from E-GMD: `drum` -1 with `midi` 0 means something struck that no
-drum head or pitch owns. The tracked note is a rendered voice's, its cents written out
-as a pitch track with one frame unvoiced and one a semitone and a half off, and read
-back; no collection's track is exported yet. Loop 000 holds 110 events in 34 KB: 12
-kicks, 12 snares, 28 hats, 58 notes. Its notes are unknown's: `aug` drove its lead.
-The recorded note and the strike are corpus 12's and E-GMD's, written before `family`,
-as every corpus below was: a loop of them labels no family until its line is run with
-`labels`, which writes the labels again and renders nothing (below), since `corpus`
-keeps a labelled loop. The same seeds render the same frames, byte for byte over 24
-loops of `corpus <dir> 24 4 aug gen` compared, and of those loops' frames 40% are
-synth's, 29% unknown's, 17% guitar's, 8% piano's, 4% bass's, 0.1% the drums', a hit
-sounding alone, and 1% have no event sounding.
+The same seeds render the same frames, byte for byte.
 
 `corpus.json` names the layout for the whole folder:
 
@@ -188,40 +143,33 @@ sounding alone, and 1% have no event sounding.
 
 `loops` counts the files `loop_000` onward; the number grows past three digits as
 needed (`loop_39999`). `min_midi` and `pitches` state the pitches a model is built for,
-the piano's 88 from MIDI 21, and E1 to C7, 69 from 28, in a corpus written before stapes
-v0.30.0. A label holds each note's own MIDI number whatever they state and the trainer
-reads neither, so a corpus of either trains a model of either. The corpora, 12 and
-14 to 16 since deleted:
+the piano's 88 from MIDI 21, or E1 to C7, 69 from 28. A label holds each note's own
+MIDI number whatever they state and the trainer reads neither, so a corpus of either
+trains a model of either. The kinds of corpus:
 
-- **Corpus 11:** `corpus <dir> 40000 4 aug gen nowav codec`. Rendered loops of 4 bars,
-  25.6 million frames, 24 GB. [Rip design §3](rip-design.md#3-learning) lists what
-  `aug` and `gen` draw. `codec` sends a third through Opus, MP3 or AAC at 64 to 192
-  kbps and back.
-- **Corpus 12:** the same with `sampled <dir>`, so the same seeds draw the same notes.
-  Each tonal line plays on NSynth's recorded notes with a chance of a half, 44% of all
-  notes, each shifted at most 3 semitones and cut at its note-off by a 60 ms fade.
-- **Corpus 14:** `corpus <dir> 20000 4 aug gen nowav codec midi <dir>`. Three quarters of
-  the loops play a random 4-bar stretch of a random file from Lakh's clean MIDI set: its
-  beat, melody, second line and bass, moved up to half an octave, the second line on a
-  random tonal instrument. Lakh's files are transcriptions of commercial songs, which
-  nothing trains on (AGENTS, Data): corpora 14 to 17 and the glide pair, made from them,
-  and every weight trained before they went were deleted on 2026-11-14.
-- **Corpus 15:** `corpus <dir> 20000 4 aug gen nowav codec dense seed 151 midi <dir>`.
-  Corpus 14's recipe playing every part of the file: the parts past its melody,
-  second line and bass spread by octave over up to three tracks on instruments of
-  their own, each up to 24 dB under the file's level, so a soft inner line sounds
-  under a ring. Corpus 16 is the same at `seed 161`.
-- **E-GMD:** `corpus <dir> from <list.csv> split train codec`. 5,691 real recordings
-  of 43 kits, 55.6 hours, 17.2 million frames, 15 GB. Each loop is one recording, from
-  2 seconds to 10 minutes, with its hits from the MIDI file. Its keys are mapped by
+- **Rendered:** `corpus <dir> 40000 4 aug gen nowav codec`, loops of 4 bars. [Rip
+  design §3](rip-design.md#3-learning) lists what `aug` and `gen` draw. `codec` sends
+  a third through Opus, MP3 or AAC at 64 to 192 kbps and back.
+- **Sampled:** the same with `sampled <dir>`, so the same seeds draw the same notes.
+  Each tonal line plays on NSynth's recorded notes with a chance of a half, each
+  shifted at most 3 semitones and cut at its note-off by a 60 ms fade.
+- **Scored:** `midi <dir>` plays three quarters of the loops from a random 4-bar
+  stretch of a random file of the folder: its beat, melody, second line and bass, moved
+  up to half an octave, the second line on a random tonal instrument. `dense` plays
+  every part of the file, the parts past its melody, second line and bass spread by
+  octave over up to three tracks on instruments of their own, each up to 24 dB under
+  the file's level, so a soft inner line sounds under a ring. The folder holds
+  public-domain scores, as the [data rule](../AGENTS.md#data) asks.
+- **E-GMD:** `corpus <dir> from <list.csv> split train codec`. Each loop is one
+  recording, with its hits from the MIDI file. Its keys are mapped by
   `midiInstruments`: edges, ride, tambourine and shaker read as hihat, cross-stick as
   snare, and other keys as strikes of no line.
 
-E-GMD needs a check `corpus` doesn't make yet. Lining each recording's hits up with
-its onset flux showed 147 recordings of 30 hits or more sitting a steady distance off
-their audio, 5.2% of the frames, the same across all of a performance's kits and with
-no drift over time. Labels 46 to 116 ms off were moved by that lag, and the 15 further
-off went in the corpus's `skip.txt`, a list of loop names the trainer leaves out.
+E-GMD needs a check `corpus` doesn't make yet. Lined up with its onset flux, a
+recording's hits can sit a steady distance off its audio, the same across all of a
+performance's kits and with no drift over time. Such labels are moved by that lag, and
+those too far off go in the corpus's `skip.txt`, a list of loop names the trainer
+leaves out.
 
 ### Labels without a render
 
@@ -245,9 +193,6 @@ reaches a corpus that way without its hours of render.
   MIDI file, its pitch track and its beats. The recording is known by the `source` of the
   label on disk and its WAV is not read, so it may be gone; a label that does not
   read stops the run, its recording being unknown then.
-- Over `corpus <dir> 2000 4 aug gen nowav codec dense` the export took 11 min 36 s
-  and the pass under a second (0.6 and 0.8 s), on four cores, the 2,000 labels and
-  `corpus.json` equal byte for byte.
 
 ### A recording's pitch track
 
@@ -335,37 +280,6 @@ plane2[229] = mean of plane2 over the 229 bands
   not at a logarithm's large negative number.
 - M only looks back, so a live rip can compute it as the sound arrives.
 
-Frame 20 of loop 000, where a G3 and a C3 sound. The frame's level is -53.14 dB, so
-`plane1[229]` is 0.3358, and `plane2[229]` is 0.0650:
-
-```
-band   centre Hz  stored float (bytes)     e          dB      plane 1   plane 2
-  6       94.4    0.002231 (bd 38 12 3b)   2.234e-05  -46.51  +0.0829   0.0005
- 16      196.3    2.490533 (e4 64 1f 40)   1.107e-01   -9.56  +0.5447   0.5988
- 32      387.2    0.061227 (34 c9 7a 3d)   6.314e-04  -32.00  +0.2643   0.0726
- 46      587.4    0.033605 (66 a5 09 3d)   3.418e-04  -34.66  +0.2310   0.1718
- 58      788.1    0.000521 (13 b1 08 3a)   5.216e-06  -52.82  +0.0040   0.0134
- 78     1194.5    0.123396 (f2 b6 fc 3d)   1.313e-03  -28.82  +0.3040   0.6715
-119     2407.6    0.000137 (3c cb 0f 39)   1.371e-06  -58.60  -0.0682   0.0024
-166     4780.6    0.000062 (7b 9b 82 38)   6.228e-07  -61.99  -0.1106   0.0003
-218     9567.0    0.000005 (cb 94 a4 36)   4.905e-08  -72.29  -0.2394   0.0004
-```
-
-Band 16, G3's fundamental, as the note starts and holds. PCEN jumps with the attack and
-settles while the band's energy stays high:
-
-```
-frame   e          M          PCEN
-  0     1.887e-02  1.887e-02  0.2956
-  6     1.278e-01  3.242e-02  0.9690
- 12     9.709e-02  4.631e-02  0.5787
- 18     8.765e-02  4.743e-02  0.5194
- 24     1.052e-01  5.717e-02  0.5189
- 30     5.793e-02  6.002e-02  0.2924
- 36     6.763e-02  6.047e-02  0.3343
- 42     8.712e-02  6.337e-02  0.4027
-```
-
 What PCEN reads for bands driven with test envelopes:
 
 ```
@@ -380,8 +294,7 @@ So steady noise sits near 0.3 at any level and a note on top still rises over it
 a note that's still ringing fades towards zero. That's why PCEN is a second plane and
 not a replacement: plane 2 says when something happened, plane 1 what is sounding.
 
-Over corpus frames, plane 2 averages 0.16, its 99.9th percentile is 2.4, and its largest
-value is about 4, close enough to plane 1's scale to need no rescaling. A model with one
+Plane 2 lies close enough to plane 1's scale to need no rescaling. A model with one
 channel reads plane 1 alone, 230 values.
 
 `--pitchnet` reads both planes through a harmonic stack it computes itself. A plane's bands
@@ -445,8 +358,7 @@ glide's pitch target walks the cells it crosses.
   model's alone: the family, the wave and the voice of the event that sounds in it,
   asked where one event alone sounds in the cell, in each cell a note that moves
   sounds in. A cell two events sound in asks nothing: its sound is both, and either's
-  name would be taught on the other's sound (4.0% of the sounding cells over 200 loops
-  of `aug gen glide`, a twentieth of them two notes of one voice). The family is one
+  name would be taught on the other's sound. The family is one
   of the eight names, asked only where an instrument stands behind the sound: a
   recording's own instrument, a singer, a sampled note's family as its set gives it.
   A note the engine rendered asks no family, its voice registered or drawn far from the
@@ -459,8 +371,7 @@ glide's pitch target walks the cells it crosses.
   `family`, its notes' sound, wave and voice asked as any. A voice is a row of one
   table of the corpus's voices (`train.GENES`) and a cell's target that row's index.
 
-**Two notes on one pitch.** Two parts often play one pitch at once: 6.8% of corpus 17's
-notes start on the frame and pitch of another's. The yes-or-no planes (`pitch`, `strike`,
+**Two notes on one pitch.** Two parts often play one pitch at once. The yes-or-no planes (`pitch`, `strike`,
 `release`) see one note there and `velocity` the later listed; the notes model is asked no
 name there (`sole`, above). The frame model's `family` takes the highest note's, the first
 listed where that note is doubled: one name of two, which no decoder reads, and asking none
@@ -471,35 +382,12 @@ be decided over its line within a section, in the decoder; teaching two names at
 yes or no a family rather than one share among them, waits until a song can play two
 voices on one note.
 
-Frames 0 to 7 of loop 000, from its kick and hat at 0, its G3 (55) and its C3 (48):
-
-```
-onset    1 1 0 0 0 0 0 0
-kick     1 1 0 0 0 0 0 0
-snare    0 0 0 0 0 0 0 0
-hihat    1 1 0 0 0 0 0 0
-pitch 20 1 1 1 1 1 1 1 1     C3, on until frame 27
-pitch 27 1 1 1 1 1 1 1 1     G3, on until frame 40
-voicing  1 1 1 1 1 1 1 1
-strike   (frame 0, pitch 27, vel 0.662), (frame 0, pitch 20, vel 0.485), each on frames 0 and 1
-release  (frame 40, pitch 27), (frame 27, pitch 20)
-wave     1 on every frame: saw, from the highest note, G3
-family   8 on every frame: unknown, from the highest note, G3
-beat     1 1 0 0 0 0 0 0     a quarter at 96 bpm is 53.83 frames: 0, 54, 108, 161, ...
-downbeat 1 1 0 0 0 0 0 0     a bar is 215.31: 0, 215, 431, 646; the end's line, 861, is not asked
-pitchfamily, pitchwave   none and 1 at pitches 27 and 20 while each sounds alone: the engine
-         rendered them, so no family, on a saw; nothing at pitch 27 from frame 27 to 40,
-         where the G3 struck again sounds over the first
-cents    pitch 27 +0.496 and pitch 28 -0.504, pitch 20 +0.496 and pitch 21 -0.504: the tuning
-```
-
 A shuffled window (§6) asks a cell its cents where one of its two clips alone sounds
 within a semitone of it, and what plays it where one of them alone sounds in it.
 
-The grid's rule was checked against what `corpus` writes before it was trusted: over
-`aug`, `codec`, `midi`, `dense`, `meters`, `glide` and `tempos` corpora, 228 loops,
-none of 24,810 events lay off its loop's sixteenths, and every end's line fell on the
-`.mel`'s last frame or the one past it.
+The grid's rule was checked against what `corpus` writes before it was trusted: no
+event lay off its loop's sixteenths, and every end's line fell on the `.mel`'s last
+frame or the one past it.
 
 A window running past a loop's end is padded with zero frames, which a `valid` mask
 leaves out of every loss.
@@ -522,35 +410,22 @@ room and a phone. It's drawn per window:
 - A steady floor is added: a band mean drawn from -78 to -50 dB, shaped as the real
   room's in 2 draws of 5 and pink, brown or flat otherwise, with up to 4 dB of ripple.
 
-The bank holds two arrays. `white`, 10,328 x 229 float32, is two minutes of white noise
-as mel frames with each band's mean set to 1, so a band keeps its own frame-to-frame
-spread (0.91 of its mean at 57 Hz, 0.32 at 10 kHz). `room`, 229 float32, is a real
-room's band shape in dB about its mean, from a phone 30 cm from a laptop with a fan
-running: +12.1 at 114 Hz, +7.9 at 806 Hz, -13.3 at 10 kHz. `make_noise.py` builds it
-from a WAV of the room.
+The bank holds two arrays. `white`, 229 bands a frame of float32, is two minutes of
+white noise as mel frames with each band's mean set to 1, so a band keeps its own
+frame-to-frame spread. `room`, 229 float32, is a real room's band shape in dB about its
+mean, as a phone hears it. `make_noise.py` builds it from a WAV of the room with no
+music.
 
-A corpus's own noise sits 40 to 65 dB under the loop. On that phone take the floor sat
-7 to 15 dB under the music, and 8b, trained without any of this, lost half its recall.
-Loop 000's first 512 frames as stored and through three draws, the mean per band in dB:
-
-```
-Hz          60     110     200     400     800    1600    3200    6400   10000
-stored   -19.5   -26.3   -13.4   -26.5   -27.9   -34.6   -43.2   -43.3   -48.6
-draw 0   -27.1   -25.0   -15.7   -30.5   -28.6   -36.2   -42.8   -63.3   -52.5
-draw 1   -26.5   -29.7   -13.3   -27.4   -26.7   -34.0   -40.8   -42.8   -52.0
-draw 2   -21.7   -28.6   -12.4   -28.0   -27.8   -35.4   -45.3   -43.5   -66.9
-```
+A corpus's own noise sits 40 to 65 dB under the loop, a phone's far nearer the music.
 
 **`--over dir:share`** lays real drums over rendered music. A share of the windows draw
-a loop with no drums of its own (11,933 of corpus 11's 39,600), then a recording from a
-corpus of drums alone, placed at random. Its level is -12 to +6 dB of its mean power
+a loop with no drums of its own, then a recording from a corpus of drums alone, placed
+at random. Its level is -12 to +6 dB of its mean power
 against the loop's, and uncorrelated sounds add in power, so `e = e_loop + gain x e_drums`.
 A hit joins the onset and drum targets only where it can be heard: what it adds, over its
 best ten bands, must top everything else sounding (`stands_out`), judged after the
-channel. That keeps 86 to 96% of hits. The window is asked no beat and no bar line: the
-drums laid under it keep their own. Round 14a, without the rule and at -12 to +3 dB
-of the loop's own level, had drums a median 13.4 dB under the loop against the pop song's
--0.3 dB, labelled whether heard or not, and it reported drums on bass notes.
+channel. The window is asked no beat and no bar line: the drums laid under it keep
+their own.
 
 **`--mix dir:share`** draws a share of the windows from another corpus as it stands.
 `--extra dir:share,...` does the same for any number of corpora.
@@ -560,31 +435,24 @@ from random places summed, the second at -6 to +6 dB of the first's power. Notes
 labels, a drum hit counts where it stands out of the other clip, and wave, voice,
 family, the beat and the bar line go unasked.
 
-**`--sung dir:share`** draws that share of the chunks from a corpus of solo singing. 27a, at a
-quarter with half the windows shuffled, took held-out sung notes from 0.54 to 0.63.
+**`--sung dir:share`** draws that share of the chunks from a corpus of solo singing.
 
 **`--ring share`** adds to that share of the windows a body's or a room's ring at every attack:
 one pitch whatever the note, 70 to 160 Hz, decaying in 0.05 to 0.3 s, 25 to 8 dB under the
 attack's rise, its harmonics absent and nothing labelled, as a guitar's air cavity rings near
-104 Hz on every pluck. 32a, at a quarter, took GuitarSet's solo low extras from 424 to 362
-against 31a and every real set up but the renders; a first try at 70 to 400 Hz and up to 0 dB
-(30a) cut them further and cost every other set.
+104 Hz on every pluck.
 
 **`--bend share`** reads that share of the plain windows along a tempo that sways: a rate up
 to 18% either way and a slow sine of up to 12 frames, the features interpolated and the
 targets taken nearest, so no steady grid or pulse is there to learn, as a pianist's isn't.
 The beat, the bar line and their mask are taken the same way and sway with the hits.
-It came in with corpus 15 (31a, at 0.3), so its share of that round's gain is unmeasured.
 
-**`--strike-weight w`** is a strike's weight against a frame without one, 20 by default:
-at 4 (28a) the head's outputs fell so far that no pair of bars matched 25a on the real
-path. **`--again-weight a`** weighs a strike of a pitch still sounding a times more, the
-miss under most of what the rip loses (strummed guitar's 2133 of 3764 misses); 31a and
-since take 3, unmeasured alone for the same reason as the bend.
+**`--strike-weight w`** is a strike's weight against a frame without one, 20 by default.
+**`--again-weight a`** weighs a strike of a pitch still sounding a times more.
 
-Draws from both are by length, since E-GMD's recordings run from 2 seconds to 10
-minutes: 521 of its first batch's 819 are shorter than a window but hold only 4.8% of
-its audio. Drawn by recording, they would be 64% of the windows.
+Draws from both are by length, since E-GMD's recordings run from seconds to minutes:
+drawn by recording, the short ones would take far more of the windows than of the
+audio.
 
 ## 7. The models
 
@@ -609,8 +477,8 @@ distance from its scores (ALiBi), so a window of any length works.
 
 The 3,738,101 weights: 304 + 2,320 + 4,640 in the convolutions, 467,200 in the input
 layer, 789,760 in each block, 512 in the final norm, 104,085 in the output layer, 2,313
-of them the family head's and 514 the beat's and the downbeat's, which 12a's file
-lacks. A one-channel model has 144 fewer, all in `convs.0.weight`.
+of them the family head's and 514 the beat's and the downbeat's. A one-channel model has
+144 fewer, all in `convs.0.weight`.
 
 The 405 outputs, in the order the file lists the heads:
 
@@ -632,8 +500,8 @@ offset    size  head       read as
 
 The pitches are the model's own (`--range`, the piano's 21-108 by default; `Config.low`
 and the width of its `pitch` head, which a checkpoint records and the weight file states,
-§9). A model of E1 to C7, as every one before stapes v0.30.0 and any checkpoint that
-records no lowest pitch, has 69 where this has 88: 329 outputs, 19,532 weights fewer.
+§9). A model of E1 to C7, as any checkpoint that records no lowest pitch, has 69 where
+this has 88: 329 outputs, 19,532 weights fewer.
 
 A file may lack the last 6 heads and still load: one without `family` hears no family,
 and one without `beat` and `downbeat` has its bars read by the cues' rules. An audio
@@ -653,25 +521,8 @@ a score for each of the eight names, `pitchwave`, one for each wave, and `pitchv
 genes. They are heads of their own, read straight off the cell's 32 channels as every other
 head is, and not a small embedding with linear readouts. A linear embedding of E values under
 linear readouts is the same map from the channels held to rank E, so it can say no more than
-the heads; what it could give is fewer bytes a pitch in audio's frames. Read beside the heads
-on the same cells, 720 loops at step 1,500 with guitar's name held out and what plays a cell
-at the whole weight (§8), on the 80 loops held out:
-
-```
-                  families   under another   waves   genes' miss   bytes a pitch
-heads of their own  0.655       0.604        0.462     0.222           45
-embedding of 16     0.654       0.603        0.466     0.226           16
-embedding of 8      0.659       0.615        0.453     0.237            8
-embedding of 4      0.655       0.603        0.462     0.251            4
-embedding of 2      0.590       0.509        0.283     0.290            2
-```
-
-Four values carry the family and the wave and no width under 16 the genes. Audio keeps the
-heads at twelve pitches a frame, 552 bytes; an embedding kept at every pitch costs that at 8
-wide with the genes 7% further off, and its readouts would be weights the file has no place
-for. A family head scored one name against the rest, in place of one among the eight, named
-as many notes right (0.656) and parted the held-out family's notes no better (their reach
-0.893 against 0.875), so the names share one softmax.
+the heads; what it could give is fewer bytes a pitch in audio's frames, which keeps the
+heads at twelve pitches a frame, 552 bytes. The eight names share one softmax.
 
 ```
 input          B x T x 460              the two planes
@@ -701,11 +552,7 @@ so every weight goes whole and no cell is new to them: a cell reads 19 bins eith
 through the wide convolution and a cell more through each convolution over the cells, so
 a pitch eleven or more from an old edge, with three long convolutions, hears what it
 heard, and the ten at each edge now hear the sound past it, where the old stack ended in
-silence. The installed pair's checkpoints grown so and not trained, over eight generated
-loops of 10,874 frames: 32a's pitches from D2 to D6 say what they said to 1e-6; at the
-edges 11 of its 2,353 strikes over the decoder's bars go and 8 come, and 3 are heard on
-the new pitches; its voicing moves by 0.003 on average and 0.05 at most, its onset by 0.05
-and 0.59, which no decoder reads from it; 12a's rows say what they said to 2e-6.
+silence.
 
 ## 8. A training step
 
@@ -717,10 +564,7 @@ order: a batch is Python holding the interpreter's lock, so a second thread buil
 less, not more. Batch k draws every window from a stream of its own,
 `random.Random(seed + (shard << 32) + (k << 64))` (`stream`), so it is the same
 tensors whatever builds it, a run resumed at step k draws the batches the unbroken run
-drew from k on, and two shards draw different batches. A round on this trainer does not
-draw the windows an earlier trainer drew for the same seed, but for its first batch:
-that one drew every batch from one stream of the seed and the shard, which a resumed
-run started over, training on its first batches again.
+drew from k on, and two shards draw different batches.
 
 ```
 onset, drums, pitch, voicing, strike, release: binary cross-entropy with a weight on
@@ -764,25 +608,8 @@ What plays a cell is weighed as what plays the frame is, at a quarter of it (`PL
 Its heads teach the channels the decoders read, and they have to: read with the gradient
 stopped at the cells they learn nothing past the commonest name, wave and voice, so the
 cells carry no timbre the decoders did not ask of them. At the whole weight the strikes
-pay. Each on §7's 720 loops for 3,000 steps with every family named, on the 80 held out:
-
-```
-                    decoders   strikes' F1   families   under another   waves   genes' miss
-no such heads        1.704       0.328
-the whole weight     1.733       0.278        0.571       0.568         0.474     0.214
-a quarter            1.680       0.301        0.551       0.533         0.456     0.218
-read, not taught     1.671       0.316        0.521       0.483         0.403     0.231
-by register alone                             0.563                     0.427     0.209
-```
-
-Two runs that teach the cells the same, the first and the fourth, part by 0.012 of the
-strikes' F1, which is what a draw of the starting weights moves. The last row is no model:
-each held-out note given the most common family and wave and the mean voice of its octave
-over the training loops' labels. A run this short on generated loops says little past it.
-The bass is named on four notes in ten and the rest are synth: a piano, a guitar or a sung
-voice here is an engine voice within 0.2 of a bank voice's genes among random ones on the
-same waves, and under 0.07 of their notes are named. The names want recorded families and
-a round's length (todo, "The instrument model").
+pay. The names want recorded families and a round's length (todo, "The instrument
+model").
 
 The held-out and validation lines say what the head reads, after the strikes' F1: the
 median miss, the median error stated and the share of readings whose miss is within
@@ -803,82 +630,6 @@ list has no `beats` column, the line says `no beat or bar line asked` and gives
 neither head's loss: a mean over no frame prints 0.000, which reads as a head never
 wrong, and adds nothing to `decoders` either way.
 
-### The two heads on a small run
-
-The path was run once at a size four cores train in three quarters of an hour. It
-shows that the targets, the heads, the file and audio's reading hold together and how
-far such a model gets, and nothing of recordings:
-
-- `corpus <dir> 1600 12 gen meters`, clean renders with their audio, 264 s in four
-  parts. A corpus cycles six tempos, so the 160 loops held out share theirs with the
-  rest.
-- A frame model of width 128, four heads, four layers, feed-forward 512, `--pcen`,
-  894,793 weights; 5,000 steps of batch 8 in 42 minutes, scored every 500.
-
-The step exported, 4,500, on the held-out loops:
-
-```
-step 4500 held-out 1.801, decoders 0.987, beats' F1 0.763, bar lines' 0.631 (onset 0.305 drums 0.041 pitch 0.285 voicing 0.072 strike 0.083 release 0.096 velocity 0.030 wave 0.655 voice 0.029 family 0.738 beat 0.107 downbeat 0.034) (best)
-```
-
-Then each held-out loop ripped through the exported file three ways, on audio v0.24.0:
-with the heads;
-with the same weights' heads left out, the frames' `Beat` and `Downbeat` set nil so
-the cues decide; and through the analysis. A loop's bars are right when the rip's
-bar is the loop's length within a tenth and nine in ten of the loop's lines have a
-rip's line within an eighth of a bar (audio's `MatchBars`, against the loop's own
-grid, its end's line left out); its meter is read when the rip names the label's.
-Beside them, each head's F1 over those loops, as the line counts it:
-
-```
-                      the heads' F1       bars right              meter read
-               loops  beats   lines   heads  cues  analysis   heads  cues  analysis
-4/4  drums       78   0.928   0.680     40    70      61        63    77      76
-4/4  drumless    34   0.472   0.313      0    19      17         8    33      32
-3/4  drums       15   0.853   0.869     11    14      10         9    13       9
-3/4  drumless     8   0.578   0.398      2     4       4         2     1       3
-6/8  drums       14   0.631   0.907      2    12      11         5    10       9
-6/8  drumless    11   0.678   0.473      1     5       6         8     1       4
-all             160   0.763   0.631     56   124     109        95   135     133
-```
-
-The heads are learned where a drum marks them, and v0.24.0's decoders, which took the
-heads' word alone, read fewer bars right through this model than the cues do through
-the same weights. Audio read the heads by rank from v0.24.1, and since v0.25.2 by their
-level beside the cues, as a plain tracker does, a clip they give no reading of left to
-the cues; these loops are read through neither here
-([todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line)). What stands under
-it is what the heads say within a frame of the loops' own beats, a mean over the
-held-out loops with each one's first and last bar left out:
-
-- **4/4 with drums.** The generated beats kick on one and three, and the downbeat head
-  says 0.73 on one, 0.44 on three and 0.08 on two and four: three is over a half in
-  42 bars of a hundred. Of the 38 loops wrong, 21 have the bar's length and the line
-  elsewhere, and 15 read a bar of six beats.
-- **No drums.** The downbeat head says 0.28 on a 4/4 loop's lines and 0.09 on its
-  other beats, and v0.24.0 scored the longest bar offered highest for a head that says
-  little: 23 of the 34 read a bar longer than the loop's, and none is right.
-- **6/8.** With drums the downbeat head is at its best here and in 3/4, where a bar
-  has one kick: 0.78 on one and 0.03 elsewhere. The beat head says 0.98 and 0.87 on
-  the two dotted quarters and 0.30 on the eighths between, so v0.24.0's `level` kept
-  the dotted quarter as the beat, and four of them are read as one bar, two bars
-  long: 9 of the 14 with drums.
-
-A rip through the file with its two heads cut (the same step exported with ten
-heads) is the wrapped front end's row for row, over 40 loops. Stapes' own `bench 48
-12 meters`, fresh loops of another seed, clean and augmented, which this model never
-heard, reads the two files and the analysis the same way round:
-
-```
-                        clean                           augmented
-the frame model's heads 0.449 (tempo 0.56 bars 0.66)    0.321 (tempo 0.44 bars 0.54)
-its heads cut           0.613 (tempo 0.94 bars 0.95)    0.504 (tempo 0.94 bars 0.94)
-the analysis            0.527 (tempo 0.88 bars 0.91)    0.459 (tempo 0.85 bars 0.93)
-```
-
-What a round has to bring is in the
-[todo](todo.md#teach-the-frame-model-the-beat-and-the-bar-line).
-
 A notes model's lines then say what plays each note, read as audio reads it (§10): a
 note's family, wave and genes are its cells' say over the frames it sounds, each frame
 weighed by the pitch head's salience there, over the cells among the frame's
@@ -897,143 +648,39 @@ only past it. The run writes it into its weight file (§9), and `--sure <share>`
 to a run of the same recipe that holds nothing out, as the notes model to ship has every
 family's name; a file of neither names no note.
 
-The last 400 loops are held out and scored every 1,000 steps, and the step with the best
-`decoders` score is what gets written, unless `--validate` names a corpus of recordings
+The held-out loops, the last `--holdout`, are scored every `--every` steps, and the step
+with the best `decoders` score is what gets written, unless `--validate` names a corpus of recordings
 (`corpus <dir> from`): cut into windows the same way and scored beside them, its best
 `decoders` step is written, the held-out score printed beside it. A notes model is
 picked there by its strikes instead: the strike head's peaks over the decoder's bars
-(0.7, and 0.9 under E3) against the labelled strikes within four frames, as an F1.
-Its loss on recordings is mostly its onset head (57% on GuitarSet, 68% on MusicNet),
-which no decoder reads from it, and ranked ten rounds unlike their note scores, where
-the strikes' F1 ranked them as solo guitar's test player did. The wave, voice,
+(0.7, and 0.9 under E3) against the labelled strikes within four frames, as an F1,
+since its loss holds an onset head no decoder reads from it. The wave, voice,
 velocity and family heads don't choose it, because they memorize the corpus. A positive
 weight w shifts a head's scale: it scores a posterior p as wp / (wp + 1 - p), which is
 part of why thresholds belong to the weights (§10); the beat and the downbeat carry
 none and are read with no threshold.
 
-Round 12a's log, first and last, on a GTX 1060:
-
-```
-3715742 weights, 39600 loops, 25330800 frames, 400 held out in 734 windows
-step 20 loss 4.631 (onset 1.578 drums 0.748 pitch 0.752 voicing 0.041 strike 0.372 release 0.361 velocity 0.038 wave 1.213 voice 0.059) 5s
-step 40000 loss 1.107 (onset 0.064 drums 0.017 pitch 0.327 voicing 0.029 strike 0.083 release 0.092 velocity 0.023 wave 0.778 voice 0.038) 16557s
-step 40000 held-out 1.651, decoders 0.965 (onset 0.284 drums 0.035 pitch 0.393 voicing 0.059 strike 0.102 release 0.121 velocity 0.027 wave 1.079 voice 0.047) (best)
-```
-
-A model with the family, beat and downbeat heads prints their losses last, as 20 steps
-on a CPU did over the 4 loops of `corpus <dir> 4 4 aug gen`, a model of the defaults
-without `--pcen`:
-
-```
-step 20 loss 5.184 (onset 1.525 drums 0.924 pitch 0.714 voicing 0.059 strike 0.523 release 0.519 velocity 0.028 wave 0.374 voice 0.078 family 0.413 beat 0.244 downbeat 0.100) 18s
-```
-
-The wave head's held-out 1.079 means about a third of its belief on the right wave,
-against a fifth by chance, and it only ever learned synth voices. So on a real instrument
-its guess means little, which is why a rip can play a piano on a saw.
+The training lines name each head's loss, a model with the family, beat and downbeat
+heads printing theirs last. The wave head is taught on the engine's voices alone, so on
+a real instrument its guess means little, which is why a rip can play a piano on a saw.
 
 The checkpoint, a PyTorch `.pt`, holds `model`, `opt`, `step`, `cfg` (the shape, which a
 resumed run must match), `best` (the best held-out score, its step and its weights) and
 `validated` (the best validation score, its step, its weights and the held-out score there);
 no stream, since the step is all a batch's draws need.
 
-### The two heads on 12a: the probe and the round
-
-R2 grew the two heads on 12a, the installed frame model, with its recipe (corpus 11 as
-11f, PCEN, the channel, its convolutions) and GuitarSet's 240 training clips and E-GMD
-by their beats at a tenth of the windows each. 12a has no family head, which the file
-lists before the two, so the round grew it too and asked it nothing (`--family-unasked`):
-its rows are zero and the file's family head is untaught. 39a probed the two heads on
-12a held, 8,000 steps; 40a trained every weight for 12a's 40,000, its pick at step
-34,000. On the 400 held-out loops of the engine and on GuitarSet's 120 val and test
-clips (players 04 and 05, which no round trained on; a clip's bars right when they are
-the truth's length within a tenth and 80% of its downbeats lie within an eighth of a
-bar of a line), through audio v0.25.0:
-
-```
-                       held-out loops       the 120 clips: bars right      only one side right
-                       beats    lines       all  strummed  solo            12a's cues  this
-12a, its cues            -        -          37     26      11                 -        -
-39a, the probe's heads  0.788    0.341       25     18       7                12        0
-40a, its heads          0.891    0.804       24     21       3                21        8
-40a, heads left out       -        -         32     28       4                16       11
-```
-
-- The heads learned the engine's loops and real guitar only weakly: read with no decoder
-  between, the K highest peaks of a head where the truth has K, the beat head places
-  47% of the unseen players' beats within 70 ms and the downbeat head 29%, against
-  70% and 51% on strummed clips the round trained on. They lose bars beyond chance.
-- 40a's body without its heads holds on bars (16 against 11 clips, which chance gives)
-  and its notes are 12a's on all 120 clips. On 48 of E-GMD's test recordings (a hit
-  right within 50 ms) its drums' F1 is .733 against 12a's .629 (kick .790 against .373,
-  hihat .795 against .733, snare .565 against .606 at precision .447 against .800).
-  At an absolute bar of 0.7 on the planes it reads .845 there, where 12a falls to .560,
-  and hears a false hit a minute on the guitar clips. Under a mix it loses: on the pop
-  song's intro, clean, it hears 76 false kicks and 106 false snares where 12a hears 6
-  and 5 at the installed bar, still 6 and 31 at 0.7, and from the Pixel it finds 10 of
-  54 kicks where 12a finds 30 to 34; singing draws 95 false hits a minute against 33.
-  The round heard real kits alone, never under bass, synth and voice. On the Für Elise takes, whose rips keep the
-  cues, its lines are on 0.47, 0.34, 0.25 and 0.34 of the score's downbeats (clean,
-  30 cm, Pixel, Galaxy) against 12a's 0.45, 0.21, 0.22 and 0.28.
-- So by [the rule](#reading-a-candidate) neither is installed: the heads lose bars, and
-  the body gains on kits alone and loses under a mix. R3's probe from 40a's last step,
-  hearing real kits under a mix and recordings with no drums, gained under a mix and
-  left the beats where they were (rip-rounds, 43a to 44c). The heads held more than
-  v0.25.0's decode took: a plain tracker (the tempo from the beat head's
-  autocorrelation, the beats by dynamic programming, the line by the downbeat head's
-  vote over the clip) got 39 of the 120 clips' bars right from them, where that decode
-  got 24 and 12a's cues 37; audio reads them so since v0.25.2.
-
 ## 9. The weight file
 
 [Transformer's format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md)
-is the contract. All numbers are little-endian. Round 12a's file is 14,865,070 bytes:
-
-```
-00000000  56 49 46 54 03 00 00 00 e6 00 00 00 02 00 00 00  VIFT............
-00000010  00 01 00 00 08 00 00 00 04 00 00 00 00 04 00 00  ................
-00000020  40 00 00 00 03 00 00 00 10 00 00 00 03 00 00 00  @...............
-00000030  03 00 00 00 01 00 00 00 10 00 00 00 03 00 00 00  ................
-00000040  03 00 00 00 02 00 00 00 20 00 00 00 03 00 00 00  ........ .......
-00000050  03 00 00 00 02 00 00 00 00 00 00 00 09 00 00 00  ................
-00000060  05 00 6f 6e 73 65 74 01 00 00 00 05 00 64 72 75  ..onset......dru
-```
-
-```
-offset  bytes         field
-0       56 49 46 54   magic "VIFT"
-4       03 00 00 00   version 3 (2 has no channels field, and reads as one channel)
-8       e6 00 00 00   inputs 230
-12      02 00 00 00   channels 2
-16      00 01 00 00   dim 256
-20      08 00 00 00   heads 8
-24      04 00 00 00   layers 4
-28      00 04 00 00   ffn 1024
-32      40 00 00 00   window 64
-36      03 00 00 00   3 convolutions, then 4 u32 each: out, time, freq, pool
-40      16 3 3 1      conv 0
-56      16 3 3 2      conv 1
-72      32 3 3 2      conv 2
-88      00 00 00 00   0 towers
-92      09 00 00 00   9 heads, then each: u16 name length, the name, u32 size
-96      05 00 "onset" 01 00 00 00, and so on
-202     4c 00 00 00   76 tensors, then each: u16 name length, the name, u8 rank,
-                      u32 dims, float32 data
-206     convs.0.weight   dims 16 2 3 3, 288 floats, the first +0.40755
-1391    convs.0.bias     dims 16
-...
-14538122 out.weight      dims 318 256
-14863775 out.bias        dims 318
-14865062 45 f5 b0 4b 8f 26 00 58   FNV-1a 64 of every byte before it
-```
-
-The checksum catches damage, not tampering. A file only ever holds numbers, and `Load`
-checks its shape against its tensors. A file written now is version 6: a `kind` word
+is the contract. All numbers are little-endian. An FNV-1a 64 of every byte before it
+ends the file. The checksum catches damage, not tampering. A file only ever holds
+numbers, and `Load` checks its shape against its tensors. The trainer writes version 6:
+a `kind` word
 after the version, 0 for the frame model, twelve heads, `beat` and `downbeat` of one value
 each after `family`, an `out.weight` of 405 x 256, and after the heads the constants it
 states, a count and for each a name and a float32: one, `lowest`, the MIDI number of the
 model's lowest pitch, 21 (audio's `ripmodels.Lowest`). Its pitch head's size is how many
-pitches follow, and a file that states none, as every one before, hears E1 to C7.
+pitches follow, and a file that states none hears E1 to C7.
 
 `--pitchnet` writes the same version, whose `kind` word, 1, makes the notes model
 transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
@@ -1044,8 +691,7 @@ voicing, wave, voice and sure. `cents` is 176 numbers a frame, the 88 offsets th
 errors, `cellout`'s fifth and sixth channels; `pitchfamily` 704, `pitchwave` 440 and
 `pitchvoice` 2,816, a value's 88 pitches together, `cellout`'s next 45. `sure` is the measure
 of §8, written as a frame head of one value whose row of `frameout.weight` is zero and whose
-bias is the measure, so every frame states it; it predates the constants and stays a head
-while trained files carry it so. A file without a head lists fewer and loads as before, its
+bias is the measure, so every frame states it. A file without a head lists fewer and loads as before, its
 rip with no glides or with no note's voice. Version 6 needs transformer v0.7.0 (audio
 v0.27.0), which reads the versions before it as it did. The tensors are
 `reduce`, `wide`, `cells`, `near.0`, `long.{i}`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
@@ -1066,156 +712,19 @@ the genes (`RipFrames.VoiceAt`, `Voices`), and the measure once (`Sure`). A fram
 beat and downbeat heads fill `RipFrames.Beat` and `Downbeat`, and where the frames carry
 both, the tempo and the beats are read from the beat head and the bar lines from the
 downbeat head beside the cues' rules ([audio
-§9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). Loop 000 through
-12a, with a sure strike on frame 0 where the labels say kick, hihat, G3 and C3:
-
-```
-frame  onset  kick   snare  hihat  voicing  pitch top three         strike top two
-  0    1.000  1.000  0.001  0.998  1.000    37 .95  56 .92  49 .89  37 .96  36 .87
-  1    1.000  0.999  0.000  0.995  1.000    37 .97  56 .93  49 .90  37 .97  49 .88
-  2    0.007  0.001  0.000  0.000  1.000    37 .97  56 .93  49 .89  37 .09  49 .02
-  3    0.000  0.000  0.000  0.000  1.000    37 .96  56 .92  49 .89  37 .00  49 .00
- 20    0.001  0.000  0.000  0.000  0.999    37 .97  56 .92  49 .87  37 .00  56 .00
-```
-
-The drum heads follow the two-frame target closely. This loop also shows two weak spots:
-
-- It's rendered 49.6 cents sharp, the edge of the corpus's range, so G3 and C3 read as
-  their neighbours 56 and 49. The written pitch isn't what's heard here.
-- 37 reads as a sure note, with sure strikes at frames 0 and 40, where no note is
-  labelled; this loop has no bass. 11a and 12b do the same. There's little sound there
-  (-41 dB at 66 Hz by frame 20), so the likely reading is a learned expectation: most
-  loops have a bass on the root, and this root (36) sounds nearly as 37 at this tuning.
-  False notes of this kind reach real recordings, such as the 18 in the pop song's 5 s
-  drum intro.
+§9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)).
 
 The decoders then read the frames: hits by peak picking, the bass by one hidden path,
 the melody register by strike peaks. `strike` and `strike_again` are the thresholds
-that matter, and they belong to the weights, so a root pins them beside the file:
+that matter, and they belong to the weights, so a root pins them beside the file, in
+the `[rip]` table of its `rip.toml`.
 
-```
-[rip]
-strike = 0.7
-strike_again = 0.9
-release = 0.9
-```
-
-## 11. Rounds on record
-
-From 11a on, all run 40,000 steps at batch 8, window 512, seed 1, with the shape in §7.
-Round 8b, on an earlier corpus, has that shape but one input plane and no release or
-velocity heads, 3,680,132 weights. `clean`, `30 cm`, `Pixel` and `Galaxy` are
-pooled F1 of the melody register as one line, over Für Elise (869 notes), the sample's
-origin (83) and its intro (83), every note once, at the column's best settings. The last
-three are those recordings played on a laptop: recorded by a phone at 30 cm with a fan on,
-and by a Pixel 8 Pro and a Galaxy S20 Ultra at 2 m. The 30 cm take also shaped the
-channel's noise, so it flatters every round with a channel. `bench` is `bench 12 4` on the
-same loops, clean and augmented. `kits` is F1 of kick, snare and hihat at bar 0.1 on 40
-recordings of E-GMD's held-out split.
-
-```
-round     corpus  plane 2  channel  real drums  clean   30 cm   Pixel   Galaxy  bench         kits
-analysis  -       -        -        -           0.632   0.597   0.544   0.515   0.383 0.380   0.775
-8b        earlier -        no       no          0.676   0.518   0.495   0.504   0.485 0.434   0.701
-11a       11      -        no       no          0.676   0.522   0.551   0.513   0.469 0.442   0.578
-12b       11      -        yes      no          0.687   0.583   0.553   0.558   0.426 0.426
-12a       11      PCEN     yes      no          0.711   0.623   0.629   0.639   0.427 0.413   0.659
-14a       12      PCEN     yes      unheard     0.662   0.576   0.608   0.593   0.446 0.382   0.814
-16a       12      PCEN     yes      heard       0.668   0.589   0.603   0.627   0.446 0.393   0.822
-16b       11      PCEN     yes      heard       0.703   0.616   0.624   0.626   0.373 0.406   0.826
-17a       13      PCEN     yes      + kits      0.666   0.590   0.628*  0.662*  0.408 0.424   0.810
-```
-
-\* Its training heard loops from those takes, so these two aren't a fair test. Corpus 13
-adds long sung lines, long bass and soft notes to corpus 11; 17a also trained on 4000
-drum loops on random kits, mixes darkened to 800 Hz, and 267 loops from the phones.
-
-- **PCEN** is 12a against 12b: +0.024 clean, +0.040 from the phone.
-- **The channel** is 12b against 11a: +0.011 clean, +0.061 from the phone.
-- **The bench's drums** fell with both, from 0.66 (11a) to 0.56 (12b) to 0.47 (12a), yet
-  real recordings improved. On the pop song from the phone, 12a hears 37 of 39 kicks and
-  138 of 155 hats where 8b heard 2 and 38. The bench's engine drums aren't the target.
-- **Real drums** are 16b against 12a: kits 0.659 to 0.826 (0.876 at bar 0.3) for 0.008
-  clean. They cost phones: the pop song's beat from the Pixel at bar 0.5 has 2 of 36
-  kicks against 12a's 33 at bar 0.1, so 12a stays installed.
-- **The labels' audibility** is 16a against 14a: clean +0.006, 30 cm +0.013, Pixel -0.005,
-  Galaxy +0.034, and `bench sampled` augmented 0.421 to 0.487.
-- **More steps** don't pay: 16b continued at half the rate moved its held-out decoders'
-  loss from 0.994 to 0.985 by step 14000, then stayed flat.
-- **Basic Pitch** on the same clips and scorer, at its default thresholds and its best for
-  each take: clean 0.727 and 0.778, 30 cm 0.548 and 0.606, Pixel 0.608 and 0.614, Galaxy
-  0.567 and 0.593. Its lead is Für Elise alone, 0.828 against 12a's 0.721, and it trained
-  on real piano. Its own decoder on 12a's heads scores 0.619 clean against ours at 0.704,
-  so that gap is its model's.
-
-`--pitchnet` rounds run 20,000 steps at rate 1e-3 with the channel, `--over` and `--mix` of
-16b, decoded at strike 0.7, strike_again 0.9, release 0.9 and voicing 0.6. Their frame heads
-stay weak, 22a's kicks falling to 0 of 36 from the Pixel at bar 0.5, so these rounds are about
-notes.
-
-```
-round  corpus                       clean   30 cm   Pixel   Galaxy
-22a    11                           0.774   0.681   0.755   0.754
-24a    14                           0.807   0.661   0.744   0.723
-24b    11, MusicNet 20%, GuitarSet  0.764   0.653   0.692   0.697
-```
-
-Audio v0.5.3 reads low notes by strikes as well and drops shadows under real notes, which moves
-the same weights with no training. The same scorer through stapes itself, on audio v0.6.0, two
-later rounds added:
-
-```
-round  corpus                 windows       clean   30 cm   Pixel   Galaxy
-22a    11                                   0.785   0.682   0.756   0.755
-24a    14                                   0.819   0.660   0.749   0.722
-25a    14, 11 at half                       0.819   0.681   0.767   0.752
-26a    14, 11 at half         half shuffled 0.831   0.658   0.746   0.748
-```
-
-Through the accounting of audio v0.8.0 and the timed match, on sets chosen to stop fitting four songs; each trained on 25a's mix, with what the column names:
-
-```
-                        25a     29b, +-0.5 s    27a, singing, shuffled
-Fur Elise renders       0.895   0.904           0.913
-Fur Elise clean         0.826   0.824           0.820
-Fur Elise Pixel         0.698   0.724           0.699
-GuitarSet strummed      0.531   0.544           0.549
-GuitarSet solo          0.779   0.812           0.787
-MusicNet                0.583   0.595           0.593
-vocadito, sung          0.539   0.616           0.634
-```
-
-Basic Pitch's best per take is 0.778, 0.606, 0.614, 0.593. Under E4 the decoder was most of the
-gap: on rendered instruments E3 to D#4 went from 0.61-0.77 to 0.74-0.92 on 24a's weights.
-
-- **Weights shared across pitches** are 22a against 19a, the same stack fed to the frame
-  model of section 7 on 3.7M weights: 0.693, 0.604, 0.623, 0.638. The stack alone gains
-  nothing.
-- **Attention beside them** lost: both paths in one model of 3.4M weights scored 0.751, 0.678,
-  0.721, 0.735, below 22a on every take and on seven rendered instruments, so notes get a
-  model of their own and that path was not kept.
-- **Real arrangements** are 24a against 22a: clean +0.033, phones -0.011 to -0.031.
-- **Real recordings** at that mix are 24b against 22a: lower nearly everywhere.
-- **Shuffled windows** are 26a against 25a: clean +0.012 and rendered instruments +0.02 to +0.04, phones -0.004 to -0.023.
-
-To repeat 12a from a checkout with the trainer's changes:
-
-```bash
-CORPUS=<corpus 11> PCEN=1 CHANNEL=<noise.npz>:0.5 STEPS=40000 HOLDOUT=400 EVERY=1000 CONVS=16x3x3/1,16x3x3/2,32x3x3/2 tool/rip-train/pipeline.sh train
-```
-
-And 16b, which adds an E-GMD corpus:
-
-```bash
-CORPUS=<corpus 11> PCEN=1 CHANNEL=<noise.npz>:0.5 OVER=<e-gmd corpus>:0.25 MIX=<e-gmd corpus>:0.1 STEPS=40000 HOLDOUT=400 EVERY=1000 CONVS=16x3x3/1,16x3x3/2,32x3x3/2 tool/rip-train/pipeline.sh train
-```
-
-### Reading a candidate
+## 11. Reading a candidate
 
 A round's file is read by what it can do, each on recordings no round trained on: notes
 (the mean over the truth-backed conditions of F1 by pitch and onset), drums (hits' F1 on
 real drum recordings, and false hits on recordings with none), bars (GuitarSet's unseen
-players' clips whose bars are right, the scored takes' downbeats on a line) and voices
+players' clips whose bars are right, a scored recording's downbeats on a line) and voices
 (notes named right on the solo sets). It is read with settings fitted for it, a judge on
 its own rows and thresholds tuned on its own heads, never through the installed model's.
 
@@ -1242,15 +751,15 @@ trade for Lixen, the next round's start.
 - **`truth <name> <file>`** finds a time map from the longest common subsequence of
   pitches in time order, at the transposition within an octave that matches most, and
   counts a note right when one of its pitch starts within 0.1 s of its place on that map
-  (audio's `MatchNotes`). For a rhythm given with no pitches, as the sample's is, it
-  matches onsets on a fitted time map. Against a MIDI file it also
+  (audio's `MatchNotes`). For a rhythm given with no pitches it matches onsets on a
+  fitted time map. Against a MIDI file it also
   counts hits per drum, within half a step, under a fitted stretch and offset.
 - **`bench`** renders fresh loops and grades each against what was played: a note
   counts only at its exact step and pitch in the right bar. The total is `(tempo + bars
   + 2 drums + 2 melody + bass) / 7`, so its numbers can't be compared with F1 on
   recordings. `bench ... sampled <dir>` plays NSynth's held-out instruments.
-- **Pooling** counts every note once. A mean over recordings would give Für Elise's
-  869 notes the weight of the others' 83.
+- **Pooling** counts every note once: a mean over recordings would give a long
+  recording's many notes the weight of a short one's few.
 
 ## 13. A judge's rows and file
 
@@ -1259,95 +768,62 @@ rules in its place, a small network a stage over a strike's row ([Rip
 design](rip-design.md) §7). The trainer's [README](../tool/rip-train/README.md#a-judge)
 gives the procedure and [audio
 §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)
-the row's layout, 544 `float32` in version 1. The samples here are of one small run,
-which shows the bytes and nothing of a judge's worth: 360 rendered loops fitted on
-and 40 of another seed left out, through a frame model and a notes model trained an
-hour on CPU.
+the row's layout, 544 `float32` in version 1.
 
 `rows <dir> from <list|corpus dir>` writes a directory. Its `rows.json` names the
-kind, and a directory holds one:
+kind, and a directory holds one: `version`, `row_version`, `row_size` and `notes`,
+the checksum of the weights that give the notes, the last eight bytes of
+`ripnotes.bin` (§9's trailer) read as one little-endian number and written in hex. A
+recording is two files named by the first eight bytes of its audio's SHA-256. Its
+`.rows` file is laid out as a loop's frames are (§2):
 
 ```
-{"version":1,"row_version":1,"row_size":544,"notes":"c2f75c44fd18b2e3"}
-```
-
-`notes` is the checksum of the weights that give the notes, the last eight bytes of
-`ripnotes.bin` (§9's trailer) read as one little-endian number: `e3 b2 18 fd 44 5c f7
-c2` in the file. A recording is two files named by the first eight bytes of its
-audio's SHA-256. `43da6b61e655a6af.rows`, the first left-out loop's, is 663,688
-bytes, laid out as a loop's frames are (§2):
-
-```
-00000000  31 01 00 00 20 02 00 00 3b 26 41 be 4c 2f 6a 3f  1... ...;&A.L/j?
-00000010  3d 3b 66 3f 00 00 c0 40 cb f4 e1 bd ae 43 94 3f  =;f?...@.....C.?
-00000020  00 00 80 3f 61 78 44 bf 00 00 00 00 6a bf 8e be  ...?axD.....j...
-```
-
-```
-offset  bytes         field
-0       31 01 00 00   305 rows, a strike over a half each
-4       20 02 00 00   544 values a row
-8       3b 26 41 be   row 0, value 0, float32 -0.18862: the first of the eleven terms
-                      the installed score weighs, then the heads around the strike
+offset  size          field
+0       u32           rows, a strike over a half each
+4       u32           values a row, 544
+8       4 x 544       row 0: the eleven terms the installed score weighs, then the
+                      heads around the strike
 2184    ...           row 1
 ```
 
-`43da6b61e655a6af.json` labels them, a strike a row in the same order:
+Its `.json` file labels them, a strike a row in the same order:
 
-```
-{"source":".../held/loop_000.wav","condition":"held","given":97,"unanswered":73,
- "strikes":[
-  {"frame":0,"midi":49,"reported":true,"right":false,"kept":true},
-  {"frame":1,"midi":83,"reported":false,"right":false,"kept":false},
-  {"frame":2,"midi":52,"reported":false,"right":false,"kept":false},
-  {"frame":2,"midi":64,"reported":false,"right":false,"kept":false},
-  {"frame":2,"midi":67,"reported":false,"right":true,"kept":false},
-  ...
-```
-
-- `source` is the recording as the list names it, shortened here, and `condition`
-  its list line's, or a corpus folder's name.
+- `source` is the recording as the list names it, and `condition` its list line's,
+  or a corpus folder's name.
 - `given` is the truth's notes and `unanswered` those no strike answers, which no
-  verdict can return: 73 of 97 through this small model.
+  verdict can return.
+- `strikes` lists a row each: its `frame` and `midi`, then the four below.
 - `reported` is the stage: a note the decoder reported, else a strike it dropped.
   `held`, where present, is a held note the accounting keeps unjudged, which a fit
   leaves out of the reported stage.
 - `right` is the label: a truth note of the strike's pitch starts within the
   matcher's window of it, each truth note answering one strike, the nearest, a
-  reported note before a dropped strike. The fifth strike above is a dropped one a
-  truth note answers.
-- `kept` is the installed verdict. Of this loop's 305 strikes 12 are reported, all
-  kept and none right, and 24 are right, each a strike the decoder dropped.
+  reported note before a dropped strike.
+- `kept` is the installed verdict.
 
 `judge.py --rows <dir>... --leave-out <condition>... --out ripjudge.bin` fits a
 network a stage and writes the file audio's `LoadRipJudge` reads, 1,257,008 bytes at
 hidden layers of 256 and 64:
 
 ```
-00000000  56 49 46 4a 01 00 00 00 01 00 00 00 20 02 00 00  VIFJ........ ...
-00000010  00 01 00 00 40 00 00 00 e3 b2 18 fd 44 5c f7 c2  ....@.......D\..
-00000020  f7 23 e9 be c2 31 53 3f a2 d9 4b 3f 6e 49 97 3f  .#...1S?..K?nI.?
-```
-
-```
-offset   bytes                     field
-0        56 49 46 4a               magic "VIFJ"
-4        01 00 00 00               version 1
-8        01 00 00 00               row version 1
-12       20 02 00 00               row size 544
-16       00 01 00 00               first hidden layer 256
-20       40 00 00 00               second hidden layer 64
-24       e3 b2 18 fd 44 5c f7 c2   the notes weights' checksum, as rows.json names it
-32       f7 23 e9 be               the reported stage: mean, 544 floats, the first -0.45535
-2208     f7 9b 3b 3f               spread, 544 floats, the first +0.73285
-4384     7b da bb bc               w1, 256 x 544, an output's inputs together
-561440   c0 76 08 3d               b1, 256
-562464   f3 4f 79 3d               w2, 64 x 256
-628000   6d 9b 87 3a               b2, 64
-628256   49 17 ce bd               w3, 64
-628512   62 ab c4 bd               b3, 1
-628516   34 dd de bf               the dropped stage, the same eight again
-1257000  54 9f 73 30 22 52 75 c3   FNV-1a 64 of every byte before it
+offset   size        field
+0        4 bytes     magic "VIFJ"
+4        u32         version 1
+8        u32         row version 1
+12       u32         row size 544
+16       u32         first hidden layer 256
+20       u32         second hidden layer 64
+24       u64         the notes weights' checksum, as rows.json names it
+32       544         the reported stage: mean
+2208     544         spread
+4384     256 x 544   w1, an output's inputs together
+561440   256         b1
+562464   64 x 256    w2
+628000   64          b2
+628256   64          w3
+628512   1           b3
+628516               the dropped stage, the same eight again
+1257000  u64         FNV-1a 64 of every byte before it
 ```
 
 A stage's odds for a row are the sigmoid of `w3 · relu(w2 · relu(w1 · (row - mean) /

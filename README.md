@@ -103,13 +103,13 @@ What a rip does not tell apart yet: a bass note's attack from a kick, a plucked 
 
 ### 7. Learning: how the models are trained
 
-The rip's models learn from music the engine renders itself, since the engine knows exactly what it played.
+The rip's models learn from music the engine renders itself, since the engine knows exactly what it played, and from the recorded sets the [credits](CREDITS.md) say train them.
 
 - **Generating.** `corpus` renders loops of `bars` (4) bars from the registered rhythm, melody and bass patterns across tempos and keys. With `gen`, three loops in five per part play a beat, a melody or a bass line drawn from the key instead, and an accompaniment in the free slot, a broken chord under a melody of longer notes; a third of the generated melodies and accompaniments play half their length 6 to 18 dB softer, as a phrase played softly, and a generated loop leaves out its drums three times in ten and its bass once in seven, so a line is heard bare too. With `meters`, a third of the loops are in 3/4 or 6/8 with every part generated in it: the beat strikes the bar's first beat against its others, and a compound meter's melody and bass keep to its eighths.
 - **Labelling.** Each loop is kept as its log-mel frames and, per frame, what the engine played: the onsets, the drums, the pitches sounding, where each pitch is struck and let go and how hard, the wave and 32 genes of each note's voice, and the family each note and hit sounds as: a voice's by the registered voice its genes stay near, unknown when they stray from every one or `aug` drives it, a hit the drums'. The labels cost nothing and are exact.
 - **Roughening.** With `aug`, each loop's voices are redrawn near the registered ones, a third of them on another wave, in a third of the loops with a pedal's long releases; the mix passes through a room drawn per loop (a gain and swell, a low-pass, two equaliser bands, a soft clip, a compressor, a booth's or a hall's reverb, a noise floor), and the loop plays off A440 by up to a quarter tone. The labels stay the notes as played.
 - **Training.** `tool/rip-train` holds the models' PyTorch twins. It trains on random six-second windows of the loops (512 frames, eight a step), scores the loops it holds out every thousand steps and keeps the best, and writes the weight file audio loads, the two agreeing to float32 rounding.
-- **A round.** `tool/rip-train/pipeline.sh` renders the corpus in parts at once, trains, benches and installs; 40000 loops and 40000 steps take about four hours on a laptop with a GTX 1060. Weights ship only when they beat the analysis on the bench and on real recordings' truths; [Rip design §8](doc/rip-design.md#8-measured-on-the-sample-recording) holds the rounds' numbers to 12a, [Rip training](doc/rip-training.md) the later ones and the data byte by byte from a loop to the weight file, and [the trainer's README](tool/rip-train/README.md) the instructions.
+- **A round.** `tool/rip-train/pipeline.sh` renders the corpus in parts at once, trains, benches and installs. Weights ship only when they beat the analysis on the bench and on real recordings' truths; [Rip training](doc/rip-training.md) holds the data byte by byte from a loop to the weight file, and [the trainer's README](tool/rip-train/README.md) the instructions.
 
 ### 8. The process, end to end
 
@@ -120,7 +120,7 @@ The rip's models learn from music the engine renders itself, since the engine kn
 5. `refine name` closes the loop; `fit name` refits the voices alone.
 6. Save the patterns, the song and the voices to keep them, as Usage shows next.
 
-[Audio library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording) is the engine's side of each stage and [Rip design](doc/rip-design.md) the plan and the measurements.
+[Audio library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording) is the engine's side of each stage and [Rip design](doc/rip-design.md) the plan.
 
 ## Usage
 

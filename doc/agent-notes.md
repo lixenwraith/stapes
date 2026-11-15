@@ -184,81 +184,59 @@ proves wrong or that a document now states, and link the document instead.
 - **`live`'s CPU is the process's** (`syscall.Getrusage`): the transformer
   runs a model across the cores, so the time a call takes is not what it
   cost. The mixer's and a screen's are in it; measure with the music stopped.
-- **The ear's short wait shows in the drums, not the notes.** Through 12a and
-  32a, audio's `FrontEnd.Ahead` at half a second leaves every pitched head as
-  the whole recording's (they are the notes model's, whose reach it still
-  waits) and moves the frame model's: the onset by 15 to 20% of its rms, the
-  drums by 30%, a reading by nearly 1 at worst. The stream's notes count the
-  same under both waits, so count its kicks and snares a bar.
+- **The ear's short wait shows in the drums, not the notes.** Audio's
+  `FrontEnd.Ahead` at half a second leaves every pitched head as the whole
+  recording's (they are the notes model's, whose reach it still waits) and moves
+  the frame model's, the drums among them: count the stream's kicks and snares a
+  bar, not its notes.
 - **A thread's evidence is random weights.** A cloud container holds no
   trained weights and no recordings. After threads merge, `live` over a few
   recordings through the installed pair, the offline rip's note counts against
   the last reading and the two `corpus` digests take minutes and say whether
   the merge holds on what the rip is for.
-- **An installed root must rename its frame model's file to `ripframe.bin`.**
-  A root from before v0.23.0 holds `ripmodel.bin`, which stapes names at the
-  start ("frame model: ripmodel.bin is now ripframe.bin, so rename ...") and
-  never loads, so the rip hears with the analysis, the notes model and the
-  judge unread, until it is renamed: Lixen's root and any `-config-dir` a
-  recipe names. The archived names under `weights/` keep theirs.
-  `pipeline.sh`'s checkpoint is `ripframe.pt`, so a round stopped under the
-  old name resumes with `CHECKPOINT=` naming its file.
+- **An installed root's frame model is `ripframe.bin`.** A root from before
+  v0.23.0 holds `ripmodel.bin`, which stapes names at the start ("frame model:
+  ripmodel.bin is now ripframe.bin, so rename ...") and never loads, so the rip
+  hears with the analysis, the notes model and the judge unread.
 
 - A truth holds one note a frame and pitch, since a rip reports one, and none
-  outside the pitches the rip's front end tells apart: two parts on one pitch
-  were counted twice in 6.9% of the generated evaluation's notes, which capped
-  its recall at 93%, and 1.1% lay under E1. `tune ... truth` and `rows` leave
-  the second kind out themselves (`matchHeard`, by `Rip.Range`, under the
-  transposition the match finds); until v0.30.0 they counted each as a miss,
-  so a score read before it on a truth with such notes reads lower. `truth`
-  still lists such a note as only given
-  ([todo](todo.md#train-the-pianos-pitches)). A doubled
-  note's name is right when it is any family sounding there, and its names are
-  printed apart ([Rip training §5](rip-training.md#5-the-targets)).
-- A scorer is code nobody trained. Six defects sat in November's scorers (a
-  doubled note counted twice, float mixes read as 16-bit, tempo rows under the
-  wrong names, a doubled note's parts kept by one kind, a beat count's
-  denominator, every MIDI channel read as drums) until a review re-ran each
-  claim on the files. A new scorer gets a test or a count made apart before a
-  figure from it is used. A table is one decode's: when audio moves, rebuild
-  the reading tools between rounds and read the baseline again.
-- A generated loop starts on a bar line, which rewards a decoder that leans on
-  a recording's start. Cut a quarter to three quarters of a bar in, 181 of the
-  evaluation's clean 4/4 loops fell from 70% of bars right to 48% under the
-  installed pair's cues, and from 57% to 54% under the fresh pair's heads on
-  audio v0.26.0 (`vif/tmp/audit2/cutbars.py`, the truth's lines moved by the
-  cut). Read bars on cut loops beside whole ones: a search fitted on whole
-  loops alone can learn the lean.
-- Write a truth from a score or a MIDI file, never from memory: a remembered
-  riff of the pop song had its first note an octave low, the synthesizer's
-  doubling the analysis hears, and turned a 96-to-94 tie into a 110-to-84 loss.
-- Score the three recordings pooled (every note once) beside their mean: the
-  origin and the intro have 83 notes each, where five notes move F1 by 0.06.
-- The test loop scores 0.98 under `DefaultRipParams` and loops of the shipped bank
-  0.51 (`CompareRips.Total`): busy drum lanes whose chance hits count as misses,
-  several tracks a slot and melodies under chord changes are where the rip falls
-  short, not the thresholds. `tune 4` over 12 four-bar loops took 36 s on four
-  cores and reached 0.59; a set tuned on renders alone pushes `tightness` and
-  `kick_share` to their range's ends, which a recording with tempo drift would
-  pay for, so the defaults stay hand-set until the corpus has real material.
-- Two transcripts of one piece are a check no single rip gives: the sample and
-  its origin (three semitones apart, one stretched, on different metrical
-  levels) agree on 41 of 49 melody notes, 27 of 29 under notes and all the
-  bass after transposition and a fitted time map (a scratch comparison over
-  two `notes` listings), so the pitch content is mostly consistent and what
-  the ear misses is elsewhere: the two lines swapping a held dyad between them,
-  and durations. Ask for the melody as notes and for a solo take of the lead;
-  they are the ground truth the numbers lack.
+  outside the pitches the rip's front end tells apart, or notes no rip can give
+  cap its recall. `tune ... truth` and `rows` leave the second kind out
+  themselves (`matchHeard`, by `Rip.Range`, under the transposition the match
+  finds). `truth` still lists such a note as only given
+  ([todo](todo.md#train-the-pianos-pitches)). A doubled note's name is right
+  when it is any family sounding there, and its names are printed apart ([Rip
+  training §5](rip-training.md#5-the-targets)).
+- A scorer is code nobody trained: a new scorer gets a test or a count made
+  apart before a figure from it is used. A table is one decode's: when audio
+  moves, rebuild the reading tools between rounds and read the baseline again.
+- A generated loop starts on a bar line, which rewards a decoder that leans on a
+  recording's start. Read bars on loops cut a quarter to three quarters of a bar
+  in, the truth's lines moved by the cut, beside whole ones: a search fitted on
+  whole loops alone can learn the lean.
+- Write a truth from a score or a MIDI file, never from memory.
+- Score recordings pooled (every note once) beside their mean: a few notes move
+  a short recording's F1 far.
+- Under `DefaultRipParams` the shipped bank's loops fall short of the test loop
+  (`CompareRips.Total`) in busy drum lanes whose chance hits count as misses,
+  several tracks a slot and melodies under chord changes, not in the thresholds.
+  A set tuned on renders alone pushes `tightness` and `kick_share` to their
+  range's ends, which a recording with tempo drift would pay for, so the
+  defaults stay hand-set until the corpus has real material.
+- Two transcripts of one piece are a check no single rip gives: two recordings
+  of it, compared after transposition and a fitted time map (a scratch
+  comparison over two `notes` listings), show how far the pitch content agrees
+  and what the ear misses. Ask for the melody as notes and for a solo take of
+  the lead; they are the ground truth the numbers lack.
 - The sweep's moves were all relative to the note the rip heard, so a note it
   missed had no way in and one wrong by a third no way out. The recording's
   own strongest pitch over a step (its salience rows, which the fidelity's
   sound already holds) is the proposal: tried as a move on a step that has a
   note and as an insertion on one that has none, kept when the bar gains.
-- A search over every step's genes at once (312 genes, six generations of
-  twelve) kept no move on the sample: one note's move changes one frame in a
-  thousand of the fidelity, under the noise of a dozen genes moving with it.
-  A sweep that tries each step's five moves alone and keeps a gain sees it;
-  five renders a step is the price, minutes a round on a four-bar song.
+- A search over every step's genes at once keeps no move: one note's move
+  changes a sliver of the fidelity, under the noise of a dozen genes moving with
+  it. A sweep that tries each step's five moves alone and keeps a gain sees it;
+  five renders a step is the price.
 - **A score of the mix drifts the parts.** Fidelity grades the whole render,
   so a voice that fills the spectrum scores above the voice that sounds like
   its line, and `refine` turned every voice electronic while the number rose.
@@ -270,79 +248,46 @@ proves wrong or that a document now states, and link the document instead.
   size term and the greedy pass apply the same pressure.
 - **A truth's lines are its file's, not the rip's.** `MatchNotes` pairs a note
   only within its line, and a MIDI truth files notes by `ReadMIDI`'s rule: a
-  guitar's has no bass line, so the low strings the rip puts on its own count
-  as an extra and a miss each. GuitarSet's strummed clips read .58 that way and
-  .79 by pitch and onset within 100 ms, 982 of 1,395 "low extras" right notes;
-  MusicNet .61 and .71, its solo cello .47 and .77. `truth`'s `notes` row and
-  `tune ... truth` count by pitch and onset (`Agreement.All`); `truth`'s rows
-  by line, its `every part` row and the wide table still count within lines.
-- A truth on the recording's own clock (GuitarSet's) needs no time map, and
-  the matcher's costs it: strummed guitar by pitch and onset read .72 through
-  audio v0.14.0's map and .79 without. The map has held a steady tempo since
-  v0.24.2, unread on guitar. Say `timed`, to
-  `truth` or as a list line's fourth field; a timed truth's drum hits still
-  pass through `MatchHits`' own map.
-- The voice a model hears for a line is the fit's first seed, no more: modal at
-  the heads' mean genes, it stood farther by the fit's own distance than the
-  nearest bank voice in 32 of 37 lines (ten of NSynth's held-out instruments
-  and five recordings) and 2.3 times as far as the fit, and on the six
-  recordings Lixen heard the fit was the nearer every time, so `rip` fits every
-  line. The distance favours a sparse, dark voice (modal for 32 of the 37, a
-  singer and a reed among them): a change to it wants ears again.
-- A miss is rarely a note the notes model never heard: on strummed guitar 78% of the
-  notes the rip misses have a strike over `strike` at their pitch within four
-  frames. No bar or rule returns them at a fair price, though: `strike_again`
-  at .7 brought back 44 for 130 more reported, the partial and within-a-tone
-  rules off about 30, the accounting off 43 for 323 at .03 off the mean of
-  twenty conditions. The head hears as many false strikes at that level, and
-  nothing after it tells the two apart. Print the strike head at the missed
-  notes (`vif/tmp/audit2/why-v0140`) before training for a miss, and try a
-  rule on every condition (`cond-v0140`) before moving it.
+  guitar's has no bass line, so the low strings the rip puts on its own count as
+  an extra and a miss each. `truth`'s `notes` row and `tune ... truth` count by
+  pitch and onset (`Agreement.All`); `truth`'s rows by line, its `every part`
+  row and the wide table still count within lines.
+- A truth on the recording's own clock (GuitarSet's) needs no time map, and the
+  matcher's costs it. Say `timed`, to `truth` or as a list line's fourth field;
+  a timed truth's drum hits still pass through `MatchHits`' own map.
+- The voice a model hears for a line is the fit's first seed, no more, so `rip`
+  fits every line. The fit's distance favours a sparse, dark voice: a change to
+  it wants ears again.
+- A miss can be a note the notes model heard, with a strike over `strike` at its
+  pitch within four frames: print the strike head at the missed notes before
+  training for a miss, and try a rule on every condition before moving it.
 - **`Fidelity` puts no price on a wrong note**, so it cannot set a decode's
-  thresholds. Over 91 recordings under eleven threshold sets it ordered 54 in
-  a hundred of the pairs .02 apart in F1 as their truth does (51 through the
-  models), and a pick by any of its terms scored under the installed set. The
-  installed decode laid again without its wrong notes gains .09 of F1 and
-  loses `Fidelity` on 71 of 87 recordings: a wrong note is worth a third of a
-  right one to it (a tenth on a solo guitar's line, two fifths on a sung
-  one, a half on chords), wherever it lies on a partial, a ring or a glide
-  the recording has. It sees a gross fault two times in three
-  (`vif/tmp/audit2/fidtable.py`, `fidxtable.py`).
-- Two renders compared by `Fidelity` are rendered under the same names, each
-  in a fresh session: a sound's noise is seeded by its name, and one decode
-  rendered under two names scored up to .004 apart.
-- **A judge's fit is read with a collection left out, never a recording.** A
-  small network on the heads around a strike took guitar from .73 to .84
-  with the player left out and to .79 with GuitarSet left out; singing lost
-  up to .04 unmet. The accounting's logistics refitted on 427 recordings
-  gained nothing, and no second pass over a recording did. The frame model's
-  drum onsets and the note's length added to the network's input moved no
-  collection by .015 (`vif/tmp/audit2/README.md`, the judge's tools).
-- The pop song's truth is its bass line alone, so its F1 counts every chord
-  the rip hears as wrong: read it by bass notes right (111 of 138 clean). A
-  judge fitted on recordings, which hold no drums, kept 49 to 76 of them;
-  fitted on the engine's mixes alone, 102.
-- Hold-outs are by source, never by file: GuitarSet's players (00 to 03
-  train, 04 validates, 05 tests), VocalSet's singers (f2, f8, m3, m5 and m10
-  held out), MusicNet's pieces, E-GMD's split, NSynth's instruments, a
-  generated set's seed. 32a trained on vocadito's clips 1 to 30, 30 loops of
-  `~/ripcorpus-vocal`'s 2,346, which a look at every fiftieth label missed:
-  check every label's `source` against every validation, fit and test list
+  thresholds: a wrong note on a partial, a ring or a glide the recording has
+  earns it part of what a right one does, so a decode laid again without its
+  wrong notes gains F1 and loses `Fidelity`.
+- Two renders compared by `Fidelity` are rendered under the same names, each in
+  a fresh session: a sound's noise is seeded by its name.
+- A judge's fit is read with a collection left out, never a recording.
+- A truth that holds one line alone counts every chord the rip hears as wrong:
+  read it by that line's notes right.
+- Hold-outs are by source, never by file: GuitarSet's players (00 to 03 train,
+  04 validates, 05 tests), VocalSet's singers (f2, f8, m3, m5 and m10 held out),
+  MusicNet's pieces, E-GMD's split, NSynth's instruments, a generated set's
+  seed. Check every label's `source` against every validation, fit and test list
   before calling a set unmet, and take a set a round trains on out of every
-  held-out reading, a judge's fit included. Music is shared too: 98 of the
-  generated evaluation's 800 loops share a Lakh stretch with a training loop
-  and scored no higher in November; `vif/tmp/audit2/evalshared.py`, naming
-  every corpus trained on, says after a round whether they pull ahead.
-- **A song only measures.** The pop song is never in a corpus or a fit's
-  list, nor are the pop set's songs and the piano takes, the originals or a
-  phone's recording of them, nor a commercial song's transcription such as
-  Lakh's MIDI files: no licence covers training on them (AGENTS, Data).
-  Generated parts, public-domain scores the engine renders and the CC BY sets
-  are what trains; the Lakh corpora and every weight trained before they went
-  were deleted (2026-11-14), and the models train again from nothing. Nor may
-  a song shape an input: the channel's noise bank took its room from the quiet
-  of a phone take until the fresh rounds (`vif/tmp/round37/r4/noise-clean.npz`).
-  At a fresh start, list every input with where it came from.
+  held-out reading, a judge's fit included. Music is shared too: an evaluation's
+  loop can share a stretch of a score with a training loop, so after a round
+  read whether such loops pull ahead, naming every corpus trained on.
+- **A song only measures.** No song's recording, bought or not, nor anything
+  taken from one (a take of it through a room or a phone), nor a commercial
+  song's transcription is in a corpus or a fit's list, and no song shapes an
+  input, as a noise bank shaped by a take's quiet would: no licence covers
+  training on them (AGENTS, Data). What trains or fits is the engine's generated
+  parts and mixes, public-domain scores it renders, and the CC BY sets whose
+  recordings were made for the set, of music original to it, improvised or in
+  the public domain: by that rule E-GMD, VocalSet, NSynth and GuitarSet train,
+  and MusicNet and vocadito only measure. At a fresh start, list every input
+  with where it came from.
 - **A collection's licence is read on its own page, and its parts may carry
   their own.** MusicNet's record is CC BY 4.0, yet its recordings are
   Creative Commons and public-domain performances. The Isabella Stewart
@@ -364,28 +309,22 @@ proves wrong or that a document now states, and link the document instead.
   its file's last eight bytes, which `ripmodels.Load` keeps as `NotesSum`; a
   front end built by `ripmodels.New` has 0 there.
 - **The trainer's judge and audio's are held together by their odds.**
-  `judge.py` repeats byte for byte on CPU (three fits of one directory wrote
-  one file), and on audio's own rows of six left-out loops, 1,869 strikes,
-  the two sides' odds differ by at most 3.2e-07 with no verdict apart. A
-  scratch program rips a WAV under the root's judge with `Ripper.Strikes` and
-  `Rows` and dumps each strike's stage, odds and row; the file's layers
-  applied to those rows in NumPy give the other side. Redo it after any
-  change to the file, the row or either forward pass.
-- **A count from rows is near `truth`'s decode, not it.** Over 40 left-out
-  loops, 2,838 notes given, the installed scores read 423 right of 761 heard
-  from rows and 424 of 762 decoded by `truth` (F1 .235 and .236), and a
-  judge 740 of 1,028 and 759 of 1,059 (.383 and .390). Installed, the
-  difference is one loop's and one cause: the installed scores weigh the
-  candidates that stand in time order, and the read lists the strongest
-  strike of a pitch within `strike_gap`, which carries the verdict of the
-  candidates near it and is labelled at its own frame. Two candidates
-  returned 17 frames apart around one stronger strike are one row, and a
-  candidate returned eight frames after a stronger strike is a right note
-  whose row is labelled wrong, 104 ms from the truth's. Under a judge a
-  dropped strike is measured against the notes the judge kept, where its row
-  was written against those the installed scores kept, so some verdicts
-  differ. Read a fit by `truth` over the conditions left out, and use the
-  rows' count to see that a fit is sane.
+  `judge.py` repeats byte for byte on CPU, a directory's fits writing one file,
+  and on audio's own rows of left-out loops the two sides' odds differ by
+  rounding alone, with no verdict apart. A scratch program rips a WAV under the
+  root's judge with `Ripper.Strikes` and `Rows` and dumps each strike's stage,
+  odds and row; the file's layers applied to those rows in NumPy give the other
+  side. Redo it after any change to the file, the row or either forward pass.
+- **A count from rows is near `truth`'s decode, not it.** The installed scores
+  weigh the candidates that stand in time order, and the read lists the
+  strongest strike of a pitch within `strike_gap`, which carries the verdict of
+  the candidates near it and is labelled at its own frame: two candidates
+  returned around one stronger strike are one row, and a candidate returned a
+  few frames after a stronger strike can be a right note whose row is labelled
+  wrong. Under a judge a dropped strike is measured against the notes the judge
+  kept, where its row was written against those the installed scores kept, so
+  some verdicts differ. Read a fit by `truth` over the conditions left out, and
+  use the rows' count to see that a fit is sane.
 - Singing is the last to come: little truth, many kinds of voice. Report it
   beside every reading and hold no stage back on it.
 - Lixen's order of work: fix what is already known to help, train a little,
@@ -398,10 +337,9 @@ proves wrong or that a document now states, and link the document instead.
 
 - The user judges the corpus by ear, as music: measure what they hear before
   changing the generator. The bank's drums and bass put 82 to 89% of a loop's
-  energy under 250 Hz (Für Elise and the sample 7 to 14%, the pop song 76%), a
-  white floor a recording's mix would cover sits bare over a synthesizer's empty
-  treble (a recording's hiss is about 39 dB under its median frame), and a
-  reverb after the clip passes full scale.
+  energy under 250 Hz, a white floor a recording's mix would cover sits bare
+  over a synthesizer's empty treble, and a reverb after the clip passes full
+  scale.
 - `bench` and `tune` loops shorter than four seconds give no rip (a two-bar loop
   at 176 bpm is 2.7 s): size a test's loops by bars, not loops, and read the
   count `bench` prints; `bench ... verbose` names each loop that gave none.
@@ -413,17 +351,13 @@ proves wrong or that a document now states, and link the document instead.
   generated patterns and no two runs would draw alike.
 - `corpus ... meters` draws a loop's meter from a stream of its own, and a loop
   in 4/4 renders as it does without `meters`, which a test compares byte for
-  byte; a loop in 3/4 or 6/8 generates every part, the bank having only 4/4.
-  The rip reads a meter other than 4/4 only over more than eight bars of beats,
-  so `bench 24 16 meters`: it read the 19 loops in 4/4 as 4/4, and the bar of
-  7 of 10 rips of the others but their label in 4 (a 6/8 tracked in quarters
-  reads 3/4, a 3/4 in dotted quarters 6/8), which is why the bench counts both.
+  byte; a loop in 3/4 or 6/8 generates every part, the bank having only 4/4. The
+  rip reads a meter other than 4/4 only over more than eight bars of beats, so
+  `bench 24 16 meters`: a rip can find a loop's bar and miss its label (a 6/8
+  tracked in quarters reads 3/4, a 3/4 in dotted quarters 6/8), which is why the
+  bench counts both.
 - `bench` grades the analysis as it is today, so a run's numbers compare only
-  with the analysis benched beside them: the seventh pass moved the analysis
-  from 0.47 to 0.49 on clean loops, and the fourth model run's 0.45 and 0.51
-  stand against that, not against the third run's table. The frame model's corpus
-  is rendered at A440, so nothing it saw was detuned; a recording off the
-  standard is a recording it was never shown, whatever its held-out loss.
+  with the analysis benched beside them.
 - `corpus ... glide` draws its bends and scoops from one stream and its
   vibratos from another, each seeded apart from the loop's own, so a loop's
   patterns, key, voices and tuning are those the line draws without the word,
@@ -432,18 +366,14 @@ proves wrong or that a document now states, and link the document instead.
   field stays out of the file where it is unset. A voice with a vibrato of its
   own (the vocal focus's) moves without the word, and its labels gain the list.
 - A `midi` corpus holds glides without the word: a MIDI file's pitch bend is a
-  step's `bend`, which the engine plays, so such a note lists its `cents`.
-  Labels written before the cents head call it steady: in corpus 17's first
-  24 loops one event of 3,486, the frames byte for byte the same. The line
-  with `labels` after it writes them again and renders nothing.
+  step's `bend`, which the engine plays, so such a note lists its `cents`. The
+  line with `labels` after it writes its labels again and renders nothing.
 - `corpus ... labels` plays nothing, so nothing a label holds may wait on the
-  mixer: `DefineVoice` queues a command and fails once 256 wait unplayed,
-  which dropped voices from a pass's labels from its loop 34 on, 166 of 200
-  differing. The pass checks a voice with `ValidateVoice` and registers none,
-  so the registered voices stay as they are and need no restoring. A label takes
-  only its length from the render, read from the `.mel` header; a field a
-  label gains must be drawn before the render, or the pass cannot write it.
-  2,000 loops are labelled in under a second, against 11.6 minutes to export.
+  mixer: `DefineVoice` queues a command and fails once 256 wait unplayed. The
+  pass checks a voice with `ValidateVoice` and registers none, so the registered
+  voices stay as they are and need no restoring. A label takes only its length
+  from the render, read from the `.mel` header; a field a label gains must be
+  drawn before the render, or the pass cannot write it.
 - A `from` corpus's labels pass knows a recording by its label's `source`, so
   a label that does not read stops it. It writes the MIDI's `vel` again:
   strip a constant-velocity corpus's once more after it (below).
@@ -452,17 +382,16 @@ proves wrong or that a document now states, and link the document instead.
   neighbours. A reach of a step read a neighbour's pitch there by a rounding's
   luck; the reach is three quarters of a step (`pitchTrackReach`).
 - A tracker's jitter makes every frame unlike its neighbour, which is how the
-  trainer knows an engine note's glide: by that rule all 258 readings of a
-  jittered track were gliding. A recorded note glides when its track spans
-  half a cell (`GLIDE_SPAN`). A change to how `train.py` reads a label is
-  checked by `Label.window` before and after over a `glide` corpus: its
-  targets from engine labels must not move. A rewrite of `window` for speed is
-  checked so over every target, byte for byte, of fixed windows of generated,
-  `glide` and drum loops and of recordings' labels made up with nulls in their
-  cents, a 50-cent tuning and notes outside the pitches (549,120 digests in
-  v0.31.0). NumPy 2 compares a bare float with a float32 array in float32,
-  where an array of float64 offsets compared in float64: keep `np.float64`,
-  which the pinned digest's labels cannot tell apart.
+  trainer knows an engine note's glide, so by that rule a jittered track glides
+  throughout. A recorded note glides when its track spans half a cell
+  (`GLIDE_SPAN`). A change to how `train.py` reads a label is checked by
+  `Label.window` before and after over a `glide` corpus: its targets from engine
+  labels must not move. A rewrite of `window` for speed is checked so over every
+  target, byte for byte, of fixed windows of generated, `glide` and drum loops
+  and of recordings' labels made up with nulls in their cents, a 50-cent tuning
+  and notes outside the pitches. NumPy 2 compares a bare float with a float32
+  array in float32, where an array of float64 offsets compared in float64: keep
+  `np.float64`, which the pinned digest's labels cannot tell apart.
 - A `corpus <dir> from` loop is known by its `source`, the CSV's
   `audio_filename`: the set may move, but an entry renamed joins as new. A clap
   in a test file is a hit for a song, not for `truth`.
@@ -477,42 +406,30 @@ proves wrong or that a document now states, and link the document instead.
 - `corpus <dir> from` writes a MIDI file's velocities as labels. GuitarSet's,
   MusicNet's and the singing set's are one constant, which the velocity head
   would learn as a fact about recordings: strip `vel` from such a corpus's
-  labels (`vif/tmp/round26/strip.py`) before a round reads it.
-- A score aligned to a recording is not a label to the frame. The notes model's
-  strike head peaks within a frame of the label on 98% of a rendered loop's
-  strikes, 80% of GuitarSet's (a frame early) and 36% of MusicNet's, spread
-  over 80 ms either way (`vif/tmp/audit2/offsets.py`), so a strike target a
-  frame wide teaches MusicNet's jitter and a loss there measures it. Snapped to
-  32a's peaks, models outside its line find 80 to 88% within a frame; a rendered
-  loop's exact labels would only take on 32a's frame of play, so only MusicNet
-  is snapped (`vif/tmp/round37/tools/snap.py`).
+  labels before a round reads it.
+- A score aligned to a recording is not a label to the frame: a strike target a
+  frame wide on an aligned score teaches its jitter, and a loss there measures
+  it.
 - A label a tool made carries the tool's offset. VocalSet's notes come from a
   YIN pitch track that stamps a note at the start of its 1,024-sample window,
-  two frames before its sound, and were 95% of the singing both lines trained
-  on through 51a; `~/ripcorpus-vocal-m` holds them moved
-  (`vif/tmp/round37/r6/vocalmend.py`). Before a corpus trains,
+  two frames before its sound. Before a corpus trains,
   `tool/rip-train/datacheck.py` with `GROUP=1` reads each source's lag from a
-  labelled start to the sound's rise: 0 or 1 frame, as vocadito's hand labels
-  and MusicNet after its snap read.
+  labelled start to the sound's rise: 0 or 1 frame is a label on its sound.
 - A recording read at the wrong scale is silence with labels: a float WAV is
-  already within one, and divided by 32,768 as 16-bit samples the mix test's
-  ten MusicNet mixes held 2,157 hits in no sound. `datacheck.py` prints a
-  corpus's median loudest value and the loops under a tenth of it; look at a
-  set's level before reading anything from it.
-- A real set repeated is not more sound: GuitarSet's two training hours at
-  0.4 of 48a's windows (8 windows of 512 frames a step) were each heard about a
-  hundred times in 40,000 steps, its 84 hours of generated loops about three
-  times. `--extra`'s shares are drawn in order, each of the windows the ones
-  before it left: 48a's three after GuitarSet drew 6%, 5.4% and 2.4%, not 10,
-  10 and 5, and the main corpus 46%. Before a round, count the hours of
-  windows it draws from each corpus against the hours each holds.
+  already within one, and divided by 32,768 as 16-bit samples its labels sit in
+  no sound. `datacheck.py` prints a corpus's median loudest value and the loops
+  under a tenth of it; look at a set's level before reading anything from it.
+- A real set repeated is not more sound: a small set at a large share of a run's
+  windows is heard many times over. `--extra`'s shares are drawn in order, each
+  of the windows the ones before it left, not of all of them. Before a round,
+  count the hours of windows it draws from each corpus against the hours each
+  holds.
 - `part k/n` counts k from 0: `part 4/4` is refused, and the pass with no part
   then renders that quarter's loops itself, on one core.
-- A drum change is benched piece by piece without editing the tree:
-  `stapes -config-sounds piece.toml -s bench.slab` overrides one sound of the
-  built-in kit. The analysis hears a kick still ringing at 50 to 60 Hz as the bass
-  line, and a snare's fixed modes move the melody's key: the bench's clean bass
-  rests on three loops of twelve, which a kick of the old 42 Hz glide restored.
+- A drum change is benched piece by piece without editing the tree: `stapes
+  -config-sounds piece.toml -s bench.slab` overrides one sound of the built-in
+  kit. The analysis hears a kick still ringing at 50 to 60 Hz as the bass line,
+  and a snare's fixed modes move the melody's key.
 
 - A frame model's heads are a prefix of audio's `FrameSpec`, unlike a notes model's,
   which audio reads by name: an audio from before a head refuses a frame
@@ -521,28 +438,20 @@ proves wrong or that a document now states, and link the document instead.
   without it load in either.
 - **A rendered loop's beats are in no label: the trainer derives them** from
   `bpm`, `bars` and `meter` (`train.Label`), by the arithmetic `exportCorpus`
-  lays an event with, a sixteenth of whole samples and each frame rounded
-  half up. A change to how a step is placed (a swing, a tempo that moves
-  inside a loop, a pickup before bar one) breaks the rule without a word and
-  no test sees it: redo its check, a scratch script over `aug`, `codec`,
-  `midi`, `dense`, `meters`, `glide` and `tempos` corpora that asks that every
-  event's frame is on its loop's sixteenths and the end's line within a frame
-  of the `.mel`'s length (0 of 24,810 events off, the line the last frame or
-  the one past it).
+  lays an event with, a sixteenth of whole samples and each frame rounded half
+  up. A change to how a step is placed (a swing, a tempo that moves inside a
+  loop, a pickup before bar one) breaks the rule without a word and no test sees
+  it: redo its check, a scratch script over `aug`, `codec`, `midi`, `dense`,
+  `meters`, `glide` and `tempos` corpora that asks that every event's frame is
+  on its loop's sixteenths and the end's line within a frame of the `.mel`'s
+  length.
 - A corpus cycles six tempos (`tuneTempos`) and its last loops are the ones
   held out, so a held-out loop's tempo was always trained on: a beat head's
   held-out F1 says nothing of a tempo it never met. `tempos a,b,c` takes a
   list of any length, and `--bend` sways a window's tempo.
-- Baselines for a change that must not move the corpus or the bench, taken at
-  v0.18.0 on audio v0.21.0 with an empty root and `XDG_CONFIG_HOME`, and
-  unmoved at v0.22.0 on audio v0.24.0 and at v0.23.0 on v0.24.2: `corpus
-  <dir> 24 4 aug gen nowav` hashes `1c86cc77...e2b4` over 49 files; `bench 12
-  4` reads the analysis at 0.453 clean (tempo 0.83 bars 0.90 drums 0.43
-  melody 0.17 bass 0.25) and 0.425 augmented (0.83 0.90 0.43 0.13 0.11), and
-  `bench 24 16 meters` at 0.491 and 0.428, the meter read in 19, 1 and 2 of
-  the 19, 2 and 3 loops in 4/4, 3/4 and 6/8. Audio's tempo bound at 240 bpm
-  moved none of those lines, and no pick of 48 loops of `corpus <dir> 48 8 aug
-  gen meters` lay under it.
+- A change that must not move the corpus or the bench is read before and after
+  with an empty root and `XDG_CONFIG_HOME`: the hash of `corpus <dir> 24 4 aug
+  gen nowav`'s files, `bench 12 4` and `bench 24 16 meters`.
 
 ## Training rounds
 
@@ -552,29 +461,24 @@ proves wrong or that a document now states, and link the document instead.
   loops from the tree's code too, so rounds whose `aug` or `gen` differ bench on
   different loops: bench one round's weights through the other's stapes.
 - A model's decoder thresholds belong to its weights: a new head's scale moves
-  them, so tune them (`tune ... truth <list>`) before judging a round (10a read
-  0.530 pooled at 8b's, 0.650 at its own), and pin them in the root's
-  `rip.toml` beside the weights. Compare rounds on one tree's bench loops.
-  The drums' `onset_min` is one: a share of the recording's loudest frame, so
-  a surer drums head wants a higher bar (the fresh pair heard 113 false hits a
-  minute on the generated evaluation's clean loops at the built-in 0.1, 31 at
-  0.7). The search sets it, and the bars' weights, only where its list's truths
-  give hits and bars: give it rendered loops' labels beside the recordings, at
-  a seed no training corpus or evaluation set uses. Never read a new model
-  through the old one's `rip.toml`.
+  them, so tune them (`tune ... truth <list>`) before judging a round, and pin
+  them in the root's `rip.toml` beside the weights. Compare rounds on one tree's
+  bench loops. The drums' `onset_min` is one: a share of the recording's loudest
+  frame, so a surer drums head wants a higher bar. The search sets it, and the
+  bars' weights, only where its list's truths give hits and bars: give it
+  rendered loops' labels beside the recordings, at a seed no training corpus or
+  evaluation set uses. Never read a new model through the old one's `rip.toml`.
 - With strikes the melody register never reaches the pair decoder, so
   `second_voice` and `cross` move no note on the models' path, while the bass
   line's own path reads `jump`, `switch` and `retrigger`: `modelGenes` is what
   audio v0.9.0's decoders read; check it against a new decoder. A candidate of
-  `tune ... truth` pays the decoders alone, and the accounting stage
-  (`RipFrames.account`) was 90% of them in a profile.
-- A round that gains on the bench may still lose on the recordings (10a over 8b):
-  the bench's loops are the corpus's own kind. Judge by the recordings.
-- Towers (`transformer.Tower`, `TOWERS=` in `tool/rip-train`) are in no shipped
-  weight file, yet are not dead code: round 7d found no gain for 43% more
-  weights, and they are to be tried again once new heads (offset, velocity,
-  pedal) compete with the strike head for the shared layers. Keep them, their
-  loader and their round-trip test.
+  `tune ... truth` pays the decoders alone.
+- A round that gains on the bench may still lose on the recordings: the bench's
+  loops are the corpus's own kind. Judge by the recordings.
+- Towers (`transformer.Tower`, `TOWERS=` in `tool/rip-train`) are not dead code:
+  they are to be tried once new heads (offset, velocity, pedal) compete with the
+  strike head for the shared layers. Keep them, their loader and their
+  round-trip test.
 - A notes model's per-pitch heads are rows of two tables, `CELL_HEADS` in
   `ripmodels.py` and audio's `notesHeads`: a new head adds a row to each, with
   the values it reads at a pitch, and goes after the others in
@@ -593,27 +497,23 @@ proves wrong or that a document now states, and link the document instead.
   `pitchvoice`, a row of it, differs between them though the genes are the
   same: a test that compares two runs' batches gives each a fresh `GENES`
   (`handed`), as a process of its own starts.
-- A family's name is learned long after its sound: on 720 loops every held-out
-  note was a synth at step 500 and no piano or sung note was named at step
-  1,500, the bass at .43, while the wave and the genes moved from the start.
-  Six notes in ten of that corpus are synth's, each engine voice far from the
-  bank being one, so read a family's own share, never the total.
+- A family's name is learned long after its sound, the wave and the genes moving
+  from the start. Each engine voice far from the bank is a synth, so read a
+  family's own share, never the total.
 - The heads of what plays a pitch teach the cells the decoders read. With the
-  gradient stopped at the cells they learn only the commonest name; at the
-  whole weight of the frame's like heads a 3,000-step run's strikes' F1 fell
-  from 0.328 to 0.278, at a quarter (`PLAYS`) to 0.301. Before changing that
-  weight or those heads, run the same steps without them and read the
-  strikes: two such runs taught alike part by 0.012 on the starting draw alone.
-- Generated loops cannot judge a family's name. A piano or a guitar there is
-  an engine voice within 0.2 of a bank voice's genes among random ones on the
-  same waves, and each note given its octave's most common family, wave and
-  mean voice scores what a 3,000-step model does. Read names on recorded
-  families; a container run shows that the heads, the measure and the file
-  work, not how well they hear.
+  gradient stopped at the cells they learn only the commonest name, and at the
+  whole weight of the frame's like heads they cost the strikes, so they weigh a
+  quarter (`PLAYS`). Before changing that weight or those heads, run the same
+  steps without them and read the strikes, beside a second run taught alike: the
+  starting draw alone parts two runs.
+- Generated loops cannot judge a family's name: a piano or a guitar there is an
+  engine voice within 0.2 of a bank voice's genes among random ones on the same
+  waves. Read names on recorded families; a container run shows that the heads,
+  the measure and the file work, not how well they hear.
 - A notes model of a few thousand steps rips few notes at the shipped strike
   thresholds. To see what a rip says of such a model's notes, set `strike`,
-  `strike_low` and `strike_again` in the root's `rip.toml` (0.5, 0.5, 0.8 on
-  three training loops here) and say so beside the numbers.
+  `strike_low` and `strike_again` in the root's `rip.toml` and say so beside the
+  numbers.
 - A weight file's constant can ride as a frame head of no weights (`sure`:
   `export` appends a zero row to `frameout.weight` and the constant to its
   bias), which no version of the file needs to know; `--init` and `average.py`
@@ -627,28 +527,19 @@ proves wrong or that a document now states, and link the document instead.
   63% is a head that states its mean miss, and the gliding readings are the
   ones the decoder leans on. Weighting the miss by the stated error, or a
   margin in the decoder, would put a number set by hand back in the rule.
-- A fine-tune reads as a loss under the installed scores, which were set with the
-  start's heads in hand: 37d, 32a's recipe and a cents head, scored its strikes
-  above 32a's on the validation corpus (.523 against .515) and lost the clean
-  take by .03 and the phones by up to .045. Read each model under a judge fitted
-  on its own rows. Two runs that `--validate` on `~/ripcorpus-val37` do not fit
-  beside a desktop on 30 GB: its 2,506 windows hold 5 GiB in each.
-- A probe of a model's heads reads what its frozen cells already hold, and
-  what the heads are asked bounds it as it bounds a free run: 32a's cells gave
-  bass and the synths alone (38a), as did the body free (38c, 38e).
-- A name the corpus gives by a voice's genes is not one its sound says: named
-  by the voice they were drawn under, or `synth` far from the bank, modal and
-  string sounds were asked two names, and the heads of what plays each pitch,
-  given plenty of each family, named bass and the synths alone (38c, 38e) while
-  naming solo singing, which every corpus names one way, on 96% of its notes;
-  so a note the engine rendered asks no family. Count a name's cells by family
-  and source (`vif/tmp/round37/tools/askcount2.py`) before training for it.
-- A training loss that keeps falling says nothing about fresh loops: 12000
-  steps on 300 loops reached 0.31 and benched worse than 3000 steps on 120,
-  each loop seen three hundred times. `train.py` holds a tenth of the loops
-  out, scores them every `--every` steps and exports the best step; judge a run
-  by its held-out line and by `bench` on the file, never by the last training
-  loss, and prefer more loops to more steps.
+- A fine-tune reads as a loss under the installed scores, which were set with
+  the start's heads in hand: read each model under a judge fitted on its own
+  rows.
+- A probe of a model's heads reads what its frozen cells already hold, and what
+  the heads are asked bounds it as it bounds a free run.
+- A name the corpus gives by a voice's genes is not one its sound says: named by
+  the voice they were drawn under, or `synth` far from the bank, modal and
+  string sounds were asked two names, so a note the engine rendered asks no
+  family. Count a name's cells by family and source before training for it.
+- A training loss that keeps falling says nothing about fresh loops. `train.py`
+  holds a tenth of the loops out, scores them every `--every` steps and exports
+  the best step; judge a run by its held-out line and by `bench` on the file,
+  never by the last training loss, and prefer more loops to more steps.
 - A `.pt`'s held-out loss, a merge's or any checkpoint's, is read without
   training: `train.load_corpus`, `train.validation` over the last `--holdout`
   loops and `train.evaluate` in a scratch script, the network built from the
@@ -657,89 +548,60 @@ proves wrong or that a document now states, and link the document instead.
   user's site directory.
 - `train.py` reads each window's frames from its `.mel` as it draws it
   (`MelFile`) and builds the window's targets from the loop's events then
-  (`Label.window`): rows per frame held up front came to 207 bytes a frame,
-  5.2 GB for 40000 loops, and MAESTRO's 159 training hours would add 10 GB. A
-  `np.memmap` a loop would keep a file descriptor open each, 40000 of them,
-  past a 1024 limit or macOS's 256.
-- A training run shares the cores with everything else the session does, and
-  its steps a second follow what its builders get: the fourth run slowed from
-  0.4 to 4 seconds a step under a rip and a test run, and 51a, its batches
-  built on one thread, its process at 1.0 to 1.4 cores and the GPU busy 53% of
-  the time, went from 0.94 to 0.80 s a step when an indexer holding 0.85 of a
-  core stopped. A batch is Python holding the interpreter's lock (`Label.window` was
-  62% of a notes batch): two threads built 0.63 times what one did, so
-  `--builders` forks processes, a core each, each paying about 35 CPU-ms to
-  hand a batch of 23 MB over. Size a waiter by the run alone and expect to
-  re-arm it, or follow the run by a reminder instead.
-- **A builder shares the run's pages until a write copies one, and a read
-  writes an object's reference count.** Once it has drawn from every loop a
-  builder holds about 2 KB of the run's a loop, each loop's `Label`, arrays'
-  and `MelFile`'s headers (0.29 GB a builder over 100,000 loops), the arrays'
-  data still shared. A full collection would copy every object's page (three
-  builders 449 MB against 250 over 8,169 loops), so the run freezes the
-  collector while they fork. Read a builder by `Private_Clean` and
-  `Private_Dirty` in `/proc/<pid>/smaps_rollup`, its worst case by touching
-  every loop in it and collecting.
-- A run's noise differs by set: five rounds of one recipe (32a, 32c, 33a, 33c,
-  34c) spread .003 on the renders, the clean take and MusicNet, .005 to .008 on
-  the phone takes and guitar, .010 on vocadito and .003 on the mean of nine.
-  Two runs that differ in anything else are not a repeat: 34a against 34b,
-  once read as noise, is width, six spreads apart on the clean take.
-- A notes model's loss on recordings is mostly its onset head (57% on
-  GuitarSet's player 04, 68% on MusicNet), which Go never reads from it, and
-  over ten rounds it ranked them unlike their test sets; the strike head's
-  peaks at the decoder's bars ranked them as solo guitar's test player did
-  (Spearman .93), which is what `--validate` picks a notes model by. One
-  instrument's score trades against another's (the same peaks against
-  MusicNet, -.58), so validate on every kind of recording at once. A frame
-  model is still picked by the decoders' loss there, which rose only as its
-  onset head grew surer while its beats' F1 rose (.14 to .24): 48a's pick was
-  step 10,000 of 40,000. Read a line at its last step, each head by its own
-  score on the recordings, not by one sum. A round's `.bin` is its pick's
-  export (50a's is step 2,000 of 40,000): a line's file is its `.last.pt`
-  through `average.py --out`.
-- A checkpoint scores a third lower on recordings it trained on: 24b and 33b
-  mixed in GuitarSet's player 04 and the 19 MusicNet pieces before those became
-  `~/ripcorpus-val`, and 33b's validation loss reads 2.16 against 2.9 to 3.3.
+  (`Label.window`): rows per frame held up front came to 207 bytes a frame, 5.2
+  GB for 40000 loops. A `np.memmap` a loop would keep a file descriptor open
+  each, 40000 of them, past a 1024 limit or macOS's 256.
+- A training run shares the cores with everything else the session does, and its
+  steps a second follow what its builders get. A batch is Python holding the
+  interpreter's lock, so two threads build less than one, and `--builders` forks
+  processes, a core each, each paying to hand its batch over. Size a waiter by
+  the run alone and expect to re-arm it, or follow the run by a reminder
+  instead.
+- **A builder shares the run's pages until a write copies one, and a read writes
+  an object's reference count.** Once it has drawn from every loop a builder
+  holds its own copy of each loop's `Label`, arrays' and `MelFile`'s headers,
+  the arrays' data still shared. A full collection would copy every object's
+  page, so the run freezes the collector while they fork. Read a builder by
+  `Private_Clean` and `Private_Dirty` in `/proc/<pid>/smaps_rollup`, its worst
+  case by touching every loop in it and collecting.
+- A run's noise differs by set, so a difference on one set is read against that
+  set's own spread. Two runs that differ in anything else are not a repeat.
+- `--validate` picks a notes model by its strike head's peaks at the decoder's
+  bars, not by its loss on recordings, which holds its onset head's, a head Go
+  never reads from it. One instrument's score can trade against another's, so
+  validate on every kind of recording at once. A frame model is still picked by
+  the decoders' loss there, which can rise as its onset head grows surer while
+  its beats' F1 rises. Read a line at its last step, each head by its own score
+  on the recordings, not by one sum. A round's `.bin` is its pick's export: a
+  line's file is its `.last.pt` through `average.py --out`.
 - `ripmodels.features` over a whole long recording overflows: its PCEN average
   is one running sum over growing weights, past float64 near 24,000 frames
   (284 s), and every frame after is NaN under a RuntimeWarning alone. Hear a
   long recording in chunks with the trainer's 128 frames before each; a
   training window never reaches it.
-- A model run over a whole recording in Python takes memory to match: 12a's
-  attention over ten minutes took 13 GB. Chunk it (3,584 frames with 256 of
-  context) and run any long job as a capped unit (`systemd-run --user -p
-  MemoryMax=...`), where running out stops the unit and not the session.
-- `tune ... truth` pays three CPU-minutes a candidate over the validation
-  list's 60 recordings after 25 minutes of hearing them, six hours for the
-  default 16 by 8: give it `frames <dir>`, and a later run reads them back
-  (six rendered recordings, 356 s, at full-size random weights and 2 by 1: 16.4
-  s and 36 CPU-seconds the first run, 6.8 and 6.5 the second; 180 kB of frames
-  a second of recording). A file's name holds the recording's and the weight
-  files' checksums, not the models' code: clear the folder after a change to
-  `ripmodels` or the transformer.
-- Scored within lines over a list of guitar alone, its first run silenced the
-  bass line (`strike_low` to .99): its own score rose .608 to .670 and solo
-  guitar .06 by pitch and onset, while the renders, the clean take, the phones
-  and MusicNet fell .02 to .04 and the pop song's bass from 111 right to 93.
-  The guard refuses that only for conditions its list names: list every kind
-  a fit may hold, and decode a tuned `rip.toml` over every condition, the full
-  tracks among them (`vif/tmp/audit2/cond-v0140`), before it ships; no change
-  of one bar from the hand-swept five gained the mean of twenty conditions.
+- A model run over a whole recording in Python takes memory to match. Chunk it
+  (3,584 frames with 256 of context) and run any long job as a capped unit
+  (`systemd-run --user -p MemoryMax=...`), where running out stops the unit and
+  not the session.
+- `tune ... truth` hears every recording of its list before it weighs a
+  candidate: give it `frames <dir>`, and a later run reads them back. A file's
+  name holds the recording's and the weight files' checksums, not the models'
+  code: clear the folder after a change to `ripmodels` or the transformer.
+- A fit over a list of one kind can gain on it at every other's cost: scored
+  within lines over a list of guitar alone, a search can silence the bass line
+  (`strike_low` near 1). The guard refuses that only for conditions its list
+  names: list every kind a fit may hold, and decode a tuned `rip.toml` over
+  every condition before it ships.
 - `tune ... truth` weighs a condition, not a recording: a set scores the plain
   mean of every score its conditions carry (`scores`, `guarded`), a condition's
-  notes pooled over its recordings. In a list of six conditions and thirteen
-  scores, `piano` and `ensemble` of two MusicNet pieces each held four scores
-  and 87 sung clips two: give a condition recordings enough to stand for its
-  kind, and read a searched file on recordings its list left out.
-- **A search writes back what it moved by chance unless each gene is put
-  back.** A near pool moves one gene in four, and a score sees only some of
-  the genes it is given: a model without the two heads reads no `beat_comb`,
-  heard beats no `bar_beat` or `bar_move`, a loop under six bars no margin of
-  how a reading repeats. One search over a four-bar loop wrote eleven
-  parameters off their start for a gain `onset_min` alone had made, and
-  `tune` through the analysis draws the heads' weights across their ranges.
-  `search` puts each moved gene of its best back alone and keeps it back
+  notes pooled over its recordings. Give a condition recordings enough to stand
+  for its kind, and read a searched file on recordings its list left out.
+- **A search writes back what it moved by chance unless each gene is put back.**
+  A near pool moves one gene in four, and a score sees only some of the genes it
+  is given: a model without the two heads reads no `beat_comb`, heard beats no
+  `bar_beat` or `bar_move`, a loop under six bars no margin of how a reading
+  repeats. `tune` through the analysis draws the heads' weights across their
+  ranges. `search` puts each moved gene of its best back alone and keeps it back
   unless the score falls (`settled`); a new gene needs no rule of its own.
 - A MIDI truth gives the search notes and drum hits, never bars: a
   transcription's file holds its writer's default signature and tempo
@@ -749,83 +611,54 @@ proves wrong or that a document now states, and link the document instead.
 - A test's small random model hears no drum hit and a bar at most of a
   two-bar loop: a test of the drums' or the bars' score hears through the
   analysis (`analysisEar`), which reads a rendered loop's.
-- The analysis hears drums where none play and drops played ones as fast: a
-  four-bar bank loop without its rhythm slot reads 42 hits at `onset_min`
-  0.02, 13 at 0.1 and 9 at 0.3 (the bass, as kicks), and with its drums 123,
-  85 and 64, so a search rightly holds the bar there: a hit heard where none
-  plays weighs what a false hit does in as long a recording with drums. A
-  test that wants the bar to rise takes a beat of one velocity alone as its
-  recording with drums (60, 56, 50 and 44 hits at 0.02, 0.05, 0.1 and 0.3).
-- A pool drawn near its start suits `tune ... truth` and not `tune`: over 12
-  rendered loops of 4 bars at 16 by 8, from .616, the pool drawn across the
-  ranges reached .678, .677 and .686 on three seeds and the near one .650,
-  .676 and .642, so `search` takes `near` from the truth search alone.
+- The analysis hears drums where none play and drops played ones as fast: a bank
+  loop without its rhythm slot reads its bass as kicks, so a search rightly
+  holds the bar there: a hit heard where none plays weighs what a false hit does
+  in as long a recording with drums. A test that wants the bar to rise takes a
+  beat of one velocity alone as its recording with drums.
+- A pool drawn near its start suits `tune ... truth` and not `tune`, so `search`
+  takes `near` from the truth search alone.
 - A test of `tune ... truth` cannot count on the pool: a near draw moves a
   gene one time in four, a rip of the tiny model's 4.3 s loop costs 0.1 s, and
   a recording under four seconds is refused. Force the outcome in the fixture:
   a truth the start hears exactly leaves nothing to beat, and a start at
   `strike_hold` 0.3 hears so much that every seed's pool betters it.
-- The live rip's notes are the offline rip's (95 in a hundred over twelve
-  recordings through 12a and 32a) and its bars are not: tempo, meter and phase
-  hold from the first six bars, so the two agree on three to five recordings,
-  whatever the ear waits. It cost three times the offline rip while each
-  model ran three times over the ear's overlapping half-second steps, and
-  costs 1.4 times since each frame runs once (`live`, one core: 0.24 s a
-  second of audio against 0.17).
-- A tool that names its corpus in its source dies with the corpus: the edge
-  probe read corpus 16, deleted a day later. Take the corpus, the checkpoint
-  and the first loop as arguments.
-- **A judge's whole path runs in ninety minutes on four cores**, nearly all
-  of it the notes model: `corpus fit 360 4 aug gen` and `corpus held 40 4 aug
-  gen seed 2`, both with their audio; a frame model of width 64, two layers,
-  2000 steps (four minutes); a notes model (`--pitchnet`), 2500 steps (71
-  minutes, its strikes' held-out F1 .26); `rows` of the 400 loops (a minute
-  in four parts, 235 MB for 108,933 strikes); the fit (eight seconds); `rip`
-  and `truth ... timed` over the 40 left out, against their labels written as
-  transcripts (nine seconds a loop, most of it the voices' fit). It shows
-  that the path holds and nothing of a judge's worth: the loops left out are
-  the fit's own kind under another seed, and the notes model reports a seventh of
-  the truth's notes.
+- The live rip's notes are the offline rip's and its bars are not: tempo, meter
+  and phase hold from the first six bars, whatever the ear waits, and each frame
+  runs through each model once, however the ear's half-second steps overlap.
+- A tool that names its corpus in its source dies with the corpus: take the
+  corpus, the checkpoint and the first loop as arguments.
+- **A judge's whole path runs in ninety minutes on four cores**, nearly all of
+  it the notes model: `corpus fit 360 4 aug gen` and `corpus held 40 4 aug gen
+  seed 2`, both with their audio; a frame model of width 64, two layers, 2000
+  steps; a notes model (`--pitchnet`), 2500 steps; `rows` of the 400 loops; the
+  fit; `rip` and `truth ... timed` over the 40 left out, against their labels
+  written as transcripts. It shows that the path holds and nothing of a judge's
+  worth: the loops left out are the fit's own kind under another seed, and so
+  short a notes model reports few of the truth's notes.
 - **A weak beat or downbeat head costs the bars where audio takes its word.**
-  A width-128 frame model after 5,000 steps on `corpus <dir> 1600 12 gen
-  meters` read `beats' F1 0.763, bar lines' 0.631` held out, and through its
-  file on audio v0.24.0, which took the heads' word alone, the bars of 56 of
-  the 160 held-out loops were right with the heads, 124 with the same weights'
-  heads left out and 109 through the analysis; by rank, as v0.24.1 to v0.25.0
-  read them, 85. Ranks then cost 40a GuitarSet's bars (24 of 120 against a
-  plain tracker's 39), and since v0.25.2 audio reads the heads by level as that
-  tracker does, the downbeat head beside the cues. Read a round's bars both
-  ways before its file is installed.
+  Since v0.25.2 audio reads the heads by level as a plain tracker does, the
+  downbeat head beside the cues. Read a round's bars with its heads and without
+  them before its file is installed.
 - The lines' F1 does not say which beats a head misses. Print what each head
   says within a frame of the loops' own beats by their place in the bar
-  (`train.Label.beats`, the frame model over a whole loop): the downbeat head said
-  0.73 on one and 0.44 on three of 4/4 with drums, the generated beats kicking
-  on both, and 0.28 on a line without drums, where v0.24.0 picked the
-  longest bar offered; the beat head 0.30 on 6/8's eighths between its dotted
-  quarters, so v0.24.0 kept the felt beat.
+  (`train.Label.beats`, the frame model over a whole loop).
 - A model's heads are left out of a rip through the same weights by a
   `RipFrontEnd` that wraps `ripmodels`' and sets the frames' `Beat` and
   `Downbeat` nil, in a scratch module on audio's tag over `Ripper` and
-  `MatchBars`, the truth the loop's own grid with its end's line left out; or
-  by the same step exported with the output layer's last two rows cut, which
-  stapes benches. The two ripped row for row alike over 40 loops.
-  `BarScore.Phase` is a median folded into a bar, so half a bar off reads as
-  anything between: count `Downbeats`.
-- That run's path takes an hour on four cores: the corpus with its audio 264 s
-  in four parts (7.9 GB), 5,000 steps at 0.45 s and 30 s a held-out score of
-  160 loops, 480 rips in three minutes over four processes.
+  `MatchBars`, the truth the loop's own grid with its end's line left out; or by
+  the same step exported with the output layer's last two rows cut, which stapes
+  benches. The two rip row for row alike. `BarScore.Phase` is a median folded
+  into a bar, so half a bar off reads as anything between: count `Downbeats`.
 - **A notes model grown to more pitches is its start only away from the old
   edges.** Its weights are the same at every pitch, so `--init` carries each
   whole, and a cell reads 19 bins through the wide convolution and a cell more
-  through each convolution over the cells: with three long ones the ten
-  pitches at each old edge hear sound where the old stack ended in silence.
-  32a grown and untrained said of D2 to D6 what it said to 1e-6 over eight
-  generated loops, lost 11 and gained 8 of 2,353 strikes over the decoder's
-  bars at the edges and heard 3 on the new pitches; its regions keep their
-  bins, yet its onset head moved 0.05 on average, the lowest region's bins
-  being the old bottom edge's. Read a grown line's edges apart from its middle
+  through each convolution over the cells: with three long ones the ten pitches
+  at each old edge hear sound where the old stack ended in silence. Its regions
+  keep their bins, yet its onset head moves, the lowest region's bins being the
+  old bottom edge's. Read a grown line's edges apart from its middle
   (`ripmodels.carried` on a `.pt`, each model over a loop's `features`), and
-  judge the frame model's growth by its rows: 12a's said what they said to 2e-6.
+  judge the frame model's growth by its rows.
 - **A checkpoint that records no lowest pitch is E1 to C7** (`ripmodels.shape`),
   and a run builds the piano's pitches unless told: `--init` from such a file
   grows it, and resuming one, or starting from it as it is, takes `--range
@@ -834,9 +667,6 @@ proves wrong or that a document now states, and link the document instead.
   one loop; at 0.01 it said a B0 and an A7 at 0.97 and no other pitch over 0.3
   after 150 steps of one 64-frame window, the trainer's test of the range.
 - A frame model's probe (`--probe` from a model without the beat and downbeat
-  heads) is checked on real weights by its held-out line and by a rip: the
-  other ten heads' losses print to the digit as the start's, and its file
-  ripped with the two heads left out is the start's row for row. It was run
-  only from a model cut from one trained with the heads, whose features hold
-  the beat already; what a probe reaches on a model trained without the heads is
-  unmeasured.
+  heads) is checked on real weights by its held-out line and by a rip: the other
+  ten heads' losses print to the digit as the start's, and its file ripped with
+  the two heads left out is the start's row for row.

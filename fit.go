@@ -78,12 +78,11 @@ func cmdFit(s *Session, a []string) error {
 	return nil
 }
 
-// cmdNotes lists a rip's transcript, the notes as heard before the grid, each
-// with the bar and step it fell on, its pitch as the key's degree with any
-// accidental, its length, loudness and support, a melody-register note's
-// brightness where it was measured, the header counting where it was not, and
-// the wave and the sure family of a note told its voice, so a listener checks
-// the rip by eye; or writes it to a MIDI file at the rip's tempo.
+// cmdNotes lists a rip's transcript as heard before the grid, so a listener checks
+// it by eye: each note's bar and step, its pitch as the key's degree with any
+// accidental, length, loudness and support, a melody-register note's brightness
+// where measured (the header counts the rest), and the wave and sure family of a
+// note told its voice; or writes the transcript to a MIDI file at the rip's tempo.
 func cmdNotes(s *Session, a []string) error {
 	rp, ok := s.rips[a[0]]
 	if !ok {
@@ -315,12 +314,11 @@ func fitDistance(v *audio.VoiceDef, targets []fitTarget, cents float64) float64 
 	return sum / float64(max(len(targets), 1))
 }
 
-// fitVoice searches the voices for the one whose notes, rendered by the engine,
-// sound most like a register's notes in the recording: a genome of the voice's
-// genes and its wave, seeded with every registered voice and the one given,
-// scored by the mel distance between the recording around each sample note and
-// the voice playing that note. It returns the voice, the best seed's distance
-// and the fit's; nil when the register has no note long enough.
+// fitVoice searches for the voice whose engine-rendered notes sound most like a
+// register's notes in the recording: a genome of genes and wave, seeded with every
+// registered voice and the one given, scored by mel distance from the recording
+// around each sample note to the voice playing it. It returns the voice, the best
+// seed's distance and the fit's; nil when the register has no note long enough.
 func (s *Session) fitVoice(x []float64, rate int, cents float64, notes []audio.RipNote, prior *audio.VoiceDef, o fitOptions) (*audio.VoiceDef, float64, float64) {
 	targets := fitTargets(x, rate, notes, o.notes)
 	if len(targets) == 0 {

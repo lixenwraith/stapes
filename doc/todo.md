@@ -139,10 +139,9 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    `release`, `voicing`) are searched by `tune ... truth <list>` through the
    loaded models by pitch and onset, as the mean over its list's conditions
    under a guard, the frames kept between runs ([Rip design
-   §7](rip-design.md#7-plan)). Left of it: the real validation list
-   (`~/data/rip/val-list.tsv`, GuitarSet's player 04) names no condition and
-   is guitar alone, so it wants a condition a kind, of the collections and
-   renders a fit may hold and never a full track,
+   §7](rip-design.md#7-plan)). Left of it: the real validation list,
+   GuitarSet's player 04, is guitar alone, so it wants a condition a kind, of
+   the collections and renders a fit may hold and never a full track,
    `timed` on GuitarSet's lines and `drumless` on every line no drum plays
    in (a `.mid` says nothing of drums without it, and the phantom hits on a
    guitar or a singer alone are then unseen), before a run after every round

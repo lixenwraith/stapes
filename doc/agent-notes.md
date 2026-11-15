@@ -272,12 +272,12 @@ proves wrong or that a document now states, and link the document instead.
   read it by that line's notes right.
 - Hold-outs are by source, never by file: GuitarSet's players (00 to 03 train,
   04 validates, 05 tests), VocalSet's singers (f2, f8, m3, m5 and m10 held out),
-  MusicNet's pieces, E-GMD's split, NSynth's instruments, a generated set's
-  seed. Check every label's `source` against every validation, fit and test list
-  before calling a set unmet, and take a set a round trains on out of every
-  held-out reading, a judge's fit included. Music is shared too: an evaluation's
-  loop can share a stretch of a score with a training loop, so after a round
-  read whether such loops pull ahead, naming every corpus trained on.
+  E-GMD's split, NSynth's instruments, a generated set's seed. Check every
+  label's `source` against every validation, fit and test list before calling a
+  set unmet, and take a set a round trains on out of every held-out reading, a
+  judge's fit included. Music is shared too: an evaluation's loop can share a
+  stretch of a score with a training loop, so after a round read whether such
+  loops pull ahead, naming every corpus trained on.
 - **A song only measures.** No song's recording, bought or not, nor anything
   taken from one (a take of it through a room or a phone), nor a commercial
   song's transcription is in a corpus or a fit's list, and no song shapes an
@@ -403,10 +403,10 @@ proves wrong or that a document now states, and link the document instead.
   struck one's 65 to 82, which the cut's crossfade follows.
 - The bench's loops play no piano: a piano change moves no bench number, a bass
   change does.
-- `corpus <dir> from` writes a MIDI file's velocities as labels. GuitarSet's,
-  MusicNet's and the singing set's are one constant, which the velocity head
-  would learn as a fact about recordings: strip `vel` from such a corpus's
-  labels before a round reads it.
+- `corpus <dir> from` writes a MIDI file's velocities as labels. GuitarSet's and
+  the singing set's are one constant, which the velocity head would learn as a
+  fact about recordings: strip `vel` from such a corpus's labels before a round
+  reads it.
 - A score aligned to a recording is not a label to the frame: a strike target a
   frame wide on an aligned score teaches its jitter, and a loss there measures
   it.

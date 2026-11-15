@@ -285,12 +285,13 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   `merge`); `tool/rip-train/README.md` is the guide. A voice carries a vibrato and a vowel's formants for the vocal focus,
   neither a gene, kept by the augmentation when it draws voices near a
   registered one. The step exported is the best by `--validate`, a corpus of
-  recordings none of the tests hold (GuitarSet's player 04 and 19 MusicNet
-  pieces), a notes model's by its strikes' F1 there, since the rendered loops'
-  held-out loss need not predict recordings; `--family-holdout` leaves a family out
-  for the run that sets unknown's bar; and `tune ... truth <list>` searches
-  the decoders' thresholds against real recordings' truths through the loaded
-  model, each heard once, writing the `rip.toml` that ships beside the weights.
+  recordings none of the tests hold (GuitarSet's player 04: picking the step is
+  a fit, and MusicNet's pieces only measure), a notes model's by its strikes' F1
+  there, since the rendered loops' held-out loss need not predict recordings;
+  `--family-holdout` leaves a family out for the run that sets unknown's bar;
+  and `tune ... truth <list>` searches the decoders' thresholds against real
+  recordings' truths through the loaded model, each heard once, writing the
+  `rip.toml` that ships beside the weights.
 - **The frame model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodels.FrameSpec`: 230 inputs
   (229 bands and the level), width 256, eight heads of 32, four layers,
   feed-forward 1024, a window of 64 frames either side, 3.3 million weights

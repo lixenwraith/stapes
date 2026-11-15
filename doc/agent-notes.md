@@ -498,6 +498,16 @@ proves wrong or that a document now states, and link the document instead.
   thousands of redraws scattered around five voices falls under the lowest of
   the five (33 of 36,400 did, all A0 at 70 ms, down to 0.940), so the rule's
   bound sits halfway in dB between their lowest and an even split.
+- A set's labels and list are made and checked by `tool/rip-lab`
+  ([its README](../tool/rip-lab/README.md)); what its tools found wrong in the
+  sets' own files is in [set-issues.md](set-issues.md).
+- A voice's notes cut from its pitch alone are no labels: a slide and a
+  vibrato's swing come out as notes. Where a set's sheet says what is sung,
+  the sheet's notes are placed on the take's sound, and a take that does not
+  fit is left out and counted.
+- A period's measure reads a loud low sung note the octave over, a whole note
+  long, where its second harmonic stands 11 dB or more over its first: the
+  sheet says which octave is sung.
 
 ## Training rounds
 

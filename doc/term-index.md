@@ -118,6 +118,8 @@ an entry here that names one links there.
 **PitchNet** (also: harmonic stack, `--pitchnet`, notes model, `ripnotes.bin`) — The rip's convolutions-only model, the same weights at every pitch, over all four input planes stacked by harmonic, each key's harmonics at its own band, [Rip training §4 and §7](rip-training.md#7-the-models); `ripmodels.py`'s `PitchNet`. Its weight file, the **root**'s `ripnotes.bin`, gives the notes beside `ripframe.bin`, [Rip design §2](rip-design.md#2-stages), [Rip training §9](rip-training.md#9-the-weight-file); audio's `ripmodels.NotesSpec`.
 
 **PCEN** (also: `--pcen`, `PCEN`, `WARM`) — The frame model's optional third and fourth input planes, each band's per-channel energy normalization and their mean, the fine plane's and the sharp one's, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#p)): `train.py --pcen`, `PCEN=pcen` to the pipeline, trains a model of four channels, reading 128 frames before each window (`WARM`) so the average has settled where the window starts. See also **frame model**, **channel**. [rip-train README](../tool/rip-train/README.md) · [Rip training §4](rip-training.md#4-the-input-four-planes) · `tool/rip-train` `ripmodels.features`
+**placing** (also: `place.py`, `placefit.py`, `place.json`, `RULED`, sheet notes, known lines, `lines.py`) — How a sung exercise gets its labels: the notes its set's sheet writes, placed on the take's sound (the key the singer took, each note's start and end), with a test that refuses a take that is not its exercise; its bounds are fitted on rendered takes whose notes are known and checked on takes the fit did not see ([rip-lab](../tool/rip-lab/README.md#labelsplacepy)). `tool/rip-lab/labels`.
+
 
 ## R
 

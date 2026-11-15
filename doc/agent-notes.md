@@ -372,11 +372,12 @@ proves wrong or that a document now states, and link the document instead.
   pass checks a voice with `ValidateVoice` and registers none, so the registered
   voices stay as they are and need no restoring. A label takes nothing from the
   render: its length is counted from the loop's samples (`loopFrames`), which a
-  render checks against the frames it heard. A field a label gains must be drawn
-  before the render, or the pass cannot write it.
+  render checks against the frames it heard, and a `.bands` header of another
+  width (`bandsLength`) counts as no frames on disk. A field a label gains must
+  be drawn before the render, or the pass cannot write it.
 - A `from` corpus's labels pass knows a recording by its label's `source`, so
-  a label that does not read stops it. It writes the MIDI's `vel` again:
-  strip a constant-velocity corpus's once more after it (below).
+  a label that does not read stops it. It reads the list again, its `velocity`
+  column with it, so a list changed to `none` is relabelled in seconds.
 - A pitch track at 44.1 kHz and a hop of 256 has two samples a frame, one on
   the frame's own time, so a missing sample lies a whole step from its
   neighbours. A reach of a step read a neighbour's pitch there by a rounding's
@@ -405,8 +406,10 @@ proves wrong or that a document now states, and link the document instead.
   change does.
 - `corpus <dir> from` writes a MIDI file's velocities as labels. GuitarSet's and
   the singing set's are one constant, which the velocity head would learn as a
-  fact about recordings: strip `vel` from such a corpus's labels before a round
-  reads it.
+  fact about recordings: their list's `velocity` cell says `none`, and each note
+  and hit is labelled at -1, which the trainer asks nothing of. A cell is a
+  word, a row of `velocityWords` in `tune.go`; another kind of velocity is a row
+  more, and a word the table lacks is refused, naming those it has.
 - A score aligned to a recording is not a label to the frame: a strike target a
   frame wide on an aligned score teaches its jitter, and a loss there measures
   it.
@@ -415,10 +418,18 @@ proves wrong or that a document now states, and link the document instead.
   two frames before its sound. Before a corpus trains,
   `tool/rip-train/datacheck.py` with `GROUP=1` reads each source's lag from a
   labelled start to the sound's rise: 0 or 1 frame is a label on its sound.
-- A recording read at the wrong scale is silence with labels: a float WAV is
-  already within one, and divided by 32,768 as 16-bit samples its labels sit in
-  no sound. `datacheck.py` prints a corpus's median loudest value and the loops
-  under a tenth of it; look at a set's level before reading anything from it.
+- A recording's scale says nothing of its labels: `BandFrames` reads it with
+  its peak at one, so a float WAV divided by 32,768 gives the frames it gives
+  whole (`datacheck.py`'s test pins its report at that scale). What tells a
+  label from its sound is the share of its notes and hits in their loop's own
+  quiet and the lag at which the sharp plane rises after them, which
+  `datacheck.py` prints a source apart with `GROUP=1`.
+- `datacheck.py` reads the sharp plane alone: the fine plane hears its low bands
+  through windows up to 2.97 s, so a low strike rises there over seconds and
+  its rise says nothing of the frame a label puts it on. A frame's loudness, by
+  which a note or hit is in its loop's quiet, is its energy over that plane in
+  dB: the mean of the plane's 315 values would count each band a sound leaves
+  empty, two thirds of them under 1 kHz, and read a note alone as quiet.
 - A real set repeated is not more sound: a small set at a large share of a run's
   windows is heard many times over. `--extra`'s shares are drawn in order, each
   of the windows the ones before it left, not of all of them. Before a round,
@@ -560,8 +571,8 @@ proves wrong or that a document now states, and link the document instead.
   file's `cfg`. `--steps 0` scores nothing, since the score runs in the loop. A
   `pip install --user` torch is not seen under `python3 -I`, which drops the
   user's site directory.
-- `train.py` reads each window's frames from its `.mel` as it draws it
-  (`MelFile`) and builds the window's targets from the loop's events then
+- `train.py` reads each window's frames from its `.bands` as it draws it
+  (`FrameFile`) and builds the window's targets from the loop's events then
   (`Label.window`): rows per frame held up front came to 207 bytes a frame, 5.2
   GB for 40000 loops. A `np.memmap` a loop would keep a file descriptor open
   each, 40000 of them, past a 1024 limit or macOS's 256.
@@ -573,7 +584,7 @@ proves wrong or that a document now states, and link the document instead.
   instead.
 - **A builder shares the run's pages until a write copies one, and a read writes
   an object's reference count.** Once it has drawn from every loop a builder
-  holds its own copy of each loop's `Label`, arrays' and `MelFile`'s headers,
+  holds its own copy of each loop's `Label`, arrays' and `FrameFile`'s headers,
   the arrays' data still shared. A full collection would copy every object's
   page, so the run freezes the collector while they fork. Read a builder by
   `Private_Clean` and `Private_Dirty` in `/proc/<pid>/smaps_rollup`, its worst
@@ -664,22 +675,14 @@ proves wrong or that a document now states, and link the document instead.
   the same step exported with the output layer's last two rows cut, which stapes
   benches. The two rip row for row alike. `BarScore.Phase` is a median folded
   into a bar, so half a bar off reads as anything between: count `Downbeats`.
-- **A notes model grown to more pitches is its start only away from the old
-  edges.** Its weights are the same at every pitch, so `--init` carries each
-  whole, and a cell reads 19 bins through the wide convolution and a cell more
-  through each convolution over the cells: with three long ones the ten pitches
-  at each old edge hear sound where the old stack ended in silence. Its regions
-  keep their bins, yet its onset head moves, the lowest region's bins being the
-  old bottom edge's. Read a grown line's edges apart from its middle
-  (`ripmodels.carried` on a `.pt`, each model over a loop's `features`), and
-  judge the frame model's growth by its rows.
-- **A checkpoint that records no lowest pitch is E1 to C7** (`ripmodels.shape`),
-  and a run builds the piano's pitches unless told: `--init` from such a file
-  grows it, and resuming one, or starting from it as it is, takes `--range
-  28-96`, which `pipeline.sh` passes on with its other trailing flags.
-- A notes model taught at a rate of 0.03 went to NaN within a hundred steps on
-  one loop; at 0.01 it said a B0 and an A7 at 0.97 and no other pitch over 0.3
-  after 150 steps of one 64-frame window, the trainer's test of the range.
+- **A checkpoint states its layout, and one of another or of none is no
+  start.** `train.py` and `average.py` refuse it before reading its shape,
+  naming the band frames' layout (`ripmodels.refused`), so no run grows or
+  resumes a model that heard other frames.
+- A notes model of width 8 taught one loop, an A0 and a C8 twice each, for 150
+  steps of one 64-frame window: at a rate of 0.01 both keys read 1.00 over
+  their notes, struck at 0.97, and no other pitch over 0.001; at 0.03 the A0
+  read 0.43. The trainer's test of the piano's two ends runs at 0.01.
 - A frame model's probe (`--probe` from a model without the beat and downbeat
   heads) is checked on real weights by its held-out line and by a rip: the other
   ten heads' losses print to the digit as the start's, and its file ripped with

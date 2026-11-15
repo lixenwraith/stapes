@@ -24,9 +24,9 @@ stream.
 
 ```mermaid
 flowchart TD
-    rec["recording"] --> mel["log-mel frames"]
-    mel --> frame["frame model, ripframe.bin"] --> frames["RipFrames"]
-    mel --> notes["notes model, ripnotes.bin"] --> frames
+    rec["recording"] --> bands["band frames"]
+    bands --> frame["frame model, ripframe.bin"] --> frames["RipFrames"]
+    bands --> notes["notes model, ripnotes.bin"] --> frames
     rec --> ana["analysis, with no ripframe.bin"] --> frames
     subgraph decoders
         grid["tempo, beats, bar lines, key, hits"]
@@ -41,33 +41,38 @@ flowchart TD
     search -. "tune: rip.toml" .-> decoders
 ```
 
-1. **Features.** `MelFrames` makes the log-mel frames the models hear, on the
-   rip's own grid: 22.05 kHz, 93 ms windows every 11.6 ms, 229 bands from 30 Hz
-   up, under a semitone apart from A3. The frame model reads each band in dB
-   over a floor 80 dB down less the frame's mean, and the mean, so a phrase 20
-   dB softer reaches it as clearly, and from a file of two channels each band's
-   PCEN too; the notes model reads both planes as a harmonic stack, each
-   harmonic a channel shifted onto its pitch's bin. `corpus` writes the frames
-   in Go and the trainer reads them as audio does (`ripmodels.features`), so
-   the models hear in stapes what they heard in the trainer.
+1. **Features.** `BandFrames` makes the band frames the models hear, on the
+   rip's own grid of 11.6 ms at 22.05 kHz: 315 bands three a semitone, from G♯0
+   under the piano's lowest key to 10.96 kHz, in two planes. The fine plane
+   hears each band through the shortest window whose bins fall three a semitone
+   there, 93 ms from 544 Hz up and twice as long each octave under, to 2.97 s
+   under 34 Hz, so each key reads apart; the sharp plane hears every band
+   through the 93 ms window, so a strike reads where the analysis reads it. The
+   frame model reads each plane's bands in dB over a floor 80 dB down less the
+   plane's mean, and the mean, so a phrase 20 dB softer reaches it as clearly,
+   and from a file of four channels each plane's PCEN too; the notes model
+   reads all four planes as a harmonic stack, each harmonic a channel shifted
+   onto its key's band, nothing interpolated. `corpus` writes the frames in Go
+   and the trainer reads them as audio does (`ripmodels.features`), so the
+   models hear in stapes what they heard in the trainer.
 2. **Front end** (`RipFrontEnd`). It hears a recording into `RipFrames`, the
    seam: per frame the strength of any onset and of each drum's, each pitch's
    salience, each register's chroma, and the models' planes below. The decoders
    read the frames alone, so none knows which front end heard, and the frames
-   say which pitches they hold (`RipFrames.Range`): the analysis's E1 to C7, or
-   those a weight file states, the piano's A0 to C8 for one built now and E1
-   to C7 where it states none ([library
+   say which pitches they hold (`RipFrames.Range`): the analysis's E1 to C7,
+   the models' the piano's A0 to C8, and a weight file of another layout than
+   the band frames' is refused by name ([library
    §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)).
    The rip's three models are files in stapes' root:
    - the frame model, `ripframe.bin` (`ripmodels.FrameSpec`, §3): a
-     transformer over the mel frames, its heads the onsets, the drums, the wave
+     transformer over the band frames, its heads the onsets, the drums, the wave
      and voice genes a frame, the family of the highest note
      (`RipFrames.Family`, which no decoder reads yet), and whether a beat and a
      bar line fall on the frame (`Beat`, `Downbeat`); alone, each pitch's
      salience, strike, release and velocity too;
    - the notes model, `ripnotes.bin` (`ripmodels.NotesSpec`, the trainer's
      PitchNet), read only beside a frame model: a cell net over the harmonic
-     stack, the same weights at every pitch, its heads each pitch's salience,
+     stack, the same weights at every key, its heads each pitch's salience,
      strike, release, velocity and cents (`Cents`, `CentsError`) and what plays
      it, a family, a wave and genes kept at each frame's twelve most salient
      pitches (`VoiceAt`, `Voices`);
@@ -228,7 +233,7 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
 
 - **Corpus.** The engine renders it (`corpus`): loops of the registered rhythm,
   melody and bass patterns, or arranged (`gen`, below), across tempos and
-  keys, each with its WAV, its mel
+  keys, each with its WAV, its band
   frames and its events in frames, with the wave and genes of the voice each note
   was played with. Labels cost nothing and are exact. What it lacks, in order of
   need: a mix, a room and a codec between the render and the frames (impulse
@@ -241,7 +246,10 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   the engine's voices by one table, a voice redrawn far from every bank voice
   unknown, NSynth's instruments by name (`sampled`), and a recording's notes
   by its list's `family` cell or, without one, each note's MIDI program, every
-  part of the file included (`corpus <dir> from`).
+  part of the file included (`corpus <dir> from`). A recorded note's velocity
+  is its MIDI's, or none where its list's `velocity` cell is `none`, the word
+  for a set whose MIDI velocities say nothing, which asks the velocity heads
+  nothing.
 - **Augmentation.** `corpus ... aug` puts a room and a mix behind each loop,
   drawn per loop: a gain and a swell of up to 6 dB, for half the loops a
   one-pole low-pass at 4 to 11 kHz, two equaliser bands within 6 dB from 80 Hz
@@ -295,21 +303,21 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   and `tune ... truth <list>` searches the decoders' thresholds against real
   recordings' truths through the loaded model, each heard once, writing the
   `rip.toml` that ships beside the weights.
-- **The frame model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodels.FrameSpec`: 230 inputs
-  (229 bands and the level), width 256, eight heads of 32, four layers,
-  feed-forward 1024, a window of 64 frames either side, 3.3 million weights
-  (13.2 MB); its heads are §2's, of three drums, its pitches (the
-  piano's eighty-eight, sixty-nine in a file of E1 to C7), five waves,
-  thirty-two genes and nine families. Attention carries ALiBi biases, a
-  slope per head on the frame distance, so it has no positions to learn and
-  generalises past the training window. A file may put convolutions over
-  frames and bands before the input layer, each pooled over the bands
-  (`transformer.Conv`), split the layers into towers over the shared input
-  layer, each computing a run of the heads (`transformer.Tower`), so the drums
-  need not share the pitch's layers, and read a second channel
-  (`transformer.Config.Channels`): each band's PCEN and their mean, in which
-  what a room or a microphone holds steady fades and a strike stands out at
-  any level. `tool/rip-train` is its PyTorch twin and writes the weight file
+- **The frame model** ([library §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)). `ripmodels.FrameSpec`: two planes of
+  316 inputs (315 bands and the plane's level), width 256, eight heads of 32,
+  four layers, feed-forward 1024, a window of 64 frames either side, 3.4
+  million weights (13.7 MB); its heads are §2's, of three drums, the piano's
+  eighty-eight pitches, five waves, thirty-two genes and nine families.
+  Attention carries ALiBi biases, a slope per head on the frame distance, so it
+  has no positions to learn and generalises past the training window. A file
+  may put convolutions over frames and bands before the input layer, each
+  pooled over the bands (`transformer.Conv`), split the layers into towers over
+  the shared input layer, each computing a run of the heads
+  (`transformer.Tower`), so the drums need not share the pitch's layers, and
+  read four channels (`transformer.Config.Channels`): beside each plane's dB,
+  its bands' PCEN and their mean, in which what a room or a microphone holds
+  steady fades and a strike stands out at any level. `tool/rip-train` is its
+  PyTorch twin and writes the weight file
   `lixenwraith/transformer` loads
   ([format](https://github.com/lixenwraith/transformer/blob/main/doc/format.md));
   the instructions are its README, and [Rip training](rip-training.md) follows
@@ -542,8 +550,9 @@ and the checkpoint earn their keep.
   problems with cheap, inspectable solutions; a model earns its place at the
   perceptual front end, where hand-made features fail on real instruments.
 - **Features are computed in Go for training too.** A second implementation of
-  the mel frames would have to match bit for bit; the corpus carries the frames
-  Go made instead.
+  the band frames would have to match bit for bit; the corpus carries the
+  frames Go made instead, and the trainer's own, for its noise bank alone, is
+  held to audio's by a fixture of its values.
 - **Relative positions by ALiBi, windows by a band.** No learned positions, no
   limit from the training length, attention cost linear in the recording.
 - **Voices as genes.** One vector serves the models' regression heads, the

@@ -340,27 +340,18 @@ those.
 ### Train the piano's pitches
 
 - Priority: P1
-- Affected files: `tool/rip-train` (a round's recipe); `lixenwraith/audio`
-  (`ripmodels`)
+- Affected files: `tool/rip-train` (a round's recipe)
 
-The models are built for MIDI 21 to 108 since v0.30.0 (audio v0.27.0), and the
-lines in training are still E1 to C7; a corpus's arranged loops play every key of
-the 88 ([Rip training §3](rip-training.md#arranged-loops)). What is left:
+The models are built for MIDI 21 to 108 on band frames whose low bands part
+each key from the next (v0.34.0, audio v0.30.0), and every line trains from
+nothing on them; a corpus's arranged loops play every key of the 88 ([Rip
+training §3](rip-training.md#arranged-loops)). What is left:
 
-- Each line is grown once, at a pass's boundary (`--init`, [Rip training
-  §7](rip-training.md#7-the-models)), and that pass trains the new pitches: a
-  frame model's rows start silent, and a notes model's ten pitches at each old
-  edge hear the sound past it from the first step.
 - `truth` counts a note given outside the rip's pitches as only given, where
   `tune ... truth` and `rows` leave it out (`matchHeard`): a score read
   against its own file shows the note it dropped that way
   (`TestRipReadsAMIDIFileAsAScore`). Decide whether the verb follows, with a
   line saying how many it left out.
-- What the range does not buy: the fundamentals under E1, at or under the
-  mel's lowest band (38.9 Hz), so a note there is told by its harmonics alone
-  and an octave off more often. Finer low bands or a longer window is a new
-  front end, every corpus rendered again and both models trained from
-  nothing: decide that once, before a bass under E1 is a goal.
 
 ### A live rip
 

@@ -838,4 +838,5 @@ proves wrong or that a document now states, and link the document instead.
   other ten heads' losses print to the digit as the start's, and its file
   ripped with the two heads left out is the start's row for row. It was run
   only from a model cut from one trained with the heads, whose features hold
-  the beat already; what a probe reaches on the installed model is unmeasured.
+  the beat already; what a probe reaches on a model trained without the heads is
+  unmeasured.

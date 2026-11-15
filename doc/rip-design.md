@@ -546,9 +546,9 @@ What is trained and what is only written, on 12 November 2026:
      it never met is level to +.05, bar singing (up to .04 down) and a bass
      line under drums, which it keeps only when its fit is the engine's own
      mixes. So the judge is a small trained stage whose reach is its fit's
-     breadth: fitted first on the notes model in use, which needs no round,
-     from every CC BY collection with truths, renders and the engine's
-     mixes; refitted after each round, reading the note's voice once notes
+     breadth: fitted on the notes model in use, from every CC BY
+     collection with truths, renders and the engine's mixes; refitted
+     after each round, reading the note's voice once notes
      carry one; and installed only when no collection left out of the fit
      scores under the installed rip by more than its spread, singing apart,
      which is reported and holds no stage back. A recording is judged in one

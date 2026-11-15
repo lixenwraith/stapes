@@ -190,7 +190,8 @@ sounding alone, and 1% have no event sounding.
 needed (`loop_39999`). `min_midi` and `pitches` state the pitches a model is built for,
 the piano's 88 from MIDI 21, and E1 to C7, 69 from 28, in a corpus written before stapes
 v0.30.0. A label holds each note's own MIDI number whatever they state and the trainer
-reads neither, so a corpus of either trains a model of either. The corpora in use:
+reads neither, so a corpus of either trains a model of either. The corpora, 12 and
+14 to 16 since deleted:
 
 - **Corpus 11:** `corpus <dir> 40000 4 aug gen nowav codec`. Rendered loops of 4 bars,
   25.6 million frames, 24 GB. [Rip design §3](rip-design.md#3-learning) lists what

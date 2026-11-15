@@ -267,7 +267,7 @@ weight was deleted on 14 November.
 
 **39a, 40a** (12 November, R2: the frame model's beat and bar line, from 12a)
 - 12a's recipe with GuitarSet's training clips and E-GMD by their beats, the family head grown and asked nothing. 39a probed the two heads on 12a held (8,000 steps); 40a trained every weight for 40,000, its pick at 34,000.
-- On GuitarSet's 120 unseen clips the bars are right on 25 (39a's heads), 24 (40a's heads) and 32 (40a without them) against 37 through 12a's cues; the heads lose beyond chance (21 clips only 12a has right, 8 only 40a), the body holds (16 against 11) with 12a's notes. Neither is installed: the heads lose bars, and the body gains on real kits alone (drums' F1 on E-GMD's test kits .733 against .629) and loses under a mix (the pop song's intro: 76 false kicks and 106 false snares against 6 and 5), which the round never heard; 40a's last step starts the frame model's next round ([Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)).
+- On GuitarSet's 120 unseen clips the bars are right on 25 (39a's heads), 24 (40a's heads) and 32 (40a without them) against 37 through 12a's cues; the heads lose beyond chance (21 clips only 12a has right, 8 only 40a), the body holds (16 against 11) with 12a's notes. Neither is installed: the heads lose bars, and the body gains on real kits alone (drums' F1 on E-GMD's test kits .733 against .629) and loses under a mix (the pop song's intro: 76 false kicks and 106 false snares against 6 and 5), which the round never heard ([Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)); both were deleted on 14 November with every weight.
 
 **41c, 42a, 44a** (12 November, R1: the notes model under the rule)
 - The rule asks a family only of a note an instrument played: in 150 batches of R1's mix no cell of a note the engine rendered is asked one (0 of 1,353,333).
@@ -287,7 +287,7 @@ weight was deleted on 14 November.
 - On a fixed generated evaluation (800 held-out loops clean, 800 through a room, a mix and a codec): notes .570 and .462 against .570 and .450 (one truth a frame and pitch, two parts in unison being one onset to hear); drums at the built-in bar .72 with 113 false hits a minute against .91 and 34, a sure head let through by a bar relative to the loudest (31 a minute and .82 at `onset_min` 0.7, which the search cannot reach yet); bars right on 35% against 60%: the bar's length right on 339 of the 728 clean 4/4 loops against 509, six beats a bar stated on 192 and three on 69, the decoder's meter with the heads.
 - Names: on val37's recordings guitar .94, voice .99, piano .90; on NSynth's held-out instruments guitar .05 and voice .04, called piano. They tell a recording from an engine's sample, not one instrument from another.
 - Singing, vocadito 31 to 40 against annotator A1: right on 71% of the notes it reports and 71% of those sung (the installed pair 64% and 74%), a harmonic taken for a note under 1% (4 of 637).
-- Not installed: both lines go forward from their last steps.
+- Not installed, and deleted on 14 November with every weight: 48a had trained on corpus 17's loops, made from Lakh.
 
 The mix test's figures above, from 43a on, are as read again on 13 November: its ten MusicNet mixes had been rendered silent (the pieces' samples are floats and were scaled as integers), leaving 2,157 of its 14,970 hits in no sound, and a unison of two parts had counted as two onsets in the generated evaluation's truth. Each now counts as it sounds.
 

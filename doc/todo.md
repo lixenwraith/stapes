@@ -157,8 +157,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
      ([Rip training §3](rip-training.md#a-recordings-pitch-track)), and
      `--validate` then prints its gliding, steady and beside rows; left:
      - The runs: GuitarSet's and vocadito's tracks into their corpora, the
-       cents head read on that playing, then trained on it (`--mix`), and the
-       labels pass over corpus 17.
+       cents head read on that playing, then trained on it (`--mix`).
      - A collection with no pitch annotation (MusicNet, a phone take) stays
        unplaced. A track estimated from the audio (pYIN on a solo line) was
        not taken: its errors would be taught as the label.
@@ -268,11 +267,12 @@ read 32 and 12a's 37; since v0.25.2 audio reads the heads by level as that
 tracker does, the downbeat head beside the cues. What is left is the reading on
 trained weights:
 
-- **A round with the heads**, from the installed frame model through `--init`,
+- **A round with the heads**, from the frame model trained again without Lakh
+  (below) through `--init`,
   on `meters` corpora and on recordings whose lists name their beats
   (GuitarSet's JAMS files, E-GMD's own MIDI). `--probe` first: it trains the
   two heads alone and cannot cost the heads the decoders read, and says
-  whether the installed model's features hold the beat at all; a fine-tune
+  whether that model's features hold the beat at all; a fine-tune
   only if they do not. Then the 120 GuitarSet clips no
   round met (37 right through the cues, 58 under perfect beats), the Für Elise
   takes and the stream's twelve recordings, each with the heads and with the
@@ -440,11 +440,26 @@ Left open by what landed, each with the option not taken:
 Lakh's corpora and every weight trained before it went were deleted on
 2026-11-14 (AGENTS, Data), so the frame and notes models train again from
 nothing, on the engine's generated parts and mixes, the public-domain scores it
-renders and the CC BY sets. No corpus left plays a note under MIDI 32, since
-those came from Lakh's basses, so the generator writes the low keys before a
-line is asked to learn them. What closes it: both models trained from nothing
-and installed, their rounds naming every collection they took, and CREDITS.md
-crediting exactly those.
+renders and the CC BY sets. No generated corpus left plays a note under MIDI
+32, since those came from Lakh's basses, and among the recordings only
+MusicNet's piano and double bass reach them (about 4,800 notes), so the
+generator writes the low keys before a line is asked to learn them. What
+closes it: both models trained from nothing and installed, their rounds naming
+every collection they took, and CREDITS.md crediting exactly those.
+
+Lixen's to settle before the first round:
+
+- MusicNet's recordings from the Isabella Stewart Gardner Museum were released
+  under CC BY-NC-ND 2.0, and the set's metadata names a recording's performer,
+  not its licence: they leave every corpus, fit and validation, or the set's
+  CC BY 4.0 record governs them.
+- The rule admits the CC BY sets. URMP's deposit (CC0 1.0) and Iowa's samples
+  (no conditions) are freer, and this file plans both, as the corpus's
+  recordings with their MIDI and as recorded notes for its voices: the rule
+  names them too, or they only measure.
+- The snapped MusicNet corpora and val37's MusicNet pieces hold onsets moved to
+  32a's strike peaks, and 32a learned from Lakh: they are snapped again with
+  the new notes model, or their labels are used unsnapped.
 
 ### Train the piano's pitches
 

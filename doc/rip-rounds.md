@@ -3,7 +3,8 @@
 Every corpus and training round so far, what each was for and what came of it. How
 the data and the models work byte by byte is in `rip-training.md`, the reasoning in
 `rip-design.md`. A score here is pooled F1 of notes over the test recordings: clean, then
-from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
+from phones. Weights of deleted corpora were kept in `~/ripcorpus-archive` until every
+weight was deleted on 14 November.
 
 ## Corpora
 
@@ -34,11 +35,11 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 **Corpus 13** (deleted)
 - Hard links: corpus 11 plus the long-lines set. Used only by 17a.
 
-**Corpus 14** (`~/ripcorpus14`, in use)
+**Corpus 14** (deleted 14 November, with Lakh)
 - 20,000 loops; three in four play bars of Lakh's clean MIDI on the engine's voices.
 - Goal: real arrangements in place of generated ones. First test is round 24a.
 
-**Corpus 15** (`~/ripcorpus15`, in use)
+**Corpus 15** (deleted 14 November, with Lakh)
 - 20,000 loops of whole Lakh arrangements: every part of the file, the parts past melody, second line and bass spread by octave over up to three tracks on instruments of their own, up to 24 dB softer (`corpus ... dense seed 151`).
 - Goal: soft inner lines under a ring, as real arrangements have. The base of every round since 31a.
 
@@ -82,7 +83,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 - Each note's onset moved to 32a's strongest strike peak at its pitch within eight frames, where that is over a half (81% of the training notes, a median three frames), else marked `"snap": false` (19%: Solo Flute 6% to String Sextet 50%). Two models outside 32a's line then find a note within a frame of its label on 80 to 88%, 36% before.
 - Goal: strikes MusicNet can teach and judge. The trainer's mask for an unsnapped note is still to come.
 
-**The glide pair** (`~/ripcorpus37-plain`, `~/ripcorpus37-glide`, waiting)
+**The glide pair** (deleted 14 November, with Lakh)
 - Corpus 17's line at seed 371, 2,000 loops each, without and with `glide`: the same loops but for the motion (765 of the glide corpus's loops move, 24% of their placed note frames), the last 200 of each held out of every run.
 - Goal: rounds 37a to 37d.
 
@@ -117,7 +118,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 **11a**
 - Corpus 11, for soft notes. Level with 8b (.676, .522).
 
-**12a** (installed)
+**12a** (installed until 14 November, when every weight was deleted)
 - PCEN as a second channel, and a simulated phone channel in training.
 - Goal: hear through a phone. Large gain (.704, .620 to .645). Best drums from phones.
 
@@ -197,7 +198,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 
 **29b** (installed as `ripnotes.bin`, 7 to 8 November)
 - 29a with its longest layer gone: +-0.5 s, 197,606 weights.
-- Goal: keep the reach's gains and clean's notes. Best overall on the wide test: Pixel .724, solo guitar .812, vocadito .616 with octave errors 73 to 12, phones' low extras halved. Billie Jean's bass the one loss, F#1 for F#2 on kick hits.
+- Goal: keep the reach's gains and clean's notes. Best overall on the wide test: Pixel .724, solo guitar .812, vocadito .616 with octave errors 73 to 12, phones' low extras halved. The pop song's bass the one loss, F#1 for F#2 on kick hits.
 
 **30a**
 - 27a's recipe with a body's ring at every attack, unlabelled, 70 to 400 Hz at -15 to 0 dB of the attack's rise.
@@ -207,7 +208,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 - Corpus 15 with 14, 11 and singing, from 29b's weights, shuffle, singing, +-0.5 s, swaying tempo, restrike weight 3.
 - Goal: every new thing soaked together. The day's biggest jump: renders .931, comp .581, MusicNet .608, vocadito .665 with 4 octave errors.
 
-**32a** (Sheet 15's model, installed as `ripnotes.bin` 8 November)
+**32a** (Sheet 15's model, installed as `ripnotes.bin` 8 November until every weight was deleted on 14 November)
 - 31a with the narrower ring (70 to 160 Hz, -25 to -8 dB, a quarter of the windows).
 - Better than 31a on every real set but the renders: clean .832, Pixel .700, Galaxy .701, comp .582, solo .821 (low extras 424 to 362), MusicNet .610, vocadito .682.
 
@@ -224,7 +225,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 **Drums from the notes model** (8 November)
 - Drum heads on 100 held-out E-GMD recordings, F1 at each model's best bar: 12a kick .34, snare .54, hihat .65; 32c .88, .82, .81, as are 32a, 33a and 33c within .01; on 12a's own synth loops both .93 to .96.
 - Through the whole rip at Go's drum bar (0.1 over twice the local median), on the 65 recordings over 4 s: 12a .36, .55, .68; the notes model's scores as they come .72, .62, .75, flooding (precision .53 to .59); turned into posteriors (the trainer's positive weight of 8 undone) .85, .78, .80.
-- But on Billie Jean the notes model hears the bass line's notes as kicks: 125 kicks on the clean recording, on the and of two and of three, on four and on the bar's last sixteenth as well as on one and three, against 12a's 38 on one and three, and kicks as snares. Its frame path reads the harmonic stack pooled, where a bass attack and a kick look alike. 12a stays.
+- But on the pop song the notes model hears the bass line's notes as kicks: 125 kicks on the clean recording, on the and of two and of three, on four and on the bar's last sixteenth as well as on one and three, against 12a's 38 on one and three, and kicks as snares. Its frame path reads the harmonic stack pooled, where a bass attack and a kick look alike. 12a stays.
 
 **33a, 33b, 33c**
 - From 32b on corpus 16 with 15, 14, 11 and singing, every head: 33a as such; 33b with GuitarSet's and MusicNet's training recordings; 33c, 33a fine-tuned 7,000 steps at rate 3e-4 with E-GMD under half the drumless windows.
@@ -237,7 +238,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 
 **34c, 34d**
 - 32c fine-tuned 15,000 steps at rate 3e-4 on corpus 16's mix; 34d adds `--dip 0.5`, a 6 to 20 dB dip centred 100 to 500 Hz in a quarter of the windows, as the phones at 2 m measured.
-- Billie Jean's bass from the Pixel: 4 right of 138 for 34c, 7 for 34d, 3 for 32a. The four takes' low notes right, clean, 30 cm, Pixel, Galaxy: 94, 5, 23, 32 for 34c and 91, 6, 24, 34 for 34d. GuitarSet's low extras: comp 1370 and 1417, solo 440 and 415.
+- The pop song's bass from the Pixel: 4 right of 138 for 34c, 7 for 34d, 3 for 32a. The four takes' low notes right, clean, 30 cm, Pixel, Galaxy: 94, 5, 23, 32 for 34c and 91, 6, 24, 34 for 34d. GuitarSet's low extras: comp 1370 and 1417, solo 440 and 415.
 - F1, 34c then 34d: renders .933, .929; clean .829, .832; 30 cm .622, .616; Pixel .690, .696; Galaxy .702, .711; comp .575, .596; solo .807, .808; MusicNet .616, .616; vocadito .693, .688.
 - The dip moves the phones' bass the right way by a few notes and lifts strummed guitar, but 34d still trails 32a on the 30 cm and Pixel takes and solo guitar. Neither installed; 32a stays.
 
@@ -266,7 +267,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 
 **39a, 40a** (12 November, R2: the frame model's beat and bar line, from 12a)
 - 12a's recipe with GuitarSet's training clips and E-GMD by their beats, the family head grown and asked nothing. 39a probed the two heads on 12a held (8,000 steps); 40a trained every weight for 40,000, its pick at 34,000.
-- On GuitarSet's 120 unseen clips the bars are right on 25 (39a's heads), 24 (40a's heads) and 32 (40a without them) against 37 through 12a's cues; the heads lose beyond chance (21 clips only 12a has right, 8 only 40a), the body holds (16 against 11) with 12a's notes. Neither is installed: the heads lose bars, and the body gains on real kits alone (drums' F1 on E-GMD's test kits .733 against .629) and loses under a mix (Billie Jean's intro: 76 false kicks and 106 false snares against 6 and 5), which the round never heard; 40a's last step starts the frame model's next round ([Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)).
+- On GuitarSet's 120 unseen clips the bars are right on 25 (39a's heads), 24 (40a's heads) and 32 (40a without them) against 37 through 12a's cues; the heads lose beyond chance (21 clips only 12a has right, 8 only 40a), the body holds (16 against 11) with 12a's notes. Neither is installed: the heads lose bars, and the body gains on real kits alone (drums' F1 on E-GMD's test kits .733 against .629) and loses under a mix (the pop song's intro: 76 false kicks and 106 false snares against 6 and 5), which the round never heard ([Rip training §8](rip-training.md#the-two-heads-on-12a-the-probe-and-the-round)); both were deleted on 14 November with every weight.
 
 **41c, 42a, 44a** (12 November, R1: the notes model under the rule)
 - The rule asks a family only of a note an instrument played: in 150 batches of R1's mix no cell of a note the engine rendered is asked one (0 of 1,353,333).
@@ -281,12 +282,12 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 - Not installed: the frame model is trained again from no weights (`claude/rip-round-48`).
 
 **48a, 49a** (12 and 13 November, both models from no weights)
-- Trained from no weights on what the week taught, no recording of a song among the inputs (a song's transcription and CC BY sounds are fine; the channel's noise bank has a flat room in place of the one measured from a song's phone take). 48a, the frame model: 40,000 steps at 3e-4 on corpus 11f with corpus 17's 1,066 drumless loops that hold a sampled bass, real kits laid over drumless loops on about a quarter of the windows, GuitarSet's training players with their beats at 0.4, E-GMD's kits alone 0.1, singing 0.1, MusicNet 0.05, its family head asked by the rule from the first step, validated on GuitarSet's val clips with their beats and 22 E-GMD kits. 49a, the notes model: R1's recipe with singing at 0.25 and sung chunks at 0.5, 30,000 steps at 1e-3, cell 48 (the rip at 1.17 times 32a's on licensed recordings, inside 1.5), validated on val37.
+- Trained from no weights on what the week taught, no recording of a song among the inputs (a song's transcription and CC BY sounds were among them, the transcription no longer allowed by AGENTS' Data rule; the channel's noise bank has a flat room in place of the one measured from a song's phone take). 48a, the frame model: 40,000 steps at 3e-4 on corpus 11f with corpus 17's 1,066 drumless loops that hold a sampled bass, real kits laid over drumless loops on about a quarter of the windows, GuitarSet's training players with their beats at 0.4, E-GMD's kits alone 0.1, singing 0.1, MusicNet 0.05, its family head asked by the rule from the first step, validated on GuitarSet's val clips with their beats and 22 E-GMD kits. 49a, the notes model: R1's recipe with singing at 0.25 and sung chunks at 0.5, 30,000 steps at 1e-3, cell 48 (the rip at 1.17 times 32a's on licensed recordings, inside 1.5), validated on val37.
 - Read as a pair, each pick under its own searched rip.toml and a judge on its own rows: on the wide test's licensed sets it finds more notes than the installed pair under its judge, GuitarSet comp .782 against .755, solo .942 against .927, MusicNet .755 against .736; on real kits at a drum bar fitted for each, .83 against 12a's .64 alone and .77 against .55 under a mix.
 - On a fixed generated evaluation (800 held-out loops clean, 800 through a room, a mix and a codec): notes .570 and .462 against .570 and .450 (one truth a frame and pitch, two parts in unison being one onset to hear); drums at the built-in bar .72 with 113 false hits a minute against .91 and 34, a sure head let through by a bar relative to the loudest (31 a minute and .82 at `onset_min` 0.7, which the search cannot reach yet); bars right on 35% against 60%: the bar's length right on 339 of the 728 clean 4/4 loops against 509, six beats a bar stated on 192 and three on 69, the decoder's meter with the heads.
 - Names: on val37's recordings guitar .94, voice .99, piano .90; on NSynth's held-out instruments guitar .05 and voice .04, called piano. They tell a recording from an engine's sample, not one instrument from another.
 - Singing, vocadito 31 to 40 against annotator A1: right on 71% of the notes it reports and 71% of those sung (the installed pair 64% and 74%), a harmonic taken for a note under 1% (4 of 637).
-- Not installed: both lines go forward from their last steps.
+- Not installed, and deleted on 14 November with every weight: 48a had trained on corpus 17's loops, made from Lakh.
 
 The mix test's figures above, from 43a on, are as read again on 13 November: its ten MusicNet mixes had been rendered silent (the pieces' samples are floats and were scaled as integers), leaving 2,157 of its 14,970 hits in no sound, and a unison of two parts had counted as two onsets in the generated evaluation's truth. Each now counts as it sounds.
 

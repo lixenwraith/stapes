@@ -36,7 +36,7 @@ help:
 	@echo "Targets:"
 	@echo "  dev       Build $(BIN_DIR)/$(BINARY) with the race detector and debug symbols"
 	@echo "  release   Build $(BIN_DIR)/$(BINARY) optimized (stripped, trimmed, cgo off)"
-	@echo "  install   Install the binary, licence and docs under $(PREFIX); build first, as in"
+	@echo "  install   Install the binary, licence, credits and docs under $(PREFIX); build first, as in"
 	@echo "            make release install. A user who cannot write /usr/local/bin gets ~/.local"
 	@echo "  uninstall Remove what install put under $(PREFIX), keeping the root $(STAPES_ROOT)"
 	@echo "  test      Run the Go tests with the race detector"
@@ -94,9 +94,9 @@ release: check-go $(BIN_DIR)
 # through sudo would hide them from every other user.
 INSTALL_FUNCS = umask 022; put() { [ -d "$${3%/*}" ] || install -d -m 0755 "$${3%/*}"; install -m "$$1" "$$2" "$$3"; echo "install $$3"; }
 
-# install puts the binary, the licence and the documentation under PREFIX once it
-# can write there. Nothing here compiles, so a packager controls the build flags;
-# the root is the user's, made by the first run that writes to it.
+# install puts the binary, the licence, the credits and the documentation under
+# PREFIX once it can write there. Nothing here compiles, so a packager controls
+# the build flags; the root is the user's, made by the first run that writes to it.
 install:
 	@set -eu; \
 	[ -x $(BIN_DIR)/$(BINARY) ] || { echo "$(BIN_DIR)/$(BINARY) is not built: make release first, as in make release install" >&2; exit 1; }; \
@@ -106,7 +106,7 @@ install:
 		echo "/usr/local/bin is not writable: installing for $$(id -un) under $(PREFIX) (sudo make install: system-wide)"; fi; \
 	$(INSTALL_FUNCS); dest='$(DESTDIR)$(PREFIX)'; \
 	put 0755 $(BIN_DIR)/$(BINARY) "$$dest/bin/$(BINARY)"; \
-	put 0644 LICENSE "$$dest/share/licenses/$(BINARY)/LICENSE"; \
+	for src in LICENSE CREDITS.md CC-BY-4.0.txt; do put 0644 "$$src" "$$dest/share/licenses/$(BINARY)/$$src"; done; \
 	for src in README.md doc/*.md; do put 0644 "$$src" "$$dest/share/doc/$(BINARY)/$$src"; done; \
 	[ -n '$(DESTDIR)' ] || case ":$$PATH:" in *':$(PREFIX)/bin:'*) ;; *) echo "note:   $(PREFIX)/bin is not on PATH" ;; esac
 

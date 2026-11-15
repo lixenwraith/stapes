@@ -50,13 +50,16 @@ it there in the same PR.
   a verb or a flag names. Never add a working-directory probe.
 - A script's relative paths are read from the script's own folder, a nested
   `run`'s from its own.
-- Nothing is trained or fitted on a full track, bought or not, nor on anything
-  taken from one (a take of it through a room or a phone, a noise bank shaped
-  by its quiet): a commercial song such as Billie Jean only measures the rip,
-  since no licence covers training on it. A corpus or a fit's list holds
-  licensed collections, renders and the engine's own mixes; a wanted piece is
-  rendered from its score, and a round's notes name the collections it took,
-  for the credits.
+- What trains or fits the rip: the engine's generated parts and mixes,
+  public-domain scores it renders, and the CC BY sets. Never a set whose licence
+  is non-commercial or research-only (MAESTRO, MAPS), nor a song's recording,
+  bought or not, or anything taken from one (a take of it through a room or a
+  phone, a noise bank shaped by its quiet), nor a commercial song's
+  transcription, as Lakh's MIDI files and Slakh's renders of them are: no
+  licence covers training on a song, so it only measures the rip. Every corpus
+  made from Lakh and every weight trained before it went were deleted on
+  2026-11-14, and the models train again from nothing without it. A round's
+  notes name the collections it took, for the [credits](CREDITS.md).
 
 ## Scope
 

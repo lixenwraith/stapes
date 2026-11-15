@@ -13,7 +13,7 @@ The package `stapes`, at the module root, holds the session, its documents, the 
 Go as `go.mod` names it; the release is built with cgo off:
 
 - `make release`: a stripped, trimmed `bin/stapes`; `make dev` one with the race detector.
-- `make install`, `make uninstall`: the binary, the licence and the docs under `PREFIX` (`/usr/local`, or `~/.local` for a user who cannot write `/usr/local/bin`); uninstall keeps the root.
+- `make install`, `make uninstall`: the binary, the licence and [CREDITS.md](CREDITS.md), the credits of the collections the rip's models learn from or are measured on, with the CC BY 4.0 text, and the docs under `PREFIX` (`/usr/local`, or `~/.local` for a user who cannot write `/usr/local/bin`); uninstall keeps the root.
 - `make test`, `make verify`: the race suite, which renders and hears music for sixteen minutes on four cores (CI runs it as seven jobs side by side), then vet, `gofmt` and the FreeBSD and Android builds.
 - `make venv`, `make smoke`: the trainer's Python with a CPU PyTorch, and the training path end to end at smoke scale in a temporary folder ([rip-train](tool/rip-train/README.md)).
 
@@ -138,23 +138,23 @@ go run ./cmd/stapes -headless -s script.slab
 To rip a recording to a document and hear it, in the REPL or the TUI's command line:
 
 ```text
-rip song.wav bite nodrums        # the patterns, the fitted voices; nodrums when it has no kit
-compress bite                    # the dictionary and the song bite
-song bite play                   # conducts it; music stop ends it
-save pattern bite_patterns.toml  # the patterns and the song
-write bite_melody_voice bite_melody_voice.toml
-write bite_bass_voice bite_bass_voice.toml
+rip song.wav sample nodrums        # the patterns, the fitted voices; nodrums when it has no kit
+compress sample                    # the dictionary and the song sample
+song sample play                   # conducts it; music stop ends it
+save pattern sample_patterns.toml  # the patterns and the song
+write sample_melody_voice sample_melody_voice.toml
+write sample_bass_voice sample_bass_voice.toml
 ```
 
 and later, to hear the document again:
 
 ```text
-load sound bite_melody_voice.toml      # the voices first, registered by apply
-apply bite_melody_voice
-merge sound bite_bass_voice.toml
-apply bite_bass_voice
-load pattern bite_patterns.toml        # the patterns and the song that name them
-song bite play                         # or: song bite out.wav
+load sound sample_melody_voice.toml      # the voices first, registered by apply
+apply sample_melody_voice
+merge sound sample_bass_voice.toml
+apply sample_bass_voice
+load pattern sample_patterns.toml        # the patterns and the song that name them
+song sample play                         # or: song sample out.wav
 ```
 
 Put either in a `.slab` file and `run` it. Without the voices the tracks fall back to the shipped lead and bass. In the TUI, `^O` opens the files overlay: `Enter` on a `.toml` loads it, on a `.slab` runs it behind the screen, on a `.wav` or a `.mid` rips it, `m` merges a document, or a `.mid`'s patterns and song, and `s` saves into the directory shown.
@@ -206,7 +206,7 @@ The TUI is a shell over the exact same dispatch table used by the REPL and scrip
 - **Editing**
   - `set <name.path> <val>`, `unset <name.path>`: set a leaf field through reflection, or reset it to its zero value.
   - `add <name.path> [at]`, `del <name.path.idx>...`: insert a zero element into a list field at index `at` (bare appends), or delete elements, several at once, each as its path reads before any is deleted.
-  - `dup <name.path.i> [j]`, `mv <name.path.i> <j>`: insert a copy of a list element at index `j` (bare, right after it), sharing nothing with it, or move an element to `j`, those between shifting by one: a pattern's tracks, a track's events, a sound's layers, a song's bars (`dup bite.bars.3 5` plays bar 3 again at 5). An edit of a song's lists then lists its bars as `song` does, numbered as the paths address them.
+  - `dup <name.path.i> [j]`, `mv <name.path.i> <j>`: insert a copy of a list element at index `j` (bare, right after it), sharing nothing with it, or move an element to `j`, those between shifting by one: a pattern's tracks, a track's events, a sound's layers, a song's bars (`dup sample.bars.3 5` plays bar 3 again at 5). An edit of a song's lists then lists its bars as `song` does, numbered as the paths address them.
   - `mix <src> <dst>`: append src's tracks or layers into dst, of the same kind; src is unchanged.
   - `cp <pattern>.track.<n>... <new>`, `mix <pattern>.track.<n>... <dst>`, `mix <pattern>.track.<n>... <pattern>.track.<m>`: make a new pattern of the tracks named, from one pattern or several, with the first's role, append them to the pattern `dst`, or merge their notes into track `m`, which keeps its voice: a note the same as one already at its step (place, degree, octave and accidental) is kept once and counted, and a drum track never merges into a tonal one or the reverse. With `del`, tracks move. Tracks of other lengths meet at the least common multiple of their lengths, each repeated to fill it, the destination pattern's own too; past 64 steps the pattern keeps its length and a longer loop is cut, as the command says. A pattern holds 32 tracks.
   - `cp <pattern>.bar.<k>... <new>`: make a new pattern of one pattern's bars, in the order named, every track sliced at the bar lines (a bar is the pattern's meter's, 16 steps in 4/4 and 12 in 3/4 or 6/8, a pattern's last one may be short); a bar named twice plays twice, as a loop or a song built by hand from a rip wants, up to 64 steps.

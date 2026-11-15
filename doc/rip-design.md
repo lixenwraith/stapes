@@ -445,12 +445,15 @@ What is trained and what is only written, on 12 November 2026:
    - What is decided of a part of a song, its tempo, meter and key, its
      voices, holds within that part and is never carried across a boundary
      into a part it has nothing to do with.
-   - Nothing is trained or fitted on a full track, bought or not. A commercial
-     song such as Billie Jean measures the rip on real-world music and no
-     more, since no licence covers training on it; a corpus or a fit takes
-     licensed collections, renders and the engine's own mixes. A piece that
-     is wanted is rendered from its score with licensed notes, and a round's
-     notes name every collection it took, for the credits.
+   - Nothing is trained or fitted on a set whose licence is non-commercial or
+     research-only, on a song's recording, bought or not, or on a commercial
+     song's transcription. Such a song measures the rip on real-world music and
+     no more, since no licence covers training on it; a corpus or a fit takes
+     the engine's generated parts and mixes, public-domain scores it renders
+     and the CC BY sets. Lakh's files are such transcriptions: the corpora
+     made from them and every weight trained before they went were deleted on
+     2026-11-14, and the models train again from nothing. A round's notes name
+     every collection it took, for the credits.
    Code alone, a thread each, in parallel:
    - **Notes by pitch and onset, and the search under a guard**, landed.
      `Agreement` counts every note as one line (`All`) and `MatchNotes`
@@ -486,7 +489,7 @@ What is trained and what is only written, on 12 November 2026:
      where it cost 0.46, and the stream 0.24 where it cost 1.37, the offline
      rip's note count unchanged on each. Waiting half a second instead leaves
      the pitched heads as they are and moves the frame model's, the drums by
-     three tenths of their rms: on Billie Jean from the Pixel the stream's
+     three tenths of their rms: on the pop song from the Pixel the stream's
      kicks or snares then differ in 10 of 19 bars. So the reach is the
      default.
    - **The beat and the bar line heard.** The cues' rules read the bars of 37 of
@@ -543,9 +546,9 @@ What is trained and what is only written, on 12 November 2026:
      it never met is level to +.05, bar singing (up to .04 down) and a bass
      line under drums, which it keeps only when its fit is the engine's own
      mixes. So the judge is a small trained stage whose reach is its fit's
-     breadth: fitted first on the notes model in use, which needs no round,
-     from every licensed collection with truths, renders and the engine's
-     mixes; refitted after each round, reading the note's voice once notes
+     breadth: fitted on the notes model in use, from every CC BY
+     collection with truths, renders and the engine's mixes; refitted
+     after each round, reading the note's voice once notes
      carry one; and installed only when no collection left out of the fit
      scores under the installed rip by more than its spread, singing apart,
      which is reported and holds no stage back. A recording is judged in one
@@ -572,7 +575,7 @@ What is trained and what is only written, on 12 November 2026:
    change; the bars row; the strikes' F1 on a validation corpus with a
    condition a kind; vocadito's fragments, wrong cells and repeats with the
    legato steps kept; each family's recall on NSynth's held-out instruments
-   and the rip's voice over the fit's distance there (2.3 now); Billie Jean's
+   and the rip's voice over the fit's distance there (2.3 now); the pop song's
    bass and kicks, clean and from the Pixel; and `bench`.
    Dropped by measurement: padding or mirroring a recording's edges (the
    strike head at a loop's first frame scores as mid-song; silence before it
@@ -595,8 +598,8 @@ What is trained and what is only written, on 12 November 2026:
 
 ## 8. Measured on the sample recording
 
-`lixenwraith/scratch`'s `one_more_bite_intro.wav` through the built-in analysis,
-the voice fit, the dictionary and the song, nine seconds on four cores:
+The sample's intro in `lixenwraith/scratch` through the built-in analysis, the
+voice fit, the dictionary and the song, nine seconds on four cores:
 
 - The rip: 86 bpm, A# harmonic minor, three full bars from 2.52 s, 25 notes a
   register, and 19 kicks, 36 snares and 2 hats in a clip with no drums, the
@@ -756,14 +759,14 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
 - The ninth pass, the song at the recording's tuning and the lines uncrossed:
   the user heard the refined tonals as slightly sharp, a stretched string,
   which was the render at A440 against the clip's 41 cents flat; and a second
-  recording of the piece, `one_more_bite_intro_origin.wav`, in tune (+2 cents),
-  three semitones lower, a second longer and ripped on another metrical level
-  (148 bpm, G minor, eight bars), agrees with the first's transcript on 41 of
-  49 melody notes, 27 of 29 under notes and all 10 bass notes after
-  transposition and a fitted time map, while both listings show the two lines
-  swapping a held dyad. With the song rendered at the recording's tuning and
-  concurrent notes assigned to the lines by pitch order, the intro sounds 0.76
-  like the recording before `refine` (pitch 0.82, timbre 0.75 where it was
+  recording of the piece, the sample's origin in `lixenwraith/scratch`, in tune
+  (+2 cents), three semitones lower, a second longer and ripped on another
+  metrical level (148 bpm, G minor, eight bars), agrees with the first's
+  transcript on 41 of 49 melody notes, 27 of 29 under notes and all 10 bass notes
+  after transposition and a fitted time map, while both listings show the two
+  lines swapping a held dyad. With the song rendered at the recording's tuning
+  and concurrent notes assigned to the lines by pitch order, the intro sounds
+  0.76 like the recording before `refine` (pitch 0.82, timbre 0.75 where it was
   0.69, onset 0.72) and rips back at 0.90 (melody 0.74 where it was 0.63); the
   origin 0.71 (0.71, 0.70, 0.71) and 0.86. Saturation, which the augmentation
   now puts on a third of the loops, costs the analysis on the bench: 0.475 to
@@ -904,7 +907,7 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   the intro 34 against 37, at 115 bpm against 86. Two studio recordings
   scored against MIDI files of their pieces: the whole of Für Elise, 1051
   notes, has 266 of the 869 above E3 heard through the frame model against 444
-  through the analysis; Billie Jean's first forty seconds, its drum channel
+  through the analysis; the pop song's first forty seconds, its drum channel
   scored hit by hit (`MatchHits`), have 38 of 39 kicks heard with 47 false
   against 37 with 135, 37 of 39 snares with 18 false against 25, 149 of 155
   hats against 146, and the bass riff 96 of 138 notes against 94. A truth of
@@ -919,19 +922,19 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   40000 loops (400 held out) over 40000 steps on the same GPU. 7a heard 229
   bands in place of eighty: held-out decoders 0.92 against 0.99, the bench
   under the sixth (0.452 clean, 0.451 augmented), and on the recordings Für
-  Elise's register 363 of 869 against 266 (the analysis 444) and Billie
-  Jean's riff 127 of 138 against 96. 7b trained the same model on a corpus
+  Elise's register 363 of 869 against 266 (the analysis 444) and the pop
+  song's riff 127 of 138 against 96. 7b trained the same model on a corpus
   nearer a real mix (a swell, two equaliser bands, a compressor, halls, a
   pedal's releases, a noise floor in half the loops, generated loops without
   their drums or bass at times): level with the sixth on its loops (0.508,
   0.458), and on the recordings the best model then, Für Elise's register 425
-  and its melody line 240 of 611 against the analysis's 205, Billie Jean's
+  and its melody line 240 of 611 against the analysis's 205, the pop song's
   riff 127 with 67 extra and its kicks 47 false against the analysis's 135,
   the intro's register 42 against 37, the origin's 32 against 50. 7c put
   three convolutions before the input layer: held-out 0.86 against 7b's
   1.13, the bench past the analysis on 7b's rougher loops (0.436 against
   0.418 clean, 0.448 against 0.400 augmented), the recordings level with
-  7b but Billie Jean's snare 39 false against 5. 7d split the layers into
+  7b but the pop song's snare 39 false against 5. 7d split the layers into
   towers over 7c's convolutions, onset and drums on two layers and the rest
   on four: held-out 0.86, no better on the bench or the recordings.
 - The eighth round followed Für Elise's soft notes. Counted by the
@@ -994,7 +997,7 @@ the voice fit, the dictionary and the song, nine seconds on four cores:
   recordings, and a lone line 30 dB under the rest is labelled but inaudible,
   which may have blurred the strike head. Through a codec, a clip's rip differs
   from its rip uncoded: F1 between the two 0.93 at Opus 96 kbps and 0.82 at 32 on
-  lossless piano notes, 0.85 and 0.71 on Billie Jean, though the input moves only
+  lossless piano notes, 0.85 and 0.71 on the pop song, though the input moves only
   about 1 dB; the recordings are themselves Opus at 133 to 141 kbps.
 - The eleventh and twelfth rounds trained one shape on one corpus, each
   hearing it differently, since a model's input is worked out from the stored

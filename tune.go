@@ -849,7 +849,7 @@ func degrade(x []float64, rng *rand.Rand) []float64 {
 		rms += out[i] * out[i]
 	}
 	rms = math.Sqrt(rms / float64(max(len(out), 1)))
-	// a recording's hiss, which a studio's Billie Jean carries 39 dB under its
+	// a recording's hiss, which the pop song's studio mix carries 39 dB under its
 	// median frame, sits bare over a synthesizer's empty treble: half the loops have none
 	noise := 0.0
 	if rng.Float64() < 0.5 {

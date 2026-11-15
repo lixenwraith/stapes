@@ -41,12 +41,13 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    their MIDI in the corpus and held out: a
    loader for a WAV beside a MIDI file (`ReadMIDI` reads the notes; the
    frames and labels a loop carries are what `corpus` writes) and a few
-   recordings the user plays or owns with their scores, so neither a model
-   nor a tuned set learns the synthesizer. Public sets with aligned MIDI
-   (MAESTRO's piano, Slakh's rendered multitracks, GuitarSet, URMP) fit the
-   same loader. MusicNet's labels are snapped to the strike peaks; a note left
-   unsnapped (`"snap": false`) is still to be masked out of the strike loss and
-   the strikes' F1, its pitch's target within eight frames of the label.
+   recordings the user plays from public-domain scores, with the scores, so
+   neither a model nor a tuned set learns the synthesizer. Public sets with
+   aligned MIDI (GuitarSet, URMP) fit the same loader; MAESTRO, non-commercial,
+   and Slakh, rendered from Lakh, stay out (AGENTS, Data). MusicNet's labels
+   are snapped to the strike peaks; a note left unsnapped (`"snap": false`) is
+   still to be masked out of the strike loss and the strikes' F1, its pitch's
+   target within eight frames of the label.
 2. The frame model's pitch: on 20000 loops over 20000 steps the held-out decoders'
    loss was still falling (1.04) and the fourth run passed the analysis on
    augmented loops (0.51 against 0.48) on its drums while losing clean loops
@@ -60,7 +61,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    `round.sh`), passed the analysis on both bench lines (0.51 against 0.47
    clean, 0.460 against 0.458 augmented, on its drums; melody 0.08 against
    0.13), its held-out loss flat from step 33000, and on recordings beat
-   the analysis on drums (Billie Jean's false kicks a third) and lost on
+   the analysis on drums (the pop song's false kicks a third) and lost on
    melodies (the origin's register 34 of 83 tapped notes against 50, Für
    Elise's 266 of 869 against 444). Round seven (229 bands, a corpus nearer
    a real mix, convolutions) and round eight (a strike head per pitch, an
@@ -75,7 +76,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    (the analysis 0.633). The release and velocity heads gained on the bench and
    not on the recordings (0.650). Next for it: real recorded notes as voices of
    the corpus (Iowa's samples carry no condition, NSynth's and E-GMD's only
-   credit; MAESTRO's non-commercial licence would bind the weights), since
+   credit; MAESTRO's licence is non-commercial, so it stays out), since
    better synthesis alone has not closed the gap; the corpus's pedal varied by
    the bar; the constants tuned by `tune` against the truths rather than swept
    by hand. Towers (7d: no gain for 43% more weights) are tried again once the
@@ -156,8 +157,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
      ([Rip training §3](rip-training.md#a-recordings-pitch-track)), and
      `--validate` then prints its gliding, steady and beside rows; left:
      - The runs: GuitarSet's and vocadito's tracks into their corpora, the
-       cents head read on that playing, then trained on it (`--mix`), and the
-       labels pass over corpus 17.
+       cents head read on that playing, then trained on it (`--mix`).
      - A collection with no pitch annotation (MusicNet, a phone take) stays
        unplaced. A track estimated from the audio (pYIN on a solo line) was
        not taken: its errors would be taught as the label.
@@ -225,11 +225,11 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    none is fitted on recordings or installed: `rows`, `tool/rip-train`'s
    `judge.py` and the root's `ripjudge.bin`
    ([a judge](../tool/rip-train/README.md#a-judge)). Left:
-   - The fit: licensed collections, renders and the engine's mixes, never a
+   - The fit: the CC BY collections, renders and the engine's mixes, never a
      full track, read with a collection left out, singing reported and never
      a gate; and a bass line under drums when recordings are in the fit. The
      first, on 32a's rows, passed with each collection left out and is not
-     installed: on Billie Jean it reports as many low notes with eight fewer
+     installed: on the pop song it reports as many low notes with eight fewer
      right, and on vocadito the fit holding everything reports 400 notes for
      742, which the row's next version, with the note's voice, is for.
    - `bench` grades the loaded models under the installed scores whatever the root
@@ -267,11 +267,12 @@ read 32 and 12a's 37; since v0.25.2 audio reads the heads by level as that
 tracker does, the downbeat head beside the cues. What is left is the reading on
 trained weights:
 
-- **A round with the heads**, from the installed frame model through `--init`,
+- **A round with the heads**, from the frame model trained again without Lakh
+  (below) through `--init`,
   on `meters` corpora and on recordings whose lists name their beats
   (GuitarSet's JAMS files, E-GMD's own MIDI). `--probe` first: it trains the
   two heads alone and cannot cost the heads the decoders read, and says
-  whether the installed model's features hold the beat at all; a fine-tune
+  whether that model's features hold the beat at all; a fine-tune
   only if they do not. Then the 120 GuitarSet clips no
   round met (37 right through the cues, 58 under perfect beats), the Für Elise
   takes and the stream's twelve recordings, each with the heads and with the
@@ -363,7 +364,7 @@ remains: real notes labelled by the fit, an instrument of NSynth's at a time;
 the frame model's planes as context to those heads, measured as a pair; and the
 round, judged on NSynth's held-out instruments by each family's recall a note
 and the rip's voice over the fit's distance (2.3 now), with E-GMD's kits and
-Billie Jean's kicks, clean and from the Pixel, unmoved. Then lines by voice:
+the pop song's kicks, clean and from the Pixel, unmoved. Then lines by voice:
 notes gathered by their voices and their continuity, first inside the three
 lines a rip holds, then as many as were heard, through the song and the game.
 
@@ -430,6 +431,36 @@ Left open by what landed, each with the option not taken:
   with the notes model's salience from step to step.
 - `test_train.py` runs by hand: CI has no PyTorch.
 
+### Train both models again without Lakh
+
+- Priority: P1
+- Affected files: `tool/rip-train` (the rounds' recipes), `doc/rip-rounds.md`,
+  `CREDITS.md`
+
+Lakh's corpora and every weight trained before it went were deleted on
+2026-11-14 (AGENTS, Data), so the frame and notes models train again from
+nothing, on the engine's generated parts and mixes, the public-domain scores it
+renders and the CC BY sets. No generated corpus left plays a note under MIDI
+32, since those came from Lakh's basses, and among the recordings only
+MusicNet's piano and double bass reach them (about 4,800 notes), so the
+generator writes the low keys before a line is asked to learn them. What
+closes it: both models trained from nothing and installed, their rounds naming
+every collection they took, and CREDITS.md crediting exactly those.
+
+Lixen's to settle before the first round:
+
+- MusicNet's recordings from the Isabella Stewart Gardner Museum were released
+  under CC BY-NC-ND 2.0, and the set's metadata names a recording's performer,
+  not its licence: they leave every corpus, fit and validation, or the set's
+  CC BY 4.0 record governs them.
+- The rule admits the CC BY sets. URMP's deposit (CC0 1.0) and Iowa's samples
+  (no conditions) are freer, and this file plans both, as the corpus's
+  recordings with their MIDI and as recorded notes for its voices: the rule
+  names them too, or they only measure.
+- The snapped MusicNet corpora and val37's MusicNet pieces hold onsets moved to
+  32a's strike peaks, and 32a learned from Lakh: they are snapped again with
+  the new notes model, or their labels are used unsnapped.
+
 ### Train the piano's pitches
 
 - Priority: P1
@@ -457,6 +488,23 @@ lines in training are still E1 to C7. What is left:
   and an octave off more often. Finer low bands or a longer window is a new
   front end, every corpus rendered again and both models trained from
   nothing: decide that once, before a bass under E1 is a goal.
+
+### Gather the scores `corpus ... midi` plays
+
+- Priority: P2
+- Affected files: `CREDITS.md`, `doc/rip-training.md` and `doc/rip-rounds.md`
+  (the corpus's entries)
+
+Corpora 14 to 17 and the glide pair played stretches of Lakh's MIDI files,
+transcriptions of commercial songs that nothing trains on (AGENTS, Data); they
+and every weight trained before they went were deleted on 2026-11-14, and the
+models train again from nothing. The folder `midi <dir>` names may hold
+generated MIDI and public-domain scores, never Lakh's files or Slakh's. A
+score's file has rights of its own apart from its work's, its sequencer's or its
+engraver's, so a file joins only when its own page puts it in the public domain
+or under CC BY, listed with its source and licence for the
+[credits](../CREDITS.md). What closes it: such a folder, and the next corpus
+with `midi` rendered from it, its notes past E1 to C7 kept (the item above).
 
 ### A live rip
 
@@ -639,3 +687,44 @@ about as long as the heaviest test
   a branch before its pull request opens.
 - A job uses one core of four: tests run one at a time while a session
   registers in the audio module's process-wide registries.
+
+## The repository
+
+### Rewrite the history without the songs' names
+
+- Priority: P1
+- Affected files: every commit
+
+v0.31.1 gave the test songs neutral labels in the docs and the code. Older
+trees and three commit messages still name the songs, as do PR bodies on
+GitHub. One `git filter-repo` pass with `--replace-text` and
+`--replace-message`, from the mapping kept in the project's files outside the
+repository since it spells the names, takes them out of every branch. What it
+costs, and what it does not reach:
+
+- Every hash changes: each clone re-clones, open branches are rebased by hand,
+  and signed commits, each squash merge GitHub signed among them, lose their
+  signatures.
+- stapes has no tags, so no published version's checksum is at stake, but
+  proxy.golang.org keeps any pseudo-version someone fetched as it was, names
+  and all.
+- GitHub keeps every PR's `refs/pull/<n>/head`, which no push deletes, so the
+  old commits stay reachable there and by hash in cached views. GitHub Support
+  removes only sensitive data that rotating a credential cannot make safe, so it
+  will not purge them. PR titles and bodies are edited on GitHub by hand.
+
+### Carry Go's notice with every binary
+
+- Priority: P1
+- Affected files: `Makefile` (`install`), a notices file; vif's app
+
+A stapes binary links Go's standard library and golang.org/x/sys and x/term,
+whose BSD 3-Clause licence (`$(go env GOROOT)/LICENSE`, the same in each
+module's folder under `go env GOMODCACHE`) asks that a binary reproduce the Go
+Authors' notice, conditions and disclaimer. The other modules in `go.mod`,
+lixenwraith's audio, color, genetic, terminal, toml and transformer, carry
+stapes' own `LICENSE` word for word, which `make install` installs; nothing
+carries Go's. What closes it: a notices file with Go's licence, installed
+beside `LICENSE` and put in every desktop archive, and the About screen of
+vif's app, which hosts the Android build, listing both; each is checked
+against `go list -deps ./...` when `go.mod` changes.

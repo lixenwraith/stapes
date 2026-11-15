@@ -329,10 +329,12 @@ To write your own:
   whose MIDI sits off their audio. A batch run into the same directory joins
   it, numbered after the loops there, so a batch's recordings can be deleted
   once it is in.
-  Weights trained on a corpus carry its licence (E-GMD's CC BY 4.0 asks for
-  credit; MAESTRO's CC BY-NC-SA 4.0 binds them). A recording without its MIDI
-  is held out, judged by ear and by the two-witness check (two recordings of
-  one piece, their transcripts compared, as `doc/rip-design.md` §8 does).
+  Weights trained on a corpus carry its licence: a CC BY set asks for credit
+  ([CREDITS](../../CREDITS.md)), and a non-commercial or research-only one
+  would bind them, so it stays out, as MAESTRO (CC BY-NC-SA 4.0) does. A
+  recording without its MIDI is held out, judged by ear and by the two-witness
+  check (two recordings of one piece, their transcripts compared, as
+  `doc/rip-design.md` §8 does).
 - **Phones.** A phone that hears a laptop's speaker cuts the lows and the highs
   and holds a room's noise 7 to 15 dB under the music, where a corpus's sits 40
   to 65 dB down. `CHANNEL=noise.npz:0.5` hears half the windows through a
@@ -476,11 +478,12 @@ go run ./cmd/stapes -headless -config-dir "$dir/root" -s "$dir/rows.slab"       
 python3 tool/rip-train/judge.py --rows "$dir/rows" --leave-out guitar --out "$dir/root/ripjudge.bin"
 ```
 
-- **What a fit may take.** Licensed collections with truths, renders, and the
-  engine's own mixes (a corpus written with its audio, `WAV=` empty). Never a
-  full track such as a commercial song: no licence covers training on it, so
-  it only measures, read under a judge with `rip` and `truth`, or listed under
-  a condition every fit leaves out.
+- **What a fit may take.** The CC BY collections with truths, the engine's
+  renders of public-domain scores, and its own mixes (a corpus written with
+  its audio, `WAV=` empty). Never a song's recording, nor a commercial song's
+  transcription such as Lakh's files: no licence covers training on either, so
+  a song only measures, read under a judge with `rip` and `truth`, or listed
+  under a condition every fit leaves out.
 - **Rows.** `rows <dir> from <list>` rips each recording of a truth list, the
   lines `tune ... truth` reads, and `rows <dir> from <corpus dir>` each loop
   of a corpus that kept its audio, against its label, the corpus one condition

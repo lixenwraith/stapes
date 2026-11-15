@@ -640,8 +640,10 @@ family, the beat and the bar line go unasked.
 
 **`--ring share`** adds to that share of the windows a body's or a room's ring at every attack:
 one pitch whatever the note, 70 to 160 Hz, decaying in 0.05 to 0.3 s, 25 to 8 dB under the
-attack's rise, its harmonics absent and nothing labelled, as a guitar's air cavity rings near
-104 Hz on every pluck.
+attack's rise in energy, its harmonics absent and nothing labelled, as a guitar's air cavity
+rings near 104 Hz on every pluck. The rise is read in the sharp plane, which hears the attack
+when it comes, each band's energy over the times the plane's bands count a steady tone there,
+about twenty at A0 and one at the top, so a low note's rise counts once.
 
 **`--bend share`** reads that share of the plain windows along a tempo that sways: a rate up
 to 18% either way and a slow sine of up to 12 frames, the features interpolated and the

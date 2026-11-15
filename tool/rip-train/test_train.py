@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import io
 import json
+import math
 import os
 import random
 import shutil
@@ -665,6 +666,33 @@ class TheVelocity(unittest.TestCase):
             return train.losses(model, frs[0], tgs[0])["velocity"].item()
         self.assertEqual(loss(60, -5.0), loss(60, 5.0))
         self.assertNotEqual(loss(64, -5.0), loss(64, 5.0))
+
+
+class Drawn:
+    """a stream whose every draw lies at one share of its range"""
+
+    def __init__(self, share):
+        self.share = share
+
+    def uniform(self, a, b):
+        return a + self.share * (b - a)
+
+
+class TheRing(unittest.TestCase):
+    def test_a_ring_drawn_at_a_level_reads_that_far_under_the_attacks_rise(self):
+        """Frames silent until a steady tone starts, at A0 and at C8: a ring drawn at the bottom, the middle and the top
+        of its levels reads that far under the tone's energy where it starts, within the 0.6 dB the sharp plane's
+        bands, each over the times it counts a tone there, read a tone at A0 off its energy."""
+        for midi in (21, 108):
+            for share in (0.0, 0.5, 1.0):
+                with self.subTest(midi=midi, share=share):
+                    e = np.zeros((40, ripmodels.VALUES))
+                    e[20:] = 1e-3 * ripmodels.sine_response(440 * 2 ** ((midi - 69) / 12))
+                    before = e.copy()
+                    train.ringing(e, Drawn(share))
+                    tone = ripmodels.sine_response(math.exp(Drawn(share).uniform(*np.log(train.RING_HZ))))
+                    ring = (e - before)[20] @ tone / (tone @ tone)
+                    self.assertAlmostEqual(10 * math.log10(ring / 1e-3), Drawn(share).uniform(*train.RING_DB), delta=0.6)
 
 
 class TheFrames(unittest.TestCase):

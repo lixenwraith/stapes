@@ -684,18 +684,19 @@ v0.31.1 gave the test songs neutral labels in the docs and the code. Older
 trees, commit messages and squash titles still name the songs and their
 artists. One `git filter-repo` pass with `--replace-text` and
 `--replace-message`, from the mapping kept in the project's files outside the
-repository since it spells the names, closes it. What it costs:
+repository since it spells the names, takes them out of every branch. What it
+costs, and what it does not reach:
 
 - Every hash changes: each clone re-clones, open branches are rebased by hand,
-  and every tag is set again on its rewritten commit.
-- proxy.golang.org and sum.golang.org keep each published version as it was
-  tagged, so the proxy keeps serving the old text whatever the rewrite does, and
-  a re-set tag whose tree changed fails `go`'s checksum check for anyone who
-  fetches it directly. Rewrite only the messages under tagged trees, or let the
-  old versions' trees stand in the proxy.
+  and signed commits, each squash merge GitHub signed among them, lose their
+  signatures.
+- stapes has no tags, so no published version's checksum is at stake, but
+  proxy.golang.org keeps any pseudo-version someone fetched as it was, names
+  and all.
 - GitHub keeps every PR's `refs/pull/<n>/head`, which no push deletes, so the
-  old commits stay reachable there and in cached views until GitHub Support
-  purges them. PR titles and bodies are edited on GitHub by hand.
+  old commits stay reachable there and by hash in cached views. GitHub Support
+  removes only sensitive data that rotating a credential cannot make safe, so it
+  will not purge them. PR titles and bodies are edited on GitHub by hand.
 
 ### Carry Go's notice with every binary
 

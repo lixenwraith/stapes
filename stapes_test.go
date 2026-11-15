@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -889,7 +890,7 @@ func TestTheNotesModelLoadsBesideTheFrameModel(t *testing.T) {
 		}
 		return s, &out
 	}
-	notes := ripmodels.NotesSpec(audio.RipPiano)
+	notes := ripmodels.NotesSpec()
 	notes.Cells.Reduce, notes.Cells.Wide, notes.Cells.Cell, notes.Cells.Frame = 2, 3, 4, 5
 	save(notesFile, notes)
 	s, out := open()
@@ -898,7 +899,7 @@ func TestTheNotesModelLoadsBesideTheFrameModel(t *testing.T) {
 	}
 	teardown(t, s)
 
-	frame := ripmodels.FrameSpec(audio.RipPiano)
+	frame := ripmodels.FrameSpec()
 	frame.Dim, frame.Heads, frame.Layers, frame.FFN = 8, 2, 1, 8
 	save(frameFile, frame)
 	s, out = open()
@@ -921,7 +922,7 @@ func TestTheNotesModelLoadsBesideTheFrameModel(t *testing.T) {
 func TestAFrameModelUnderItsOldNameIsNamedNotLoaded(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
-	cfg := ripmodels.FrameSpec(audio.RipPiano)
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -1597,7 +1598,7 @@ func TestLiveKeepsTheRipRipMakes(t *testing.T) {
 	dir := t.TempDir()
 	wav := filepath.Join(dir, "loop.wav")
 	writeWAV(t, wav, loops[0].audio)
-	cfg := ripmodels.FrameSpec(audio.RipPiano)
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -2158,7 +2159,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	writeFile(t, list, "loop.wav\tloop.mid\n")
 	// a model too small to hear well, from a start that takes a strike whose
 	// pitch hardly sounds: the sets near it hear fewer notes that were not played
-	cfg := ripmodels.FrameSpec(audio.RipPiano)
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -2222,7 +2223,7 @@ func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmod
 	}
 	dir = t.TempDir()
 	writeWAV(t, filepath.Join(dir, "loop.wav"), loops[1].audio)
-	cfg := ripmodels.FrameSpec(audio.RipPiano)
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, seed)
 	if err != nil {
@@ -2486,7 +2487,7 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	open := func(seed uint64) (*Session, *bytes.Buffer) {
-		cfg := ripmodels.FrameSpec(audio.RipPiano)
+		cfg := ripmodels.FrameSpec()
 		cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 		m, err := transformer.NewRandom(cfg, seed)
 		if err != nil {
@@ -2577,7 +2578,7 @@ func judgeBytes(notes uint64, odds [2]float64) []byte {
 func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	root := t.TempDir()
-	cfg := ripmodels.FrameSpec(audio.RipPiano)
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -2751,7 +2752,7 @@ func TestRowsReadACorpusThatKeptItsAudio(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	cfg := ripmodels.FrameSpec(audio.RipPiano)
+	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
 	if err != nil {
@@ -2871,10 +2872,15 @@ corpus %s 2 2
 	if d := r.BPM - 128; d < -2 || d > 2 {
 		t.Errorf("the rendered slots rip at %d bpm, want 128", r.BPM)
 	}
-	for _, name := range []string{"corpus.json", "loop_000.wav", "loop_000.mel", "loop_001.json"} {
+	for _, name := range []string{"corpus.json", "loop_000.wav", "loop_000.bands", "loop_001.json"} {
 		if _, err := os.Stat(filepath.Join(dir, "corpus", name)); err != nil {
 			t.Errorf("corpus lacks %s", name)
 		}
+	}
+	var m corpusManifest
+	data, _ := os.ReadFile(filepath.Join(dir, "corpus", "corpus.json"))
+	if frames, whole := bandsLength(filepath.Join(dir, "corpus", "loop_000.bands")); json.Unmarshal(data, &m) != nil || m.Layout != audio.RipLayout || !whole || frames == 0 {
+		t.Errorf("corpus.json states layout %d, want %d; loop_000.bands holds %d band frames whole %v", m.Layout, audio.RipLayout, frames, whole)
 	}
 	lab, err := os.ReadFile(filepath.Join(dir, "corpus", "loop_000.json"))
 	if err != nil || !strings.Contains(string(lab), "\"events\"") || !strings.Contains(string(lab), "\"voice\"") {
@@ -3000,12 +3006,12 @@ func TestLabelsWritesWhatTheExportWrote(t *testing.T) {
 			if !bytes.Equal(got, data) {
 				t.Errorf("%s: %s differs from the export's", corpus, name)
 			}
-			if strings.HasSuffix(name, ".mel") && (err != nil || !info.ModTime().Equal(stamps[name])) {
+			if strings.HasSuffix(name, ".bands") && (err != nil || !info.ModTime().Equal(stamps[name])) {
 				t.Errorf("%s: %s was written again", corpus, name)
 			}
 		}
 	}
-	for _, name := range []string{"loop_004.mel", "loop_004.json", "corpus.json"} {
+	for _, name := range []string{"loop_004.bands", "loop_004.json", "corpus.json"} {
 		os.Remove(at("gliding", name))
 	}
 	out.Reset()
@@ -3067,8 +3073,8 @@ func TestACorpusFromTakesABatchAfterItsLoops(t *testing.T) {
 	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s\n", corpus, list))
 	var m corpusManifest
 	data, _ := os.ReadFile(filepath.Join(corpus, "corpus.json"))
-	if json.Unmarshal(data, &m) != nil || m.Loops != 3 {
-		t.Fatalf("corpus.json: %s, want 3 loops", data)
+	if json.Unmarshal(data, &m) != nil || m.Loops != 3 || m.Layout != audio.RipLayout {
+		t.Fatalf("corpus.json: %s, want 3 loops of layout %d", data, audio.RipLayout)
 	}
 	var sources []string
 	for i := range m.Loops {
@@ -3092,7 +3098,7 @@ func TestACorpusFromTakesABatchAfterItsLoops(t *testing.T) {
 	if slices.Sort(sources); !slices.Equal(sources, []string{"a.wav", "b.wav", "d.wav"}) {
 		t.Errorf("loops of %v, want a, b and d once each", sources)
 	}
-	frames, _ := filepath.Glob(filepath.Join(corpus, "*.mel"))
+	frames, _ := filepath.Glob(filepath.Join(corpus, "*.bands"))
 	stamps := map[string]time.Time{}
 	for _, name := range frames {
 		info, _ := os.Stat(name)
@@ -3123,6 +3129,77 @@ func TestACorpusFromTakesABatchAfterItsLoops(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "wrote the labels of 3 recording(s)") {
 		t.Errorf("labels did not say what it wrote:\n%s", out.String())
+	}
+}
+
+// TestACorpusFromListWhoseVelocitiesSayNothingAsksNone: a list's velocity
+// column holds a word for each recording: none labels every note and hit of it
+// at velocity -1, which asks the velocity head nothing, an empty cell at its
+// MIDI's, and a word velocityWords has no row for is refused, naming those it
+// has. Under labels the column's word labels a corpus heard before.
+func TestACorpusFromListWhoseVelocitiesSayNothingAsksNone(t *testing.T) {
+	dir := t.TempDir()
+	at := func(name string) string { return filepath.Join(dir, name) }
+	notes := []audio.RipNote{{Start: 0.2, End: 0.6, MIDI: 60, Vel: 0.8}, {Start: 0.9, End: 1.3, MIDI: 64, Vel: 0.4}}
+	hits := []audio.RipHit{{Start: 0.5, Drum: audio.InstrKick, Vel: 0.6}}
+	var mid bytes.Buffer
+	if err := audio.WriteMIDI(&mid, notes, hits, 120, audio.Meter{}); err != nil {
+		t.Fatal(err)
+	}
+	score, err := audio.ReadMIDI(bytes.NewReader(mid.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var midi []float64 // the MIDI's velocities as a label gives them: its notes', then its hits'
+	for _, n := range score.Notes {
+		midi = append(midi, n.Vel)
+	}
+	for _, h := range score.Hits {
+		midi = append(midi, h.Vel)
+	}
+	for _, name := range []string{"a", "b"} {
+		writeFile(t, at(name+".mid"), mid.String())
+		f, err := os.Create(at(name + ".wav"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		audio.WriteWAV(f, make([]float64, 2*audio.AudioSampleRate))
+		f.Close()
+	}
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	corpus := at("corpus")
+	velocities := func() map[string][]float64 { // each recording's label's velocities, in its order
+		got := map[string][]float64{}
+		for i := range 2 {
+			var l corpusLoop
+			data, _ := os.ReadFile(filepath.Join(corpus, fmt.Sprintf("loop_%03d.json", i)))
+			if err := json.Unmarshal(data, &l); err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range l.Events {
+				got[l.Source] = append(got[l.Source], e.Vel)
+			}
+		}
+		return got
+	}
+	none := slices.Repeat([]float64{-1}, len(midi))
+	for _, c := range []struct {
+		a, b, line, unheard string // the words, the line's last word and the recording whose velocities say nothing
+	}{{"none", "", "", "a.wav"}, {"", "none", " labels", "b.wav"}} {
+		writeFile(t, at("list.csv"), "audio_filename,midi_filename,velocity\na.wav,a.mid,"+c.a+"\nb.wav,b.mid,"+c.b+"\n")
+		runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s%s\n", corpus, at("list.csv"), c.line))
+		got, want := velocities(), map[string][]float64{"a.wav": midi, "b.wav": midi}
+		want[c.unheard] = none
+		if len(midi) != 3 || !maps.EqualFunc(got, want, slices.Equal) {
+			t.Errorf("a %q and b %q%s label velocities %v, want %v", c.a, c.b, c.line, got, want)
+		}
+	}
+	writeFile(t, at("list.csv"), "audio_filename,midi_filename,velocity\na.wav,a.mid,loud\nb.wav,b.mid,\n")
+	err = RunScript(s, strings.NewReader(fmt.Sprintf("corpus %s from %s labels\n", corpus, at("list.csv"))))
+	if err == nil || !strings.Contains(err.Error(), `velocity "loud": want none, or an empty cell`) {
+		t.Errorf("a word of no row: %v", err)
 	}
 }
 
@@ -4158,7 +4235,7 @@ func TestACorpusOfMetersLabelsItsBars(t *testing.T) {
 		return data
 	}
 	for i := range 4 { // the seed draws 4/4 for these, and 6/8 for the last
-		if !bytes.Equal(read(plain, i, ".json"), read(metered, i, ".json")) || !bytes.Equal(read(plain, i, ".mel"), read(metered, i, ".mel")) {
+		if !bytes.Equal(read(plain, i, ".json"), read(metered, i, ".json")) || !bytes.Equal(read(plain, i, ".bands"), read(metered, i, ".bands")) {
 			t.Errorf("4/4 loop %d differs with meters", i)
 		}
 	}

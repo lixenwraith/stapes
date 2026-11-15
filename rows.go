@@ -148,7 +148,7 @@ func (s *Session) rows(dir, from string, o tuneOptions, fe audio.RipFrontEnd, no
 				right++
 			}
 		}
-		if err := writeMel(base+".rows", rows); err != nil {
+		if err := writeRows(base+".rows", rows); err != nil {
 			return err
 		}
 		if err := writeJSON(base+".json", rec); err != nil {

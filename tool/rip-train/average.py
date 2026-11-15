@@ -1,12 +1,8 @@
-"""Merge a training round: average the models of runs that all started from one
---init into the next round's start and a weight file (README, Training in parallel):
+"""Merge a training round: average the models of runs that all started from one --init into the next round's
+start and a weight file (README, Training in parallel), or a .pt alone, its own mean, into its weight file:
 
     python3 average.py --pt round1.pt --out round1.bin shard0.pt shard1.pt shard2.pt
-
-One file is its own mean, so a .pt alone becomes its weight file:
-
-    python3 average.py --out ripnotes.bin pitchnet.pt
-"""
+    python3 average.py --out ripnotes.bin pitchnet.pt"""
 from __future__ import annotations
 
 import argparse
@@ -46,6 +42,8 @@ def main() -> None:
     cks = [torch.load(f, map_location="cpu") for f in args.files]
     want = None
     for f, ck in zip(args.files, cks):
+        if ck.get("layout") != ripmodels.LAYOUT:
+            raise SystemExit(ripmodels.refused(f, ck.get("layout")))
         if "cfg" not in ck:
             raise SystemExit(f"{f} records no model shape: not a checkpoint of this train.py")
         got = shape(ck)
@@ -67,7 +65,7 @@ def main() -> None:
     if args.sure and hasattr(model, "sure"):
         model.sure.fill_(args.sure)
     if args.pt:
-        torch.save({"model": model.state_dict(), "cfg": asdict(cfg)}, args.pt)
+        torch.save({"model": model.state_dict(), "layout": ripmodels.LAYOUT, "cfg": asdict(cfg)}, args.pt)
     model.eval()
     ripmodels.export(model, args.out)
     print(f"averaged {len(cks)} files, {cut} dropped at each end of each weight; wrote {' and '.join(f for f in (args.pt, args.out) if f)}")

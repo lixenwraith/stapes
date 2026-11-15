@@ -1,12 +1,11 @@
-"""The rip's models as PyTorch builds them, the twin of lixenwraith/audio/ripmodels and
-lixenwraith/transformer. The frame model, FrameModel: convolutions over the frames as an
-image, a linear input, pre-norm attention blocks with ALiBi biases over a window of frames,
-exact GELU feed-forwards, a final norm and one output layer whose slices are the heads;
-the notes model, PitchNet, below. export() writes the weight file lixenwraith/transformer
-loads, its tensor names and order.
-"""
+"""The rip's models as PyTorch builds them, the twin of lixenwraith/audio/ripmodels and lixenwraith/transformer: the
+frame model, FrameModel, convolutions over the frames as an image, a linear input, pre-norm attention blocks with ALiBi
+biases over a window of frames, exact GELU feed-forwards, a final norm and one output layer whose slices are the heads;
+the notes model, PitchNet, below; band_frames(), audio's BandFrames; and export(), the weight file
+lixenwraith/transformer loads, its tensor names and order."""
 from __future__ import annotations
 
+import functools
 import math
 import struct
 from dataclasses import asdict, dataclass, field
@@ -16,73 +15,156 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# lixenwraith/audio/ripmodels.FrameSpec, which a corpus manifest restates
-MEL_BANDS = 229
-INPUTS = MEL_BANDS + 1  # the bands over the frame's level, and the level
-# the pitches a model tells apart, from its lowest's MIDI number: the piano's keys, A0 to C8, for one built now
-# (audio's RipPiano), and E1 to C7 for every checkpoint and weight file that states none
-LOW, PITCHES = 21, 88
-OLD_LOW, OLD_PITCHES = 28, 69
+# the frames the models hear, lixenwraith/audio's band frames (BandFrames) of the layout RipLayout names, which a
+# corpus manifest, a checkpoint and a weight file state: BANDS bands three a semitone, band k at MIDI BAND_LOWEST + k/3,
+# a stored frame the fine plane's then the sharp plane's
+LAYOUT, LAYOUT_NAME = 1, "315 bands three a semitone from G#0, a fine plane and a sharp one"
+BANDS, BAND_LOWEST = 315, 20
+VALUES = 2 * BANDS
+INPUTS = BANDS + 1  # a plane of the models' input: its bands over the plane's level, and the level
+LOW, PITCHES = 21, 88  # the pitches the models tell apart, the piano's keys from A0 (audio's RipPiano)
 DRUMS = 3
 WAVES = 5
 VOICE_GENES = 32
 FAMILIES = ("piano", "guitar", "voice", "bass", "strings", "winds", "synth", "drums", "unknown")  # RipFamilies, in its order
 NAMES = len(FAMILIES) - 1  # the families a note may be named: unknown is the absence of a name, the last
 
+# the frame model's heads
+HEADS = [("onset", 1), ("drums", DRUMS), ("pitch", PITCHES), ("voicing", 1), ("wave", WAVES), ("voice", VOICE_GENES), ("strike", PITCHES),
+         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1)]
 
 
-def heads(pitches: int) -> list:
-    """the frame model's heads for so many pitches"""
-    return [("onset", 1), ("drums", DRUMS), ("pitch", pitches), ("voicing", 1), ("wave", WAVES), ("voice", VOICE_GENES), ("strike", pitches),
-            ("release", pitches), ("velocity", pitches), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1)]
+def refused(what: str, layout) -> str:
+    """why frames or weights of another layout, or of none, are refused, by this one's name"""
+    of = "no frame layout" if layout is None else f"frame layout {layout:g}"
+    return f"{what} states {of}, and these models hear layout {LAYOUT} ({LAYOUT_NAME})"
 
 
-HEADS = heads(PITCHES)
+# audio's rip rate, hop and window, its levels of the rate halved and the band whose bins fall three a semitone at
+# level 0 (ripBandLevels, ripLevelBand), a level's transform twice its window, and Resample's low-pass taps
+RATE, HOP, N = 22050, 256, 2048
+LEVELS, LEVEL_BAND, PAD, TAPS = 6, 158, 2, 31
+AHEAD = ((N // 2 + TAPS // 2) << (LEVELS - 1)) - TAPS // 2  # the samples past a frame's centre its longest window reads, RipBandsAhead
+
+
+def band_hz(k):
+    """the frequency of band k, a fraction between bands"""
+    return 440 * 2 ** ((BAND_LOWEST + np.asarray(k, np.float64) / 3 - 69) / 12)
+
+
+def band_level(k: int) -> int:
+    """the level the fine plane hears band k at: each level down serves the 36 bands under the one above"""
+    return min(max((LEVEL_BAND - k + 35) // 36, 0), LEVELS - 1)
+
+
+def _hann() -> np.ndarray:
+    return 0.5 - 0.5 * np.cos(2 * np.pi * np.arange(N) / N)
+
+
+def _power(x: np.ndarray) -> np.ndarray:
+    """the power spectrum of windows, a row each, through a transform PAD times their length"""
+    X = np.fft.rfft(x, N * PAD)
+    return X.real ** 2 + X.imag ** 2
+
+
+@functools.cache
+def _bands() -> tuple:
+    """each band of the fine plane then the sharp one, as (level, first bin, weights): a triangle from the band
+    under to the band over, a bin either side at least, scaled so a unit cosine at its centre reads one"""
+    out = []
+    for k, level in [(k, band_level(k)) for k in range(BANDS)] + [(k, 0) for k in range(BANDS)]:
+        rate = RATE / (1 << level)
+        bin, c = rate / (N * PAD), float(band_hz(k))
+        lo, hi = max(c - float(band_hz(k - 1)), bin), max(float(band_hz(k + 1)) - c, bin)
+        first = math.ceil((c - lo) / bin)
+        f = np.arange(first, min(int((c + hi) / bin), N * PAD // 2) + 1) * bin
+        w = np.where(f <= c, (f - c + lo) / lo, (c + hi - f) / hi)
+        unit = _power(np.cos(2 * np.pi * c * (np.arange(N) - N // 2) / rate) * _hann())
+        out.append((level, first, w / (w @ unit[first:first + len(w)])))
+    return tuple(out)
+
+
+def _halve(x: np.ndarray) -> np.ndarray:
+    """x through Resample's low-pass at half its rate, every other sample, as audio's resampler gives it of a whole
+    recording: each tap within the recording, the sum over all of them"""
+    t = np.arange(TAPS)
+    cutoff, w = 0.225, 0.5 - 0.5 * np.cos(2 * np.pi * t / (TAPS - 1))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        h = np.where(t == TAPS // 2, 2 * cutoff * w, np.sin(2 * np.pi * cutoff * (t - TAPS // 2)) / (np.pi * (t - TAPS // 2)) * w)
+    padded, acc, total = np.concatenate([np.zeros(TAPS // 2), x, np.zeros(TAPS // 2)]), np.zeros(len(x)), 0.0
+    for k, c in enumerate(h):  # in audio's order, so the samples are its own
+        acc += c * padded[k:k + len(x)]
+        total += c
+    return (acc / total)[:2 * (len(x) // 2):2]
+
+
+def band_energy(x: np.ndarray) -> np.ndarray:
+    """BandStream's energies of a recording at RATE, a row a frame on the rip's grid, frame t centred on sample
+    t*HOP: each band under its weights, the fine plane's at its level and the sharp plane's at level 0"""
+    levels, bands, hann = [np.asarray(x, np.float64)], _bands(), _hann()
+    for _ in range(1, LEVELS):
+        levels.append(_halve(levels[-1]))
+    frames, size = -(-len(x) // HOP), N * PAD // 2 + 1
+    out = np.zeros((frames, VALUES))
+    for j, y in enumerate(levels):
+        at = [i for i, (level, _, _) in enumerate(bands) if level == j]
+        weights = np.zeros((len(at), size))
+        for row, i in enumerate(at):
+            _, first, w = bands[i]
+            weights[row, first:first + len(w)] = w
+        padded = np.concatenate([np.zeros(N), y, np.zeros(N)])  # a window past either end reads silence
+        for t in range(0, frames, 512):
+            starts = (np.arange(t, min(t + 512, frames)) * HOP >> j) - N // 2 + N
+            out[t:t + len(starts), at] = _power(padded[starts[:, None] + np.arange(N)] * hann) @ weights.T
+    return out
+
+
+def band_frames(x: np.ndarray) -> np.ndarray:
+    """audio's BandFrames of a recording at RATE: each band's energy as log1p of a hundred times it, the recording's
+    peak at one"""
+    peak = float(np.abs(x).max()) if len(x) else 0.0
+    return np.log1p(100 * band_energy(x) / (peak * peak or 1.0)).astype(np.float32)
+
+
+def sine_response(hz: float) -> np.ndarray:
+    """the energy each band of both planes reads of a steady unit cosine at hz, one at a band's centre"""
+    bands, power, out = _bands(), {}, np.zeros(VALUES)
+    for i, (level, first, w) in enumerate(bands):
+        if level not in power:
+            power[level] = _power(np.cos(2 * np.pi * hz * (np.arange(N) - N // 2) / (RATE / (1 << level))) * _hann())
+        out[i] = w @ power[level][first:first + len(w)]
+    return out
 
 
 # the energy 80 dB under a full-scale sine's, where the model's logarithm floors
 FLOOR = 1e-8
 
 # PCEN, as lixenwraith/audio/ripmodels' constants
-FRAME_SEC = 256 / 22050
+FRAME_SEC = HOP / RATE
 PCEN_TIME, PCEN_GAIN, PCEN_BIAS, PCEN_POWER, PCEN_EPS = 0.4, 0.98, 2.0, 0.5, 1e-6
 
 
-# Harmonic input: both planes on a log-frequency axis of 36 bins an octave, from the semitone under a model's lowest
-# pitch to the one over its highest, read from the mel bands, one channel per harmonic with each pitch's harmonic at
-# the pitch's own bin
+# Harmonic input: each of the four planes a channel for each harmonic, the bands shifted so a pitch's harmonics lie at
+# its own bin, bin k band k, from the semitone under A0 to the one over C8, zero past the bands
 HARMONICS = (0.5, 1, 2, 3, 4, 5, 6, 7)
-STACK_CHANNELS = 16
+STACK_PLANES = 4
+STACK_CHANNELS = STACK_PLANES * len(HARMONICS)
 STACK_SHIFTS = tuple(round(36 * math.log2(h)) for h in HARMONICS)
+STACK_BINS = 3 * (PITCHES + 2)  # three a semitone, a cell either side of the pitches
 
 
-def stack_bins(pitches: int) -> int:
-    """the bins of the stack of so many pitches: three a semitone, a cell either side of them"""
-    return 3 * (pitches + 2)
-
-
-def _stack_axis(low: int, pitches: int):
-    """each long-axis bin's lower mel band, the upper band's weight, and whether a band covers it, for the stack of the pitches from low"""
-    mel = lambda f: 2595 * np.log10(1 + f / 700)
-    hz = lambda m: 700 * (10 ** (m / 2595) - 1)
-    centers = np.log(hz(mel(30.0) + (mel(11025.0) - mel(30.0)) * np.arange(1, MEL_BANDS + 1) / (MEL_BANDS + 1)))
-    n = stack_bins(pitches) + STACK_SHIFTS[-1] - STACK_SHIFTS[0]
-    f = np.log(440.0) + np.log(2.0) * ((low - 1 + (np.arange(n) + STACK_SHIFTS[0]) / 3 - 69) / 12)
-    b = np.clip(np.searchsorted(centers, f, side="right") - 1, 0, MEL_BANDS - 2)
-    return b, (f - centers[b]) / (centers[b + 1] - centers[b]), (f >= centers[0]) & (f < centers[-1])
-
-
-def features(mel: np.ndarray, channels: int = 1) -> np.ndarray:
-    """The model's input from log-mel frames as the corpus stores them, log1p(100 e):
-    each band's energy in dB over FLOOR less the frame's mean, and the mean itself,
-    both over 80 dB, so a frame's loudness is one input and the bands are level-free;
-    with two channels, each band's PCEN and their mean after them; as
-    lixenwraith/audio/ripmodels' features computes them"""
-    e = np.expm1(mel.astype(np.float64)) / 100
-    db = 10 * np.log10(e + FLOOR)
-    level = db.mean(axis=-1, keepdims=True)
-    out = [(db - level) / 80, (level + 80) / 80]
-    if channels == 2:
+def features(frames: np.ndarray, planes: int = 2) -> np.ndarray:
+    """The models' input from band frames as the corpus stores them, log1p(100 e): for the fine plane and then the
+    sharp one, each band's energy in dB over FLOOR less the plane's mean, and the mean, over 80 dB, so the bands are
+    level-free and a plane's loudness is one input; with four planes, each band's PCEN and their mean, the fine
+    plane's and then the sharp one's; as lixenwraith/audio/ripmodels' features computes them"""
+    e = np.expm1(frames.astype(np.float64)) / 100
+    out = []
+    for plane in (e[:, :BANDS], e[:, BANDS:]):
+        db = 10 * np.log10(plane + FLOOR)
+        level = db.mean(axis=-1, keepdims=True)
+        out += [(db - level) / 80, (level + 80) / 80]
+    if planes == 4:
         smooth = 1 - math.exp(-FRAME_SEC / PCEN_TIME)
         # a[t] = (1 - s) a[t-1] + s e[t] from a[0] = e[0], as one running sum over growing weights
         grow = (1 - smooth) ** -np.arange(len(e), dtype=np.float64)
@@ -90,14 +172,15 @@ def features(mel: np.ndarray, channels: int = 1) -> np.ndarray:
         run[0] = e[0] / smooth
         avg = smooth * np.cumsum(run, axis=0) / grow[:, None]
         p = (e / (PCEN_EPS + avg) ** PCEN_GAIN + PCEN_BIAS) ** PCEN_POWER - PCEN_BIAS ** PCEN_POWER
-        out += [p, p.mean(axis=-1, keepdims=True)]
+        for plane in (p[:, :BANDS], p[:, BANDS:]):
+            out += [plane, plane.mean(axis=-1, keepdims=True)]
     return np.concatenate(out, axis=-1).astype(np.float32)
 
 
 @dataclass
 class Config:
     inputs: int = INPUTS
-    channels: int = 1  # of inputs each, a frame laying them end to end
+    channels: int = 2  # of inputs each, a frame laying them end to end: a frame model's planes, two or four
     # (channels, frames, features, pool) each: a kernel centred on each frame
     # and feature, GELU, then the features max-pooled; none feeds the frames on
     convs: list = field(default_factory=list)
@@ -113,7 +196,6 @@ class Config:
     # the frames apart of each convolution over the cells after the near ones, PitchNet's alone
     dilations: tuple = ()
     cell: int = 32  # PitchNet's channels at each cell, its width
-    low: int = LOW  # the MIDI number of the lowest pitch the per-pitch heads score, as many as the pitch head is wide
 
     @property
     def pitches(self) -> int:
@@ -141,9 +223,8 @@ class Config:
 
 
 def shape(saved: dict) -> Config:
-    """the Config a checkpoint recorded: a setting newer than the checkpoint takes the value it was built with, which
-    for its lowest pitch is E1"""
-    return Config(**{**asdict(Config()), "low": OLD_LOW, **saved})
+    """the Config a checkpoint recorded: a setting newer than the checkpoint takes the value it was built with"""
+    return Config(**{**asdict(Config()), **saved})
 
 
 class Block(nn.Module):
@@ -213,9 +294,9 @@ class FrameModel(nn.Module):
             self.ln = nn.LayerNorm(cfg.dim)
             self.out = nn.Linear(cfg.dim, cfg.out_size)
 
-    def forward(self, mel: torch.Tensor) -> torch.Tensor:
-        """mel: B T channels*inputs → B T out_size, raw scores; the heads are slices."""
-        x = mel
+    def forward(self, planes: torch.Tensor) -> torch.Tensor:
+        """planes: B T channels*inputs → B T out_size, raw scores; the heads are slices."""
+        x = planes
         if self.cfg.convs:
             x = x.view(x.shape[0], x.shape[1], self.cfg.channels, self.cfg.inputs).transpose(1, 2)  # B C T F
             for conv, (_, _, _, pool) in zip(self.convs, self.cfg.convs):
@@ -237,7 +318,7 @@ class FrameModel(nn.Module):
 # states by name after its heads; the bins a cell net's regions pool after its long convolutions
 MAGIC = b"VIFT"
 VERSION, KIND_CELLS = 6, 1
-LOWEST = "lowest"  # the constant that states a model's lowest pitch, lixenwraith/audio/ripmodels.Lowest
+LAYOUT_CONSTANT = "layout"  # the constant that states the frames a model hears, lixenwraith/audio/ripmodels.Layout
 
 
 def _fnv64a(data: bytes) -> int:
@@ -271,22 +352,14 @@ class PitchNet(nn.Module):
 
     def __init__(self, cfg: Config):
         super().__init__()
-        self.cfg, self.bins = cfg, stack_bins(cfg.pitches)
-        # the frame's heads pool the bins the stack of E1 to C7 holds, where this one spans them: a model grown
-        # from that range keeps the frequencies its regions held
-        first, held = 3 * (OLD_LOW - cfg.low), stack_bins(OLD_PITCHES)
-        self.pool = (first, held) if 0 <= first and first + held <= self.bins else (0, self.bins)
-        b, w, ok = _stack_axis(cfg.low, cfg.pitches)
-        self.register_buffer("axis_band", torch.from_numpy(b), persistent=False)
-        self.register_buffer("axis_weight", torch.from_numpy(w).float(), persistent=False)
-        self.register_buffer("axis_ok", torch.from_numpy(ok).float(), persistent=False)
+        self.cfg, self.bins = cfg, STACK_BINS
         self.reduce = nn.Conv2d(STACK_CHANNELS, 8, 1)
         self.wide = nn.Conv2d(8, 16, (3, 39), padding=(1, 19))  # thirteen semitones
         self.cells = nn.Conv2d(16, cfg.cell, (7, 3), stride=(1, 3), padding=(3, 0))  # to one cell a semitone
         self.near = nn.Conv2d(cfg.cell, cfg.cell, (7, 3), padding=(3, 1))
         self.long = nn.ModuleList(nn.Conv2d(cfg.cell, cfg.cell, 3, padding=(d, 1), dilation=(d, 1)) for d in cfg.dilations)
         self.notes = nn.Conv2d(cfg.cell, sum(n for _, n in cell_heads(cfg)), 1)  # a channel for each value a cell head reads at a pitch
-        self.frame1 = nn.Conv1d(16 * 16 + 2, 64, 5, padding=2)
+        self.frame1 = nn.Conv1d(16 * 16 + STACK_PLANES, 64, 5, padding=2)  # the regions, then each plane's scalar
         self.frame2 = nn.Conv1d(64, 64, 9, padding=8, dilation=2)
         sizes = dict(cfg.outputs)
         self.frame = nn.Linear(64, sum(sizes[k] for k in ("onset", "drums", "voicing", "wave", "voice")))
@@ -294,30 +367,28 @@ class PitchNet(nn.Module):
             self.register_buffer("sure", torch.zeros(()))
 
     def stack(self, x: torch.Tensor) -> torch.Tensor:
-        """B T 2*(MEL_BANDS+1) -> B T STACK_CHANNELS*(bins+1): each plane by harmonic, each channel ending in the plane's scalar"""
-        chans, w = [], self.axis_weight
-        for plane in x.chunk(2, -1):
-            bands, scalar = plane[..., :MEL_BANDS], plane[..., MEL_BANDS:]
-            long = (bands[..., self.axis_band] * (1 - w) + bands[..., self.axis_band + 1] * w) * self.axis_ok
+        """B T STACK_PLANES*INPUTS -> B T STACK_CHANNELS*(bins+1): each plane by harmonic, bin k band k shifted, each
+        channel ending in the plane's scalar, as audio's stacked lays them"""
+        chans, lead = [], -STACK_SHIFTS[0]
+        for plane in x.chunk(STACK_PLANES, -1):
+            bands = F.pad(plane[..., :BANDS], (lead, self.bins + STACK_SHIFTS[-1] - BANDS))  # zero past the bands
             for sh in STACK_SHIFTS:
-                at = sh - STACK_SHIFTS[0]
-                chans += [long[..., at:at + self.bins], scalar]
+                chans += [bands[..., lead + sh:lead + sh + self.bins], plane[..., BANDS:]]
         return torch.cat(chans, -1)
 
-    def forward(self, mel: torch.Tensor) -> torch.Tensor:
-        B, T = mel.shape[:2]
-        x = self.stack(mel).view(B, T, STACK_CHANNELS, self.bins + 1).transpose(1, 2)  # B C T F
-        level, pcen = x[:, 0, :, self.bins], x[:, 8, :, self.bins]
+    def forward(self, planes: torch.Tensor) -> torch.Tensor:
+        B, T = planes.shape[:2]
+        x = self.stack(planes).view(B, T, STACK_CHANNELS, self.bins + 1).transpose(1, 2)  # B C T F
+        scalars = x[:, ::len(HARMONICS), :, self.bins]  # each plane's, its first channel's last
         x = F.gelu(self.reduce(x[..., :self.bins]))
         w = F.gelu(self.wide(x))
-        c = F.gelu(self.cells(F.pad(w, (1, 0))))  # cell j is centred on bin 3j, the semitone under the lowest pitch + j
+        c = F.gelu(self.cells(F.pad(w, (1, 0))))  # cell j is centred on bin 3j, the semitone under A0 + j
         c = F.gelu(self.near(c) + c)
         for layer in self.long:
             c = F.gelu(layer(c) + c)
         n = self.notes(c)[..., 1:self.cfg.pitches + 1]  # B channels T pitches
-        first, held = self.pool
-        f = F.adaptive_avg_pool2d(w[..., first:first + held], (T, 16)).transpose(2, 3).flatten(1, 2)  # B 16*16 T
-        f = torch.cat([f, level[:, None], pcen[:, None]], 1)
+        f = F.adaptive_avg_pool2d(w, (T, 16)).transpose(2, 3).flatten(1, 2)  # B 16*16 T
+        f = torch.cat([f, scalars], 1)
         f = F.gelu(self.frame1(f))
         f = self.frame(F.gelu(self.frame2(f) + f).transpose(1, 2))  # B T frame heads
         sizes = dict(self.cfg.outputs)
@@ -339,14 +410,10 @@ CELL_HEADS = (("pitch", 1), ("strike", 1), ("release", 1), ("velocity", 1), ("ce
 FRAME_HEADS = ("onset", "drums", "voicing", "wave", "voice")
 
 
-def pitchnet_heads(pitches: int) -> list:
-    """PitchNet's heads for so many pitches: those of the frame model's in its order but the frame's family, which
-    names one note of the frame, then the per-pitch heads the frame model has none of"""
-    return [h for h in heads(pitches) if h[0] in dict(CELL_HEADS) or h[0] in FRAME_HEADS] + \
-        [(k, n * pitches) for k, n in CELL_HEADS if k not in dict(HEADS)]
-
-
-PITCHNET_HEADS = pitchnet_heads(PITCHES)
+# PitchNet's heads: those of the frame model's in its order but the frame's family, which names one note of the frame,
+# then the per-pitch heads the frame model has none of
+PITCHNET_HEADS = [h for h in HEADS if h[0] in dict(CELL_HEADS) or h[0] in FRAME_HEADS] + \
+    [(k, n * PITCHES) for k, n in CELL_HEADS if k not in dict(HEADS)]
 
 
 def cell_heads(cfg: Config) -> list:
@@ -354,58 +421,26 @@ def cell_heads(cfg: Config) -> list:
     return [(k, n) for k, n in CELL_HEADS if k in dict(cfg.outputs)]
 
 
-SILENT = -10.0  # the bias a pitch new to a frame model's heads starts at: a sigmoid of 0.00005, under every bar read
-
-
-def places(had: Config, cfg: Config) -> tuple:
-    """where each score of had's output vector lies in cfg's, and the scores of cfg's that are pitches new to had's
-    heads: cfg's heads start with had's and its pitches hold had's, so a head goes to its new offset and each value of
-    a per-pitch head, a pitch after another, to its own pitch; ValueError where one does not grow into the other"""
-    up, names = had.low - cfg.low, [k for k, _ in cfg.outputs]
-    if [k for k, _ in had.outputs] != names[:len(had.outputs)] or up < 0 or up + had.pitches > cfg.pitches:
-        raise ValueError(f"heads {'+'.join(k for k, _ in had.outputs)} over MIDI {had.low} to {had.low + had.pitches - 1} do not grow into "
-                         f"{'+'.join(names)} over {cfg.low} to {cfg.low + cfg.pitches - 1}")
-    at, to, new = 0, [], []
-    for (k, n), (_, m) in zip(had.outputs, cfg.outputs):
-        per = n // had.pitches
-        if m == n:
-            to += range(at, at + n)
-        elif n == per * had.pitches and m == per * cfg.pitches:
-            kept = [at + v * cfg.pitches + up + p for v in range(per) for p in range(had.pitches)]
-            to, new = to + kept, new + sorted(set(range(at, at + m)) - set(kept))
-        else:
-            raise ValueError(f"head {k} of {n} scores does not grow into {m}")
-        at += m
-    return to, new
-
-
 def carried(model: nn.Module, had: Config, state: dict) -> dict:
-    """model's weights with those of a model of the shape had in their places (places): every weight they share whole;
-    of a frame model's output layers each row where its score now lies, a pitch new to a head silent; of a notes
-    model, whose weights are the same at every pitch, the notes convolution's channels of the heads it had"""
+    """model's weights with those of a model of the shape had, whose heads are the first of model's: every weight
+    they share whole, and of an output layer, or of a notes model's notes convolution, the rows of the heads it had,
+    a new head's rows fresh; ValueError where one does not grow into the other"""
     cfg, out = model.cfg, model.state_dict()
-    to, new = places(had, cfg)
-    layers = {}  # an output layer's name: the scores of had's and of cfg's output vectors before its first
-    if isinstance(model, FrameModel):
-        at = 0
-        for prefix, count in [(f"towers.{t}.", h) for t, (_, h) in enumerate(cfg.towers)] or [("", len(cfg.outputs))]:
-            layers[prefix + "out."] = tuple(sum(n for _, n in c.outputs[:at]) for c in (had, cfg))
-            at += count
+    if [tuple(h) for h in had.outputs] != [tuple(h) for h in cfg.outputs[:len(had.outputs)]]:
+        raise ValueError(f"heads {'+'.join(k for k, _ in had.outputs)} are not the first of {'+'.join(k for k, _ in cfg.outputs)}")
     for k, v in state.items():
-        base = k[:k.rfind(".") + 1]
-        if base in layers:
-            was, now = layers[base]
-            rows = torch.tensor(to[was:was + len(v)]) - now
-            fresh = torch.tensor([i - now for i in new if now <= i < now + len(out[k])], dtype=torch.long)
-            out[k][fresh] = 0.0 if v.dim() > 1 else SILENT
-            out[k][rows] = v
-        elif out[k].shape == v.shape:
+        if out[k].shape == v.shape:
             out[k] = v
         elif v.dim() and out[k].shape[1:] == v.shape[1:] and len(out[k]) > len(v):
-            out[k][:len(v)] = v  # the notes convolution: the channels of the heads it had
+            out[k][:len(v)] = v  # the rows of the heads it had, a head's rows after the last's
         else:
             raise ValueError(f"{k} is {tuple(v.shape)}, this run's {tuple(out[k].shape)}")
     return out
+
+
+def planes(cfg: Config) -> int:
+    """the planes of features a model hears: a frame model its channels, two or four, and a notes model all four"""
+    return STACK_PLANES if cfg.channels == STACK_CHANNELS else cfg.channels
 
 
 def build(cfg: Config) -> nn.Module:
@@ -429,18 +464,17 @@ def _cells_header(model: PitchNet) -> bytes:
     assert frame1.padding == (ft // 2,) and frame2.padding == (dil * (at // 2),)
     sizes, heads, bins, pitches = dict(model.cfg.outputs), cell_heads(model.cfg), model.bins, model.cfg.pitches
     assert all(sizes[k] == n * pitches for k, n in heads) and model.notes.out_channels == sum(n for _, n in heads)
-    scalars = (bins, 8 * (bins + 1) + bins)  # the level, the PCEN mean: channel 0's and 8's last
+    scalars = tuple(p * len(HARMONICS) * (bins + 1) + bins for p in range(STACK_PLANES))  # each plane's first channel's last
     regions = (frame1.in_channels - len(scalars)) // wide.out_channels
     assert regions * wide.out_channels + len(scalars) == frame1.in_channels
-    pool = (0, 0) if model.pool == (0, bins) else model.pool  # none stated is every bin
     v = (bins, model.reduce.out_channels, wide.out_channels, wt, wf, cells.out_channels, ct, cf, stride, len(nears), nt, nf,
          1, pitches, len(heads), regions, frame1.out_channels, ft, at, dil, len(scalars), *scalars,
-         len(model.long), *(layer.dilation[0] for layer in model.long), *pool)
+         len(model.long), *(layer.dilation[0] for layer in model.long), 0, 0)  # the regions pool every bin
     return struct.pack(f"<{len(v)}I", *v)
 
 
 def export(model: nn.Module, path: str) -> None:
-    """the weight file, which states the model's lowest pitch"""
+    """the weight file, which states the layout of the frames the model hears"""
     cfg = model.cfg
     body = bytearray(MAGIC)
     if isinstance(model, PitchNet):
@@ -469,7 +503,7 @@ def export(model: nn.Module, path: str) -> None:
     for name, size in heads:
         b = name.encode()
         body += struct.pack("<H", len(b)) + b + struct.pack("<I", size)
-    body += struct.pack("<IH", 1, len(LOWEST)) + LOWEST.encode() + struct.pack("<f", cfg.low)
+    body += struct.pack("<IH", 1, len(LAYOUT_CONSTANT)) + LAYOUT_CONSTANT.encode() + struct.pack("<f", LAYOUT)
     body += struct.pack("<I", len(ts))
     for name, t in ts:
         b = name.encode()

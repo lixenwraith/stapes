@@ -1044,7 +1044,7 @@ func (a *arranger) perform() {
 				}
 			}
 			db += rng.NormFloat64() * 1.2
-			n.vel = min(max(n.vel*gain*math.Pow(10, db/20), 0.03), 1)
+			n.vel = min(max(n.vel*gain*math.Pow(10, db/20), softest), 1)
 			n.at, n.dur = on+a.ms(feel+rng.NormFloat64()*k.jitter), off-on
 		}
 	}
@@ -1083,6 +1083,10 @@ func (a *arranger) glide(rng *rand.Rand) {
 
 // glideReach is the widest step in semitones a note bends into: a fifth
 const glideReach = 7
+
+// softest is the softest velocity the arranger plays a note at, an overlap's
+// single notes 30 dB under full at the softest
+const softest = 0.03
 
 // arrange writes a loop: its texture, each part's instrument and notes, played;
 // steady keeps its tempo, else it drifts beat by beat in seven loops of ten

@@ -46,8 +46,8 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    Data).
 2. The frame model's pitch: next for it, real recorded notes as voices of the
    corpus, from the sets the [data rule](../AGENTS.md#data) lets train; the
-   corpus's pedal varied by the bar; the constants tuned by `tune` against the
-   truths rather than swept by hand. Towers are tried once the heads compete
+   constants tuned by `tune` against the truths rather than swept by hand.
+   Towers are tried once the heads compete
    with the strike head. For a rip of live music: a bench of the loops through
    a phone mic, a room and crowd noise at 20 to 0 dB, the same chain in the
    corpus, and the live rip in the hands (`RipStream` is the library's; its
@@ -67,9 +67,11 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    formants now (`tool/rip-train/focus/vocal.toml` draws them), neither a
    gene, so the fit and the models' voice heads do not search them: genes for
    both once a corpus with them has trained, and a real vocal recording held
-   out. The analysis also leans on a lone oscillator starting every note at
-   phase 0: at random phases two lines on one instrument stop parting
-   (`TestRipTellsTheLeadByItsCharacter`), as a recording's would. Then the
+   out. The plucked focus's bass, a `string`, is given the bass's keys from A0,
+   under the E1 a string's line holds (`stringLowest`), so its notes there sound
+   off their labels. The analysis also leans on a lone oscillator starting
+   every note at phase 0: at random phases two lines on one instrument stop
+   parting (`TestRipTellsTheLeadByItsCharacter`), as a recording's would. Then the
    weights and a tuned parameter set shipped as data, `DefaultRipParams` kept
    for a recording nothing tuned for.
 3. A bass attack reads as a kick and a chord's attack as a snare in the analysis:
@@ -163,7 +165,8 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    and the analysis's two lines hold two, so the second line's eighths read as
    held notes. A model's strikes start every note struck however many ring;
    what the arrangement still lacks is a chord read per beat as the set of
-   ringing pitches, rendered as a pad under the lines.
+   ringing pitches, rendered as a pad under the lines. The corpus plays no
+   pedal: one that holds the notes, with labels that say so, is still to build.
 8. The fit as it fits a real lead: it picks modal voices where the user hears
    a plucked string (a harp or a santur) or a flute. A plucked voice
    (`string`) with a doubled, beating course, and the fit's samples cleared of

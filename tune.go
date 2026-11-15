@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"sort"
@@ -257,9 +258,9 @@ func bankMusic(slots [audio.MusicSlots]audio.PatternID, bpm, bars, root int, sca
 var bankKinds = [audio.MusicSlots]partKind{{name: slotRoles[0]}, {name: slotRoles[1], slot: 1}, {name: slotRoles[2], slot: 2}, {name: slotRoles[3], slot: 3}}
 
 // play is a loop of m as the label tells it and, unless o writes labels
-// alone, as it sounds: its tonal parts on the engine's voices, under aug of
-// random genes, or on the recorded notes where those have them, mixed, cut to
-// the loop, through a room, a mix and a codec where the words ask, at its level
+// alone, as it sounds: its tonal parts on the engine's voices, under aug
+// redrawn, or on the recorded notes that speak them, mixed, cut to the loop,
+// through a room, a mix and a codec where the words ask, at its level
 func (s *Session) play(o tuneOptions, i int, m *music, srng *rand.Rand) (tuneLoop, error) {
 	stream := func(salt uint64) *rand.Rand { return rand.New(rand.NewPCG(o.seed^salt, uint64(i)+1)) }
 	events := audio.ExpectedEvents(m.timeline, m.heads, m.root, m.scale, m.prog)
@@ -278,6 +279,7 @@ func (s *Session) play(o tuneOptions, i int, m *music, srng *rand.Rand) (tuneLoo
 	}
 	l := tuneLoop{texture: m.kind, bpm: m.heads[0].BPM, meter: m.heads[0].Meter, root: m.root, scale: m.scale}
 	var instrs []audio.InstrumentType
+	spans := map[audio.InstrumentType]span{}
 	var textures []string
 	for slot, ps := range m.parts {
 		for _, p := range ps {
@@ -311,9 +313,23 @@ func (s *Session) play(o tuneOptions, i int, m *music, srng *rand.Rand) (tuneLoo
 			}
 			if p.sample != nil {
 				l.sampled++
-			} else {
-				instrs = append(instrs, p.instr)
+				continue
 			}
+			instrs = append(instrs, p.instr)
+			sp, ok := spans[p.instr]
+			for _, e := range notes(p) {
+				if !ok || e.MIDI < sp.lo {
+					sp.lo = e.MIDI
+				}
+				if !ok || e.MIDI > sp.hi {
+					sp.hi = e.MIDI
+				}
+				if !ok || e.For < sp.shortest {
+					sp.shortest = e.For
+				}
+				ok = true
+			}
+			spans[p.instr] = sp
 		}
 	}
 	if m.kind == "arranged" {
@@ -323,7 +339,7 @@ func (s *Session) play(o tuneOptions, i int, m *music, srng *rand.Rand) (tuneLoo
 	if o.glide {
 		sway = stream(0x73776179)
 	}
-	voices, families, restore := s.loopVoices(instrs, o.aug, arng, sway, !o.labels)
+	voices, families, restore := s.loopVoices(instrs, spans, o.aug, arng, sway, !o.labels)
 	defer restore()
 	l.voices, l.families = voices, families
 	if o.aug {
@@ -333,14 +349,13 @@ func (s *Session) play(o tuneOptions, i int, m *music, srng *rand.Rand) (tuneLoo
 	n := starts[len(starts)-1]
 	ends := map[int]int{}
 	var lines [][]float64
-	pedal := srng != nil && srng.Float64() < 1.0/3
 	cache := map[sampleKey][]float64{}
 	for _, ps := range m.parts {
 		for _, p := range ps {
 			if p.sample == nil {
 				continue
 			}
-			at, x, err := o.samples.play(p.sample, notes(p), n, l.tuning, pedal && p.kind.name != "bass" && p.kind.name != slotRoles[3], cache, !o.labels)
+			at, x, err := o.samples.play(p.sample, notes(p), n, l.tuning, cache, !o.labels)
 			if err != nil {
 				return l, err
 			}
@@ -496,9 +511,9 @@ func loopFrames(n int) int {
 	return (n*audio.RipRate/audio.AudioSampleRate + audio.RipHop - 1) / audio.RipHop
 }
 
-// loudest is the RMS of x's loudest window of loopWindow, its hop half that
-func loudest(x []float64) float64 {
-	w := min(int(loopWindow*audio.AudioSampleRate), len(x))
+// loudest is the RMS of x's loudest window of sec seconds, its hop half that
+func loudest(x []float64, sec float64) float64 {
+	w := min(int(sec*audio.AudioSampleRate), len(x))
 	var best float64
 	for i := 0; i+w <= len(x); i += max(w/2, 1) {
 		var e float64
@@ -514,7 +529,7 @@ func loudest(x []float64) float64 {
 // RMS between loopQuiet and loopLoud dBFS, lowered where its peak would pass
 // loopPeak, and a peak that would hold it under loopQuiet bent down to it
 func level(x []float64, rng *rand.Rand) {
-	r := loudest(x)
+	r := loudest(x, loopWindow)
 	if r == 0 {
 		return
 	}
@@ -541,7 +556,7 @@ func level(x []float64, rng *rand.Rand) {
 // which hold nothing over their 8 kHz: white noise over 7.5 kHz, 45 to 65 dB
 // under the loop's loudest window
 func air(x []float64, rng *rand.Rand) {
-	g := loudest(x) * math.Pow(10, -(45+20*rng.Float64())/20)
+	g := loudest(x, loopWindow) * math.Pow(10, -(45+20*rng.Float64())/20)
 	a := math.Exp(-2 * math.Pi * sampledTop / audio.AudioSampleRate)
 	var lp1, lp2 float64
 	for i := range x {
@@ -552,18 +567,19 @@ func air(x []float64, rng *rand.Rand) {
 	}
 }
 
+// span is what an instrument plays in a loop: its lowest and highest keys, and
+// its shortest note in samples
+type span struct{ lo, hi, shortest int }
+
 // loopVoices is the voice each tonal instrument plays with and the family it
-// sounds as: the registered one, or under aug one of random genes near it, a
-// third of the time on another wave, a third of the loops under a piano's pedal;
-// sway gives three in ten a vibrato; restore puts the registered ones back. A
-// loop not rendered registers none: the mixer refuses one past its queue.
-func (s *Session) loopVoices(instrs []audio.InstrumentType, aug bool, rng, sway *rand.Rand, render bool) (map[string]*audio.VoiceDef, map[string]int, func()) {
+// sounds as: the registered one, or under aug one redrawn from it for the keys
+// it plays; either speaks within the shortest note it plays, sway gives three
+// in ten a vibrato, and restore puts the registered ones back. A loop not
+// rendered registers none: the mixer refuses one past its queue.
+func (s *Session) loopVoices(instrs []audio.InstrumentType, spans map[audio.InstrumentType]span, aug bool, rng, sway *rand.Rand, render bool) (map[string]*audio.VoiceDef, map[string]int, func()) {
 	voices, families, known := map[string]*audio.VoiceDef{}, map[string]int{}, familyVoices()
+	registered := audio.RegisteredVoices() // read before a loop redraws any under its name
 	var originals []*audio.VoiceDef
-	pedal := 1.0 // the labels stay the notes as played, however long they ring
-	if aug && rng.Float64() < 1.0/3 {
-		pedal = 3 + rng.Float64()*7
-	}
 	for _, instr := range instrs {
 		if instr.IsDrum() {
 			continue
@@ -575,30 +591,25 @@ func (s *Session) loopVoices(instrs []audio.InstrumentType, aug bool, rng, sway 
 		}
 		voices[name], families[name] = v, voiceFamily(known, name, v)
 		play, family := v, families[name]
+		sp := spans[instr]
+		if sp.hi == 0 { // none given: all the arranger gives its family
+			keys := familyKeys(name)
+			sp.lo, sp.hi = keys[0], keys[1]
+		}
 		if aug {
-			genes := v.Genes()
-			for i := range genes {
-				genes[i] = min(max(genes[i]+rng.NormFloat64()*0.15, 0), 1)
-			}
-			wave := cmp.Or(v.Wave, "sine")
-			if rng.Float64() < 0.3 {
-				wave = audio.VoiceWaves[rng.IntN(len(audio.VoiceWaves))]
-			}
-			r := audio.VoiceFromGenes(wave, genes)
-			// measured before the pedal: its long release is the player's, not the instrument's
+			r, _, driven := redraw(v, registered, sp, rng)
 			heard := voiceFamily(known, name, r)
-			if rng.Float64() < 0.15 { // distorted, as a guitar through an amp
-				r.Drive, r.Level = 2+rng.Float64()*14, r.Level*0.6
+			if driven {
 				heard = familyIndex("unknown")
 			}
-			if instr != audio.InstrBass {
-				r.Release = min(r.Release*pedal, 3)
-			}
-			r.VibratoHz, r.VibratoCents, r.VibratoDelay, r.Vowel = v.VibratoHz, v.VibratoCents, v.VibratoDelay, v.Vowel // not genes; kept from the registered voice
-			r.Name = name
 			if audio.ValidateVoice(r) == nil {
 				play, family = r, heard
 			}
+		}
+		if at := float64(sp.shortest) / audio.AudioSampleRate; sp.shortest > 0 && play.Attack > at {
+			c := *play
+			c.Attack = at
+			play = &c
 		}
 		// a string and a modal bank hold their pitch, and a voice's own vibrato stays
 		if w := cmp.Or(play.Wave, "sine"); sway != nil && sway.Float64() < 0.3 && w != "string" && w != "modal" && play.VibratoHz == 0 {
@@ -626,6 +637,206 @@ func (s *Session) loopVoices(instrs []audio.InstrumentType, aug bool, rng, sway 
 		}
 	}
 }
+
+// The kinds of wave by the parameters they play: the oscillators share theirs
+const (
+	kindOsc = 1 << iota
+	kindString
+	kindModal
+	kindAll = kindOsc | kindString | kindModal
+)
+
+func waveKind(wave string) int {
+	switch wave {
+	case "string":
+		return kindString
+	case "modal":
+		return kindModal
+	}
+	return kindOsc
+}
+
+// stringLowest is the lowest key a string sounds: its line holds E1's period
+// at the longest
+const stringLowest = 28
+
+// redraws is how a redraw moves each of a voice's parameters, by toml key, the
+// vibrato, the vowel and the level aside: the kinds of wave that play it, and
+// the most the logarithm of a value the voice sets moves, drawn evenly within
+// it either way or, up, only up; a count is rounded back and 0 keeps a value as
+// set. A value left unset stays unset; the amp's draw alone sets a drive.
+var redraws = []struct {
+	key   string
+	kinds int
+	by    float64
+	up    bool
+}{
+	{"unison", kindOsc, 0, false},
+	{"detune", kindOsc, 0.003, false}, // near 1, so its spread moves by up to 0.003
+	{"sub", kindAll, 0, false},
+	{"fm_ratio", kindOsc, 0, false},
+	{"fm_index", kindOsc, 0, false},
+	{"fm_decay", kindOsc, 0, false},
+	{"bright", kindString | kindModal, math.Ln2 / 4, false},
+	{"ring", kindString, math.Ln2 / 2, false},
+	{"partials", kindModal, math.Ln2 / 3, false},
+	{"strike_pos", kindString | kindModal, math.Ln2 / 4, false},
+	{"tilt", kindModal, math.Ln2 / 3, false},
+	{"inharm", kindModal, math.Ln2, false},
+	{"inharm_track", kindModal, math.Ln2 / 3, false},
+	{"decay_time", kindModal, math.Ln2, false},
+	{"decay_track", kindString | kindModal, math.Ln2 / 6, false},
+	{"damp_hz", kindModal, math.Ln2 / 2, false},
+	{"pair", kindModal, math.Ln2 / 2, false},
+	{"pair_level", kindModal, math.Ln2 / 2, false},
+	{"pair_slow", kindModal, math.Ln2 / 2, false},
+	{"hammer_hz", kindString | kindModal, math.Ln2 / 4, false},
+	{"knock", kindModal, math.Ln2 / 2, false},
+	{"cutoff", kindAll, math.Ln2 / 4, false},
+	{"key_track", kindAll, math.Ln2 / 6, false},
+	{"env_amount", kindAll, math.Ln2 / 2, false},
+	{"env_decay", kindAll, math.Ln2 / 2, false},
+	{"q", kindAll, math.Ln2 / 3, false},
+	{"attack", kindAll, math.Ln2, false},
+	{"decay", kindOsc, math.Ln2, false},
+	{"sustain", kindOsc, math.Ln2 / 3, false},
+	{"release", kindAll, math.Ln2 / 2, true}, // a damper no quicker, lest it cut a low note's period
+	{"drive", kindAll, math.Ln2 / 2, false},
+}
+
+// levelBy is the most the logarithm of a redrawn voice's level moves from the
+// level that keeps its registered voice's loudness: 3 dB
+const levelBy = math.Ln10 * 3 / 20
+
+// redrawFields is each redraws row's field in a VoiceDef
+var redrawFields = sync.OnceValue(func() []int {
+	t, out := reflect.TypeFor[audio.VoiceDef](), make([]int, len(redraws))
+	for i, m := range redraws {
+		out[i] = slices.IndexFunc(reflect.VisibleFields(t), func(f reflect.StructField) bool {
+			name, _, _ := strings.Cut(f.Tag.Get("toml"), ",")
+			return name == m.key
+		})
+	}
+	return out
+})
+
+// redraw is a voice near v in sound, the registered voice it was drawn from, and
+// whether the amp drives it: v, or in three of ten one on a wave drawn among
+// v's and those of the registered voices the arranger gives sp's keys, such a
+// voice standing for v on another wave. Each parameter it sets and its wave
+// plays moves by redraws' row in its gene's range; its level keeps its loudness.
+func redraw(v *audio.VoiceDef, registered []*audio.VoiceDef, sp span, rng *rand.Rand) (*audio.VoiceDef, *audio.VoiceDef, bool) {
+	from := v
+	r := *v
+	if rng.Float64() < 0.3 {
+		waves, donors := []string{cmp.Or(v.Wave, "sine")}, map[string][]*audio.VoiceDef{}
+		for _, d := range registered {
+			w, keys := cmp.Or(d.Wave, "sine"), familyKeys(d.Name)
+			if w != waves[0] && keys[0] <= sp.lo && sp.hi <= keys[1] && (w != "string" || sp.lo >= stringLowest) {
+				if donors[w] == nil {
+					waves = append(waves, w)
+				}
+				donors[w] = append(donors[w], d)
+			}
+		}
+		if of := donors[waves[rng.IntN(len(waves))]]; len(of) > 0 {
+			from = of[rng.IntN(len(of))]
+			r = *from
+		}
+	}
+	r.Name = v.Name
+	val, kind := reflect.ValueOf(&r).Elem(), waveKind(r.Wave)
+	var moved []int
+	for i, m := range redraws {
+		f := val.Field(redrawFields()[i])
+		if m.by == 0 || m.kinds&kind == 0 || f.IsZero() {
+			continue
+		}
+		u := 2*rng.Float64() - 1
+		if m.up {
+			u = (u + 1) / 2
+		}
+		g := math.Exp(m.by * u)
+		if f.Kind() == reflect.Int {
+			f.SetInt(int64(math.Round(float64(f.Int()) * g)))
+		} else {
+			f.SetFloat(f.Float() * g)
+		}
+		moved = append(moved, i)
+	}
+	held := reflect.ValueOf(audio.VoiceFromGenes(r.Wave, r.Genes())).Elem()
+	for _, i := range moved {
+		val.Field(redrawFields()[i]).Set(held.Field(redrawFields()[i]))
+	}
+	driven := rng.Float64() < 0.15 // distorted, as a guitar through an amp
+	if driven {
+		r.Drive = 2 + rng.Float64()*14
+	}
+	// as loud as from where from is loudest over its keys, struck hard, and
+	// moved no further than keeps its quietest key within levelBy of from's: a
+	// voice that cannot is laid halfway between
+	ex := extremes(from)
+	base := math.Log(ex.atLoud / loudness(&r, ex.loud))
+	d := base + math.Log(loudness(&r, ex.quiet)/ex.atQuiet)
+	lo, hi := max(-levelBy, -levelBy-d), min(levelBy, levelBy-d)
+	m := (lo + hi) / 2
+	if lo < hi {
+		m = lo + (hi-lo)*rng.Float64()
+	}
+	r.Level = min(max(cmp.Or(r.Level, 1)*math.Exp(base+m), 0.1), 2)
+	return &r, from, driven
+}
+
+// familyKeys is the lowest and highest keys the arranger gives a voice's family,
+// a voice it does not know playing all of them
+func familyKeys(name string) [2]int {
+	if r, ok := familyRanges[voiceFamilies[name]]; ok {
+		return r
+	}
+	return familyRanges["unknown"]
+}
+
+// loudness is the loudest window of sampledWindow of v's note at key struck
+// hard, with no rise and a stack's oscillators one, whose phases would beat:
+// what a redraw holds a voice's level by
+func loudness(v *audio.VoiceDef, key int) float64 {
+	c := *v
+	c.Attack, c.Unison = 0, min(c.Unison, 1)
+	return max(loudest(audio.RenderNote(&c, key, 1, 0.06, 0), sampledWindow), 1e-12)
+}
+
+// extreme is where a registered voice is loudest and quietest over a run of keys
+type extreme struct {
+	loud, quiet     int
+	atLoud, atQuiet float64
+}
+
+// extremes is a registered voice's loudest and quietest keys among those the
+// arranger gives its family, a string's from stringLowest, kept by its
+// definition, which a corpus asks of each loop's redraws
+func extremes(v *audio.VoiceDef) extreme {
+	if e, ok := extremesOf.Load(*v); ok {
+		return e.(extreme)
+	}
+	keys := familyKeys(v.Name)
+	if v.Wave == "string" {
+		keys[0] = max(keys[0], stringLowest)
+	}
+	var e extreme
+	for k := keys[0]; k <= keys[1]; k++ {
+		l := loudness(v, k)
+		if k == keys[0] || l > e.atLoud {
+			e.loud, e.atLoud = k, l
+		}
+		if k == keys[0] || l < e.atQuiet {
+			e.quiet, e.atQuiet = k, l
+		}
+	}
+	extremesOf.Store(*v, e)
+	return e
+}
+
+var extremesOf sync.Map
 
 // voiceFamilies is the family each of the engine's voices plays as, by name: the
 // bank's and those tool/rip-train/focus adds
@@ -1658,7 +1869,7 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	}
 	how := "as rendered"
 	if o.aug {
-		how = "through a room, a mix, voices of random genes and a tuning off A440"
+		how = "through a room, a mix, voices redrawn near the registered ones and a tuning off A440"
 	}
 	if arranged > 0 {
 		how += fmt.Sprintf(", %d arranged over the keyboard", arranged)

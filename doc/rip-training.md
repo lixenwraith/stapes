@@ -187,7 +187,9 @@ of corpus:
   Each tonal part plays on NSynth's recorded notes with a chance of a half, an
   overlap's instruments are drawn among the recorded ones and the engine's alike, and
   a part on a recorded instrument keeps to the pitches within 3 semitones of a note
-  it has, each shifted at most that far and cut at its note-off by a 60 ms fade.
+  it has, each shifted at most that far and cut at its note-off by a 60 ms fade, and
+  to an instrument whose recordings speak, within 6 dB of their loudest 50 ms, before
+  each note is let go.
   NSynth is recorded at 16 kHz, so a recorded note holds nothing over 8 kHz, where 17
   of the 315 bands' centres lie, the top one at 10,962 Hz. Where the engine plays
   beside it, its voices, drums and room fill those bands; a loop of recorded notes

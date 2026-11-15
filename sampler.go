@@ -27,6 +27,7 @@ const (
 	sampledHalf   = 29    // the low-pass's half width in source samples: 60 dB by 8 kHz
 	sampledPhases = 512   // the low-pass's table steps a source sample
 	sampledWindow = 0.050 // seconds a note's level is measured over, its loudest held window
+	sampledSpeak  = 6     // dB under its loudest window a note has spoken by
 )
 
 // sampleNote is one recorded note on disk, its velocity layer
@@ -62,11 +63,12 @@ type sampleSet struct {
 	read        map[string]heard
 }
 
-// heard is what a set has read of a recorded note: its samples, and its loudest
-// held window's RMS, 0 for one that does not sound or does not decode as NSynth's
+// heard is what a set has read of a recorded note: its samples, its loudest
+// held window's RMS, 0 for one that does not sound or does not decode as
+// NSynth's, and the samples it takes to speak
 type heard struct {
-	n     int
-	level float64
+	n, speak int
+	level    float64
 }
 
 func loadSampleSet(dir string) (*sampleSet, error) {
@@ -145,7 +147,8 @@ func (in *sampleInstr) layer(pitch int, vel float64) sampleNote {
 }
 
 // fits says whether a recorded instrument plays every note: each in reach of
-// a recorded pitch, its layer one that sounds
+// a recorded pitch, its layer one that sounds and that speaks before the note
+// is let go, shifted as play shifts it, the loop's tuning (under 3%) aside
 func (set *sampleSet) fits(in *sampleInstr, notes []audio.RipEvent) (bool, error) {
 	for _, e := range notes {
 		pitch := in.nearest(e.MIDI)
@@ -153,15 +156,16 @@ func (set *sampleSet) fits(in *sampleInstr, notes []audio.RipEvent) (bool, error
 			return false, nil
 		}
 		h, err := set.heard(in.layer(pitch, e.Vel).file)
-		if err != nil || h.level == 0 {
+		if err != nil || h.level == 0 || e.For < shiftedLen(h.speak, math.Exp2(float64(e.MIDI-pitch)/12)) {
 			return false, err
 		}
 	}
 	return true, nil
 }
 
-// heard reads a recorded note once for the set: its length, and its loudest
-// held window's RMS, 0 under the floor or for a file that is not NSynth's
+// heard reads a recorded note once for the set: its length, what listen hears
+// of its held part, its level 0 under the floor or for a file that is not
+// NSynth's
 func (set *sampleSet) heard(file string) (heard, error) {
 	set.mu.Lock()
 	defer set.mu.Unlock()
@@ -172,20 +176,33 @@ func (set *sampleSet) heard(file string) (heard, error) {
 	if err != nil {
 		return heard{}, err
 	}
-	h := heard{n: len(x)}
-	n, held := int(sampledWindow*nsynthRate), min(len(x), int(nsynthHold*nsynthRate))
-	for i := 0; i+n <= held; i += n / 2 {
-		var e float64
-		for _, v := range x[i : i+n] {
-			e += v * v
-		}
-		h.level = max(h.level, math.Sqrt(e/float64(n)))
-	}
+	h := listen(x[:min(len(x), int(nsynthHold*nsynthRate))], nsynthRate)
+	h.n = len(x)
 	if h.level <= math.Pow(10, sampledFloor/20.0) {
 		h.level = 0
 	}
 	set.read[file] = h
 	return h, nil
+}
+
+// listen is a note's loudest window of sampledWindow at rate, its hop half
+// that, and the samples it takes to speak: to the middle of its first window
+// within sampledSpeak of the loudest
+func listen(x []float64, rate int) heard {
+	var h heard
+	n := int(sampledWindow * float64(rate))
+	var rms []float64
+	for i := 0; i+n <= len(x); i += n / 2 {
+		var e float64
+		for _, v := range x[i : i+n] {
+			e += v * v
+		}
+		rms = append(rms, math.Sqrt(e/float64(n)))
+		h.level = max(h.level, rms[len(rms)-1])
+	}
+	first := slices.IndexFunc(rms, func(r float64) bool { return r >= h.level*math.Pow(10, -sampledSpeak/20.0) })
+	h.speak = (first + 1) * (n / 2)
+	return h
 }
 
 // readNote is a recorded note's samples, none for one that does not decode
@@ -212,9 +229,9 @@ type sampleKey struct {
 // play renders a part's notes on an instrument's recordings, each at the layer
 // nearest its velocity, shifted from the nearest recorded pitch, its own level
 // taken out and its velocity put in: a note held past its sample's hold ends
-// there, a shorter one is cut at its note-off into the release, or under the
-// pedal rings on uncut, labelled as played. It returns each note's end sample.
-func (set *sampleSet) play(in *sampleInstr, notes []audio.RipEvent, n int, cents float64, pedal bool, cache map[sampleKey][]float64, render bool) ([]int, []float64, error) {
+// there, a shorter one is cut at its note-off into the release. It returns each
+// note's end sample.
+func (set *sampleSet) play(in *sampleInstr, notes []audio.RipEvent, n int, cents float64, cache map[sampleKey][]float64, render bool) ([]int, []float64, error) {
 	sr := float64(audio.AudioSampleRate)
 	var out []float64
 	if render {
@@ -256,7 +273,7 @@ func (set *sampleSet) play(in *sampleInstr, notes []audio.RipEvent, n int, cents
 				out[i] += v * e.Vel
 			}
 		}
-		if pedal || cut+fade >= hold {
+		if cut+fade >= hold {
 			for i, v := range x {
 				put(i, v)
 			}

@@ -23,6 +23,9 @@ proves wrong or that a document now states, and link the document instead.
   also take under a minute, enough to exercise the whole training path.
 - Build the binary from `./cmd/stapes`: `go build -o bin/stapes .` writes the
   library's archive under that name, which then refuses to run.
+- An untyped integer constant divides as an integer: with `sampledSpeak = 6`,
+  `math.Pow(10, -sampledSpeak/20)` is `math.Pow(10, 0)`. Write `20.0`, as
+  `sampledFloor/20.0` does; nothing warns.
 - A phrase in the docs wraps, so count one over the whole file, `\s+` between
   its words: `perl -0777 -ne 'print scalar(() = /\b[Tt]he\s+model\b/g)'` over
   v0.24.0's tree counts 26 where `git grep` by line found 20.
@@ -477,6 +480,22 @@ proves wrong or that a document now states, and link the document instead.
 - A change that must not move the corpus or the bench is read before and after
   with an empty root and `XDG_CONFIG_HOME`: the hash of `corpus <dir> 24 4 aug
   gen meters overlaps nowav`'s files, `bench 12 4` and `bench 24 16 meters`.
+- A gene at its range's floor is not near the voice: an unset parameter reads
+  as gene 0, so a draw about it held to 0..1 can only raise it, and turned a
+  sub, a filter or FM on in half the redraws. `VoiceFromGenes(w, v.Genes())`
+  builds an unset field back at its range's floor (`cutoff` 50 Hz, `ring` 0.05 s,
+  a bank of a few partials), so a voice moved to another wave by its genes is a
+  click. `redraw` moves a set field by its row of `redraws` and takes back from
+  the round trip only the fields it moved; a new wave's fields are a registered
+  voice's of it.
+- A redraw sets its level by two notes of 0.06 s it renders (`loudness`), and a
+  labels pass draws every loop's voices: the 2,000 loops of `corpus <dir> 2000 4
+  gen meters overlaps aug glide labels` take 3.6 s, half of it those notes.
+- `onPitch` reads A0 played 70 ms as two periods through the damper, its share
+  moving from 0.88 to 0.98 as its window's start moves 20 ms. The lowest of
+  thousands of redraws scattered around five voices falls under the lowest of
+  the five (33 of 36,400 did, all A0 at 70 ms, down to 0.940), so the rule's
+  bound sits halfway in dB between their lowest and an even split.
 
 ## Training rounds
 

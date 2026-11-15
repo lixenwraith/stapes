@@ -238,7 +238,7 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   was played with. Labels cost nothing and are exact. What it lacks, in order of
   need: a mix, a room and a codec between the render and the frames (impulse
   convolution, noise, equalisation, a low-pass), voices beyond the shipped five
-  (random genes), chance steps as optional targets, and real recordings with
+  (redrawn near them), chance steps as optional targets, and real recordings with
   hand-checked notes held out for validation, so neither a model nor a tuned set
   learns the synthesizer. The generative lead is left out: the sequencer writes
   its notes bar by bar as it plays, so no label read off the pattern holds them.
@@ -257,11 +257,20 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   thickened with, which piles harmonics on every note and sum and difference
   tones between notes, for half a compressor, a booth's Schroeder reverb or for
   a third a hall's, and for half a noise floor 40 to 65 dB down, a loop past
-  full scale turned down rather than clipped. It redraws each tonal track's
-  voice near the registered one, a third of the time on another wave, in a
-  third of the loops with every release but the bass's three to ten times as
-  long, a pedal's ringing, all labelled as played, and renders the loop off
-  A440 by up to a quarter tone either way (`SetTuning`), since recordings are.
+  full scale turned down rather than clipped. It redraws each tonal part's
+  voice near the registered one in sound, not in genes (`redraw`): a parameter
+  the voice sets and its wave plays moves within its row of `redraws`, a damper
+  only lengthened, and one it leaves unset stays unset; about one in six stands
+  on another wave as a registered voice of that wave whose family plays the
+  part's keys, the voice's parameters that voice's and not the genes' floors;
+  its level keeps its registered voice's loudness at that voice's loudest and
+  quietest keys within 3 dB, and it rises within the part's shortest note, as
+  every loop's voices do, augmented or not. So a note sounds as its label says:
+  on its pitch, as loud as its velocity, spoken before it is let go, each a
+  test's rule. No pedal holds a note on past its label's end, since that ring
+  is a held key's sound and taught two answers for one ([todo](todo.md) item 7
+  holds the pedal that would say so). It renders the loop off A440 by up to a
+  quarter tone either way (`SetTuning`), since recordings are.
   Every loop, augmented or not, is laid at a level drawn between -32 and -14
   dBFS. `gen` arranges every loop in place of the bank's patterns, since the
   bank alone repeats its few melodies and a model trained on it learns them,

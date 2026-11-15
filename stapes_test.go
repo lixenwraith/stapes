@@ -3532,15 +3532,78 @@ func TestFilesOverlayLoadsRipsAndSavesHere(t *testing.T) {
 	}
 }
 
-// TestCorpusAugmentsAndLabelsTheVoices: an augmented corpus plays each loop's
-// tonal tracks through voices of random genes near the registered ones and
-// labels the events with those genes and the family each sounds as, a voice it
-// drives unknown, the registered voices are as they were afterwards, and the
-// audio is not the clean render.
-func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
+// TestARedrawMovesWhatItsVoicePlays: a redraw sets what its registered voice, or
+// a registered voice of another wave that plays the span, sets and its wave
+// plays, each within its row's reach, the amp's drive the one added; a corpus
+// so augmented labels the voices and families it played, a driven one unknown,
+// renders off the clean audio and A440 and puts the registered voices back.
+func TestARedrawMovesWhatItsVoicePlays(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
+	registered := audio.RegisteredVoices()
+	fields, row := reflect.VisibleFields(reflect.TypeFor[audio.VoiceDef]()), map[int]int{}
+	for i, f := range redrawFields() {
+		row[f] = i
+	}
+	number := func(v reflect.Value) float64 {
+		if v.Kind() == reflect.Int {
+			return float64(v.Int())
+		}
+		return v.Float()
+	}
+	held := func(v audio.VoiceDef, f int, x float64) float64 { // x set as a redraw sets it
+		if fv := reflect.ValueOf(&v).Elem().Field(f); fv.Kind() == reflect.Int {
+			fv.SetInt(int64(math.Round(x)))
+		} else {
+			fv.SetFloat(x)
+		}
+		return number(reflect.ValueOf(audio.VoiceFromGenes(v.Wave, v.Genes())).Elem().Field(f))
+	}
+	drawn := redrawsOfEach(t, 30)
+	moves, moved, amped := map[string]bool{}, map[string]bool{}, 0
+	for _, d := range drawn {
+		keys := familyKeys(d.from.Name)
+		if d.r.Name != d.v.Name || d.from != d.v && (d.from.Wave == d.v.Wave || !slices.Contains(registered, d.from) ||
+			d.sp.lo < keys[0] || d.sp.hi > keys[1] || d.from.Wave == "string" && d.sp.lo < stringLowest) {
+			t.Fatalf("%s for keys %d to %d drawn as %s from %s on %s", d.v.Name, d.sp.lo, d.sp.hi, d.r.Name, d.from.Name, d.from.Wave)
+		}
+		from, r := reflect.ValueOf(d.from).Elem(), reflect.ValueOf(d.r).Elem()
+		for f, field := range fields {
+			key, _, _ := strings.Cut(field.Tag.Get("toml"), ",")
+			i, ok := row[f]
+			switch {
+			case key == "name" || key == "level": // its name's, and rule 3's
+				continue
+			case key == "drive" && d.driven:
+				if g := r.Field(f).Float(); g < 2 || g > 16 {
+					t.Errorf("%s driven to %.2f", d.v.Name, g)
+				}
+				amped++
+				continue
+			case !ok || redraws[i].by == 0 || redraws[i].kinds&waveKind(d.r.Wave) == 0 || from.Field(f).IsZero():
+				if !reflect.DeepEqual(from.Field(f).Interface(), r.Field(f).Interface()) {
+					t.Errorf("%s from %s: %s %v drawn %v", d.v.Name, d.from.Name, key, from.Field(f).Interface(), r.Field(f).Interface())
+				}
+				continue
+			}
+			m, x, y := redraws[i], number(from.Field(f)), number(r.Field(f))
+			lo, hi := held(*d.from, f, x*math.Exp(-m.by)), held(*d.from, f, x*math.Exp(m.by))
+			if m.up {
+				lo = x
+			}
+			if y < lo*(1-1e-9) || y > hi*(1+1e-9) {
+				t.Errorf("%s from %s: %s %v drawn %v, past %v to %v", d.v.Name, d.from.Name, key, x, y, lo, hi)
+			}
+			moves[key], moved[key] = true, moved[key] || y != x
+		}
+	}
+	for key := range moves {
+		if !moved[key] {
+			t.Errorf("no redraw moved %s", key)
+		}
+	}
+	t.Logf("%d redraws of %d registered voices, %d driven", len(drawn), len(registered), amped)
 	before := audio.VoiceDefByName("lead").Genes()
 	clean, err := s.corpus(tuneOptions{loops: 2, bars: 1, seed: 3})
 	if err != nil {
@@ -3588,7 +3651,7 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 		instrs = append(instrs, i)
 	}
 	for k := range 40 {
-		voices, families, restore := s.loopVoices(instrs, true, rand.New(rand.NewPCG(uint64(k), 1)), nil, true)
+		voices, families, restore := s.loopVoices(instrs, nil, true, rand.New(rand.NewPCG(uint64(k), 1)), nil, true)
 		restore()
 		for name, v := range voices {
 			if v.Drive > 4 {
@@ -3641,9 +3704,266 @@ func TestCorpusAugmentsAndLabelsTheVoices(t *testing.T) {
 			t.Errorf("drum %d, midi %d labelled family %d", e.Drum, e.MIDI, e.Family)
 		}
 	}
-	if !strings.Contains(out.String(), "random genes") {
+	if !strings.Contains(out.String(), "voices redrawn near the registered ones") {
 		t.Errorf("corpus did not say it augmented:\n%s", out.String())
 	}
+}
+
+// redrawn is a redraw a test plays: the registered voice, the voice it was drawn
+// from, the voice drawn and whether the amp drives it, for a span of keys
+type redrawn struct {
+	v, from, r *audio.VoiceDef
+	driven     bool
+	sp         span
+}
+
+// redrawsOfEach is perWave redraws of each registered voice on each wave a
+// registered voice plays, by seed, for spans an octave to three wide placed
+// within the keys the arranger gives its family; a wave none of 5,000 seeds
+// draws fails the test
+func redrawsOfEach(t *testing.T, perWave int) []redrawn {
+	t.Helper()
+	registered, waves := audio.RegisteredVoices(), map[string]bool{}
+	for _, v := range registered {
+		waves[cmp.Or(v.Wave, "sine")] = true
+	}
+	var out []redrawn
+	for _, v := range registered {
+		keys, took := familyKeys(v.Name), map[string]int{}
+		full := func() bool {
+			return !slices.ContainsFunc(slices.Collect(maps.Keys(waves)), func(w string) bool { return took[w] < perWave })
+		}
+		for k := 0; !full(); k++ {
+			if k == 5000 {
+				t.Fatalf("%s drawn on %v in 5,000 seeds", v.Name, took)
+			}
+			rng := rand.New(rand.NewPCG(uint64(k), 11))
+			width := min(12+rng.IntN(25), keys[1]-keys[0])
+			lo := keys[0] + rng.IntN(keys[1]-keys[0]-width+1)
+			sp := span{lo, lo + width, 0}
+			if r, from, driven := redraw(v, registered, sp, rng); took[cmp.Or(r.Wave, "sine")] < perWave {
+				took[cmp.Or(r.Wave, "sine")]++
+				out = append(out, redrawn{v, from, r, driven, sp})
+			}
+		}
+	}
+	return out
+}
+
+// played is v's note alone at key, vel and dur, its rise held to dur as a loop
+// holds it to the part's shortest note, and tail more seconds of its release
+func played(v *audio.VoiceDef, key int, vel, dur, tail float64) []float64 {
+	c := *v
+	c.Attack = min(c.Attack, dur)
+	return audio.RenderNote(&c, key, vel, dur, tail)
+}
+
+// The notes a rule plays each voice at: five keys of its span, short and long,
+// softest and full
+var (
+	ruleLengths = []float64{0.07, 0.5}
+	ruleVels    = []float64{softest, 1}
+)
+
+func ruleKeys(sp span) []int {
+	w := sp.hi - sp.lo
+	return []int{sp.lo, sp.lo + w/4, sp.lo + w/2, sp.lo + 3*w/4, sp.hi}
+}
+
+// onPitch is the share of a note's power under 6.6 times key's frequency, from
+// 50 ms on, on key's partials against the half partials': (1+ρ)/2, ρ the note's
+// correlation with itself a period on. Of a steady note that is the share by
+// the spectrum; a fall in level costs it nothing, where a spectrum's would.
+func onPitch(x []float64, key int) float64 {
+	sr, f := float64(audio.AudioSampleRate), audio.NoteFreq(key)
+	lp := slices.Clone(x)
+	if fc := 6.6 * f; fc < 0.45*sr {
+		for _, q := range []float64{0.5412, 1.3066} { // a fourth-order Butterworth
+			w := 2 * math.Pi * fc / sr
+			c, a := math.Cos(w), 1+math.Sin(w)/(2*q)
+			b0, b1, a1, a2 := (1-c)/2/a, (1-c)/a, -2*c/a, (2-a)/a
+			var x1, x2, y1, y2 float64
+			for i, v := range lp {
+				y := b0*v + b1*x1 + b0*x2 - a1*y1 - a2*y2
+				x2, x1, y2, y1 = x1, v, y1, y
+				lp[i] = y
+			}
+		}
+	}
+	const taps = 16 // each side of a period's fraction of a sample, by a Hann-windowed sinc
+	n0, d := int(sr/f), sr/f-math.Floor(sr/f)
+	h := make([]float64, 2*taps)
+	for j := range h {
+		h[j] = 1
+		if u := float64(j-taps+1) - d; u != 0 {
+			h[j] = math.Sin(math.Pi*u) / (math.Pi * u) * (0.5 + 0.5*math.Cos(math.Pi*u/taps))
+		}
+	}
+	var xy, xx, yy float64
+	for t := int(0.05 * sr); t+n0+taps < len(lp); t++ {
+		var y float64
+		for j, c := range h {
+			y += c * lp[t+n0+j-taps+1]
+		}
+		xy, xx, yy = xy+lp[t]*y, xx+lp[t]*lp[t], yy+y*y
+	}
+	return (1 + xy/math.Sqrt(xx*yy+1e-300)) / 2
+}
+
+// TestARedrawnNoteIsOnItsLabelsPitch: each registered voice redrawn eight times
+// on each wave, every note of the rule's on its key by onPitch, from 50 ms to
+// its note-off and two periods at least, no less than halfway in dB between the
+// registered voices' lowest ratio of the key's partials to the half partials,
+// over every other key the arranger gives them, and as much on each
+func TestARedrawnNoteIsOnItsLabelsPitch(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	share := func(v *audio.VoiceDef, key int, vel, dur float64) float64 {
+		end := max(dur, 0.05+2/audio.NoteFreq(key))
+		x := played(v, key, vel, dur, end-dur)
+		return onPitch(x[:min(len(x), int(end*audio.AudioSampleRate))], key)
+	}
+	worst, at := 1.0, ""
+	for _, v := range audio.RegisteredVoices() {
+		keys := familyKeys(v.Name)
+		for k := keys[0]; k <= keys[1]; k += 2 {
+			for _, dur := range ruleLengths {
+				for _, vel := range ruleVels {
+					if sh := share(v, k, vel, dur); sh < worst {
+						worst, at = sh, fmt.Sprintf("%s's key %d at %.2f for %.2f s", v.Name, k, vel, dur)
+					}
+				}
+			}
+		}
+	}
+	r := math.Sqrt(worst / (1 - worst))
+	bound := r / (1 + r)
+	notes, least, why := 0, 1.0, ""
+	for _, d := range redrawsOfEach(t, 8) {
+		for _, key := range ruleKeys(d.sp) {
+			for _, dur := range ruleLengths {
+				for _, vel := range ruleVels {
+					notes++
+					sh := share(d.r, key, vel, dur)
+					if sh < bound {
+						t.Errorf("%s drawn from %s on %s: key %d at %.2f for %.2f s holds %.3f on its partials, under %.3f", d.v.Name, d.from.Name, d.r.Wave, key, vel, dur, sh, bound)
+					}
+					if sh < least {
+						least, why = sh, fmt.Sprintf("%s drawn from %s on %s, key %d at %.2f for %.2f s", d.v.Name, d.from.Name, d.r.Wave, key, vel, dur)
+					}
+				}
+			}
+		}
+	}
+	t.Logf("registered lowest %.4f (%s), bound %.4f; %d redrawn notes, lowest %.4f (%s)", worst, at, bound, notes, least, why)
+}
+
+// TestARedrawnNoteIsAsLoudAsItsVelocitySays: each registered voice redrawn eight
+// times on each wave, every note of the rule's is as loud in its loudest window
+// of sampledWindow as the registered voices' notes at its velocity are over
+// every key the arranger gives them, short and long, within the 3 dB a redraw
+// moves a level
+func TestARedrawnNoteIsAsLoudAsItsVelocitySays(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	db := func(v *audio.VoiceDef, key int, vel, dur float64) float64 {
+		return 20 * math.Log10(loudest(played(v, key, vel, dur, 0.2), sampledWindow))
+	}
+	lo, hi, by := map[float64]float64{}, map[float64]float64{}, levelBy*20/math.Ln10
+	for _, v := range audio.RegisteredVoices() {
+		keys := familyKeys(v.Name)
+		for k := keys[0]; k <= keys[1]; k++ {
+			for _, dur := range ruleLengths {
+				for _, vel := range ruleVels {
+					l := db(v, k, vel, dur)
+					if _, ok := lo[vel]; !ok {
+						lo[vel], hi[vel] = l, l
+					}
+					lo[vel], hi[vel] = min(lo[vel], l), max(hi[vel], l)
+				}
+			}
+		}
+	}
+	notes, margin, why := 0, math.Inf(1), ""
+	for _, d := range redrawsOfEach(t, 8) {
+		for _, key := range ruleKeys(d.sp) {
+			for _, dur := range ruleLengths {
+				for _, vel := range ruleVels {
+					notes++
+					l := db(d.r, key, vel, dur)
+					if l < lo[vel]-by || l > hi[vel]+by {
+						t.Errorf("%s drawn from %s on %s: key %d at %.2f for %.2f s at %.1f dBFS, past %.1f to %.1f", d.v.Name, d.from.Name, d.r.Wave, key, vel, dur, l, lo[vel]-by, hi[vel]+by)
+					}
+					if m := min(l-lo[vel]+by, hi[vel]+by-l); m < margin {
+						margin, why = m, fmt.Sprintf("%s drawn from %s on %s, key %d at %.2f for %.2f s", d.v.Name, d.from.Name, d.r.Wave, key, vel, dur)
+					}
+				}
+			}
+		}
+	}
+	for _, vel := range ruleVels {
+		t.Logf("at %.2f the registered voices span %.1f to %.1f dBFS", vel, lo[vel], hi[vel])
+	}
+	t.Logf("%d redrawn notes, the nearest an edge %.2f dB within (%s)", notes, margin, why)
+}
+
+// TestANoteRingsNoLongerThanItsVoiceLetsIt: no pedal holds a note on. Every
+// engine note of a corpus of 2,000 loops is released as a redraw releases a
+// registered voice of its wave, at most its row's reach longer, and a recorded
+// note cut at its label's end sounds past it only by its recording's release.
+func TestANoteRingsNoLongerThanItsVoiceLetsIt(t *testing.T) {
+	c := labelCorpus(t)
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	reach := 0.0
+	for _, m := range redraws {
+		if m.key == "release" {
+			reach = math.Exp(m.by)
+		}
+	}
+	releases := map[string][]float64{}
+	for _, v := range audio.RegisteredVoices() {
+		releases[cmp.Or(v.Wave, "sine")] = append(releases[cmp.Or(v.Wave, "sine")], v.Release)
+	}
+	notes := 0
+	for i, l := range c.loops {
+		for _, e := range l.Events {
+			if e.Voice == nil {
+				continue
+			}
+			notes++
+			w := audio.VoiceWaves[e.Wave]
+			if r := audio.VoiceFromGenes(w, e.Voice).Release; !slices.ContainsFunc(releases[w], func(x float64) bool { return r >= x*(1-1e-9) && r <= x*reach*(1+1e-9) }) {
+				t.Errorf("loop %d: midi %d on %s released over %.3f s, past what a redraw makes of %v", i, e.MIDI, w, r, releases[w])
+			}
+		}
+	}
+	if notes == 0 {
+		t.Fatal("no engine note in the corpus")
+	}
+	// a recorded note, held 3 s and released over 1, cut at 0.3 s
+	dir := t.TempDir()
+	if err := writeNSynth(dir, "keyboard_acoustic_000", 0.5, 60, 60, 1); err != nil {
+		t.Fatal(err)
+	}
+	set, err := loadSampleSet(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sr := float64(audio.AudioSampleRate)
+	cut := int(0.3 * sr)
+	ends, line, err := set.play(set.other[0], []audio.RipEvent{{For: cut, MIDI: 60, Vel: 1}}, int(4*sr), 0, map[sampleKey][]float64{}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rms := func(from, to float64) float64 { return loudest(line[int(from*sr):int(to*sr)], to-from) }
+	if held, past := rms(0.1, 0.3), rms(0.3+4-nsynthHold, 4); ends[0] != cut || past > held*1e-3 {
+		t.Errorf("a note cut at %d ends at %d, %.1f dB under its held level from its release's end on", cut, ends[0], 20*math.Log10(held/past))
+	}
+	t.Logf("%d engine notes", notes)
 }
 
 // TestAGlidingCorpusLabelsWhereEachMovingNoteSits: under glide a share of the
@@ -3907,11 +4227,40 @@ func TestAVoiceSoundsAsTheFamilyOfARegisteredVoiceNearIt(t *testing.T) {
 	}
 }
 
-// TestSampledLinesPlayAsLabelled: a line on recorded notes sounds at each note's
-// labelled pitch after the shift and the loop's tuning, from its labelled frame,
-// every sampled note's label carries no wave and no voice but its NSynth family's,
-// and an instrument with a silent note is passed over for the engine's voice
-func TestSampledLinesPlayAsLabelled(t *testing.T) {
+// TestANoteIsLetGoOnlyAfterItsInstrumentHasSpoken: a part's voice comes within
+// sampledSpeak of its loudest by the part's shortest note, and fits passes over
+// a recording, here one the engine lays slowly, for a part it would let go
+// sooner; a line on recorded notes sounds at each label's pitch and frame, its
+// label carrying its family alone, and a silent instrument is passed over
+func TestANoteIsLetGoOnlyAfterItsInstrumentHasSpoken(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	sr, spoken := float64(audio.AudioSampleRate), math.Pow(10, -sampledSpeak/20.0)
+	var instrs []audio.InstrumentType
+	for _, v := range audio.RegisteredVoices() {
+		i, _ := audio.InstrumentByName(v.Name)
+		instrs = append(instrs, i)
+	}
+	for k := range 24 {
+		rng := rand.New(rand.NewPCG(uint64(k), 5))
+		spans := map[audio.InstrumentType]span{}
+		for _, i := range instrs {
+			keys := familyKeys(audio.InstrumentName(i))
+			spans[i] = span{keys[0], keys[1], int((0.05 + 0.45*rng.Float64()) * sr)}
+		}
+		voices, _, restore := s.loopVoices(instrs, spans, k%2 == 1, rng, nil, false)
+		restore()
+		for _, i := range instrs {
+			v, sp := voices[audio.InstrumentName(i)], spans[i]
+			key, shortest := (sp.lo+sp.hi)/2, float64(sp.shortest)/sr
+			let := loudest(audio.RenderNote(v, key, 1, shortest, 0.1), sampledWindow)
+			held := loudest(audio.RenderNote(v, key, 1, 1, 0), sampledWindow)
+			if v.Attack > shortest || let < held*spoken {
+				t.Errorf("%s rising over %.3f s for notes of %.3f s: %.1f dB under its held note's loudest", v.Name, v.Attack, shortest, 20*math.Log10(held/let))
+			}
+		}
+	}
 	dir, quiet := t.TempDir(), t.TempDir()
 	const cents = 30
 	for _, in := range []struct {
@@ -3928,7 +4277,7 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 	}
 	sps := audio.SamplesPerStep(120)
 	notes := []audio.RipEvent{{At: 2 * sps, For: 2 * sps, MIDI: 62, Vel: 0.8}, {At: 14*sps + 1234, For: 2 * sps, MIDI: 58, Vel: 0.5}, {At: 26 * sps, For: 2 * sps, MIDI: 71, Vel: 1}}
-	_, line, err := set.play(set.other[0], notes, 32*sps, cents, false, map[sampleKey][]float64{}, true)
+	_, line, err := set.play(set.other[0], notes, 32*sps, cents, map[sampleKey][]float64{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3960,9 +4309,6 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 		}
 	}
 	set.share = 1
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
 	corpus := filepath.Join(dir, "corpus")
 	o := tuneOptions{loops: 3, bars: 2, seed: 2, gen: true, aug: true, samples: set}
 	if err := s.exportCorpus(corpus, o); err != nil {
@@ -4016,6 +4362,70 @@ func TestSampledLinesPlayAsLabelled(t *testing.T) {
 			}
 		}
 	}
+	// the engine's pad rising over 0.6 s, laid as a recording of strings, speaks
+	// where its recording comes within sampledSpeak of its loudest window
+	slow := t.TempDir()
+	rising := *audio.VoiceDefByName("pad")
+	rising.Attack = 0.6
+	if err := writeNotes(slow, "string_synthetic_003", 36, 84, 4, func(p int) []float64 {
+		return audio.Resample(audio.RenderNote(&rising, p, 0.8, nsynthHold, 4-nsynthHold), audio.AudioSampleRate, nsynthRate)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	strings, err := loadSampleSet(slow)
+	if err != nil || len(strings.other) != 1 {
+		t.Fatalf("the slow set: %v", err)
+	}
+	in := strings.other[0]
+	h, err := strings.heard(in.layer(60, 0.8).file)
+	if at := listen(audio.RenderNote(&rising, 60, 0.8, nsynthHold, 0), audio.AudioSampleRate).speak; err != nil ||
+		math.Abs(float64(h.speak)/nsynthRate-float64(at)/sr) > sampledWindow/2 || h.speak < nsynthRate/5 {
+		t.Fatalf("the slow recording speaks at %.3f s, the engine's note at %.3f s: %v", float64(h.speak)/nsynthRate, float64(at)/sr, err)
+	}
+	// fits takes it for a note held until it speaks, shifted as play shifts it,
+	// and passes over it for one let go a sample sooner, or held as long as the
+	// recording speaks unshifted where the shift down slows it
+	for _, c := range []struct {
+		midi, less int
+		shifted    bool
+		want       bool
+	}{{60, 0, true, true}, {60, 1, true, false}, {61, 0, true, true}, {61, 1, true, false}, {59, 0, true, true}, {59, 1, true, false}, {59, 0, false, false}} {
+		pitch := in.nearest(c.midi)
+		hp, _ := strings.heard(in.layer(pitch, 0.8).file)
+		ratio := 1.0
+		if c.shifted {
+			ratio = math.Exp2(float64(c.midi-pitch) / 12)
+		}
+		e := audio.RipEvent{For: shiftedLen(hp.speak, ratio) - c.less, MIDI: c.midi, Vel: 0.8}
+		if ok, err := strings.fits(in, []audio.RipEvent{{For: int(sr), MIDI: 64, Vel: 0.8}, e}); ok != c.want || err != nil {
+			t.Errorf("midi %d held %d samples: fits %v, want %v (%v)", c.midi, e.For, ok, c.want, err)
+		}
+	}
+	// a corpus plays on it only the parts whose notes it speaks within
+	strings.share = 1
+	loops, err = s.corpus(tuneOptions{loops: 8, bars: 2, seed: 2, gen: true, samples: strings, labels: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tonal, played, slowNotes := 0, 0, 0
+	for i, l := range loops {
+		tonal, played = tonal+l.tonal, played+l.sampled
+		for _, e := range l.label.Events {
+			if e.Instr != in.name {
+				continue
+			}
+			slowNotes++
+			pitch := in.nearest(e.MIDI)
+			hn, _ := strings.heard(in.layer(pitch, e.Vel).file)
+			if need := float64(shiftedLen(hn.speak, math.Exp2(float64(e.MIDI-pitch)/12))) / sr; float64(e.End-e.Frame+1)*audio.RipFrameSec < need {
+				t.Errorf("loop %d: midi %d on the slow strings let go at frame %d of %d, before %.3f s", i, e.MIDI, e.End, e.Frame, need)
+			}
+		}
+	}
+	if played == 0 || played == tonal || slowNotes == 0 {
+		t.Errorf("%d of %d tonal parts, %d notes, on the slow strings", played, tonal, slowNotes)
+	}
+	t.Logf("the slow strings speak at %.3f s and play %d of %d tonal parts, %d notes", float64(h.speak)/nsynthRate, played, tonal, slowNotes)
 }
 
 // TestBenchGradesEachMeterAndListsEveryLoop: bench renders fresh loops, clean
@@ -4385,8 +4795,21 @@ func TestTheBanksTextFollowsItsDocumentThroughUndo(t *testing.T) {
 // step semitones from lo to hi: a sine at amp, at the set's rate, held 3 s and
 // released over the last
 func writeNSynth(dir, name string, amp float64, lo, hi, step int) error {
+	return writeNotes(dir, name, lo, hi, step, func(p int) []float64 {
+		x := make([]float64, 4*nsynthRate)
+		for i := range x {
+			x[i] = amp * min(1, 4-float64(i)/nsynthRate) * math.Sin(2*math.Pi*audio.NoteFreq(p)*float64(i)/nsynthRate)
+		}
+		return x
+	})
+}
+
+// writeNotes writes note's samples at each pitch, every step semitones from lo
+// to hi, as NSynth names and writes a recorded note: 16-bit, at the set's rate
+func writeNotes(dir, name string, lo, hi, step int, note func(pitch int) []float64) error {
 	for p := lo; p <= hi; p += step {
-		pcm := make([]byte, 44+2*4*nsynthRate)
+		x := note(p)
+		pcm := make([]byte, 44+2*len(x))
 		copy(pcm, "RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00")
 		le := binary.LittleEndian
 		le.PutUint32(pcm[24:], nsynthRate)
@@ -4394,11 +4817,9 @@ func writeNSynth(dir, name string, amp float64, lo, hi, step int) error {
 		le.PutUint16(pcm[32:], 2)
 		le.PutUint16(pcm[34:], 16)
 		copy(pcm[36:], "data")
-		le.PutUint32(pcm[40:], 2*4*nsynthRate)
-		for i := range 4 * nsynthRate {
-			env := min(1, 4-float64(i)/nsynthRate)
-			v := amp * env * math.Sin(2*math.Pi*audio.NoteFreq(p)*float64(i)/nsynthRate)
-			le.PutUint16(pcm[44+2*i:], uint16(int16(v*32767)))
+		le.PutUint32(pcm[40:], uint32(2*len(x)))
+		for i, v := range x {
+			le.PutUint16(pcm[44+2*i:], uint16(int16(min(max(v, -1), 1)*32767)))
 		}
 		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%s-%03d-100.wav", name, p)), pcm, 0o644); err != nil {
 			return err
@@ -5407,7 +5828,7 @@ func TestALoopOfRecordedNotesAloneCarriesAir(t *testing.T) {
 		for k := 9000 * n / audio.AudioSampleRate; k < n/2; k++ {
 			band += 2 * real(x[k]*cmplx.Conj(x[k])) / n / n / ww
 		}
-		db := 10*math.Log10(band) - 20*math.Log10(loudest(l.audio))
+		db := 10*math.Log10(band) - 20*math.Log10(loudest(l.audio, loopWindow))
 		t.Logf("loop %d of recorded notes alone: %.1f dB over 9 kHz under its loudest window", i, db)
 		if db < -68 || db > -43 {
 			t.Errorf("loop %d: its air is %.1f dB under its loudest window", i, db)

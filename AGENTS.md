@@ -60,6 +60,13 @@ it there in the same PR.
   made from Lakh and every weight trained before it went were deleted on
   2026-11-14, and the models train again from nothing without it. A round's
   notes name the collections it took, for the [credits](CREDITS.md).
+- A licence is not enough: a recorded set trains or fits only where its
+  recordings were made for the set and what is played is original to it,
+  improvised or in the public domain. A collection of other parties'
+  recordings, or of transcriptions of their music, measures at most, whatever
+  licence the collection states. Read where a set's recordings, scores and
+  labels came from, on its own page and in its metadata, before proposing it,
+  and credit it in [CREDITS.md](CREDITS.md) before it is used.
 
 ## Scope
 

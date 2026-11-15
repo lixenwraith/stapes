@@ -380,7 +380,10 @@ proves wrong or that a document now states, and link the document instead.
   be drawn before the render, or the pass cannot write it.
 - A `from` corpus's labels pass knows a recording by its label's `source`, so
   a label that does not read stops it. It reads the list again, its `velocity`
-  column with it, so a list changed to `none` is relabelled in seconds.
+  column with it, so a list changed to `none` is relabelled in seconds; under
+  `measured` it opens every recording and hears each note, minutes for a set,
+  and a recording gone from disk keeps its label with every note at -1, which
+  the run's last line counts.
 - A pitch track at 44.1 kHz and a hop of 256 has two samples a frame, one on
   the frame's own time, so a missing sample lies a whole step from its
   neighbours. A reach of a step read a neighbour's pitch there by a rounding's
@@ -410,15 +413,47 @@ proves wrong or that a document now states, and link the document instead.
 - `corpus <dir> from` writes a MIDI file's velocities as labels. GuitarSet's and
   the singing set's are one constant, which the velocity head would learn as a
   fact about recordings: their list's `velocity` cell says `none`, and each note
-  and hit is labelled at -1, which the trainer asks nothing of. A cell is a
-  word, a row of `velocityWords` in `tune.go`; another kind of velocity is a row
-  more, and a word the table lacks is refused, naming those it has.
+  and hit is labelled at -1, which the trainer asks nothing of, or `measured`,
+  and each note is labelled at the velocity heard in its recording, -1 where the
+  measure cannot tell it from the notes with it. A cell is a word, a row of
+  `velocityWords` in `tune.go`; another kind of velocity is a row more, and a
+  word the table lacks is refused, naming those it has. A `starts` cell is the
+  same kind of table, `startsWords`.
 - A score aligned to a recording is not a label to the frame: a strike target a
   frame wide on an aligned score teaches its jitter, and a loss there measures
   it.
-- A label a tool made carries the tool's offset. VocalSet's notes come from a
-  YIN pitch track that stamps a note at the start of its 1,024-sample window,
-  two frames before its sound. Before a corpus trains,
+- A note's level among others is read from its partials, each at the note's
+  own stiffness: a piano's and a plucked string's run sharp of k f0, the more
+  the higher the note, and fitted at k f0 they miss its energy by decibels, so
+  `stiffnesses` searches each note's in its first window. A note sounds on past
+  its label's end: unfitted, its partials pass for the next note's
+  (`measuredRing`). A window another note is struck in holds an attack no
+  partial fits, so it bounds the level from above alone.
+- Partials closer than a window's bins are nearly one column to least squares.
+  Dropping one leaks its sinusoid into its neighbours' estimates, and several,
+  each under a pair's correlation, can blow the solve up together: whether a
+  partial is its own is its variance inflation against those near it
+  (`apart`), and the solve is banded, each chain of partials within
+  `measuredNear` bins of the next factored once.
+- A note's truth in a room is the note alone carried through that room: `room`
+  returns, beside the mix, what carries one sound through the gains, the clip's
+  share, the compressor's turn and the reverb the mix met, the noise left out.
+  Carry a stem cut to its span: one the loop's length runs the filters on
+  subnormal numbers after its sound has died, many times slower.
+- A lone low note is measured up to 0.2 dB from its RMS: the RMS is a plain
+  window's, in which a low note's partials, a few bins apart, beat, and the
+  fit's Hann does not see that beat. The sampler lays the note at its velocity;
+  the gap is the window's.
+- `measuredBound` is fitted: after a change to the measure, run
+  `TestAMeasuredLevelIsKnownWithinItsFittedBound` with `-v`, set the bound it
+  fits and write the documents' figures from its log. The measure's time is
+  its projections, which `project` runs as Goertzel's recurrence four partials
+  side by side.
+- A label a tool made carries the tool's offset. VocalSet states no notes:
+  its labels are the notes its exercise sheet writes for each take, placed on
+  the take by an alignment the lab fitted on sound whose notes are known, so
+  its list says `placed` in its `starts` column and its notes ask the strike
+  head nothing. Before a corpus trains,
   `tool/rip-train/datacheck.py` with `GROUP=1` reads each source's lag from a
   labelled start to the sound's rise: 0 or 1 frame is a label on its sound.
 - A recording's scale says nothing of its labels: `BandFrames` reads it with

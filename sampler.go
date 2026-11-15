@@ -185,24 +185,38 @@ func (set *sampleSet) heard(file string) (heard, error) {
 	return h, nil
 }
 
-// listen is a note's loudest window of sampledWindow at rate, its hop half
-// that, and the samples it takes to speak: to the middle of its first window
-// within sampledSpeak of the loudest
+// listen is a note's level at rate, and the samples it takes to speak: to the
+// middle of its first window within sampledSpeak of the loudest
 func listen(x []float64, rate int) heard {
-	var h heard
-	n := int(sampledWindow * float64(rate))
+	rms := windows(len(x), rate, sampledWindow, meanSquare(x))
+	h := heard{level: slices.Max(rms)}
+	first := slices.IndexFunc(rms, func(r float64) bool { return r >= h.level*math.Pow(10, -sampledSpeak/20.0) })
+	h.speak = (first + 1) * (int(sampledWindow*float64(rate)) / 2)
+	return h
+}
+
+// windows is a sound's level window by window: the RMS of each window of sec at
+// rate over its n samples, the hop half a window, from power, a window's mean
+// square by its first sample and length; a sound shorter than a window is one.
+// A note's level is its loudest held window's, a sampled one's and a measured one's
+func windows(n, rate int, sec float64, power func(at, w int) float64) []float64 {
+	w := min(int(sec*float64(rate)), n)
 	var rms []float64
-	for i := 0; i+n <= len(x); i += n / 2 {
+	for at := 0; at+w <= n; at += max(w/2, 1) {
+		rms = append(rms, math.Sqrt(power(at, w)))
+	}
+	return rms
+}
+
+// meanSquare is the power windows reads x's samples by
+func meanSquare(x []float64) func(at, w int) float64 {
+	return func(at, w int) float64 {
 		var e float64
-		for _, v := range x[i : i+n] {
+		for _, v := range x[at : at+w] {
 			e += v * v
 		}
-		rms = append(rms, math.Sqrt(e/float64(n)))
-		h.level = max(h.level, rms[len(rms)-1])
+		return e / float64(max(w, 1))
 	}
-	first := slices.IndexFunc(rms, func(r float64) bool { return r >= h.level*math.Pow(10, -sampledSpeak/20.0) })
-	h.speak = (first + 1) * (n / 2)
-	return h
 }
 
 // readNote is a recorded note's samples, none for one that does not decode

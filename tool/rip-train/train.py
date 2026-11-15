@@ -70,6 +70,7 @@ class Label:
         self.drum = np.array([e["drum"] for e in ev], np.int8)
         self.midi = np.array([e["midi"] for e in ev], np.int16)
         self.vel = np.array([e.get("vel", -1) for e in ev], np.float32)  # -1 where the recording's list says its velocities say nothing
+        self.placed = bool(label.get("placed"))  # its notes' starts placed on the recording by an alignment, not heard struck
         self.wave = np.array([e.get("wave", -1) if e.get("voice") else -1 for e in ev], np.int8)
         self.family = np.array([e.get("family", -1) for e in ev], np.int8)
         index = {}  # a loop's notes share a few voices
@@ -332,12 +333,12 @@ def targets(fr, lab: Label, start: int, window: int, with_drums: bool = True) ->
     strike, release, velocity, heard = np.zeros(shape, np.uint8), np.zeros(shape, np.uint8), np.zeros(shape, np.float32), np.zeros(shape, np.uint8)
     for (f, p), v in zip(t["strikes"], t["vels"]):
         near = slice(max(f - 1, 0), max(min(f + 2, window), 0))
-        strike[near, p] = 1
+        strike[near, p] = not lab.placed  # a placed start misses its strike by frames: the head is asked none of it
         if v >= 0:
             velocity[near, p], heard[near, p] = v, 1
     for f, p in t["releases"]:
         release[max(f - 1, 0):max(min(f + 2, window), 0), p] = 1
-    out.update(strike=strike, release=release, velocity=velocity, heard=heard)
+    out.update(strike=strike, release=release, velocity=velocity, heard=heard, placed=take(np.full(b - start, lab.placed, np.uint8)))
     out["valid"] = np.concatenate([np.ones(window - pad, np.float32), np.zeros(pad, np.float32)])
     return out
 
@@ -366,7 +367,7 @@ def shuffled(pick, window: int, planes: int, rng, channel=None):
         eb, sb = clip(mb, rng)
         eb = eb * 10 ** ((rng.random() * 12 - 6) / 10) * power(ma) / max(power(mb), 1e-9)
         ta, tb = targets(ma, la, sa, CHUNK, False), targets(mb, lb, sb, CHUNK, False)
-        out = {k: np.maximum(ta[k], tb[k]) for k in ("onset", "drums", "pitch", "voicing", "strike", "release", "velocity", "heard", "valid")}
+        out = {k: np.maximum(ta[k], tb[k]) for k in ("onset", "drums", "pitch", "voicing", "strike", "release", "velocity", "heard", "valid", "placed")}
         out.update(wave=np.full(CHUNK, -1, np.int64), family=np.full(CHUNK, -1, np.int64), voice=np.zeros_like(ta["voice"]), voiced=np.zeros_like(ta["voiced"]))
         out.update({k: np.zeros(CHUNK, np.uint8) for k in ("beat", "downbeat", "metered")})  # a splice of two clips has neither's grid
         # a cell is asked its cents where one clip alone sounds within a semitone of it
@@ -629,7 +630,7 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
             if low is not None:
                 y = out[..., model.cfg.slice("strike")]
                 for i in range(len(y)):
-                    counts += struck(y[i], t["strike"][i], t["valid"][i], bars)
+                    counts += struck(y[i], t["strike"][i], t["valid"][i] * (1 - t["placed"][i]), bars)
                 if "cents" in dict(model.cfg.outputs):
                     place, spread = out[..., model.cfg.slice("cents")].chunk(2, -1)
                     placed = t["asked"] > 0
@@ -725,7 +726,7 @@ def losses(model: ripmodels.FrameModel, fr: torch.Tensor, t: dict) -> dict:
         "drums": bce("drums", t["drums"], 8.0),
         "pitch": bce("pitch", t["pitch"], 12.0),
         "voicing": bce("voicing", t["voicing"], 2.0),
-        "strike": bce("strike", t["strike"], STRIKE_POS * (1 + (STRIKE_AGAIN - 1) * F.pad(t["pitch"][:, :-3], (0, 0, 3, 0)))),
+        "strike": bce("strike", t["strike"], STRIKE_POS * (1 + (STRIKE_AGAIN - 1) * F.pad(t["pitch"][:, :-3], (0, 0, 3, 0))), valid * (1 - t["placed"])),
         "release": bce("release", t["release"], 20.0),
     }
     heard = t["heard"] * valid[..., None]

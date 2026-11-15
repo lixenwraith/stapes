@@ -73,7 +73,7 @@ for p, h in files:
     os.makedirs(os.path.dirname(track), exist_ok=True)
     with open(track, 'w') as f:
         f.write('seconds,hz\n' + ''.join(f'{t:.5f},{v:.3f}\n' for t, v in zip(at, hz)))
-    rows.append((rel(p), rel(mid), split, long, 'voice', rel(track), 'none'))
+    rows.append((rel(p), rel(mid), split, long, 'voice', rel(track), 'measured', singer, 'placed'))  # a singer's takes share a unit
     count += len(notes); secs += long
 print('vocalset', len(rows), 'takes listed,', count, 'notes,', round(secs / 3600, 2), 'hours; left out:', dict(left.most_common()), flush=True)
 listed = collections.Counter(c[3] for c in placed if c[8] == 'listed')
@@ -82,7 +82,7 @@ with open(f'{O}/vocal-placed.tsv', 'w') as f:
     f.write('recording\tsplit\tseconds\texercise\ttechnique\ttonic\tcents\tnotes\tlisted\tfolded\n' + ''.join('%s\t%s\t%.3f\t%s\t%s\t%d\t%.1f\t%d\t%s\t%d\n' % c for c in placed))
 with open(f'{O}/vocal-list.csv', 'w', newline='') as f:
     w = csv.writer(f)
-    w.writerow(['audio_filename', 'midi_filename', 'split', 'duration', 'family', 'pitch', 'velocity'])
+    w.writerow(['audio_filename', 'midi_filename', 'split', 'duration', 'family', 'pitch', 'velocity', 'unit', 'starts'])
     w.writerows(rows)
 tr = sum(1 for r in rows if r[2] == 'train')
 print('list', len(rows), 'rows,', tr, 'train,', round(sum(r[3] for r in rows if r[2] == 'train') / 3600, 2), 'train hours')

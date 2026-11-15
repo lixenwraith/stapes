@@ -84,7 +84,7 @@ for name in sorted(os.listdir(G + 'annotation')):
     count['notes'] += len(notes)
     with wave.open(wav) as w:
         secs = w.getnframes() / w.getframerate()
-    rows.append((rel(wav), rel(mid), SPLIT[clip[:2]], secs, 'guitar', rel(jams) if pitch else '', rel(jams) if beats else '', 'none'))
+    rows.append((rel(wav), rel(mid), SPLIT[clip[:2]], secs, 'guitar', rel(jams) if pitch else '', rel(jams) if beats else '', 'measured'))
 with open(f'{O}/guitar-list.csv', 'w', newline='') as f:
     w = csv.writer(f)
     w.writerow(['audio_filename', 'midi_filename', 'split', 'duration', 'family', 'pitch', 'beats', 'velocity'])

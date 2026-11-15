@@ -511,18 +511,9 @@ func loopFrames(n int) int {
 	return (n*audio.RipRate/audio.AudioSampleRate + audio.RipHop - 1) / audio.RipHop
 }
 
-// loudest is the RMS of x's loudest window of sec seconds, its hop half that
+// loudest is the RMS of x's loudest window of sec seconds (windows)
 func loudest(x []float64, sec float64) float64 {
-	w := min(int(sec*audio.AudioSampleRate), len(x))
-	var best float64
-	for i := 0; i+w <= len(x); i += max(w/2, 1) {
-		var e float64
-		for _, v := range x[i : i+w] {
-			e += v * v
-		}
-		best = max(best, math.Sqrt(e/float64(max(w, 1))))
-	}
-	return best
+	return slices.Max(windows(len(x), audio.AudioSampleRate, sec, meanSquare(x)))
 }
 
 // level lays a loop at a level drawn whatever its parts: its loudest window's
@@ -732,7 +723,7 @@ func redraw(v *audio.VoiceDef, registered []*audio.VoiceDef, sp span, rng *rand.
 		waves, donors := []string{cmp.Or(v.Wave, "sine")}, map[string][]*audio.VoiceDef{}
 		for _, d := range registered {
 			w, keys := cmp.Or(d.Wave, "sine"), familyKeys(d.Name)
-			if w != waves[0] && keys[0] <= sp.lo && sp.hi <= keys[1] && (w != "string" || sp.lo >= stringLowest) {
+			if w != waves[0] && keys[0] <= sp.lo && sp.hi <= keys[1] {
 				if donors[w] == nil {
 					waves = append(waves, w)
 				}
@@ -787,13 +778,18 @@ func redraw(v *audio.VoiceDef, registered []*audio.VoiceDef, sp span, rng *rand.
 	return &r, from, driven
 }
 
-// familyKeys is the lowest and highest keys the arranger gives a voice's family,
-// a voice it does not know playing all of them
+// familyKeys is the lowest and highest keys the arranger gives a voice: its
+// family's, a voice it does not know playing all of them, a string's from
+// stringLowest
 func familyKeys(name string) [2]int {
-	if r, ok := familyRanges[voiceFamilies[name]]; ok {
-		return r
+	r, ok := familyRanges[voiceFamilies[name]]
+	if !ok {
+		r = familyRanges["unknown"]
 	}
-	return familyRanges["unknown"]
+	if v := audio.VoiceDefByName(name); v != nil && v.Wave == "string" {
+		r[0] = max(r[0], stringLowest)
+	}
+	return r
 }
 
 // loudness is the loudest window of sampledWindow of v's note at key struck
@@ -812,16 +808,13 @@ type extreme struct {
 }
 
 // extremes is a registered voice's loudest and quietest keys among those the
-// arranger gives its family, a string's from stringLowest, kept by its
-// definition, which a corpus asks of each loop's redraws
+// arranger gives it, kept by its definition, which a corpus asks of each loop's
+// redraws
 func extremes(v *audio.VoiceDef) extreme {
 	if e, ok := extremesOf.Load(*v); ok {
 		return e.(extreme)
 	}
 	keys := familyKeys(v.Name)
-	if v.Wave == "string" {
-		keys[0] = max(keys[0], stringLowest)
-	}
 	var e extreme
 	for k := keys[0]; k <= keys[1]; k++ {
 		l := loudness(v, k)
@@ -934,10 +927,19 @@ func voiceFamily(known map[string]*audio.VoiceDef, name string, v *audio.VoiceDe
 // bands, for a third a soft clip, for half a compressor, a booth's reverb or for
 // a third a hall's further back, and for half a noise floor 40 to 65 dB down
 func degrade(x []float64, rng *rand.Rand) []float64 {
+	out, _ := room(x, rng)
+	return out
+}
+
+// room is degrade, and what carries a sound x sums from at through it in place
+// as its share: the gains it gave x sample by sample, the clip's split in
+// proportion, the compressor's turn and the reverb, and none of the noise
+func room(x []float64, rng *rand.Rand) ([]float64, func(at int, st []float64)) {
 	sr := float64(audio.AudioSampleRate)
-	out := make([]float64, len(x))
+	out, share := make([]float64, len(x)), make([]float64, len(x))
 	gain := math.Pow(10, (rng.Float64()*9-6)/20)
 	swell, period, phase := rng.Float64()*6, (0.5+rng.Float64()*1.5)*float64(len(x)), rng.Float64()*2*math.Pi
+	g := func(i int) float64 { return gain * math.Pow(10, swell*math.Sin(2*math.Pi*float64(i)/period+phase)/20) }
 	a := 1.0
 	if rng.Float64() < 0.5 {
 		a = 1 - math.Exp(-2*math.Pi*(4000+rng.Float64()*7000)/sr)
@@ -946,18 +948,27 @@ func degrade(x []float64, rng *rand.Rand) []float64 {
 	if rng.Float64() < 1.0/3 {
 		drive = 1.5 + rng.Float64()*2
 	}
-	var bands [2]func(float64) float64
+	var bands [2][3]float64
 	for k := range bands {
-		bands[k] = audio.Peaking(80*math.Pow(100, rng.Float64()), rng.Float64()*12-6, 0.5+rng.Float64()*1.5)
+		bands[k] = [3]float64{80 * math.Pow(100, rng.Float64()), rng.Float64()*12 - 6, 0.5 + rng.Float64()*1.5}
 	}
+	eq := func() func(float64) float64 {
+		lo, hi := audio.Peaking(bands[0][0], bands[0][1], bands[0][2]), audio.Peaking(bands[1][0], bands[1][1], bands[1][2])
+		return func(v float64) float64 { return hi(lo(v)) }
+	}
+	mixEQ := eq()
 	var lp float64
 	for i, v := range x {
-		g := gain * math.Pow(10, swell*math.Sin(2*math.Pi*float64(i)/period+phase)/20)
-		lp += a * (v*g - lp)
-		out[i] = math.Tanh(drive*bands[1](bands[0](lp))) / math.Tanh(drive)
+		lp += a * (v*g(i) - lp)
+		y := mixEQ(lp)
+		out[i] = math.Tanh(drive*y) / math.Tanh(drive)
+		share[i] = drive / math.Tanh(drive)
+		if y != 0 {
+			share[i] = out[i] / y
+		}
 	}
 	if rng.Float64() < 0.5 {
-		compress(out, 2+rng.Float64()*4, 3+rng.Float64()*9, sr)
+		compress(out, 2+rng.Float64()*4, 3+rng.Float64()*9, sr, share)
 	}
 	// a Schroeder reverb: four combs in parallel into two allpasses, at a decay
 	// and a mix of the draw's
@@ -965,37 +976,42 @@ func degrade(x []float64, rng *rand.Rand) []float64 {
 	if rng.Float64() < 1.0/3 {
 		rt, wet = 0.7+rng.Float64()*1.8, 0.03+rng.Float64()*0.12
 	}
-	combs := [4]int{int(0.0297 * sr), int(0.0371 * sr), int(0.0411 * sr), int(0.0437 * sr)}
-	var lines [4][]float64
-	var feedback [4]float64
-	for k, n := range combs {
-		lines[k] = make([]float64, n)
-		feedback[k] = math.Pow(0.001, float64(n)/sr/rt)
+	reverb := func(y []float64) {
+		combs := [4]int{int(0.0297 * sr), int(0.0371 * sr), int(0.0411 * sr), int(0.0437 * sr)}
+		var lines [4][]float64
+		var feedback [4]float64
+		for k, n := range combs {
+			lines[k] = make([]float64, n)
+			feedback[k] = math.Pow(0.001, float64(n)/sr/rt)
+		}
+		aps := [2]int{int(0.005 * sr), int(0.0017 * sr)}
+		var apLines [2][]float64
+		for k, n := range aps {
+			apLines[k] = make([]float64, n)
+		}
+		for i := range y {
+			dry := y[i]
+			var sum float64
+			for k := range combs {
+				j := i % len(lines[k])
+				v := lines[k][j]
+				lines[k][j] = dry + v*feedback[k]
+				sum += v
+			}
+			sum *= 0.25
+			for k := range aps {
+				j := i % len(apLines[k])
+				buf := apLines[k][j]
+				apLines[k][j] = sum + buf*0.5
+				sum = buf - sum*0.5
+			}
+			y[i] = dry + wet*sum
+		}
 	}
-	aps := [2]int{int(0.005 * sr), int(0.0017 * sr)}
-	var apLines [2][]float64
-	for k, n := range aps {
-		apLines[k] = make([]float64, n)
-	}
+	reverb(out)
 	var rms float64
-	for i := range out {
-		dry := out[i]
-		var sum float64
-		for k := range combs {
-			j := i % len(lines[k])
-			y := lines[k][j]
-			lines[k][j] = dry + y*feedback[k]
-			sum += y
-		}
-		sum *= 0.25
-		for k := range aps {
-			j := i % len(apLines[k])
-			buf := apLines[k][j]
-			apLines[k][j] = sum + buf*0.5
-			sum = buf - sum*0.5
-		}
-		out[i] = dry + wet*sum
-		rms += out[i] * out[i]
+	for _, v := range out {
+		rms += v * v
 	}
 	rms = math.Sqrt(rms / float64(max(len(out), 1)))
 	// a recording's hiss sits bare over a synthesizer's empty treble: half the loops have none
@@ -1008,17 +1024,26 @@ func degrade(x []float64, rng *rand.Rand) []float64 {
 		out[i] += rng.NormFloat64() * noise
 		peak = max(peak, math.Abs(out[i]))
 	}
+	turn := 1.0
 	if peak > 1 { // the room on top of the clip can pass full scale: turned down, not clipped hard
+		turn = 1 / peak
 		for i := range out {
 			out[i] /= peak
 		}
 	}
-	return out
+	return out, func(at int, st []float64) {
+		eq, lp := eq(), 0.0
+		for i, v := range st {
+			lp += a * (v*g(at+i) - lp)
+			st[i] = eq(lp) * share[at+i] * turn
+		}
+		reverb(st)
+	}
 }
 
 // compress turns down what rises over the loop's peak less under dB by ratio,
 // on an envelope that rises in 5 ms and falls in 120 ms
-func compress(x []float64, ratio, under, sr float64) {
+func compress(x []float64, ratio, under, sr float64, gains ...[]float64) {
 	var peak float64
 	for _, v := range x {
 		peak = max(peak, math.Abs(v))
@@ -1033,7 +1058,11 @@ func compress(x []float64, ratio, under, sr float64) {
 			env += fall * (a - env)
 		}
 		if env > threshold {
-			x[i] = v * math.Pow(env/threshold, 1/ratio-1)
+			g := math.Pow(env/threshold, 1/ratio-1)
+			x[i] = v * g
+			for _, gs := range gains {
+				gs[i] *= g
+			}
 		}
 	}
 }
@@ -1045,7 +1074,7 @@ type corpusEvent struct {
 	End    int       `json:"end"`
 	Drum   int       `json:"drum"` // kick 0, snare 1, hihat 2; -1 for a note
 	MIDI   int       `json:"midi"`
-	Vel    float64   `json:"vel"`    // 0 to 1; -1 where the recording's list says its velocities say nothing (velocityWords)
+	Vel    float64   `json:"vel"`    // 0 to 1, an amplitude over velocity one's; -1 where nothing says it, as a list's none or a note measured refused (velocityWords)
 	Wave   int       `json:"wave"`   // index into the waves of the manifest; -1 unknown
 	Family int       `json:"family"` // index into the families of the manifest; -1 unlabelled
 	Voice  []float64 `json:"voice,omitempty"`
@@ -1080,6 +1109,7 @@ type corpusLoop struct {
 	Events []corpusEvent `json:"events"`
 	Source string        `json:"source,omitempty"` // the recording a loop was heard from
 	Kind   string        `json:"kind,omitempty"`   // a rendered loop's: bank, arranged or overlap
+	Placed bool          `json:"placed,omitempty"` // its notes' starts are placed on the recording, not heard struck (startsWords)
 	// its beats and bar lines in frames, where the render puts them or a
 	// recording's list names them; a loop of neither, as an overlap, lists none
 	Beats     []int         `json:"beats,omitempty"`
@@ -1243,20 +1273,31 @@ func parsePart(arg string) (part, parts int, err error) {
 }
 
 // velocityWords is what a list's velocity column may say of a recording's MIDI
-// velocities, a word a cell, each the velocity its labels give a note or a hit of
-// the MIDI's: an empty cell keeps the MIDI's, and none says they tell nothing of
-// how the notes were played, as a lab's one velocity for every note does, so the
-// labels give -1, which asks the velocity head nothing. A word is a row here.
-var velocityWords = map[string]func(vel float64) float64{
-	"":     func(vel float64) float64 { return vel },
-	"none": func(float64) float64 { return -1 },
+// velocities, a word a cell: an empty cell keeps the MIDI's; none says they tell
+// nothing of how the notes were played, as a lab's one velocity for every note
+// does, so the labels give -1, which asks the velocity head nothing; measured
+// gives a note the velocity it is heard at (hearRecording), a hit -1. A word is a row.
+var velocityWords = map[string]struct {
+	heard bool                      // the recording's notes are measured
+	vel   func(vel float64) float64 // the velocity a label gives a note or a hit unmeasured
+}{
+	"":         {false, func(vel float64) float64 { return vel }},
+	"none":     {false, func(float64) float64 { return -1 }},
+	"measured": {true, func(float64) float64 { return -1 }},
 }
+
+// startsWords is what a list's starts column may say of its notes' starts: an
+// empty cell that each is heard struck, placed that they are placed on the
+// recording by a fitted alignment, missing by frames, so its labels say so and
+// ask the strike head nothing (doc/rip-training.md)
+var startsWords = map[string]bool{"": false, "placed": true}
 
 // corpusFrom writes a corpus of recordings and the MIDI files they were played
 // from, one loop each, listed by a CSV with audio_filename and midi_filename
-// columns, and split, duration, family, velocity, pitch and beats when present: the
-// frames as heard, the notes as the MIDI plays them, placed by the pitch track, the
-// voices unknown. A loop on disk is kept, known by its source; labels writes it over.
+// columns, and split, duration, family, velocity, unit, starts, pitch and beats
+// when present: the frames as heard, the notes as the MIDI plays them, placed by
+// the pitch track, the voices unknown. A loop on disk is kept, known by its
+// source; labels writes it over.
 func (s *Session) corpusFrom(dir, list string, a []string) error {
 	split, hours, codec, labels := "", math.Inf(1), false, false
 	for len(a) > 0 {
@@ -1310,15 +1351,30 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		}
 		family = func(r []string) int { return familyIndex(r[c]) }
 	}
-	vel := func([]string) func(float64) float64 { return velocityWords[""] }
+	velocity := func([]string) string { return "" }
 	if c, ok := col["velocity"]; ok {
 		for _, r := range rows {
-			if velocityWords[r[c]] == nil {
+			if _, ok := velocityWords[r[c]]; !ok {
 				words := slices.Sorted(maps.Keys(velocityWords))
 				return fmt.Errorf("%s: velocity %q: want %s, or an empty cell for the MIDI's own", list, r[c], strings.Join(words[1:], ", "))
 			}
 		}
-		vel = func(r []string) func(float64) float64 { return velocityWords[r[c]] }
+		velocity = func(r []string) string { return r[c] }
+	}
+	placed := func([]string) bool { return false }
+	if c, ok := col["starts"]; ok {
+		for _, r := range rows {
+			if _, ok := startsWords[r[c]]; !ok {
+				return fmt.Errorf("%s: starts %q: want placed, or an empty cell for notes heard struck", list, r[c])
+			}
+		}
+		placed = func(r []string) bool { return startsWords[r[c]] }
+	}
+	// the recordings a measured note's unit is read over: those its unit cell
+	// names alike, made at one gain as a singer's takes, or its own alone
+	unit := func(r []string) string { return "\x00" + r[wav] }
+	if c, ok := col["unit"]; ok {
+		unit = func(r []string) string { return cmp.Or(r[c], "\x00"+r[wav]) }
 	}
 	// a share of a large set may be all that is on disk, and a recording heard may be gone
 	listed := len(rows)
@@ -1373,9 +1429,12 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	rng := rand.New(rand.NewPCG(1, 2))
 	rng.Shuffle(len(rows), func(i, j int) { rows[i], rows[j] = rows[j], rows[i] })
 	type job struct {
-		at    int
-		row   []string
-		score *audio.MIDIScore
+		at     int
+		row    []string
+		score  *audio.MIDIScore
+		tracks []pitchTrack
+		levels []heardLevel // its notes', a measured recording's on disk
+		heard  []float64    // and their velocities
 	}
 	var (
 		jobs    []job
@@ -1400,13 +1459,13 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 			return fmt.Errorf("%s: %w", at(r[mid]), err)
 		}
 		if i, ok := held[r[wav]]; ok {
-			jobs = append(jobs, job{i, r, score})
+			jobs = append(jobs, job{at: i, row: r, score: score})
 			continue
 		}
 		for taken[next] {
 			next++
 		}
-		jobs = append(jobs, job{next, r, score})
+		jobs = append(jobs, job{at: next, row: r, score: score})
 		taken[next] = true
 		if c, ok := col["duration"]; ok {
 			d, _ := strconv.ParseFloat(r[c], 64)
@@ -1423,63 +1482,128 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		return fmt.Errorf("%s: no recordings listed for split %q, %d skipped", list, split, len(skipped))
 	}
 	var (
-		mu            sync.Mutex
-		wg            sync.WaitGroup
-		first         error
-		work          = make(chan job)
-		placed, notes int // of the recordings a pitch track is named for
+		mu         sync.Mutex
+		first      error
+		sat, notes int // of the recordings a pitch track is named for
 	)
-	for range min(4, runtime.NumCPU()) { // a recording's samples are hundreds of megabytes
-		wg.Go(func() {
-			for j := range work {
-				var coder *rand.Rand
-				if codec {
-					coder = rand.New(rand.NewPCG(0xc0dec, uint64(j.at)+1))
+	// each runs on min(4, cores), as a recording's samples are hundreds of megabytes
+	each := func(do func(j *job) error) error {
+		var wg sync.WaitGroup
+		work := make(chan *job)
+		for range min(4, runtime.NumCPU()) {
+			wg.Go(func() {
+				for j := range work {
+					err := do(j)
+					mu.Lock()
+					first = cmp.Or(first, err)
+					mu.Unlock()
 				}
-				var tracks []pitchTrack
-				err := error(nil)
-				if p := pitch(j.row); p != "" {
-					tracks, err = readPitch(at(p))
-				}
-				var grid [2][]float64
-				if b := beats(j.row); b != "" && err == nil {
-					grid[0], grid[1], err = readBeats(at(b))
-				}
-				n, sat := 0, 0
-				if err == nil {
-					n, sat, err = corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), vel(j.row), j.score, tracks, grid, coder, labels)
-				}
-				mu.Lock()
-				if !labels {
-					frames += n
-				}
-				if tracks != nil {
-					placed, notes = placed+sat, notes+len(j.score.Notes)
-				}
-				first = cmp.Or(first, err)
-				mu.Unlock()
-			}
-		})
-	}
-	for _, j := range jobs {
-		work <- j
-	}
-	close(work)
-	wg.Wait()
-	if first != nil {
+			})
+		}
+		for i := range jobs {
+			work <- &jobs[i]
+		}
+		close(work)
+		wg.Wait()
 		return first
+	}
+	if err := each(func(j *job) (err error) {
+		if p := pitch(j.row); p != "" {
+			j.tracks, err = readPitch(at(p))
+		}
+		if err == nil && velocityWords[velocity(j.row)].heard {
+			j.levels, err = hearRecording(at(j.row[wav]), j.score, j.tracks)
+		}
+		return err
+	}); err != nil {
+		return err
+	}
+	// a measured note's velocity is its level over the unit read from every
+	// recording its unit cell names alike, an instrument's apart
+	key := func(j *job, i int) string { return unit(j.row) + "\x00" + strconv.Itoa(int(j.score.Notes[i].Program)) }
+	units := map[string][]heardLevel{}
+	for i := range jobs {
+		for k, h := range jobs[i].levels {
+			units[key(&jobs[i], k)] = append(units[key(&jobs[i], k)], h)
+		}
+	}
+	unitOf := map[string]float64{}
+	if len(units) > 0 {
+		top := lineTop()
+		for k, levels := range units {
+			unitOf[k] = heardUnit(levels, top)
+		}
+	}
+	var opened, given, refused, gone int
+	for i := range jobs {
+		j := &jobs[i]
+		if !velocityWords[velocity(j.row)].heard {
+			continue
+		}
+		j.heard = make([]float64, len(j.score.Notes))
+		if j.levels == nil { // its recording is gone, and its notes say nothing
+			for k := range j.heard {
+				j.heard[k] = -1
+			}
+			gone, refused = gone+len(j.heard), refused+len(j.heard)
+			continue
+		}
+		opened++
+		for k, h := range j.levels {
+			if j.heard[k] = heardVelocity(h, unitOf[key(j, k)]); j.heard[k] < 0 {
+				refused++
+			} else {
+				given++
+			}
+		}
+	}
+	if err := each(func(j *job) error {
+		var coder *rand.Rand
+		if codec {
+			coder = rand.New(rand.NewPCG(0xc0dec, uint64(j.at)+1))
+		}
+		var grid [2][]float64
+		err := error(nil)
+		if b := beats(j.row); b != "" {
+			grid[0], grid[1], err = readBeats(at(b))
+		}
+		n, placedNotes := 0, 0
+		if err == nil {
+			n, placedNotes, err = corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), velocityWords[velocity(j.row)].vel, j.heard, !placed(j.row), j.score, j.tracks, grid, coder, labels)
+		}
+		mu.Lock()
+		if !labels {
+			frames += n
+		}
+		if j.tracks != nil {
+			sat, notes = sat+placedNotes, notes+len(j.score.Notes)
+		}
+		mu.Unlock()
+		return err
+	}); err != nil {
+		return err
 	}
 	if err := writeJSON(filepath.Join(dir, "corpus.json"), newCorpusManifest(loops)); err != nil {
 		return err
 	}
 	what := fmt.Sprintf("wrote %d recording(s) to %s from %s", len(jobs), dir, list)
 	if labels {
-		what = fmt.Sprintf("wrote the labels of %d recording(s) in %s again from %s and heard none", len(jobs), dir, list)
+		heard := "none"
+		if opened > 0 {
+			heard = strconv.Itoa(opened)
+		}
+		what = fmt.Sprintf("wrote the labels of %d recording(s) in %s again from %s and heard %s", len(jobs), dir, list, heard)
 	} else if codec {
 		what += ", a third through a lossy codec"
 	}
 	if notes > 0 {
-		what += fmt.Sprintf(", %d of %d note(s) placed by a pitch track", placed, notes)
+		what += fmt.Sprintf(", %d of %d note(s) placed by a pitch track", sat, notes)
+	}
+	if given+refused > 0 {
+		what += fmt.Sprintf(", %d note(s) given the velocity measured and %d none", given, refused)
+	}
+	if gone > 0 {
+		what += fmt.Sprintf(", %d of those none in recordings gone from disk", gone)
 	}
 	fmt.Fprintf(s.out, "%s, %d loop(s) and %.1f hours in all; %d listed were not on disk\n", what, loops, float64(frames)*audio.RipFrameSec/3600, missing)
 	if len(skipped) > 0 {
@@ -1492,8 +1616,9 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 // set, or under labels reads how many are on disk, and its score as one loop, its
 // frames and the notes its pitch tracks place returned: a note by family, or its
 // program's (programFamily) when family is -1, a hit and a strike of no line (a tom, a
-// crash: drum -1, midi 0) by the drums, each at vel of its velocity, with grid's beats.
-func corpusRecording(base, wav, source string, family int, vel func(float64) float64, score *audio.MIDIScore, tracks []pitchTrack, grid [2][]float64, coder *rand.Rand, labels bool) (int, int, error) {
+// crash: drum -1, midi 0) by the drums, each at vel of its velocity or a note at its
+// heard one, with grid's beats; struck false says its starts are placed.
+func corpusRecording(base, wav, source string, family int, vel func(float64) float64, heard []float64, struck bool, score *audio.MIDIScore, tracks []pitchTrack, grid [2][]float64, coder *rand.Rand, labels bool) (int, int, error) {
 	frames, whole, placed := 0, false, 0
 	if labels {
 		if frames, whole = bandsLength(base + ".bands"); !whole {
@@ -1521,13 +1646,16 @@ func corpusRecording(base, wav, source string, family int, vel func(float64) flo
 		frames = len(bands)
 	}
 	frame := func(sec float64) int { return int(sec/audio.RipFrameSec + 0.5) }
-	lab := corpusLoop{Frames: frames, Source: source}
-	for _, n := range score.Notes {
+	lab := corpusLoop{Frames: frames, Source: source, Placed: !struck}
+	for i, n := range score.Notes {
 		f := family
 		if f < 0 {
 			f = programFamily(n.Program)
 		}
 		ev := corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: vel(n.Vel), Wave: -1, Family: f}
+		if heard != nil {
+			ev.Vel = heard[i]
+		}
 		if tr := trackOf(tracks, n); tr != nil {
 			ev.Cents = tr.cents(n.MIDI, ev.Frame, ev.End)
 			placed += min(len(ev.Cents), 1)

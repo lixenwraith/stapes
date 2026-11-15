@@ -57,9 +57,10 @@ hand: a first training wants few wrong labels more than it wants hours.
   241 are refused for a note off its key, 111 for a squeezed note, 50 for a
   note under three frames and 44 for a silence inside a note.
 
-A placed start is an aligned score's, not a label to the frame: on the check
-draws about 0.82 to 0.84 of starts lie within 50 ms of the truth and 0.97 within 100
-ms. A semitone sung narrow and a wide vibrato are where the starts are loosest.
+A placed start is an aligned score's, not a label to the frame, and the list says so
+(`starts` `placed`): on the check draws about 0.82 to 0.84 of starts lie within 50
+ms of the truth and 0.97 within 100 ms. A semitone sung narrow and a wide vibrato
+are where the starts are loosest.
 
 ## The tools
 
@@ -81,8 +82,10 @@ measure read an octave from its note is written at the note's octave, which the 
 Writes only under <out dir>: the list's paths are relative to it, as `corpus ... from` reads them.
 Every recording of the set is a voice, so the list gives each `voice` as its family: with none, a note whose MIDI
 file sets no program is asked no name. The set states no velocity: every note is written at 80, which says nothing,
-and the list says so: its `velocity` cell is `none` (the word of stapes v0.34.0), so a corpus made from it labels
-each note at vel -1, which asks the velocity head nothing.
+so the list's `velocity` cell is `measured` (stapes v0.37.0, doc/rip-training.md, "A recording's velocities"): a
+corpus made from it gives each note the velocity heard in its take, -1 where it cannot be told, against a unit its
+singer's takes share, the singer named in `unit`. A take's starts are placed, not heard struck, and its `starts` cell
+says `placed`, so its notes ask the strike head nothing.
 A recording's duration is its WAV header's. The placing's bounds are place.py's, printed first; vocal-placed.tsv has
 a row a take: its exercise, technique, tonic, standard in cents, whether it is listed or why not, and the voiced
 frames the fold moved an octave. vocadito is not here: it measures at most (stapes' AGENTS, Data), from its own
@@ -305,9 +308,9 @@ A note is one `note_midi` observation of one of the six strings. It starts at th
 plus its duration, in the recording's own seconds; where the same string's next note of the same key starts before that,
 it ends there, since a MIDI note-off names no note. Its key is its pitch rounded to the nearest semitone, a half up.
 Notes kept are the piano's 88 keys (MIDI 21 to 108); one outside is left out and counted. The set states no velocity:
-every note is written at 80, which says nothing, and the list says so: its `velocity` cell is `none` (the word of
-stapes v0.34.0, doc/rip-training.md, "A recording's velocities"), so a corpus made from it labels each note at vel -1,
-which asks the velocity head nothing.
+every note is written at 80, which says nothing, so the list's `velocity` cell is `measured` (stapes v0.37.0,
+doc/rip-training.md, "A recording's velocities"): a corpus made from it gives each note the velocity heard in its
+recording, against the recording's own unit, -1 where the strings sounding with it hide it.
 A MIDI file is one track at 120 bpm with 22,050 ticks a quarter, a tick a sample at 44,100 Hz, a string a channel, so
 two strings on one pitch stay two notes. The list gives each recording its JAMS file as `pitch` and as `beats` (stapes
 reads each string's pitch_contour and the beat_position from it), `guitar` as its family, and its split by its player,

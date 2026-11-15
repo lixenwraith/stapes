@@ -3176,7 +3176,136 @@ func TestACorpusFromListWhoseVelocitiesSayNothingAsksNone(t *testing.T) {
 	}
 	writeFile(t, at("list.csv"), "audio_filename,midi_filename,velocity\na.wav,a.mid,loud\nb.wav,b.mid,\n")
 	err = RunScript(s, strings.NewReader(fmt.Sprintf("corpus %s from %s labels\n", corpus, at("list.csv"))))
-	if err == nil || !strings.Contains(err.Error(), `velocity "loud": want none, or an empty cell`) {
+	if err == nil || !strings.Contains(err.Error(), `velocity "loud": want measured, none, or an empty cell`) {
+		t.Errorf("a word of no row: %v", err)
+	}
+}
+
+// TestACorpusFromListOfMeasuredVelocitiesLabelsThemAsHeard: under measured a
+// recording's notes are labelled at their levels over its unit, which gives the
+// loudest tenth of those its unit cell names alike lineTop, and its hits at -1;
+// the last line counts the notes given one and none, and labels opens the
+// recordings again, labelling every note of one gone from disk none.
+func TestACorpusFromListOfMeasuredVelocitiesLabelsThemAsHeard(t *testing.T) {
+	dir := t.TempDir()
+	at := func(name string) string { return filepath.Join(dir, name) }
+	sr := float64(audio.AudioSampleRate)
+	saw := &audio.VoiceDef{Name: "saw", Wave: "saw", Attack: 0.002, Sustain: 1, Release: 0.05, Level: 1}
+	played := map[string][]float64{"a.wav": {0.2, 0.3, 0.4, 0.5}, "b.wav": {0.4, 0.6, 0.8, 1}}
+	for name, vels := range played {
+		var notes []audio.RipNote
+		x := make([]float64, int(5*sr))
+		for i, v := range vels {
+			start := 0.2 + float64(i)
+			notes = append(notes, audio.RipNote{Start: start, End: start + 0.5, MIDI: 60 + 2*i, Vel: 0.8})
+			for k, y := range audio.RenderNote(saw, 60+2*i, v, 0.5, 0.1) {
+				x[int(start*sr)+k] += 0.5 * y
+			}
+		}
+		var mid bytes.Buffer
+		if err := audio.WriteMIDI(&mid, notes, []audio.RipHit{{Start: 0.1, Drum: audio.InstrKick, Vel: 0.6}}, 120, audio.Meter{}); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, at(strings.TrimSuffix(name, ".wav")+".mid"), mid.String())
+		f, err := os.Create(at(name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		audio.WriteWAV(f, x)
+		f.Close()
+	}
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	corpus, top := at("corpus"), lineTop()
+	run := func(units, line, said string, want map[string][]float64) {
+		t.Helper()
+		writeFile(t, at("list.csv"), "audio_filename,midi_filename,velocity,unit\na.wav,a.mid,measured,"+units+"\nb.wav,b.mid,measured,"+units+"\n")
+		out.Reset()
+		runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s%s\n", corpus, at("list.csv"), line))
+		if !strings.Contains(out.String(), said) {
+			t.Errorf("unit %q%s: the run says %q, want %q", units, line, out.String(), said)
+		}
+		for i := range 2 {
+			var l corpusLoop
+			data, _ := os.ReadFile(filepath.Join(corpus, fmt.Sprintf("loop_%03d.json", i)))
+			if err := json.Unmarshal(data, &l); err != nil {
+				t.Fatal(err)
+			}
+			var got []float64
+			for _, e := range l.Events {
+				if e.Drum >= 0 && e.Vel != -1 {
+					t.Errorf("unit %q%s: %s's hit at velocity %.2f, want -1", units, line, l.Source, e.Vel)
+				} else if e.Drum < 0 {
+					got = append(got, e.Vel)
+				}
+			}
+			for k, v := range want[l.Source] {
+				if k >= len(got) || (v < 0) != (got[k] < 0) || v > 0 && math.Abs(20*math.Log10(got[k]/v)) > 0.2 {
+					t.Errorf("unit %q%s: %s's notes at %.3f, want %.3f", units, line, l.Source, got, want[l.Source])
+					break
+				}
+			}
+		}
+	}
+	scaled := func(name string, by float64) []float64 {
+		var v []float64
+		for _, p := range played[name] {
+			v = append(v, p*by)
+		}
+		return v
+	}
+	own := map[string][]float64{"a.wav": scaled("a.wav", top/0.5), "b.wav": scaled("b.wav", top)}
+	run("", "", "8 note(s) given the velocity measured and 0 none", own)
+	run("singer", " labels", "heard 2, 8 note(s) given the velocity measured and 0 none", map[string][]float64{"a.wav": scaled("a.wav", top), "b.wav": scaled("b.wav", top)})
+	if err := os.Remove(at("b.wav")); err != nil {
+		t.Fatal(err)
+	}
+	own["b.wav"] = []float64{-1, -1, -1, -1}
+	run("", " labels", "heard 1, 4 note(s) given the velocity measured and 4 none, 4 of those none in recordings gone from disk", own)
+}
+
+// TestACorpusFromListOfPlacedStartsSaysSo: a list's starts column says placed
+// of a recording whose notes' starts an alignment placed, and its label says so,
+// which asks the strike head nothing of it; an empty cell's notes are heard
+// struck, and a word startsWords has no row for is refused.
+func TestACorpusFromListOfPlacedStartsSaysSo(t *testing.T) {
+	dir := t.TempDir()
+	at := func(name string) string { return filepath.Join(dir, name) }
+	var mid bytes.Buffer
+	if err := audio.WriteMIDI(&mid, []audio.RipNote{{Start: 0.2, End: 0.6, MIDI: 60, Vel: 0.8}}, nil, 120, audio.Meter{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a", "b"} {
+		writeFile(t, at(name+".mid"), mid.String())
+		f, err := os.Create(at(name + ".wav"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		audio.WriteWAV(f, make([]float64, audio.AudioSampleRate))
+		f.Close()
+	}
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	corpus := at("corpus")
+	writeFile(t, at("list.csv"), "audio_filename,midi_filename,starts\na.wav,a.mid,placed\nb.wav,b.mid,\n")
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s\n", corpus, at("list.csv")))
+	got := map[string]bool{}
+	for i := range 2 {
+		var l corpusLoop
+		data, _ := os.ReadFile(filepath.Join(corpus, fmt.Sprintf("loop_%03d.json", i)))
+		if err := json.Unmarshal(data, &l); err != nil {
+			t.Fatal(err)
+		}
+		got[l.Source] = l.Placed
+	}
+	if want := map[string]bool{"a.wav": true, "b.wav": false}; !maps.Equal(got, want) {
+		t.Errorf("labels placed %v, want %v", got, want)
+	}
+	writeFile(t, at("list.csv"), "audio_filename,midi_filename,starts\na.wav,a.mid,aligned\n")
+	err := RunScript(s, strings.NewReader(fmt.Sprintf("corpus %s from %s labels\n", corpus, at("list.csv"))))
+	if err == nil || !strings.Contains(err.Error(), `starts "aligned": want placed, or an empty cell for notes heard struck`) {
 		t.Errorf("a word of no row: %v", err)
 	}
 }
@@ -3810,6 +3939,101 @@ func onPitch(x []float64, key int) float64 {
 	return (1 + xy/math.Sqrt(xx*yy+1e-300)) / 2
 }
 
+// heldShare is onPitch of a note from 50 ms to its note-off, two periods at least
+func heldShare(v *audio.VoiceDef, key int, vel, dur float64) float64 {
+	end := max(dur, 0.05+2/audio.NoteFreq(key))
+	x := played(v, key, vel, dur, end-dur)
+	return onPitch(x[:min(len(x), int(end*audio.AudioSampleRate))], key)
+}
+
+// pitchBound is the share a note on its label's pitch holds at least: halfway in
+// dB between the registered voices' lowest ratio of the key's partials to the
+// half partials, over every other key the arranger gives them, and as much on
+// each; that lowest, and the note it is of
+func pitchBound() (bound, worst float64, at string) {
+	worst = 1.0
+	for _, v := range audio.RegisteredVoices() {
+		keys := familyKeys(v.Name)
+		for k := keys[0]; k <= keys[1]; k += 2 {
+			for _, dur := range ruleLengths {
+				for _, vel := range ruleVels {
+					if sh := heldShare(v, k, vel, dur); sh < worst {
+						worst, at = sh, fmt.Sprintf("%s's key %d at %.2f for %.2f s", v.Name, k, vel, dur)
+					}
+				}
+			}
+		}
+	}
+	r := math.Sqrt(worst / (1 - worst))
+	return r / (1 + r), worst, at
+}
+
+// TestAStringIsGivenNoKeyUnderItsLowest: the plucked focus's strings, its bass's
+// among them, are given no key under stringLowest, by an arrangement's parts
+// and by an overlap's, and every note of the rule's at each key they are given
+// is on its label's pitch by the bank's voices' bound
+func TestAStringIsGivenNoKeyUnderItsLowest(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	bound, _, _ := pitchBound()
+	isString := map[audio.InstrumentType]bool{}
+	for _, v := range focusVoices(t, s) {
+		if v.Wave != "string" {
+			continue
+		}
+		i, _ := audio.InstrumentByName(v.Name)
+		isString[i] = true
+		keys := familyKeys(v.Name)
+		if keys[0] < stringLowest {
+			t.Errorf("%s is given keys from %d, under %d", v.Name, keys[0], stringLowest)
+		}
+		for k := keys[0]; k <= keys[1]; k += 3 {
+			for _, dur := range ruleLengths {
+				for _, vel := range ruleVels {
+					if sh := heldShare(audio.VoiceDefByName(v.Name), k, vel, dur); sh < bound {
+						t.Errorf("%s's key %d at %.2f for %.2f s holds %.3f on its partials, under %.3f", v.Name, k, vel, dur, sh, bound)
+					}
+				}
+			}
+		}
+	}
+	lowest := map[string]int{}
+	low := func(p *part) {
+		if name := audio.InstrumentName(p.instr); isString[p.instr] {
+			lowest[name] = min(cmp.Or(lowest[name], 128), p.lo)
+			for _, n := range p.notes {
+				lowest[name] = min(lowest[name], n.midi)
+			}
+		}
+	}
+	for i := range 48 {
+		a := newArranger(rand.New(rand.NewPCG(uint64(i), 1)), rand.New(rand.NewPCG(uint64(i), 2)), 4, 120, false, false)
+		a.compose(nil, nil, nil)
+		for _, p := range a.parts {
+			low(p)
+		}
+		m, err := s.overlap(rand.New(rand.NewPCG(uint64(i), 3)), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, ps := range m.parts {
+			for _, p := range ps {
+				low(p)
+			}
+		}
+	}
+	for name, k := range lowest {
+		if k < stringLowest {
+			t.Errorf("%s is given key %d, under %d", name, k, stringLowest)
+		}
+	}
+	if len(lowest) == 0 {
+		t.Error("no string of the focus's was drawn")
+	}
+	t.Logf("the strings' lowest keys drawn: %v", lowest)
+}
+
 // TestARedrawnNoteIsOnItsLabelsPitch: each registered voice redrawn eight times
 // on each wave, every note of the rule's on its key by onPitch, from 50 ms to
 // its note-off and two periods at least, no less than halfway in dB between the
@@ -3819,33 +4043,14 @@ func TestARedrawnNoteIsOnItsLabelsPitch(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	share := func(v *audio.VoiceDef, key int, vel, dur float64) float64 {
-		end := max(dur, 0.05+2/audio.NoteFreq(key))
-		x := played(v, key, vel, dur, end-dur)
-		return onPitch(x[:min(len(x), int(end*audio.AudioSampleRate))], key)
-	}
-	worst, at := 1.0, ""
-	for _, v := range audio.RegisteredVoices() {
-		keys := familyKeys(v.Name)
-		for k := keys[0]; k <= keys[1]; k += 2 {
-			for _, dur := range ruleLengths {
-				for _, vel := range ruleVels {
-					if sh := share(v, k, vel, dur); sh < worst {
-						worst, at = sh, fmt.Sprintf("%s's key %d at %.2f for %.2f s", v.Name, k, vel, dur)
-					}
-				}
-			}
-		}
-	}
-	r := math.Sqrt(worst / (1 - worst))
-	bound := r / (1 + r)
+	bound, worst, at := pitchBound()
 	notes, least, why := 0, 1.0, ""
 	for _, d := range redrawsOfEach(t, 8) {
 		for _, key := range ruleKeys(d.sp) {
 			for _, dur := range ruleLengths {
 				for _, vel := range ruleVels {
 					notes++
-					sh := share(d.r, key, vel, dur)
+					sh := heldShare(d.r, key, vel, dur)
 					if sh < bound {
 						t.Errorf("%s drawn from %s on %s: key %d at %.2f for %.2f s holds %.3f on its partials, under %.3f", d.v.Name, d.from.Name, d.r.Wave, key, vel, dur, sh, bound)
 					}

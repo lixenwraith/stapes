@@ -1091,6 +1091,13 @@ const softest = 0.03
 // arrange writes a loop: its texture, each part's instrument and notes, played;
 // steady keeps its tempo, else it drifts beat by beat in seven loops of ten
 func (s *Session) arrange(a *arranger, set *sampleSet, srng, glrng *rand.Rand, steady bool) (*music, error) {
+	a.compose(set, srng, glrng)
+	return a.music(steady)
+}
+
+// compose draws a loop's texture and writes each part's instrument and notes,
+// played: all of a loop but its patterns
+func (a *arranger) compose(set *sampleSet, srng, glrng *rand.Rand) {
 	rng := a.rng
 	weights := make([]float64, len(textures))
 	for i, t := range textures {
@@ -1146,7 +1153,6 @@ func (s *Session) arrange(a *arranger, set *sampleSet, srng, glrng *rand.Rand, s
 	if glrng != nil {
 		a.glide(glrng)
 	}
-	return a.music(steady)
 }
 
 // instrument draws a part's instrument by its kind's families, a voice no
@@ -1176,7 +1182,7 @@ func (a *arranger) instrument(p *part, set *sampleSet, srng *rand.Rand) {
 		}
 	}
 	p.instr = tonal[pick(rng, w...)]
-	r := familyRanges[familyOf(p.instr)]
+	r := familyKeys(audio.InstrumentName(p.instr))
 	p.lo, p.hi = r[0], r[1]
 	if set != nil && srng != nil && srng.Float64() < set.share {
 		pool := set.other
@@ -1324,7 +1330,7 @@ func (s *Session) overlap(rng *rand.Rand, set *sampleSet) (*music, error) {
 	}
 	var pool []inst
 	for _, t := range audio.TonalInstruments() {
-		r := familyRanges[familyOf(t)]
+		r := familyKeys(audio.InstrumentName(t))
 		pool = append(pool, inst{t, nil, r[0], r[1]})
 	}
 	if set != nil {

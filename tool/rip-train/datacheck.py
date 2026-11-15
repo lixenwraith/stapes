@@ -2,8 +2,9 @@
 """datacheck.py <corpus dir>...: a shallow check of a corpus's labels against its sound, on a sample of loops (SAMPLE,
 160; GROUP=1 splits a corpus by where each recording came from): the frames' layout, file sizes, finite frames, labels
 within their loop and the piano's keys, doubled (frame, pitch) labels, loops with no label, notes and hits in a loop's
-own quiet, and the lag in 11.6 ms frames at which the sharp plane rises most after a labelled start, hit or beat, with
-how far over the median it stands. A frame is peak-normalized, so a loop reads the same at any scale."""
+own quiet (a frame's energy over the sharp plane, in dB, within 8% of the loop's range over its quietest), and the lag
+in 11.6 ms frames at which the sharp plane rises most after a labelled start, hit or beat, with how far over the
+median it stands. A frame is peak-normalized, so a loop reads the same at any scale."""
 import json
 import os
 import sys
@@ -61,7 +62,10 @@ def check(d, only=None, g=None):
         r += sum(1 for f in ht if not 0 <= f < lab['frames'])
         if r: bad['rng'] += 1; why.append(f'loop {i}: {r} labels out of range')
         tot += len(nt); dbl += len(nt) - len(set((f, k) for f, e, k in nt)); empty += not ev
-        loud = m.mean(1); lo, hi = np.percentile(loud, 1), np.percentile(loud, 99); quiet = lo + 0.08 * (hi - lo)
+        # a frame's loudness is its energy over the sharp plane, in dB of the recording's peak: the mean of its 315
+        # values counts each band a sound leaves empty, and two thirds of them lie under 1 kHz
+        loud = 10 * np.log10(np.expm1(m.astype(np.float64)).sum(1) / 100 + 1e-12)
+        lo, hi = np.percentile(loud, 1), np.percentile(loud, 99); quiet = lo + 0.08 * (hi - lo)
         flux = np.maximum(m[1:] - m[:-1], 0).sum(1); flux = np.concatenate([[0], flux]); med = np.median(flux) + 1e-6
 
         def at(frames_, key):
@@ -69,7 +73,7 @@ def check(d, only=None, g=None):
             if len(f) == 0: return
             acc[key] += np.array([flux[f + l].mean() for l in LAGS]) / med * len(f); cnt[key] += len(f)
         at([f for f, e, k in nt], 'note'); at(ht, 'hit'); at(lab.get('beats', []), 'beat')
-        if silent or hi - lo > 0.01:  # a loop of one steady sound has no quiet of its own to tell
+        if silent or hi - lo > 1:  # a loop of one steady sound, within a decibel, has no quiet of its own to tell
             fq += len(loud) if silent else int((loud <= quiet).sum()); fn += len(loud)
             for f, e, k in nt:
                 if f < fr - 6: notes_n += 1; notes_sil += silent or loud[f:f + 6].max() <= quiet

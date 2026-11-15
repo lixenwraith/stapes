@@ -717,7 +717,9 @@ class TheDatacheck(unittest.TestCase):
         tone = ripmodels.band_frames(tones(cls.FRAMES, cls.ONSETS))
         nan = tone.copy()
         nan[50, ripmodels.BANDS + 3] = np.nan
-        cls.sounds = {"tones": tone, "quieter": ripmodels.band_frames(tones(cls.FRAMES, cls.ONSETS) / 32768), "silent": np.zeros_like(tone), "cut": tone[:-1], "nan": nan}
+        soft = tones(cls.FRAMES, cls.ONSETS[:1] + cls.ONSETS[2:]) + 10 ** (-30 / 20) * tones(cls.FRAMES, cls.ONSETS[1:2])
+        cls.sounds = {"tones": tone, "quieter": ripmodels.band_frames(tones(cls.FRAMES, cls.ONSETS) / 32768), "silent": np.zeros_like(tone), "cut": tone[:-1], "nan": nan,
+                      "soft": ripmodels.band_frames(soft)}
 
     @classmethod
     def tearDownClass(cls):
@@ -740,6 +742,12 @@ class TheDatacheck(unittest.TestCase):
             lags.append(v["lags"]["note"][0])
         self.assertIn(lags[0], (-1, 0, 1))
         self.assertEqual(lags[1], lags[0] - 4)
+
+    def test_a_note_alone_far_under_the_loudest_is_not_in_its_loops_quiet(self):
+        """A note 30 dB under the loop's loudest, nothing else sounding, is out of the loop's quiet: a frame's loudness is
+        its energy over the sharp plane, which no band the note leaves empty lowers."""
+        v = datacheck.check(self.corpus("soft", [{"sound": "soft", "events": [note(f, f + 30, 60, "piano") for f in self.ONSETS]}]))
+        self.assertEqual(v["notes"], (0, 4))
 
     def test_a_corpus_reads_its_faults_at_any_scale(self):
         """A loop cut short, one not finite, labels out of their loop or the piano's keys, a doubled label, a loop of

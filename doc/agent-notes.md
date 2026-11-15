@@ -426,7 +426,10 @@ proves wrong or that a document now states, and link the document instead.
   `datacheck.py` prints a source apart with `GROUP=1`.
 - `datacheck.py` reads the sharp plane alone: the fine plane hears its low bands
   through windows up to 2.97 s, so a low strike rises there over seconds and
-  its rise says nothing of the frame a label puts it on.
+  its rise says nothing of the frame a label puts it on. A frame's loudness, by
+  which a note or hit is in its loop's quiet, is its energy over that plane in
+  dB: the mean of the plane's 315 values would count each band a sound leaves
+  empty, two thirds of them under 1 kHz, and read a note alone as quiet.
 - A real set repeated is not more sound: a small set at a large share of a run's
   windows is heard many times over. `--extra`'s shares are drawn in order, each
   of the windows the ones before it left, not of all of them. Before a round,

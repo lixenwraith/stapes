@@ -3,7 +3,8 @@
 Every corpus and training round so far, what each was for and what came of it. How
 the data and the models work byte by byte is in `rip-training.md`, the reasoning in
 `rip-design.md`. A score here is pooled F1 of notes over the test recordings: clean, then
-from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
+from phones. Weights of deleted corpora were kept in `~/ripcorpus-archive` until every
+weight was deleted on 14 November.
 
 ## Corpora
 
@@ -34,11 +35,11 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 **Corpus 13** (deleted)
 - Hard links: corpus 11 plus the long-lines set. Used only by 17a.
 
-**Corpus 14** (`~/ripcorpus14`, in use)
+**Corpus 14** (deleted 14 November, with Lakh)
 - 20,000 loops; three in four play bars of Lakh's clean MIDI on the engine's voices.
 - Goal: real arrangements in place of generated ones. First test is round 24a.
 
-**Corpus 15** (`~/ripcorpus15`, in use)
+**Corpus 15** (deleted 14 November, with Lakh)
 - 20,000 loops of whole Lakh arrangements: every part of the file, the parts past melody, second line and bass spread by octave over up to three tracks on instruments of their own, up to 24 dB softer (`corpus ... dense seed 151`).
 - Goal: soft inner lines under a ring, as real arrangements have. The base of every round since 31a.
 
@@ -82,7 +83,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 - Each note's onset moved to 32a's strongest strike peak at its pitch within eight frames, where that is over a half (81% of the training notes, a median three frames), else marked `"snap": false` (19%: Solo Flute 6% to String Sextet 50%). Two models outside 32a's line then find a note within a frame of its label on 80 to 88%, 36% before.
 - Goal: strikes MusicNet can teach and judge. The trainer's mask for an unsnapped note is still to come.
 
-**The glide pair** (`~/ripcorpus37-plain`, `~/ripcorpus37-glide`, waiting)
+**The glide pair** (deleted 14 November, with Lakh)
 - Corpus 17's line at seed 371, 2,000 loops each, without and with `glide`: the same loops but for the motion (765 of the glide corpus's loops move, 24% of their placed note frames), the last 200 of each held out of every run.
 - Goal: rounds 37a to 37d.
 
@@ -117,7 +118,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 **11a**
 - Corpus 11, for soft notes. Level with 8b (.676, .522).
 
-**12a** (installed)
+**12a** (installed until 14 November, when every weight was deleted)
 - PCEN as a second channel, and a simulated phone channel in training.
 - Goal: hear through a phone. Large gain (.704, .620 to .645). Best drums from phones.
 
@@ -207,7 +208,7 @@ from phones. Weights of deleted corpora are in `~/ripcorpus-archive`.
 - Corpus 15 with 14, 11 and singing, from 29b's weights, shuffle, singing, +-0.5 s, swaying tempo, restrike weight 3.
 - Goal: every new thing soaked together. The day's biggest jump: renders .931, comp .581, MusicNet .608, vocadito .665 with 4 octave errors.
 
-**32a** (Sheet 15's model, installed as `ripnotes.bin` 8 November)
+**32a** (Sheet 15's model, installed as `ripnotes.bin` 8 November until every weight was deleted on 14 November)
 - 31a with the narrower ring (70 to 160 Hz, -25 to -8 dB, a quarter of the windows).
 - Better than 31a on every real set but the renders: clean .832, Pixel .700, Galaxy .701, comp .582, solo .821 (low extras 424 to 362), MusicNet .610, vocadito .682.
 

@@ -450,9 +450,10 @@ What is trained and what is only written, on 12 November 2026:
      song's transcription. Such a song measures the rip on real-world music and
      no more, since no licence covers training on it; a corpus or a fit takes
      the engine's generated parts and mixes, public-domain scores it renders
-     and the CC BY sets. Lakh's files are such transcriptions; the weights
-     trained on them stay. A round's notes name every collection it took, for
-     the credits.
+     and the CC BY sets. Lakh's files are such transcriptions: the corpora
+     made from them and every weight trained before they went were deleted on
+     2026-11-14, and the models train again from nothing. A round's notes name
+     every collection it took, for the credits.
    Code alone, a thread each, in parallel:
    - **Notes by pitch and onset, and the search under a guard**, landed.
      `Agreement` counts every note as one line (`All`) and `MatchNotes`

@@ -19,22 +19,11 @@ stapes changes in each:
 - A MIDI file's stretches are played on the engine's voices, and the render is
   read as a recording.
 
-## In the weights in use
+## The collections
 
-The frame model 12a learned from the engine's own renders alone, the notes
-model 32a from these as well ([rounds](doc/rip-rounds.md)):
+The corpora take these as [Rip training](doc/rip-training.md) and the
+[rounds](doc/rip-rounds.md) say, and their held-out parts measure the models:
 
-- **The Lakh MIDI Dataset v0.1**, by Colin Raffel,
-  <https://colinraffel.com/projects/lmd/>, CC BY 4.0; Colin Raffel,
-  "Learning-Based Methods for Comparing Sequences, with Applications to
-  Audio-to-MIDI Alignment and Matching", PhD thesis, 2016. Its clean MIDI
-  subset was played as four-bar stretches of a file: the beat, melody, second
-  line and bass, moved up to half an octave (corpus 14), or every part, those
-  past these spread by octave over up to three tracks, each up to 24 dB under
-  the file's level (corpus 15, and 16 and 17 on its recipe); 32a learned from
-  corpora 14 and 15. It is no longer used: its files are transcriptions of
-  commercial songs, and its licence covers the collection, not the songs. The
-  weights trained on it stay in use.
 - **The Expanded Groove MIDI Dataset (E-GMD)** v1.0.0, by Lee Callender,
   Curtis Hawthorne and Jesse Engel, made available by Google LLC,
   <https://magenta.withgoogle.com/datasets/e-gmd>, CC BY 4.0. Its train
@@ -50,9 +39,6 @@ model 32a from these as well ([rounds](doc/rip-rounds.md)):
   Gabriel Meseguer Brocal and David Rubinstein,
   <https://doi.org/10.5281/zenodo.5578807>, CC BY 4.0. Clips 1 to 30 and their
   notes are in the singing corpus; clips 31 to 40 measure.
-
-## Measured with, and in rounds not installed
-
 - **The NSynth Dataset**, by Jesse Engel, Cinjon Resnick, Adam Roberts, Sander
   Dieleman, Douglas Eck, Karen Simonyan and Mohammad Norouzi, made available
   by Google Inc., <https://magenta.withgoogle.com/datasets/nsynth>, CC BY 4.0.
@@ -83,10 +69,15 @@ stapes renders its corpora on those voices.
 
 ## Not used
 
+- The Lakh MIDI Dataset v0.1, by Colin Raffel,
+  <https://colinraffel.com/projects/lmd/>, CC BY 4.0, is out: its files are
+  transcriptions of commercial songs, and its licence covers the collection,
+  not the songs. Earlier rounds played its clean MIDI subset (corpora 14 to 17
+  and the glide pair); those corpora and every weight trained before they went
+  were deleted on 2026-11-14, and the models train again from nothing.
+  Slakh2100 (CC BY 4.0) is rendered from it, so it is out with it.
 - MAESTRO (Google LLC, CC BY-NC-SA 4.0) and MAPS (V. Emiya and B. David, CC
   BY-NC-SA 2.0 France) are non-commercial, so they stay out of training.
-- Slakh2100 (CC BY 4.0) is rendered from the Lakh MIDI Dataset, so it is out
-  with it.
 - URMP, by Bochen Li, Xinzhao Liu, Karthik Dinesh, Zhiyao Duan and Gaurav
   Sharma, states no licence on its own pages; its Dryad deposit is CC0 1.0
   under Dryad's terms. Planned, not used.

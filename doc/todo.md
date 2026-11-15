@@ -431,6 +431,21 @@ Left open by what landed, each with the option not taken:
   with the notes model's salience from step to step.
 - `test_train.py` runs by hand: CI has no PyTorch.
 
+### Train both models again without Lakh
+
+- Priority: P1
+- Affected files: `tool/rip-train` (the rounds' recipes), `doc/rip-rounds.md`,
+  `CREDITS.md`
+
+Lakh's corpora and every weight trained before it went were deleted on
+2026-11-14 (AGENTS, Data), so the frame and notes models train again from
+nothing, on the engine's generated parts and mixes, the public-domain scores it
+renders and the CC BY sets. No corpus left plays a note under MIDI 32, since
+those came from Lakh's basses, so the generator writes the low keys before a
+line is asked to learn them. What closes it: both models trained from nothing
+and installed, their rounds naming every collection they took, and CREDITS.md
+crediting exactly those.
+
 ### Train the piano's pitches
 
 - Priority: P1
@@ -466,8 +481,9 @@ lines in training are still E1 to C7. What is left:
   (the corpus's entries)
 
 Corpora 14 to 17 and the glide pair played stretches of Lakh's MIDI files,
-transcriptions of commercial songs that nothing trains on from here on (AGENTS,
-Data); the weights trained on them stay. The folder `midi <dir>` names may hold
+transcriptions of commercial songs that nothing trains on (AGENTS, Data); they
+and every weight trained before they went were deleted on 2026-11-14, and the
+models train again from nothing. The folder `midi <dir>` names may hold
 generated MIDI and public-domain scores, never Lakh's files or Slakh's. A
 score's file has rights of its own apart from its work's, its sequencer's or its
 engraver's, so a file joins only when its own page puts it in the public domain

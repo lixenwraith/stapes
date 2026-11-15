@@ -56,9 +56,10 @@ it there in the same PR.
   bought or not, or anything taken from one (a take of it through a room or a
   phone, a noise bank shaped by its quiet), nor a commercial song's
   transcription, as Lakh's MIDI files and Slakh's renders of them are: no
-  licence covers training on a song, so it only measures the rip. The weights
-  earlier rounds trained on Lakh stay in use. A round's notes name the
-  collections it took, for the [credits](CREDITS.md).
+  licence covers training on a song, so it only measures the rip. Every corpus
+  made from Lakh and every weight trained before it went were deleted on
+  2026-11-14, and the models train again from nothing without it. A round's
+  notes name the collections it took, for the [credits](CREDITS.md).
 
 ## Scope
 

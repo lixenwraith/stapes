@@ -10,7 +10,9 @@ LOOPS=${LOOPS:-20000}                # loops to render; a smoke test is 200
 PARTS=${PARTS:-1}                    # exports at once, each rendering every PARTS-th loop: a core each
 BARS=${BARS:-4}                      # bars a loop
 AUG=${AUG:-aug}                      # aug: a room, a mix, random voices, saturation, a tuning off A440; empty for clean
-GEN=${GEN:-gen}                      # gen: beats, melodies and bass lines the bank never had; empty for the bank alone
+GEN=${GEN:-gen}                      # gen: music arranged over the whole keyboard in place of the bank's loops; empty for the bank alone
+METERS=${METERS:-meters}             # meters: the arranged loops in seven meters, some starting part-way into a bar; empty for 4/4 alone
+OVERLAPS=${OVERLAPS:-overlaps}       # overlaps: a quarter of the loops single notes overlapping in no meter, or overlaps <share>; empty for none
 GLIDE=${GLIDE:-}                     # glide: a share of the notes bend, scoop or sway, each labelled with its cents; empty for none
 WAV=${WAV:-nowav}                    # nowav: frames and labels only; empty to keep each loop's WAV
 CODEC=${CODEC:-}                     # codec: a third of the loops through a lossy codec and back, by ffmpeg; empty for none
@@ -54,7 +56,7 @@ stapes() { go run ./cmd/stapes -headless "$@"; }
 corpus_slab() {
 	{
 		[ -n "$FOCUS" ] && printf 'run %s\n' "$(realpath "$FOCUS")"
-		printf 'corpus %s %s %s %s %s %s %s %s %s %s %s\n' "$(realpath "$CORPUS")" "$LOOPS" "$BARS" "$AUG" "$GEN" "$GLIDE" "$WAV" "$CODEC" "${TEMPOS:+tempos $TEMPOS}" "${SAMPLED:+sampled $(realpath "$SAMPLED")}" "${2:-}"
+		printf 'corpus %s %s %s %s %s %s %s %s %s %s %s %s %s\n' "$(realpath "$CORPUS")" "$LOOPS" "$BARS" "$AUG" "$GEN" "$METERS" "$OVERLAPS" "$GLIDE" "$WAV" "$CODEC" "${TEMPOS:+tempos $TEMPOS}" "${SAMPLED:+sampled $(realpath "$SAMPLED")}" "${2:-}"
 	} > "$1"
 }
 

@@ -210,8 +210,9 @@ proves wrong or that a document now states, and link the document instead.
 - A scorer is code nobody trained: a new scorer gets a test or a count made
   apart before a figure from it is used. A table is one decode's: when audio
   moves, rebuild the reading tools between rounds and read the baseline again.
-- A generated loop starts on a bar line, which rewards a decoder that leans on a
-  recording's start. Read bars on loops cut a quarter to three quarters of a bar
+- A bank loop and every loop `bench` draws start on a bar line, which rewards a
+  decoder that leans on a recording's start; only `corpus ... meters` starts
+  loops part-way. Read bars on loops cut a quarter to three quarters of a bar
   in, the truth's lines moved by the cut, beside whole ones: a search fitted on
   whole loops alone can learn the lean.
 - Write a truth from a score or a MIDI file, never from memory.
@@ -345,14 +346,15 @@ proves wrong or that a document now states, and link the document instead.
   count `bench` prints; `bench ... verbose` names each loop that gave none.
 - An augmented corpus draws its room, mix and voices from a stream seeded apart
   from the loop's patterns and key, so `corpus` with and without `aug` renders
-  the same music; a test comparing the two relies on it. Generated parts register
+  the same music; a test comparing the two relies on it. Arranged parts register
   under `corpus_*` names replaced in place each loop, and `corpus` leaves those
   names out of the bank's pools, or the next draw would include the last loop's
-  generated patterns and no two runs would draw alike.
-- `corpus ... meters` draws a loop's meter from a stream of its own, and a loop
-  in 4/4 renders as it does without `meters`, which a test compares byte for
-  byte; a loop in 3/4 or 6/8 generates every part, the bank having only 4/4. The
-  rip reads a meter other than 4/4 only over more than eight bars of beats, so
+  arranged patterns and no two runs would draw alike.
+- `corpus ... meters` draws a loop's meter and its start from a stream of its
+  own, and a loop it leaves in 4/4 from a bar line is drawn as without the word,
+  which a test compares; without `gen` a loop it moves is arranged, the bank
+  having only 4/4 from a bar line. The rip reads a meter other than 4/4 only
+  over more than eight bars of beats, so
   `bench 24 16 meters`: a rip can find a loop's bar and miss its label (a 6/8
   tracked in quarters reads 3/4, a 3/4 in dotted quarters 6/8), which is why the
   bench counts both.
@@ -365,15 +367,13 @@ proves wrong or that a document now states, and link the document instead.
   moves, so a corpus without the word is byte for byte what it was: a new label
   field stays out of the file where it is unset. A voice with a vibrato of its
   own (the vocal focus's) moves without the word, and its labels gain the list.
-- A `midi` corpus holds glides without the word: a MIDI file's pitch bend is a
-  step's `bend`, which the engine plays, so such a note lists its `cents`. The
-  line with `labels` after it writes its labels again and renders nothing.
 - `corpus ... labels` plays nothing, so nothing a label holds may wait on the
   mixer: `DefineVoice` queues a command and fails once 256 wait unplayed. The
   pass checks a voice with `ValidateVoice` and registers none, so the registered
-  voices stay as they are and need no restoring. A label takes only its length
-  from the render, read from the `.mel` header; a field a label gains must be
-  drawn before the render, or the pass cannot write it.
+  voices stay as they are and need no restoring. A label takes nothing from the
+  render: its length is counted from the loop's samples (`loopFrames`), which a
+  render checks against the frames it heard. A field a label gains must be drawn
+  before the render, or the pass cannot write it.
 - A `from` corpus's labels pass knows a recording by its label's `source`, so
   a label that does not read stops it. It writes the MIDI's `vel` again:
   strip a constant-velocity corpus's once more after it (below).
@@ -436,22 +436,36 @@ proves wrong or that a document now states, and link the document instead.
   model's file that has it ("frame model has 12 heads, want 10"). Take the audio tag
   that knows a new head before installing weights trained with it; weights
   without it load in either.
-- **A rendered loop's beats are in no label: the trainer derives them** from
-  `bpm`, `bars` and `meter` (`train.Label`), by the arithmetic `exportCorpus`
-  lays an event with, a sixteenth of whole samples and each frame rounded half
-  up. A change to how a step is placed (a swing, a tempo that moves inside a
-  loop, a pickup before bar one) breaks the rule without a word and no test sees
-  it: redo its check, a scratch script over `aug`, `codec`, `midi`, `dense`,
-  `meters`, `glide` and `tempos` corpora that asks that every event's frame is
-  on its loop's sixteenths and the end's line within a frame of the `.mel`'s
-  length.
+- **A rendered loop's beats are in its label**, where audio's `BeatStarts`
+  puts them under the bars' tempos (`music.label`), and the trainer reads them
+  as it reads a recording's, asking every frame of a rendered loop but its last
+  two (`train.Label`). A swing, a drift or a pickup moves the label with the
+  notes; what the label cannot see is a render that sounds a note off its
+  expected event, which audio's `TestALateStepSoundsWhereItsEventSays` holds for
+  late steps under drifting tempos and stapes' performance test for the kick
+  on every bar line under drums.
+- **The arrangement's tests share one label corpus** (`theLabels`, 2,000 loops
+  drawn once): drawing it closes a session of its own and resets audio's
+  registries, so a test calls `labelCorpus` before it opens its own session. The
+  figures [Rip training §3](rip-training.md#arranged-loops) quotes are those
+  tests' logs: after a change to the arranger, run them with `-v` and write the
+  figures again from what they print.
+- A part on a recorded instrument keeps to that instrument's pitches, so a
+  sampled guitar's chords can sit over a left hand drawn from a keyboard's
+  floor: the left hand folds under the chords' lowest, and chords with a left
+  hand keep two octaves over their instrument's lowest key. A note is cut to the
+  loop's span before the performance moves it, and one played early then starts
+  the loop, or a pickup's first note vanishes at frame 0.
+- An overlap's notes last whole steps of its 120 bpm: a label's `end` is the
+  step's, so a ring of notes the generator counts must use the step's length, or
+  the label shows more sounding at once than the generator allowed.
 - A corpus cycles six tempos (`tuneTempos`) and its last loops are the ones
   held out, so a held-out loop's tempo was always trained on: a beat head's
   held-out F1 says nothing of a tempo it never met. `tempos a,b,c` takes a
   list of any length, and `--bend` sways a window's tempo.
 - A change that must not move the corpus or the bench is read before and after
   with an empty root and `XDG_CONFIG_HOME`: the hash of `corpus <dir> 24 4 aug
-  gen nowav`'s files, `bench 12 4` and `bench 24 16 meters`.
+  gen meters overlaps nowav`'s files, `bench 12 4` and `bench 24 16 meters`.
 
 ## Training rounds
 
@@ -606,7 +620,7 @@ proves wrong or that a document now states, and link the document instead.
 - A MIDI truth gives the search notes and drum hits, never bars: a
   transcription's file holds its writer's default signature and tempo
   (GuitarSet's, MusicNet's), and the search would fit the bars to it. Bars
-  come from a corpus label: a rendered loop's own grid, or a recording's from
+  come from a corpus label: a rendered loop's listed beats, or a recording's from
   its list's `beats` column (`corpus <dir> from`).
 - A test's small random model hears no drum hit and a bar at most of a
   two-bar loop: a test of the drums' or the bars' score hears through the
@@ -646,7 +660,7 @@ proves wrong or that a document now states, and link the document instead.
 - A model's heads are left out of a rip through the same weights by a
   `RipFrontEnd` that wraps `ripmodels`' and sets the frames' `Beat` and
   `Downbeat` nil, in a scratch module on audio's tag over `Ripper` and
-  `MatchBars`, the truth the loop's own grid with its end's line left out; or by
+  `MatchBars`, the truth the bar lines the loop's label lists; or by
   the same step exported with the output layer's last two rows cut, which stapes
   benches. The two rip row for row alike. `BarScore.Phase` is a median folded
   into a bar, so half a bar off reads as anything between: count `Downbeats`.

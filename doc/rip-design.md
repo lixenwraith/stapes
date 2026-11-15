@@ -227,7 +227,8 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
 ## 3. Learning
 
 - **Corpus.** The engine renders it (`corpus`): loops of the registered rhythm,
-  melody and bass patterns across tempos and keys, each with its WAV, its mel
+  melody and bass patterns, or arranged (`gen`, below), across tempos and
+  keys, each with its WAV, its mel
   frames and its events in frames, with the wave and genes of the voice each note
   was played with. Labels cost nothing and are exact. What it lacks, in order of
   need: a mix, a room and a codec between the render and the frames (impulse
@@ -252,29 +253,31 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   voice near the registered one, a third of the time on another wave, in a
   third of the loops with every release but the bass's three to ten times as
   long, a pedal's ringing, all labelled as played, and renders the loop off
-  A440 by up to a quarter tone either way (`SetTuning`), since recordings
-  are; `gen` draws beats, melodies
-  and bass lines from the key for three loops in five per part, since the bank
-  alone repeats its few melodies and a model trained on it learns them, not
-  pitch, and for three loops in five an accompaniment in the free slot, a
-  broken chord in eighths or sixteenths changing pitch from note to note under
-  a melody that is a slow line of longer notes in half the loops, a lead over
-  an arpeggio, which the rip has to part.
-  A third of the generated melodies and accompaniments play half their length
-  6 to 18 dB softer, as a phrase played softly, and `codec` sends a third of
-  the loops through Opus, MP3 or AAC and back. Some voices are driven hard, as a
-  guitar through an amp. A generated loop leaves out its drums three times
-  in ten and its bass once in seven, so a line is heard bare too. `glide`
-  moves pitch as a singer or a string player does: a fifth of the generated
-  notes bend into the note that follows at once, over their last 60 to 250
-  ms, a seventh scoop into their pitch from a semitone or two under, and three
-  in ten of a loop's oscillator voices sway with a vibrato; every note that
-  moves is labelled with its cents at each frame. Each draws
-  from streams of their own, so a loop's bank patterns and key are the same
-  with and without them. The trainer changes a share of the windows as it
-  draws them: `--channel` hears them through a small speaker, a room and a
-  phone, and `--over` lays real drums under loops that have none, labelling a
-  hit only where it can be heard ([Rip training
+  A440 by up to a quarter tone either way (`SetTuning`), since recordings are.
+  Every loop, augmented or not, is laid at a level drawn between -32 and -14
+  dBFS. `gen` arranges every loop in place of the bank's patterns, since the
+  bank alone repeats its few melodies and a model trained on it learns them,
+  not pitch: a key and a chord progression over the whole keyboard, a line
+  alone or up to six parts (drums, a bass, a keyboard's two hands, a guitar's
+  strokes, a pad, an arpeggio, a melody grown from its motif, its double, a
+  counter-line), parts entering and dropping out, swung, syncopated, resting
+  and breaking, and played as a player would, accented, swelling and fading,
+  off the grid by a feel of its own, its tempo drifting. `meters` puts the
+  loops in seven meters, three in ten starting part-way into a bar, and
+  `overlaps` gives a quarter of them single notes of one to eight instruments
+  in no meter ([Rip training §3](rip-training.md#arranged-loops) holds the
+  rules and their figures). `codec` sends a third of the loops through Opus,
+  MP3 or AAC and back. Some voices are driven hard, as a guitar through an amp.
+  `glide` moves pitch as a singer or a string player does: a fifth of an
+  arranged loop's melody, double, counter-line and bass notes bend into the
+  note that follows at once, over their last 60 to 250 ms, a seventh scoop into
+  their pitch from a semitone or two under, and three in ten of a loop's
+  oscillator voices sway with a vibrato; every note that moves is labelled with
+  its cents at each frame. Each word draws from streams of its own, so a loop
+  it leaves alone is the same with it and without. The trainer changes a share
+  of the windows as it draws them: `--channel` hears them through a small
+  speaker, a room and a phone, and `--over` lays real drums under loops that
+  have none, labelling a hit only where it can be heard ([Rip training
   §6](rip-training.md#6-what-may-change-a-windows-frames)).
 - **Harness.** `tool/rip-train/pipeline.sh` runs the corpus, the training, the
   bench and the install with every knob an environment variable, the corpus in
@@ -404,7 +407,9 @@ and the checkpoint earn their keep.
    sixth bar on, `Final` the whole rip afterwards.
 3. Landed: `--validate` picks a notes model's step by its strikes' F1 at the
    decoder's bars; `rip` fits every line's voice, the voice a model heard its
-   first seed; and `corpus` takes every word its usage names.
+   first seed; and `corpus` takes every word its usage names. `gen` arranges
+   every loop over the 88 keys with a real arrangement's textures, in seven
+   meters with `meters`, beside single notes in none with `overlaps`.
 4. Next. Five rules hold for all of it:
    - A number that picks anything counts a note right by its pitch and onset,
      whatever line holds it.
@@ -440,7 +445,7 @@ and the checkpoint earn their keep.
      ([todo](todo.md#tune-the-rip)). Nothing it writes is installed before
      every condition has decoded under it.
    - **Glides.** Landed: the corpus labels a moving note's cents at every
-     frame and `glide` bends, scoops and sways generated notes; a cents head
+     frame and `glide` bends, scoops and sways arranged notes; a cents head
      on the notes model gives each pitch's offset and the error it states for
      it; the decoder joins two cells where they name one frequency within
      those errors and keeps a step that lands.

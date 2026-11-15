@@ -2,38 +2,32 @@ package stapes
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"math"
-	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/lixenwraith/audio"
 )
 
-// The sampler plays a corpus loop's tonal lines on NSynth's recorded notes: 4 s
+// The sampler plays a corpus loop's tonal parts on NSynth's recorded notes: 4 s
 // of 16 kHz mono each, held for 3 s and released over the last.
 const (
 	nsynthRate    = 16000
 	nsynthHold    = 3.0   // seconds a recorded note is held before its release
 	sampledReach  = 3     // semitones a recorded pitch is shifted at most
-	sampledDraws  = 8     // instruments drawn for a slot before its engine voice plays it
+	sampledDraws  = 8     // instruments drawn for a bank part before its engine voice plays it
 	sampledFade   = 0.060 // seconds a cut note crossfades into its sample's release, near a damper's fall
 	sampledFloor  = -50   // dBFS a note's loudest held window must pass, or its noise would play as the note
 	sampledTop    = 7500  // Hz, the shift's low-pass, under the recordings' 8 kHz
 	sampledHalf   = 29    // the low-pass's half width in source samples: 60 dB by 8 kHz
 	sampledPhases = 512   // the low-pass's table steps a source sample
 	sampledWindow = 0.050 // seconds a note's level is measured over, its loudest held window
-	sampledAlone  = 0.15  // RMS sampled lines are mixed against in a silent render, an engine loop's median
 )
-
-// sampledMix is the level a slot's sampled line is mixed at, dB of its RMS
-// against the rest of the render: the melody and bass beside it, the fill under
-var sampledMix = [audio.MusicSlots][2]float64{{}, {-6, 3}, {-12, -3}, {-6, 3}}
 
 // sampleNote is one recorded note on disk, its velocity layer
 type sampleNote struct {
@@ -58,21 +52,21 @@ var nsynthFamilies = map[string]string{
 
 // sampleSet indexes a directory of NSynth notes, named
 // family_source_NNN-pitch-velocity.wav, by instrument, the bass family's apart;
-// share is the chance a loop's tonal slot plays on them
+// share is the chance a loop's tonal part plays on them. What it has read of a
+// note is kept for the corpus, a label's draws reading each file once.
 type sampleSet struct {
 	dir         string
 	bass, other []*sampleInstr
 	share       float64
+	mu          sync.Mutex
+	read        map[string]heard
 }
 
-// sampledLine is a tonal slot a loop plays on recorded notes: the instrument and
-// its family, each note's end as it sounds, in seconds, in the order
-// ExpectedEvents gives the slot's notes, and the line's render until it is mixed
-type sampledLine struct {
-	instr  string
-	family int
-	ends   []float64
-	audio  []float64
+// heard is what a set has read of a recorded note: its samples, and its loudest
+// held window's RMS, 0 for one that does not sound or does not decode as NSynth's
+type heard struct {
+	n     int
+	level float64
 }
 
 func loadSampleSet(dir string) (*sampleSet, error) {
@@ -80,7 +74,7 @@ func loadSampleSet(dir string) (*sampleSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	set := &sampleSet{dir: dir, share: 0.5}
+	set := &sampleSet{dir: dir, share: 0.5, read: map[string]heard{}}
 	byName := map[string]*sampleInstr{}
 	for _, e := range entries {
 		base, ok := strings.CutSuffix(e.Name(), ".wav")
@@ -142,16 +136,6 @@ func (in *sampleInstr) nearest(midi int) int {
 	return in.pitches[i]
 }
 
-// covers says whether every note is within reach of a recorded pitch
-func (in *sampleInstr) covers(notes []audio.RipEvent) bool {
-	for _, e := range notes {
-		if d := in.nearest(e.MIDI) - e.MIDI; d < -sampledReach || d > sampledReach {
-			return false
-		}
-	}
-	return true
-}
-
 // layer is the recorded note at pitch whose velocity is nearest vel's
 func (in *sampleInstr) layer(pitch int, vel float64) sampleNote {
 	layers := in.notes[pitch]
@@ -160,64 +144,63 @@ func (in *sampleInstr) layer(pitch int, vel float64) sampleNote {
 	})
 }
 
-// errUnusable is a recorded note too quiet or malformed to play: its instrument
-// is passed over for the slot
-var errUnusable = errors.New("unusable note")
-
-// draw picks which of a loop's tonal slots play on recorded notes and on what,
-// each with its share's chance, and renders their lines under render: the slots the
-// engine renders come back with those silenced. A slot whose pattern holds a drum
-// track, or for which no instrument drawn covers the notes and plays them all,
-// keeps its engine voice.
-func (set *sampleSet) draw(slots [audio.MusicSlots]audio.PatternID, m audio.Meter, bars, bpm, root int, scale audio.ScaleID, cents float64, rng *rand.Rand, render bool) ([audio.MusicSlots]audio.PatternID, [audio.MusicSlots]*sampledLine, error) {
-	var lines [audio.MusicSlots]*sampledLine
-	pedal := rng.Float64() < 1.0/3
-	cache := map[sampleKey][]float64{}
-	played := slots
-	for k := 1; k < audio.MusicSlots; k++ {
-		if rng.Float64() >= set.share {
-			continue
+// fits says whether a recorded instrument plays every note: each in reach of
+// a recorded pitch, its layer one that sounds
+func (set *sampleSet) fits(in *sampleInstr, notes []audio.RipEvent) (bool, error) {
+	for _, e := range notes {
+		pitch := in.nearest(e.MIDI)
+		if d := pitch - e.MIDI; d < -sampledReach || d > sampledReach {
+			return false, nil
 		}
-		p := audio.GetPattern(slots[k])
-		if p == nil || slices.ContainsFunc(p.Tracks, func(t audio.Track) bool { return t.Instr.IsDrum() }) {
-			continue
-		}
-		notes := slotEvents(slots, k, m, bars, root, scale)
-		pool := set.other
-		if k == audio.MusicSlots-1 {
-			pool = set.bass
-		}
-		if len(notes) == 0 || len(pool) == 0 {
-			continue
-		}
-		var line *sampledLine
-		for range sampledDraws {
-			in := pool[rng.IntN(len(pool))]
-			if !in.covers(notes) {
-				continue
-			}
-			l, err := set.line(in, notes, m, bars, bpm, cents, pedal && k != audio.MusicSlots-1, cache, render)
-			if errors.Is(err, errUnusable) {
-				continue
-			}
-			if err != nil {
-				return slots, lines, err
-			}
-			line = l
-			break
-		}
-		if line != nil {
-			lines[k], played[k] = line, audio.PatternSilence
+		h, err := set.heard(in.layer(pitch, e.Vel).file)
+		if err != nil || h.level == 0 {
+			return false, err
 		}
 	}
-	return played, lines, nil
+	return true, nil
 }
 
-// slotEvents is ExpectedEvents of slot k alone
-func slotEvents(slots [audio.MusicSlots]audio.PatternID, k int, m audio.Meter, bars, root int, scale audio.ScaleID) []audio.RipEvent {
-	var one [audio.MusicSlots]audio.PatternID
-	one[k] = slots[k]
-	return audio.ExpectedEvents(one, m, bars, root, scale, nil)
+// heard reads a recorded note once for the set: its length, and its loudest
+// held window's RMS, 0 under the floor or for a file that is not NSynth's
+func (set *sampleSet) heard(file string) (heard, error) {
+	set.mu.Lock()
+	defer set.mu.Unlock()
+	if h, ok := set.read[file]; ok {
+		return h, nil
+	}
+	x, err := readNote(file)
+	if err != nil {
+		return heard{}, err
+	}
+	h := heard{n: len(x)}
+	n, held := int(sampledWindow*nsynthRate), min(len(x), int(nsynthHold*nsynthRate))
+	for i := 0; i+n <= held; i += n / 2 {
+		var e float64
+		for _, v := range x[i : i+n] {
+			e += v * v
+		}
+		h.level = max(h.level, math.Sqrt(e/float64(n)))
+	}
+	if h.level <= math.Pow(10, sampledFloor/20.0) {
+		h.level = 0
+	}
+	set.read[file] = h
+	return h, nil
+}
+
+// readNote is a recorded note's samples, none for one that does not decode
+// as NSynth's
+func readNote(file string) ([]float64, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	x, rate, err := audio.ReadWAV(f)
+	f.Close()
+	if err != nil || rate != nsynthRate {
+		return nil, nil
+	}
+	return x, nil
 }
 
 // sampleKey is a recorded note shifted by semitones, as one loop plays it
@@ -226,103 +209,72 @@ type sampleKey struct {
 	shift int
 }
 
-// line renders a slot's notes on an instrument's recordings, each at the layer
+// play renders a part's notes on an instrument's recordings, each at the layer
 // nearest its velocity, shifted from the nearest recorded pitch, its own level
-// taken out and its velocity put in. A note held past its sample's hold ends
-// there; a shorter one is cut at its note-off into the sample's release, or
-// under the pedal rings on uncut, labelled as played. Not rendered, it has no audio.
-func (set *sampleSet) line(in *sampleInstr, notes []audio.RipEvent, m audio.Meter, bars, bpm int, cents float64, pedal bool, cache map[sampleKey][]float64, render bool) (*sampledLine, error) {
+// taken out and its velocity put in: a note held past its sample's hold ends
+// there, a shorter one is cut at its note-off into the release, or under the
+// pedal rings on uncut, labelled as played. It returns each note's end sample.
+func (set *sampleSet) play(in *sampleInstr, notes []audio.RipEvent, n int, cents float64, pedal bool, cache map[sampleKey][]float64, render bool) ([]int, []float64, error) {
 	sr := float64(audio.AudioSampleRate)
-	stepSec := float64(audio.SamplesPerStep(bpm)) / sr
-	l := &sampledLine{instr: in.name, family: in.family}
+	var out []float64
 	if render {
-		l.audio = make([]float64, bars*audio.SamplesPerBar(bpm, m))
+		out = make([]float64, n)
 	}
 	fade := int(sampledFade * sr)
-	for _, e := range notes {
+	ends := make([]int, len(notes))
+	for k, e := range notes {
 		pitch := in.nearest(e.MIDI)
 		key := sampleKey{in.layer(pitch, e.Vel).file, e.MIDI - pitch}
 		ratio := math.Exp2(float64(key.shift)/12 + cents/1200)
-		x, ok := cache[key]
-		if !ok {
-			var err error
-			x, err = recorded(key.file, ratio, render)
-			if err != nil && !errors.Is(err, errUnusable) {
-				return nil, err
-			}
-			cache[key] = x // nil for an unusable note, so it is read once
+		h, err := set.heard(key.file)
+		if err != nil {
+			return nil, nil, err
 		}
-		if x == nil {
-			return nil, errUnusable
+		if h.level == 0 {
+			return nil, nil, fmt.Errorf("%s: a note that does not sound", key.file)
 		}
-		start := float64(e.Bar*m.Steps()+e.Step) * stepSec
-		hold := min(int(nsynthHold/ratio*sr), len(x))
-		cut := int(float64(e.Dur) * stepSec * sr)
-		l.ends = append(l.ends, start+float64(min(cut, hold))/sr)
+		hold := min(int(nsynthHold/ratio*sr), shiftedLen(h.n, ratio))
+		cut := e.For
+		ends[k] = e.At + min(cut, hold)
 		if !render {
 			continue
 		}
-		at := int(start * sr)
+		x, ok := cache[key]
+		if !ok {
+			raw, err := readNote(key.file)
+			if err != nil {
+				return nil, nil, err
+			}
+			x = shiftNote(raw, ratio)
+			for i := range x {
+				x[i] /= h.level
+			}
+			cache[key] = x
+		}
 		put := func(i int, v float64) {
-			if i += at; i < len(l.audio) {
-				l.audio[i] += v * e.Vel
+			if i += e.At; i < n {
+				out[i] += v * e.Vel
 			}
 		}
 		if pedal || cut+fade >= hold {
 			for i, v := range x {
 				put(i, v)
 			}
-		} else {
-			for i := range cut {
-				put(i, x[i])
+			continue
+		}
+		for i := range cut {
+			put(i, x[i])
+		}
+		for i := range len(x) - hold {
+			v := x[hold+i]
+			if i < fade {
+				g := float64(i) / float64(fade)
+				v = x[cut+i]*(1-g) + v*g
 			}
-			for i := range len(x) - hold {
-				v := x[hold+i]
-				if i < fade {
-					g := float64(i) / float64(fade)
-					v = x[cut+i]*(1-g) + v*g
-				}
-				put(cut+i, v)
-			}
+			put(cut+i, v)
 		}
 	}
-	return l, nil
-}
-
-// recorded is a recorded note at the engine's rate sped up by ratio, divided
-// by its loudest held window's RMS; errUnusable when it does not decode as
-// NSynth's or that window is under the floor. Not rendered, it is silence of the
-// note's length, which with whether it is usable is all a label reads of it.
-func recorded(file string, ratio float64, render bool) ([]float64, error) {
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, err
-	}
-	x, rate, err := audio.ReadWAV(f)
-	f.Close()
-	if err != nil || rate != nsynthRate {
-		return nil, fmt.Errorf("%s: %w", file, errUnusable)
-	}
-	n, held := int(sampledWindow*nsynthRate), min(len(x), int(nsynthHold*nsynthRate))
-	var level float64
-	for i := 0; i+n <= held; i += n / 2 {
-		var e float64
-		for _, v := range x[i : i+n] {
-			e += v * v
-		}
-		level = max(level, math.Sqrt(e/float64(n)))
-	}
-	if level <= math.Pow(10, sampledFloor/20.0) {
-		return nil, fmt.Errorf("%s: %w", file, errUnusable)
-	}
-	if !render {
-		return make([]float64, shiftedLen(len(x), ratio)), nil
-	}
-	y := shiftNote(x, ratio)
-	for i := range y {
-		y[i] /= level
-	}
-	return y, nil
+	return ends, out, nil
 }
 
 // shiftedLen is how many samples shiftNote makes of n read at ratio times their rate
@@ -371,39 +323,4 @@ func shiftNote(x []float64, ratio float64) []float64 {
 		y[i] = acc
 	}
 	return y
-}
-
-// mixSampled adds the sampled lines to the engine's render, each at a level
-// drawn against the render's RMS, or against a fixed one when the render is
-// silent, the sum turned down if it passes full scale
-func mixSampled(buf []float64, lines [audio.MusicSlots]*sampledLine, rng *rand.Rand) []float64 {
-	rest := rms(buf)
-	if rest < 1e-6 {
-		rest = sampledAlone
-	}
-	for k, l := range lines {
-		if l == nil {
-			continue
-		}
-		db := sampledMix[k][0] + rng.Float64()*(sampledMix[k][1]-sampledMix[k][0])
-		got := rms(l.audio)
-		if got == 0 {
-			continue
-		}
-		g := rest * math.Pow(10, db/20) / got
-		for i, v := range l.audio[:min(len(l.audio), len(buf))] {
-			buf[i] += v * g
-		}
-		l.audio = nil // in the mix now; a bench holds its loops
-	}
-	var peak float64
-	for _, v := range buf {
-		peak = max(peak, math.Abs(v))
-	}
-	if peak > 1 {
-		for i := range buf {
-			buf[i] /= peak
-		}
-	}
-	return buf
 }

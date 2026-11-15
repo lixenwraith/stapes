@@ -586,7 +586,7 @@ class TheBatches(unittest.TestCase):
                     t = train.targets(Frames(frames), lab, start, rng.choice([86, 512]), rng.random() < 0.5)
                     for k in sorted(t):
                         digest.update(f"{k} {t[k].dtype} {t[k].shape}".encode() + np.ascontiguousarray(t[k]).tobytes())
-        self.assertEqual(digest.hexdigest(), "fe0a3c89add1305d577616ac935b69ddb7754cf5")
+        self.assertEqual(digest.hexdigest(), "82e0bd088a3cc46e95c43dc4d99fac8faab52033")
 
 
 class TheLayout(unittest.TestCase):
@@ -644,9 +644,10 @@ class TheLayout(unittest.TestCase):
 
 class TheVelocity(unittest.TestCase):
     def test_a_strike_whose_velocity_says_nothing_asks_the_velocity_head_nothing(self):
-        """A note whose label's vel is -1, as corpus writes for a list whose velocity column says none, is struck as
-        any and asks the velocity head nothing: its cells' velocity target is unheard, and whatever the head says
-        there moves no loss, while a note of a velocity is asked it."""
+        """A note whose label's vel is -1, as corpus writes for a list whose velocity column says none, or under
+        measured for a note it cannot tell apart from the others, is struck as any and asks the velocity head
+        nothing: its cells' velocity target is unheard, and whatever the head says there moves no loss, while a note
+        of a velocity is asked it."""
         events = [note(4, 20, 60, "guitar", vel=-1), note(4, 20, 64, "guitar", vel=0.6)]
         t = train.targets(Frames(40), label(events), 0, 40)
         for midi, heard, velocity in ((60, 0, 0.0), (64, 1, 0.6)):
@@ -666,6 +667,31 @@ class TheVelocity(unittest.TestCase):
             return train.losses(model, frs[0], tgs[0])["velocity"].item()
         self.assertEqual(loss(60, -5.0), loss(60, 5.0))
         self.assertNotEqual(loss(64, -5.0), loss(64, 5.0))
+
+
+class ThePlacedStart(unittest.TestCase):
+    def test_a_loop_whose_starts_are_placed_asks_the_strike_head_nothing(self):
+        """A loop whose label says its starts are placed, as corpus writes for a list whose starts column says so,
+        gives its notes no strike target and asks the strike head nothing, in its windows and in a shuffled
+        window's chunks of it, while its onsets, frames, cents, velocities and releases are taught as a struck
+        loop's are."""
+        events = [note(4, 20, 60, "guitar", vel=0.6), note(10, 30, 64, "guitar", vel=0.4, cents=[5.0] * 20)]
+        struck, placed = (train.targets(Frames(40), label(events, placed=p), 0, 40) for p in (False, True))
+        self.assertEqual((int(struck["strike"].sum()) > 0, int(placed["strike"].sum())), (True, 0))
+        self.assertEqual((struck["placed"].tolist(), placed["placed"].tolist()), ([0] * 40, [1] * 40))
+        for k in ("onset", "pitch", "voicing", "cents", "asked", "velocity", "heard", "release"):
+            np.testing.assert_array_equal(placed[k], struck[k], k)
+        model = Heard(40)
+
+        def loss(lab, logit):
+            frs, tgs, _ = train.validation([(Frames(40), lab)], 40, 2)
+            model.y[..., model.cfg.slice("strike")] = logit
+            return train.losses(model, frs[0], tgs[0])["strike"].item()
+        self.assertEqual(loss(label(events, placed=True), -5.0), loss(label(events, placed=True), 5.0))
+        self.assertNotEqual(loss(label(events), -5.0), loss(label(events), 5.0))
+        rng = random.Random(3)
+        _, spliced = train.shuffled(lambda rng: (Frames(200), label(events, 200, placed=True)), 256, 2, rng)
+        self.assertEqual(spliced["placed"].min(), 1)
 
 
 class Drawn:

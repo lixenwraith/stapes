@@ -67,11 +67,9 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    formants now (`tool/rip-train/focus/vocal.toml` draws them), neither a
    gene, so the fit and the models' voice heads do not search them: genes for
    both once a corpus with them has trained, and a real vocal recording held
-   out. The plucked focus's bass, a `string`, is given the bass's keys from A0,
-   under the E1 a string's line holds (`stringLowest`), so its notes there sound
-   off their labels. The analysis also leans on a lone oscillator starting
-   every note at phase 0: at random phases two lines on one instrument stop
-   parting (`TestRipTellsTheLeadByItsCharacter`), as a recording's would. Then the
+   out. The analysis also leans on a lone oscillator starting every note at
+   phase 0: at random phases two lines on one instrument stop parting
+   (`TestRipTellsTheLeadByItsCharacter`), as a recording's would. Then the
    weights and a tuned parameter set shipped as data, `DefaultRipParams` kept
    for a recording nothing tuned for.
 3. A bass attack reads as a kick and a chord's attack as a snare in the analysis:
@@ -117,8 +115,10 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
        cents head read on that playing, then trained on GuitarSet's (`--mix`),
        since vocadito only measures.
      - A collection with no pitch annotation (MusicNet) stays unplaced. A
-       track estimated from the audio (pYIN on a solo line) was not taken: its
-       errors would be taught as the label.
+       track measured from the audio is taken only by a procedure stated,
+       fitted on sound whose answer is known and checked on what it was not
+       fitted on, as VocalSet's is; an unchecked estimate (pYIN on a solo
+       line) is not: its errors would be taught as the label.
      - `sampled` lines still ask the head nothing: where an NSynth note sits
        in its cell after its shift is not in its label.
      - A recorded note's readings are gliding when its track spans half a
@@ -196,6 +196,29 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
     and timing move in the performances of a set that trains (GuitarSet's
     annotations against a steady grid), measured there and the draws set from
     it, judged as any corpus change, a pair. No round may learn it from a track.
+11. A recorded note's velocity is measured from its recording under the
+    `measured` word ([Rip training §3](rip-training.md#a-recordings-velocities)).
+    Left:
+    - The bent voices: the bank's piano and bass, whose hammer's filter and
+      knock move with the velocity, and its pluck, whose burst's filter does,
+      rise under a dB a dB of velocity, and a filter envelope lifts the pad
+      and the lead a little over (`TestAVoicesLevelIsStraightInItsVelocityWhereItsToneIsNot`
+      logs each). Their labels keep the velocity they were played at, while a
+      measured one is the straight law's, the sampler's: one law across the
+      corpus needs those voices' curves, or their tone's move taken out of
+      their level.
+    - The measure's limits: a note's own knock, which no partial holds, is not
+      counted, so a low piano note reads under; a detuned unison of saws
+      drifts apart within a window and reads under too; two notes' shared
+      partials in opposite phase cancel where the high bound cannot see it;
+      a vibrato wider than a bin moves a partial within its window. A dense
+      mix gives few velocities: in the bound test's overlaps under one note in
+      ten is known.
+    - A placed start still lights the onset head's target and a placed end the
+      release head's, where the alignment puts them (`placed` asks the strike
+      head alone nothing); the same mask on those two heads is a line each.
+    - E-GMD's velocities stay its MIDI files': a kit's law is not the engine's,
+      a decision still to make.
 
 ### Teach the frame model the beat and the bar line
 

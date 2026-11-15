@@ -95,6 +95,9 @@ A label is UTF-8 JSON with no whitespace. The loop's fields:
   56. It is where every note of an engine voice sits from its pitch's cell
   centre, unless the note carries `cents`.
 - `source`: in a corpus of recordings, the file it was heard from.
+- `placed`: `true` in a corpus of recordings whose list says the notes' starts are
+  placed on the recording, not heard struck (a recording's starts, below), and
+  absent otherwise.
 - `beats`, `downbeats`: its beats and bar lines, in frames. A rendered loop's are where
   the render puts them, each beat on the sample audio's `BeatStarts` gives it under
   its bars' tempos and rounded as an event's frame is, from the loop's first frame to
@@ -113,9 +116,19 @@ An event's fields:
 - `frame`, `end`: its start and its release, in frames. A drum's are equal.
 - `drum`: 0 kick, 1 snare, 2 hihat, -1 anything else.
 - `midi`: the pitch, 0 for a drum.
-- `vel`: how hard it was struck, 0 to 1, or -1 where its list says the recording's
-  velocities say nothing (a recording's velocities, below), which asks the velocity
-  head nothing.
+- `vel`: how hard it was struck, 0 to 1, or -1 where nothing says, which asks the
+  velocity head nothing. The engine's law makes a velocity an amplitude: audio's
+  voice samples `raw * env * velocity * level` and a sampled voice `buffer *
+  velocity`, so a tonal note's `vel` is its amplitude over a note's of velocity
+  one on its instrument.
+  - A rendered note's is the velocity the engine played it at.
+  - A sampled note's is the velocity its recording is laid at: the recording's own
+    level, the RMS of its loudest held window of 50 ms (`sampledWindow`), taken out
+    and the velocity put in (`(*sampleSet).heard` and `play` in `sampler.go`).
+  - A recorded note's is its MIDI file's, -1 where its list says those say
+    nothing, or under `measured` its level heard in the recording over the
+    recording's unit, -1 where it cannot be told from the notes sounding with it (a
+    recording's velocities, below).
 - `wave`: an index into the manifest's `waves`, -1 when unknown or for a drum.
 - `family`: an index into the manifest's `families`, what plays it, -1 when unlabelled.
   An engine voice's is its name's (`voiceFamilies` in `tune.go`: the bank's piano and
@@ -228,10 +241,12 @@ instruments, no render and no weights needed. The figures are those 2,000 loops'
    between D4 and D6 in three loops of four and between C6 and D♭7 in the rest. A note
    is folded by octaves into its instrument's range (`familyRanges`: the 88 keys for a
    keyboard and a synthesizer, A0 to G4 a bass, E2 to E6 a guitar, C2 to C6 a voice,
-   E1 to E7 strings, B♭1 to D7 winds), and a recorded instrument plays only within 3
-   semitones of a note it has. Every key of the 88 starts at least 50 notes and no
-   other pitch one: of 118,769 notes the fewest on a key are 76, and A0 to G♯1 hold
-   4.2%, A1 to B3 30.6%, C4 to C6 53.9% and C♯6 to C8 11.3%. The middle holds most
+   E1 to E7 strings, B♭1 to D7 winds; a voice on the engine's `string` wave from E1,
+   `stringLowest`, whatever its family, as its line holds no longer period), and a
+   recorded instrument plays only within 3 semitones of a note it has. Every key of
+   the 88 starts at least 50 notes and no other pitch one: of 118,769 notes the
+   fewest on a key are 76, and A0 to G♯1 hold 4.2%, A1 to B3 30.6%, C4 to C6 53.9%
+   and C♯6 to C8 11.3%. The middle holds most
    because most parts live there, as in arranged music: melody, chords, pads,
    arpeggios and counter-lines all cross it, the bass and the left hand reach under it
    and high melodies and arpeggios over it. The ends hold enough that no key's cell
@@ -374,17 +389,22 @@ reaches a corpus that way without its hours of render.
 - `part k/n` labels every n-th loop from the k-th, as it renders them, and leaves
   `corpus.json` to a run without it.
 - A `from` line writes each recording's label again from the list: its family, its
-  velocity word, its MIDI file, its pitch track and its beats. The recording is known by the `source` of the
-  label on disk and its WAV is not read, so it may be gone; a label that does not
-  read stops the run, its recording being unknown then.
+  velocity word, its starts, its MIDI file, its pitch track and its beats. The
+  recording is known by the `source` of the label on disk, and its WAV is read only
+  where its velocity word is `measured`, so it may otherwise be gone; a label that
+  does not read stops the run, its recording being unknown then. A `measured`
+  row whose WAV is gone keeps its label, each of its notes at `vel` -1, and the
+  run's last line counts them (a recording's velocities, below).
 
 ### A recording's pitch track
 
 A `from` list's `pitch` column names a recording's pitch track, a path from the
 list's folder as its other files are. An empty cell names none, and that recording
 is labelled as without the column, byte for byte. A track is a collection's
-annotation, never an estimate of the audio. Two forms, told apart by the file, a
-JAMS file being the one that opens with a brace:
+annotation, or, where the collection has none, a measure of the audio by a
+procedure that is stated, fitted on sound whose answer is known and checked on
+what it was not fitted on; never an unchecked estimate. Two forms, told apart by
+the file, a JAMS file being the one that opens with a brace:
 
 - A CSV of seconds and Hz for one voice, 0 Hz where nothing is voiced, under a
   header or none: vocadito's F0 files. Every note of the recording is that voice's.
@@ -446,8 +466,99 @@ file's velocities say of how its notes were played, a row a word (`velocityWords
 - `none`: they say nothing, as a lab's one velocity for every note does (GuitarSet's,
   VocalSet's), and each note and hit is labelled at `vel` -1, which asks the velocity
   head nothing (§5).
+- `measured`: they say nothing, and the recording says it instead: each note is
+  labelled at the velocity it is heard at (below), -1 where that cannot be told,
+  and each hit at -1.
 
-Any other word is refused, naming those the table has.
+Any other word is refused, naming those the table has. Without `measured` no
+recording is opened for its velocities, and a list's labels are as they were
+without the word, byte for byte.
+
+A measured velocity is the one at which the engine plays a note as loud as the
+recording played it. The engine's law is straight (`vel`, above), so it is the
+note's level over its recording's unit, the level a note of velocity one has there,
+and at most 1 (`velocity.go`):
+
+- **The level** is a sampled note's: the RMS of its loudest window of 50 ms, hops of
+  half a window (`windows`, the one function the sampler and the measure read a
+  level by), over its held span, from its start to its end or 3 s on (`heldSpan`).
+  It is read from the note's own partials (`hearLevels`), so that the notes
+  sounding with it are kept out:
+  - Each window is fitted under a Hann window, by least squares, to the note's
+    partials at the pitch its track gives, or at its MIDI pitch where no track
+    places it: k f0 √(1 + b k²) for k up to 80 and up to 20 kHz, b the note's
+    stiffness, of a grid from none to a piano's top octave's the one whose partials
+    hold most of its first window (`stiffnesses`), read to 60 dB under its
+    strongest there. Fitted with them is every partial of the other notes sounding
+    in the window, each taken to ring 0.25 s past its label's end, that lies within
+    three bins of the window (60 Hz) of one of them or of a point midway between
+    two.
+  - A partial is the note's own where no other note's lies within those three bins,
+    or where the others widen its estimate's variance twice at most
+    (`measuredApart`), and its energy bounds the level from below and above by what
+    is left unfitted either side of it. A partial two notes share past that is not
+    told apart: it gives the low bound nothing and the high bound all the window
+    holds at its frequency, so a shared partial widens the bounds and never moves
+    the level by a guess at its split. A window another note is struck in holds an
+    attack no partial fits, so it gives no low bound.
+  - The loudest window's level lies between the greatest low bound of any window
+    and the greatest high bound. The level is their middle, their mean squares'
+    geometric mean, and it is known within half their width, 5 log10(hi / lo) dB.
+- **The bound.** A note known only more widely than `measuredBound`, 1.9 dB, is
+  given -1. The bound is fitted on sound whose levels are known
+  (`TestAMeasuredLevelIsKnownWithinItsFittedBound`): overlaps (§3) of the bank's
+  voices, one to eight notes at once at drawn velocities over every interval,
+  three loops at seed 1 with no room and through `degrade`, each note's truth its
+  level rendered alone and carried through the same room (`room`). The bound is
+  the least, in tenths of a dB, within which nine in ten of the notes known within
+  it are measured, of twenty at least. The test checks it on seed 2 and on the
+  plucked and vocal focus's voices, which the fit leaves out, and logs the error by
+  how many notes sound at once and by the most coinciding interval a note sounds
+  at: unison, octave, fifth, third, another, or none. A note that shares most is
+  known least: in those loops fewer than one note in ten is known, none at a
+  unison, so a velocity is measured where a note stands apart, as in a solo line.
+- **The unit** is one number for a recording and a MIDI program, by one rule: the
+  recording's loudest notes are given the velocity the generator gives a line's
+  loudest. `lineTop` reads that from the arranger's own draw, the median over the
+  tonal parts of 64 loops it arranges at a fixed seed of a part's ninetieth
+  percentile of velocity, 0.570. The unit is the ninetieth percentile, by nearest
+  rank, of the levels known within the bound among the program's notes in the
+  recordings measured together, over that. The `unit` column names which
+  recordings are measured together, those whose cells are alike, as a singer's
+  takes made at one gain, so a soft take's notes stand under a loud one's; an
+  empty cell, or no column, measures a recording alone. A program none of whose
+  notes is known has no unit, and its notes are given -1.
+
+A voice whose tone moves with its velocity is not straight in its level: the bank's
+piano and bass, whose hammer's filter opens and whose knock rises with it, and its
+pluck, whose burst's filter does, rise under a dB a dB of velocity, and a filter
+envelope moves a pad's and a lead's (`TestAVoicesLevelIsStraightInItsVelocityWhereItsToneIsNot`
+logs each voice's slope). A measured velocity reads every note by the straight law,
+the sampler's and every other voice's, so it is the velocity a sampled note is laid
+at to sound as loud; that the bent voices' labels keep the velocity they were
+played at is in the todo.
+
+A `measured` run counts what it gave after what it heard: `wrote the labels of 2
+recording(s) in out again from list.csv and heard 1, 4 note(s) given the velocity
+measured and 4 none, 4 of those none in recordings gone from disk`. A row whose
+recording is not on disk keeps its label, each of its notes at -1, as under `none`.
+
+### A recording's starts
+
+A `from` list's `starts` column says how its notes' starts were found, a row a word
+(`startsWords` in `tune.go`):
+
+- An empty cell, or no column: each is where its note is heard struck, and the
+  label is as without the column, byte for byte.
+- `placed`: they are placed on the recording by an alignment, as a take's notes
+  that its exercise sheet writes and a procedure fitted on known sound lays on the
+  take, and such a start can miss its strike by frames. A strike target a frame
+  wide there would teach the alignment's miss, so the label says `placed` (§3) and
+  its notes ask the strike head nothing (§5). Their frames, velocities and cents
+  are asked as any note's, the onset head at each start and the release head at
+  each end, which the same alignment places.
+
+Any other word is refused.
 
 ## 4. The input: four planes
 
@@ -516,7 +627,10 @@ glide's pitch target walks the cells it crosses.
 - `drums[d]`: the same, for that drum's hits.
 - `pitch[p]`: from a note's `frame` until its `end`, at least one frame.
 - `voicing`: any pitch on.
-- `strike[p]`: within one frame of a note's start.
+- `strike[p]`: within one frame of a note's start, and 0 throughout a loop whose
+  starts are `placed` (§3).
+- `placed`: a loop's frames whose starts are placed, which the strike's loss and its
+  F1 leave out (§8), so such a note asks the strike head nothing.
 - `release[p]`: within one frame of a note's `end`, unless that's past the loop.
 - `velocity[p]`: the note's `vel` on its strike frames, scored only there, and nowhere
   for a `vel` of -1 (§3).
@@ -748,7 +862,7 @@ drew from k on, and two shards draw different batches.
 
 ```
 onset, drums, pitch, voicing, strike, release: binary cross-entropy with a weight on
-    the positive class of 8, 8, 12, 2, 20, 20
+    the positive class of 8, 8, 12, 2, 20, 20, the strike's on frames not placed
 velocity: squared error, on strike frames with a known velocity
 wave:     cross-entropy, on frames with a known voice
 voice:    squared error, on frames with a known voice
@@ -833,9 +947,10 @@ with the best `decoders` score is what gets written, unless `--validate` names a
 (`corpus <dir> from`): cut into windows the same way and scored beside them, its best
 `decoders` step is written, the held-out score printed beside it. A notes model is
 picked there by its strikes instead: the strike head's peaks over the decoder's bars
-(0.7, and 0.9 under E3) against the labelled strikes within four frames, as an F1,
-since its loss holds an onset head no decoder reads from it. The wave, voice,
-velocity and family heads don't choose it, because they memorize the corpus. A positive
+(0.7, and 0.9 under E3) against the labelled strikes within four frames, as an F1
+over the frames not placed (§5), since its loss holds an onset head no decoder
+reads from it. The wave, voice, velocity and family heads don't choose it,
+because they memorize the corpus. A positive
 weight w shifts a head's scale: it scores a posterior p as wp / (wp + 1 - p), which is
 part of why thresholds belong to the weights (§10); the beat and the downbeat carry
 none and are read with no threshold.

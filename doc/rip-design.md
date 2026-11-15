@@ -249,7 +249,9 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   part of the file included (`corpus <dir> from`). A recorded note's velocity
   is its MIDI's, or none where its list's `velocity` cell is `none`, the word
   for a set whose MIDI velocities say nothing, which asks the velocity heads
-  nothing.
+  nothing, or where it is `measured` the velocity at which the engine would
+  play the note as loud as the recording does, none where the notes sounding
+  with it hide its level ([Rip training §3](rip-training.md#a-recordings-velocities)).
 - **Augmentation.** `corpus ... aug` puts a room and a mix behind each loop,
   drawn per loop: a gain and a swell of up to 6 dB, for half the loops a
   one-pole low-pass at 4 to 11 kHz, two equaliser bands within 6 dB from 80 Hz

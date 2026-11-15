@@ -310,7 +310,11 @@ To write your own:
   as E-GMD's, for the beat and downbeat heads, and `velocity`, a word for what
   the MIDI's velocities say, `none` where they say nothing, as GuitarSet's
   and the singing set's one constant does, which asks the velocity heads
-  nothing there: [Rip training](../../doc/rip-training.md) §3), and
+  nothing there, or `measured`, each note's velocity heard in the recording
+  instead, none where the notes with it hide its level, with `unit`, the
+  recordings measured together, and `starts`, `placed` where an alignment
+  placed the notes' starts, which asks the strike head nothing there:
+  [Rip training](../../doc/rip-training.md) §3), and
   `train.py --mix <dir>:<share>` draws that share of the windows from it,
   labelled by the MIDI's notes, velocities and hits, a tom's or a cymbal's an
   onset of no drum, every hit the drums', the voices unknown, and `--over
@@ -392,7 +396,7 @@ the first convolution taking the four as its channels. Since the average looks
 back, `train.py` computes a window's from 128 frames before it (`WARM`, three
 of its time constants), so a window starts as settled as it would in a rip.
 The losses: onsets, drums, pitches and each pitch's strikes and releases (within a frame of a
-note's start and end) as weighted binary cross-entropy, voicing likewise, the
+note's start and end, no strike where a recording's starts are placed) as weighted binary cross-entropy, voicing likewise, the
 wave as cross-entropy and the voice genes as squared error over frames a note
 sounds in, each strike's velocity as squared error where the corpus gives one,
 and the family of the highest note or hit sounding as cross-entropy where the

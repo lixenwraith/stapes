@@ -63,8 +63,8 @@ take them:
   Creative Commons and public-domain performances from the Isabella Stewart
   Gardner Museum, the European Archive Foundation and Musopen, each one's
   source in its metadata. They are labelled with their aligned scores and only
-  measure: 19 pieces validate and 10 test. The Gardner Museum released its own
-  concerts under CC BY-NC-ND 2.0, which the set's record does not repeat.
+  measure. The Gardner Museum released its own concerts under CC BY-NC-ND 2.0,
+  which the set's record does not repeat.
 
 ## The engine's sounds
 

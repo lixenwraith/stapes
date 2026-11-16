@@ -207,13 +207,14 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
       measured one is the straight law's, the sampler's: one law across the
       corpus needs those voices' curves, or their tone's move taken out of
       their level.
-    - The measure's limits: a note's own knock, which no partial holds, is not
-      counted, so a low piano note reads under; a detuned unison of saws
-      drifts apart within a window and reads under too; two notes' shared
-      partials in opposite phase cancel where the high bound cannot see it;
-      a vibrato wider than a bin moves a partial within its window. A dense
-      mix gives few velocities: in the bound test's overlaps under one note in
-      ten is known.
+    - The measure's limits: a detuned unison of saws drifts apart within a
+      window and reads under; a ringing note's partial in opposite phase to
+      the note's cancels where the high bound cannot see it; a vibrato wider
+      than a bin moves a partial within its window. A note another note
+      sounds with gets none: on NSynth's overlaps such notes held the bound
+      fitted on the fit's instruments and missed it on the others and the
+      test split, so a chord's notes and a let-ring line's go without until
+      a measure holds there.
     - A placed start still lights the onset head's target and a placed end the
       release head's, where the alignment puts them (`placed` asks the strike
       head alone nothing); the same mask on those two heads is a line each.

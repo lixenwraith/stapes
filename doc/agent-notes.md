@@ -382,8 +382,9 @@ proves wrong or that a document now states, and link the document instead.
   a label that does not read stops it. It reads the list again, its `velocity`
   column with it, so a list changed to `none` is relabelled in seconds; under
   `measured` it opens every recording and hears each note, minutes for a set,
-  and a recording gone from disk keeps its label with every note at -1, which
-  the run's last line counts.
+  and a recording gone from disk, whose sound does not read or with a level
+  not finite keeps its label with every note at -1, which the run's last line
+  counts by reason: a recording's labels are never lost to its measure.
 - A pitch track at 44.1 kHz and a hop of 256 has two samples a frame, one on
   the frame's own time, so a missing sample lies a whole step from its
   neighbours. A reach of a step read a neighbour's pitch there by a rounding's
@@ -422,19 +423,29 @@ proves wrong or that a document now states, and link the document instead.
 - A score aligned to a recording is not a label to the frame: a strike target a
   frame wide on an aligned score teaches its jitter, and a loss there measures
   it.
-- A note's level among others is read from its partials, each at the note's
-  own stiffness: a piano's and a plucked string's run sharp of k f0, the more
-  the higher the note, and fitted at k f0 they miss its energy by decibels, so
-  `stiffnesses` searches each note's in its first window. A note sounds on past
-  its label's end: unfitted, its partials pass for the next note's
-  (`measuredRing`). A window another note is struck in holds an attack no
-  partial fits, so it bounds the level from above alone.
+- A note's level is read from its partials, each at the note's own stiffness:
+  a piano's and a plucked string's run sharp of k f0, the more the higher the
+  note, and fitted at k f0 they miss its energy by decibels, so `stiffnesses`
+  searches each note's in its first window. A note sounds on past its label's
+  end: unfitted, its partials pass for the next note's (`measuredRing`, the
+  second a sampled note plays on after it is let go; at a quarter second soft
+  notes after louder ones read over within their bound).
 - Partials closer than a window's bins are nearly one column to least squares.
-  Dropping one leaks its sinusoid into its neighbours' estimates, and several,
-  each under a pair's correlation, can blow the solve up together: whether a
-  partial is its own is its variance inflation against those near it
-  (`apart`), and the solve is banded, each chain of partials within
-  `measuredNear` bins of the next factored once.
+  Dropping one leaks its sinusoid into its neighbours' estimates, and several
+  can blow the solve up together, through partials beyond a pair's reach: a
+  partial is its own by its variance inflation over its whole chain, the
+  inverse's diagonal, which caught a lone partial fitted at twenty times a
+  mix's whole power that the inflation by its neighbours alone passed. Each
+  chain of partials within `measuredNear` bins of the next is factored with
+  every pair in its Gram: a partial that stops inside the window is wider
+  than three bins, and banded the matrix was no Gram, its factor's pivots
+  negative and its levels NaN.
+- A level read from a note's partials alone misses what it holds between them,
+  which the sampler's level counts: NSynth's high keys and some instruments
+  hold most of their sound off their partials and read 3 to 47 dB under within
+  a bound under 1.5 dB, so the window's power no fitted partial explains goes
+  into the high bound. A dump of one note's windows (`lo`, `hi`, its own
+  partials' energies) finds a tail note's cause in minutes.
 - A note's truth in a room is the note alone carried through that room: `room`
   returns, beside the mix, what carries one sound through the gains, the clip's
   share, the compressor's turn and the reverb the mix met, the noise left out.
@@ -444,11 +455,21 @@ proves wrong or that a document now states, and link the document instead.
   window's, in which a low note's partials, a few bins apart, beat, and the
   fit's Hann does not see that beat. The sampler lays the note at its velocity;
   the gap is the window's.
-- `measuredBound` is fitted: after a change to the measure, run
-  `TestAMeasuredLevelIsKnownWithinItsFittedBound` with `-v`, set the bound it
-  fits and write the documents' figures from its log. The measure's time is
-  its projections, which `project` runs as Goertzel's recurrence four partials
-  side by side.
+- `measuredBound` is fitted on recorded notes: after a change to the measure,
+  run `TestAMeasuredLevelIsKnownWithinItsFittedBound` with `-v` and `NSYNTH`
+  naming the folder of NSynth's `nsynth-train` and `nsynth-test`, set the bound
+  it fits and write the documents' figures from its log; on a container, which
+  holds no NSynth, it reads the engine's voices alone. A fit that checks only
+  the groups knowing twenty notes passes by refusing a hard group below twenty,
+  so the four families are a group too, which always knows enough. A bound
+  that holds on the fit's instruments can miss on the others: NSynth's notes
+  sounding with others read 1.13 dB at nine in ten on the fit, 1.84 left out
+  and 1.44 on the test split at a bound of 1.2, and a least bound at the fit's
+  edge, 0.7 for notes alone, missed for guitar, so the fit is sure to one in
+  twenty and the readbacks gate it. The test runs about twenty minutes on one
+  core beside a training.
+  The measure's time is its projections, which `project` runs as Goertzel's
+  recurrence four partials side by side.
 - A label a tool made carries the tool's offset. VocalSet states no notes:
   its labels are the notes its exercise sheet writes for each take, placed on
   the take by an alignment the lab fitted on sound whose notes are known, so

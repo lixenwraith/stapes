@@ -20,13 +20,13 @@ import (
 // loud. Its level is read from its partials, each held window's fitted with
 // the other notes' near them under a Hann window of sampledWindow.
 const (
-	measuredPartials = 80    // partials a note is read from at most
-	measuredTop      = 20000 // Hz, the highest partial read, short of nine tenths of a recording's Nyquist
-	measuredRing     = 0.25  // seconds a note is taken to sound past its label's end
-	measuredNear     = 3     // a window's inverse lengths within which partials are fitted together
-	measuredApart    = 2     // the most the others may widen a partial's estimate's variance for it to be its own
-	measuredBound    = 1.9   // dB, the half-width a level is known within to give a velocity (TestAMeasuredLevelIsKnownWithinItsFittedBound)
-	measuredDepth    = 60    // dB under its strongest a note's partials are read to, in its first window
+	measuredPartials = 80             // partials a note is read from at most
+	measuredTop      = 20000          // Hz, the highest partial read, short of nine tenths of a recording's Nyquist
+	measuredRing     = 4 - nsynthHold // seconds a note is taken to sound past its label's end: the release of NSynth's 4 s notes
+	measuredNear     = 3              // a window's inverse lengths within which partials are fitted together
+	measuredApart    = 2              // the most the partials fitted with it may widen a partial's estimate's variance for it to be its own
+	measuredBound    = 0.8            // dB, the half-width a level is known within to give a velocity (TestAMeasuredLevelIsKnownWithinItsFittedBound)
+	measuredDepth    = 60             // dB under its strongest a note's partials are read to, in its first window
 )
 
 // measuredStiffness is the stiffnesses a note's partials are tried stretched by:
@@ -65,11 +65,11 @@ func (h heardLevel) unsure() float64 {
 	return 5 * math.Log10(h.hi/h.lo)
 }
 
-// hearLevels is each note's level in x at rate. Each window fits a note's
-// partials with the others' sounding near them; one whose estimate the others
-// widen past measuredApart cannot be told apart, nor any in a window another
-// note is struck in, so the low bound counts none of it and the high bound all
-// the window holds at its frequency
+// hearLevels is each note's level in x at rate, none for a note another note
+// sounds with, which the bound does not hold for. Each window fits a note's
+// partials with those of the notes still ringing near them; one whose estimate
+// the partials fitted with it widen past measuredApart cannot be told apart, so
+// the low bound counts none of it and the high bound all the window holds there
 func hearLevels(x []float64, rate int, notes []heardNote) []heardLevel {
 	w := int(sampledWindow * float64(rate))
 	hann, xw := make([]float64, w), make([]float64, w)
@@ -97,7 +97,7 @@ func hearLevels(x []float64, rate int, notes []heardNote) []heardLevel {
 		}
 	}
 	gram := func(p, q heardColumn) complex128 {
-		if from, to := max(p.lo, q.lo), min(p.hi, q.hi); to > from && math.Abs(q.f-p.f) < near {
+		if from, to := max(p.lo, q.lo), min(p.hi, q.hi); to > from {
 			return hannSum(q.f-p.f, from, to, w)
 		}
 		return 0
@@ -124,12 +124,10 @@ func hearLevels(x []float64, rate int, notes []heardNote) []heardLevel {
 		}
 		probes = append(append(probes[:0], own...), mids...)
 		slices.Sort(probes)
-		struck := false // by another note in the window, whose strike no partial holds
 		for j, m := range notes {
 			if j == ni || m.start >= a+w || m.rings <= a {
 				continue
 			}
-			struck = struck || m.start >= a
 			from, to := max(m.start-a, 0), min(m.rings-a, w)
 			f = partials(m, a+(from+to)/2, stiff[j], f)
 			f = slices.DeleteFunc(f, func(g float64) bool {
@@ -140,6 +138,7 @@ func hearLevels(x []float64, rate int, notes []heardNote) []heardLevel {
 		}
 		slices.SortFunc(cols, func(p, q heardColumn) int { return cmp.Compare(p.f, q.f) })
 		var mine []heardOwn // each partial of its own
+		explained := 0.0
 		for s := 0; s < len(cols); {
 			e := s + 1
 			for e < len(cols) && cols[e].f-cols[e-1].f < near {
@@ -148,29 +147,33 @@ func hearLevels(x []float64, rate int, notes []heardNote) []heardLevel {
 			g, at := cols[s:e], s
 			s = e
 			m := len(g)
+			// every pair, not only those within near: a partial that stops in the
+			// window is wider than a window's bins, and left out its pairs leave a
+			// matrix no Gram is, whose factor fails
 			G, b := make([]complex128, m*m), make([]complex128, m)
 			for p := range g {
 				b[p] = g[p].b
-				for q := p; q < m && g[q].f-g[p].f < near; q++ {
+				for q := p; q < m; q++ {
 					G[p*m+q] = gram(g[p], g[q])
 					G[q*m+p] = cmplx.Conj(G[p*m+q])
 				}
 			}
-			c := cholSolve(cholesky(G, m), b, m)
+			L := cholesky(G, m)
+			c := cholSolve(L, b, m)
 			for p := range g {
 				cols[at+p].c = c[p]
+				explained += real(cmplx.Conj(c[p])*b[p]) / 2
 			}
+			unit := make([]complex128, m)
 			for p := range g {
 				if !g[p].own {
 					continue
 				}
-				by, other := []int{p}, false // it, then the partials near it
-				for q := range g {
-					if q != p && math.Abs(g[q].f-g[p].f) < near {
-						by, other = append(by, q), other || !g[q].own
-					}
-				}
-				if !struck && (!other || apart(G, m, by) <= measuredApart) {
+				// how far the partials fitted with it widen its estimate's variance:
+				// its sum of squares times the inverse's entry on the diagonal
+				clear(unit)
+				unit[p] = 1
+				if real(G[p*m+p])*real(cholSolve(L, unit, m)[p]) <= measuredApart {
 					mine = append(mine, heardOwn{g[p].f, real(c[p]*cmplx.Conj(c[p])) / 2})
 				} else {
 					d := b[p] / G[p*m+p]
@@ -195,12 +198,21 @@ func hearLevels(x []float64, rate int, notes []heardNote) []heardLevel {
 			lo += sq(max(math.Sqrt(p.e)-u, 0))
 			hi += sq(math.Sqrt(p.e) + u)
 		}
-		return lo, hi
+		// what the window holds that no partial fitted in it does, as a pluck,
+		// breath or bow, may be the note's own: the high bound holds it
+		var all float64
+		for t := range w {
+			all += xw[t] * x[a+t]
+		}
+		return lo, hi + max(all-explained, 0)/(float64(w)/2)
 	}
 	out := make([]heardLevel, len(notes))
 	for ni, n := range notes {
-		span := heldSpan(n, rate, len(x))
-		if n.start < 0 || span < w {
+		span, with := heldSpan(n, rate, len(x)), false
+		for j, m := range notes {
+			with = with || j != ni && m.start < n.start+span && m.end > n.start
+		}
+		if n.start < 0 || span < w || with {
 			continue
 		}
 		var his []float64
@@ -303,21 +315,6 @@ type heardColumn struct {
 
 // heardOwn is a partial of the measured note's own, its energy apart from the others'
 type heardOwn struct{ f, e float64 }
-
-// apart is how far the partials beside the first of by widen its estimate's
-// variance, fitted with it: its sum of squares times the inverse's first entry,
-// of the Gram G of m partials at the rows by
-func apart(G []complex128, m int, by []int) float64 {
-	k := len(by)
-	sub, unit := make([]complex128, k*k), make([]complex128, k)
-	for p, i := range by {
-		for q, j := range by {
-			sub[p*k+q] = G[i*m+j]
-		}
-	}
-	unit[0] = 1
-	return real(sub[0]) * real(cholSolve(cholesky(sub, k), unit, k)[0])
-}
 
 // project is the Hann-weighted window xw's sum against a partial at each of f,
 // radians a sample, over its samples from lo to hi, into out: Goertzel's
@@ -423,13 +420,16 @@ func heardUnit(levels []heardLevel, top float64) float64 {
 }
 
 // heardVelocity is a note's level over unit, at most 1, and -1 for one whose
-// level is not known within measuredBound or that has no unit
+// level is not known within measuredBound or that has no unit; a level, a
+// bound or a unit not finite is none of them
 func heardVelocity(h heardLevel, unit float64) float64 {
-	if unit <= 0 || h.unsure() > measuredBound {
+	if !finite(unit) || unit <= 0 || !finite(h.level()) || !(h.unsure() <= measuredBound) {
 		return -1
 	}
 	return min(h.level()/unit, 1)
 }
+
+func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
 // lineTop is the velocity the generator gives a line's loudest notes: the
 // median over the tonal parts of 64 loops it arranges at a fixed seed of a
@@ -472,19 +472,28 @@ func ninetieth(v []float64) float64 {
 	return v[int(math.Ceil(0.9*float64(len(v))))-1]
 }
 
+// unmeasuredWhy is why a recording's notes may be given no velocity measured,
+// in the order a run's last line counts them (unmeasured)
+var unmeasuredWhy = []string{"gone from disk", "whose sound does not read", "with a level not finite"}
+
+// unmeasured is a recording the measure gives no levels, and why, a row of unmeasuredWhy
+type unmeasured struct{ why, what string }
+
+func (u *unmeasured) Error() string { return u.what + ": " + u.why }
+
 // hearRecording is the level of each of a score's notes in its recording, along
-// its pitch track where one places it, nil for a recording gone from disk
-func hearRecording(wav string, score *audio.MIDIScore, tracks []pitchTrack) ([]heardLevel, error) {
+// its pitch track where one places it, or why it gives none (unmeasured)
+func hearRecording(wav string, score *audio.MIDIScore, tracks []pitchTrack) ([]heardLevel, *unmeasured) {
 	f, err := os.Open(wav)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+		return nil, &unmeasured{unmeasuredWhy[0], wav}
 	} else if err != nil {
-		return nil, err
+		return nil, &unmeasured{unmeasuredWhy[1], err.Error()}
 	}
 	x, rate, err := audio.ReadWAV(f)
 	f.Close()
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", wav, err)
+		return nil, &unmeasured{unmeasuredWhy[1], fmt.Sprintf("%s: %v", wav, err)}
 	}
 	notes := make([]heardNote, len(score.Notes))
 	for i, n := range score.Notes {
@@ -499,5 +508,11 @@ func hearRecording(wav string, score *audio.MIDIScore, tracks []pitchTrack) ([]h
 			return key
 		}}
 	}
-	return hearLevels(x, rate, notes), nil
+	levels := hearLevels(x, rate, notes)
+	for i, h := range levels {
+		if !finite(h.lo) || !finite(h.hi) {
+			return nil, &unmeasured{unmeasuredWhy[2], fmt.Sprintf("%s: the note at %.3f s", wav, score.Notes[i].Start)}
+		}
+	}
+	return levels, nil
 }

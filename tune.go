@@ -1433,8 +1433,9 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		row    []string
 		score  *audio.MIDIScore
 		tracks []pitchTrack
-		levels []heardLevel // its notes', a measured recording's on disk
+		levels []heardLevel // its notes', a measured recording's
 		heard  []float64    // and their velocities
+		failed *unmeasured  // or why it has none
 	}
 	var (
 		jobs    []job
@@ -1512,7 +1513,7 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 			j.tracks, err = readPitch(at(p))
 		}
 		if err == nil && velocityWords[velocity(j.row)].heard {
-			j.levels, err = hearRecording(at(j.row[wav]), j.score, j.tracks)
+			j.levels, j.failed = hearRecording(at(j.row[wav]), j.score, j.tracks)
 		}
 		return err
 	}); err != nil {
@@ -1534,18 +1535,24 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 			unitOf[k] = heardUnit(levels, top)
 		}
 	}
-	var opened, given, refused, gone int
+	// a recording the measure gives no levels is named but for one gone, and
+	// its notes say nothing; the run goes on
+	var opened, given, refused, none int
+	unheard := map[string]int{} // recordings, by why
 	for i := range jobs {
 		j := &jobs[i]
 		if !velocityWords[velocity(j.row)].heard {
 			continue
 		}
 		j.heard = make([]float64, len(j.score.Notes))
-		if j.levels == nil { // its recording is gone, and its notes say nothing
+		if j.failed != nil {
 			for k := range j.heard {
 				j.heard[k] = -1
 			}
-			gone, refused = gone+len(j.heard), refused+len(j.heard)
+			none, refused, unheard[j.failed.why] = none+len(j.heard), refused+len(j.heard), unheard[j.failed.why]+1
+			if j.failed.why != unmeasuredWhy[0] {
+				fmt.Fprintf(s.out, "%s: no velocity measured, %s\n", j.row[wav], j.failed)
+			}
 			continue
 		}
 		opened++
@@ -1602,13 +1609,19 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	if given+refused > 0 {
 		what += fmt.Sprintf(", %d note(s) given the velocity measured and %d none", given, refused)
 	}
-	if gone > 0 {
-		what += fmt.Sprintf(", %d of those none in recordings gone from disk", gone)
+	if len(unheard) > 0 {
+		var by []string
+		for _, w := range unmeasuredWhy {
+			if unheard[w] > 0 {
+				by = append(by, fmt.Sprintf("%d %s", unheard[w], w))
+			}
+		}
+		what += fmt.Sprintf(", %d of those none in recording(s) not measured: %s", none, strings.Join(by, ", "))
 	}
-	fmt.Fprintf(s.out, "%s, %d loop(s) and %.1f hours in all; %d listed were not on disk\n", what, loops, float64(frames)*audio.RipFrameSec/3600, missing)
 	if len(skipped) > 0 {
 		fmt.Fprintf(s.out, "skipped %d whose MIDI has no notes and no kick, snare or hihat, as %s\n", len(skipped), skipped[0])
 	}
+	fmt.Fprintf(s.out, "%s, %d loop(s) and %.1f hours in all; %d listed were not on disk\n", what, loops, float64(frames)*audio.RipFrameSec/3600, missing)
 	return nil
 }
 

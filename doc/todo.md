@@ -8,9 +8,10 @@ Priorities: P1 is wanted next, P2 is convenient follow-up, and P3 is an idea.
 
 The audio library's own items are in [its todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md);
 the items here change stapes, and the library with it where they name its
-files. Work that also changes vif is planned in [vif's
-todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#audio): stapes
-on Android, which vif's app is to host.
+files. What vif's app does to host stapes on Android, and to give it the
+microphone, is in [vif's
+todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#audio); an item
+here that meets it links there.
 
 ## The rip
 
@@ -405,7 +406,11 @@ measures it against the offline rip of the same recording, the measurement the
 Android app's microphone mode (vif's todo) is judged by ([Rip design
 §7](rip-design.md#7-plan)). What is left:
 - Tempo, meter and phase are held from the first six bars, so the stream's
-  bar grid is not the offline rip's. Not measured: `pace`, and a phone.
+  bar grid is not the offline rip's: on twelve recordings through the models
+  of 9 November, since deleted, it found 95 in a hundred of the offline rip's
+  notes but read its grid on three (five at another tempo, a rubato piano take
+  keeping 5 to 38 in a hundred of the offline downbeats, a song's intro half a
+  bar off). Not measured: `pace`, and a phone.
 - The wait. The ear waits the frame model's reach, 2.97 s, so the stream's
   frames are the offline rip's; audio's `FrontEnd.Ahead` waits less and no
   verb sets it. Half a second leaves the notes where they are and moves the
@@ -427,6 +432,32 @@ Android app's microphone mode (vif's todo) is judged by ([Rip design
   read in sections, tempo, meter, phase and key decided a part at a time and
   again at every bar until two decisions agree, nothing carried across a
   boundary between two different parts of a song.
+
+### Show a live rip as it is made
+
+- Priority: P2
+- Affected files: `session.go` (`Options`), `tui.go`, `tui_panes.go`,
+  `cmd_doc.go` (`live`)
+- Guide: [Rip design §7](rip-design.md#7-plan)
+
+vif's Android app is to rip a song as its microphone hears it, through stapes
+run in-process ([vif's
+todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#rip-live-on-android)).
+The library's stream and the reads a view takes from it are in place (`Bars`,
+`Frames`, `Open`, `Strikes`, `Final`, [audio
+§9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)).
+What remains here:
+
+- The source: the session takes the host's microphone as it takes its speakers
+  (`Options.Sink`), its blocks written into the stream off the audio thread.
+- The view: a scrollable stack with the recording's spectrum on top, each stage
+  under it (the planes the models are given, the pitches, strikes and drums
+  they hear, the instrument, what the decoder keeps and drops, the open bars)
+  and the note lines at the bottom; the frozen bars a few seconds behind the
+  music, the open ones revised until they freeze. A file through `live` feeds
+  the same view on a terminal, where it is checked without a phone.
+- The end: a `Final` the player asks for, and the song saved into the search
+  path's first folder as a rip of a file is.
 
 ### Close the rip's loop
 
@@ -534,6 +565,42 @@ bar, resets the sequencer, and that empties every slot, while the session's
 renders the old slots, and a slot's track mutes wait for their pattern to be put
 back. The fix is reset slotting the session's patterns again, or a sequencer
 reset that keeps them.
+
+### Audition the binaural bed
+
+- Priority: P3
+- Affected files: `command.go` (`commands`), `cmd_audio.go`
+- Prerequisite: the library's bed ([its
+  todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#give-the-mix-a-binaural-bed))
+
+The library is to mix a binaural bed under the music (`SetBinaural`: a carrier,
+a beat and a level), which vif offers as a setting ([its
+todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#add-binaural-beats-to-the-music)).
+A verb that sets it over what the session plays lets a carrier, a beat and a
+level be heard before vif's presets are tuned.
+
+## Android
+
+### Play the screen by touch
+
+- Priority: P1
+- Affected files: `tui.go`, `tui_panes.go`, `tui_editor.go`, `tui_keys.go`,
+  `tui_files.go`, `doc/stapes.md`
+
+vif's app is to run stapes in-process on Android, over a `terminal.Terminal` of
+its view with its speaker as the sink, the system keyboard serving `:` and the
+prompts ([vif's
+todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#bring-stapes-to-android-stapes-mobile)).
+The host turns taps and drags into `terminal.Event`s, but the TUI reads keys
+alone (`handle`). What remains here:
+
+- Touch: a tap hit-tests what was drawn: a key of the keyboard plays its note, a
+  step toggles, a tab or a pane takes the keys, a mixer row mutes its slot, a
+  browser row selects. A strip of buttons stands for the keys a phone lacks
+  (record, play, delete, save, new, edit, tempo, Tab, Esc).
+- Size: the views need 60×16 cells. A phone held landscape fits at the default
+  cell; held portrait it needs the host's pinch zoom out, or a keyboard of fewer
+  keys.
 
 ## The tests
 

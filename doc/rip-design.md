@@ -359,8 +359,8 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   `compress`, `song`, `render`, `corpus`, `tune`, `truth` with its bars and
   every-part rows), the documents the results land in, and the files overlay
   (`^O`) that loads, rips and saves them. `live` drives the live rip over a
-  file; its host to come is vif's Android app, which takes `RipStream` from
-  the library (vif's todo).
+  file; its host to come is vif's Android app, over the microphone
+  ([todo](todo.md#show-a-live-rip-as-it-is-made)).
 - `tool/rip-train`: the trainer, Python, beside the Go module.
 
 ## 5. Budgets and determinism

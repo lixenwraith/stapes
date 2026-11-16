@@ -393,8 +393,9 @@ reaches a corpus that way without its hours of render.
   recording is known by the `source` of the label on disk, and its WAV is read only
   where its velocity word is `measured`, so it may otherwise be gone; a label that
   does not read stops the run, its recording being unknown then. A `measured`
-  row whose WAV is gone keeps its label, each of its notes at `vel` -1, and the
-  run's last line counts them (a recording's velocities, below).
+  row whose WAV is gone or does not read keeps its label, each of its notes at
+  `vel` -1, and the run's last line counts them by reason (a recording's
+  velocities, below).
 
 ### A recording's pitch track
 
@@ -482,41 +483,76 @@ and at most 1 (`velocity.go`):
 - **The level** is a sampled note's: the RMS of its loudest window of 50 ms, hops of
   half a window (`windows`, the one function the sampler and the measure read a
   level by), over its held span, from its start to its end or 3 s on (`heldSpan`).
-  It is read from the note's own partials (`hearLevels`), so that the notes
-  sounding with it are kept out:
+  It is read from the note's own partials (`hearLevels`), so that the notes still
+  ringing are kept out; a note another note sounds with is given none (the bound,
+  below):
   - Each window is fitted under a Hann window, by least squares, to the note's
     partials at the pitch its track gives, or at its MIDI pitch where no track
     places it: k f0 √(1 + b k²) for k up to 80 and up to 20 kHz, b the note's
     stiffness, of a grid from none to a piano's top octave's the one whose partials
     hold most of its first window (`stiffnesses`), read to 60 dB under its
-    strongest there. Fitted with them is every partial of the other notes sounding
-    in the window, each taken to ring 0.25 s past its label's end, that lies within
-    three bins of the window (60 Hz) of one of them or of a point midway between
-    two.
-  - A partial is the note's own where no other note's lies within those three bins,
-    or where the others widen its estimate's variance twice at most
-    (`measuredApart`), and its energy bounds the level from below and above by what
-    is left unfitted either side of it. A partial two notes share past that is not
+    strongest there. Fitted with them is every partial of the notes still ringing
+    in the window, each taken to ring 1 s past its label's end, the release of
+    NSynth's 4 s notes past their hold (`measuredRing`), that lies within three
+    bins of the window (60 Hz) of one of them or of a point midway between two.
+    Partials within those three bins of the next form a chain, solved whole, every
+    pair in its Gram: a partial that stops inside the window spreads wider than
+    three bins, and with its far pairs left out the matrix is no Gram and its
+    factor fails.
+  - A partial is the note's own where the partials fitted with it, its own note's
+    among them, widen its estimate's variance twice at most (`measuredApart`), its
+    chain's inverse read on the diagonal, and its energy bounds the level from below
+    and above by what is left unfitted either side of it. A partial past that is not
     told apart: it gives the low bound nothing and the high bound all the window
     holds at its frequency, so a shared partial widens the bounds and never moves
-    the level by a guess at its split. A window another note is struck in holds an
-    attack no partial fits, so it gives no low bound.
+    the level by a guess at its split.
+  - What the window holds that no fitted partial does, a pluck, breath, bow or a
+    sound off the note's pitch, is all in the level the sampler lays a note at, and
+    may be the note's: the high bound holds it.
   - The loudest window's level lies between the greatest low bound of any window
     and the greatest high bound. The level is their middle, their mean squares'
     geometric mean, and it is known within half their width, 5 log10(hi / lo) dB.
-- **The bound.** A note known only more widely than `measuredBound`, 1.9 dB, is
-  given -1. The bound is fitted on sound whose levels are known
-  (`TestAMeasuredLevelIsKnownWithinItsFittedBound`): overlaps (§3) of the bank's
-  voices, one to eight notes at once at drawn velocities over every interval,
-  three loops at seed 1 with no room and through `degrade`, each note's truth its
-  level rendered alone and carried through the same room (`room`). The bound is
-  the least, in tenths of a dB, within which nine in ten of the notes known within
-  it are measured, of twenty at least. The test checks it on seed 2 and on the
-  plucked and vocal focus's voices, which the fit leaves out, and logs the error by
-  how many notes sound at once and by the most coinciding interval a note sounds
-  at: unison, octave, fifth, third, another, or none. A note that shares most is
-  known least: in those loops fewer than one note in ten is known, none at a
-  unison, so a velocity is measured where a note stands apart, as in a solo line.
+- **The bound.** A note known only more widely than `measuredBound`, 0.8 dB, is
+  given -1. The bound is fitted on recorded notes whose levels are known
+  (`TestAMeasuredLevelIsKnownWithinItsFittedBound`, with `NSYNTH` naming the folder
+  of NSynth's splits): the guitar, vocal, keyboard and string families, notes laid
+  by the sampler one at a time and in overlaps (§3), from two to eight sounding at
+  once, at velocities 0 to 30 dB down, with no room and through `degrade`, each
+  note's truth its level laid alone and carried through the same room (`room`). A
+  seeded half of the training split's instruments fits it, the least bound in
+  tenths of a dB within which nine in ten of the notes known within it lie in
+  every group of twenty known or more (a family, or the four, alone or with
+  others, in a room), sure to one in twenty: the order statistic that bounds a
+  group's ninetieth percentile from above at odds of 19 to 1, a binomial's, lies
+  within it. Fitted without that, the bound held on the fit at 0.7 dB and missed
+  for guitar on the instruments left out and the test split. The other half and
+  the test split read it back, a group failing where it shows at 19 to 1 that
+  more than a tenth of its known notes miss the bound. Notes sounding with others held a bound fitted
+  on the fit's instruments and missed it on the others, nine in ten within 1.84 dB
+  of 1.2 left out and 1.44 on the test split, so they are given none. At 0.8 dB,
+  the share of notes known and nine in ten of their errors, each group of 150
+  notes or so alone, about 350 with others:
+
+  ```
+                           fit            left out       test
+  guitar    alone, no room   68%  0.66 dB   55%  0.70 dB   64%  0.89 dB
+            alone, degrade   68%  0.66      52%  0.75      58%  0.81
+  keyboard  alone, no room   77%  0.51      75%  0.73      73%  0.45
+            alone, degrade   77%  0.56      72%  0.69      70%  0.51
+  string    alone, no room   77%  0.53      74%  0.45      85%  0.42
+            alone, degrade   80%  0.54      74%  0.58      85%  0.37
+  vocal     alone, no room   82%  0.61      71%  0.36      63%  0.44
+            alone, degrade   82%  0.59      70%  0.45      57%  0.40
+  the four  alone, no room   76%  0.57      69%  0.56      71%  0.55
+            alone, degrade   77%  0.59      67%  0.60      67%  0.56
+  with others, every group    0%             0%             0%
+  ```
+
+  Guitar's test split reads over the bound by less than its count can show at 19
+  to 1, its median 0.4 dB where the training split's is under 0.2. A velocity is
+  measured where a note sounds alone, as in a solo line. The test also checks the
+  bound on the engine's voices' overlaps, the bank's and the plucked and vocal
+  focus's.
 - **The unit** is one number for a recording and a MIDI program, by one rule: the
   recording's loudest notes are given the velocity the generator gives a line's
   loudest. `lineTop` reads that from the arranger's own draw, the median over the
@@ -538,10 +574,14 @@ the sampler's and every other voice's, so it is the velocity a sampled note is l
 at to sound as loud; that the bent voices' labels keep the velocity they were
 played at is in the todo.
 
-A `measured` run counts what it gave after what it heard: `wrote the labels of 2
-recording(s) in out again from list.csv and heard 1, 4 note(s) given the velocity
-measured and 4 none, 4 of those none in recordings gone from disk`. A row whose
-recording is not on disk keeps its label, each of its notes at -1, as under `none`.
+A level, a bound or a unit that is not finite gives no velocity. A `measured` run
+counts what it gave after what it heard, and the recordings it heard nothing in by
+reason (`unmeasuredWhy`): `wrote the labels of 2 recording(s) in out again from
+list.csv and heard 1, 4 note(s) given the velocity measured and 4 none, 4 of those
+none in recording(s) not measured: 1 gone from disk`. A recording gone from disk,
+whose sound does not read or with a level not finite keeps its label, each of its
+notes at -1, as under `none`; but for one gone, each is named on a line of its own,
+and the run goes on.
 
 ### A recording's starts
 

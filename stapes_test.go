@@ -3184,8 +3184,8 @@ func TestACorpusFromListWhoseVelocitiesSayNothingAsksNone(t *testing.T) {
 // TestACorpusFromListOfMeasuredVelocitiesLabelsThemAsHeard: under measured a
 // recording's notes are labelled at their levels over its unit, which gives the
 // loudest tenth of those its unit cell names alike lineTop, and its hits at -1;
-// the last line counts the notes given one and none, and labels opens the
-// recordings again, labelling every note of one gone from disk none.
+// labels opens the recordings again, and one gone or whose sound does not read
+// has every note none, the latter named, the last line counting both by reason.
 func TestACorpusFromListOfMeasuredVelocitiesLabelsThemAsHeard(t *testing.T) {
 	dir := t.TempDir()
 	at := func(name string) string { return filepath.Join(dir, name) }
@@ -3262,7 +3262,13 @@ func TestACorpusFromListOfMeasuredVelocitiesLabelsThemAsHeard(t *testing.T) {
 		t.Fatal(err)
 	}
 	own["b.wav"] = []float64{-1, -1, -1, -1}
-	run("", " labels", "heard 1, 4 note(s) given the velocity measured and 4 none, 4 of those none in recordings gone from disk", own)
+	run("", " labels", "heard 1, 4 note(s) given the velocity measured and 4 none, 4 of those none in recording(s) not measured: 1 gone from disk", own)
+	writeFile(t, at("a.wav"), "RIFF, and no sound")
+	own["a.wav"] = []float64{-1, -1, -1, -1}
+	run("", " labels", "heard none, 0 note(s) given the velocity measured and 8 none, 8 of those none in recording(s) not measured: 1 gone from disk, 1 whose sound does not read", own)
+	if !strings.Contains(out.String(), "a.wav: no velocity measured,") || strings.Contains(out.String(), "b.wav: no velocity") {
+		t.Errorf("the run names %q, want a.wav alone", out.String())
+	}
 }
 
 // TestACorpusFromListOfPlacedStartsSaysSo: a list's starts column says placed

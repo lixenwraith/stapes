@@ -29,6 +29,7 @@
 23 TestLabelsWritesWhatTheExportWrote
 20 TestAStringIsGivenNoKeyUnderItsLowest
 13 TestACorpusGoesOnWhereItStopped
+11 TestEveryMeasuredLevelIsFinite
 10 TestCompressMergesScatteredFalseHitsNotNotes
 10 TestRenderAndCorpusWriteWhatTheEngineHears
 9 TestAVoicesLevelIsStraightInItsVelocityWhereItsToneIsNot

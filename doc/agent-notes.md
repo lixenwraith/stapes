@@ -579,6 +579,17 @@ proves wrong or that a document now states, and link the document instead.
   thousands of redraws scattered around five voices falls under the lowest of
   the five (33 of 36,400 did, all A0 at 70 ms, down to 0.940), so the rule's
   bound sits halfway in dB between their lowest and an even split.
+- A recorded kit's hits are put on its sound by the frames' own rise
+  (`placeHits`, [Rip training §3](rip-training.md#a-recordings-lag)). A hit
+  train laid against a steady pattern meets nearly as much rise a pulse off as
+  on it: over every lag of a four-bar loop a bar's shift scored within 1% of
+  the truth and beat it where the lag laid dropped hits off the start, so a
+  lag is looked for within half the usual gap between strikes, and a rise at
+  the reach's edge is no peak. A kit's own rise sits up to a frame from its
+  hit by its length and its tone, which is most of `lagBound`. After a change
+  to the measure run `TestARecordedKitsHitsAreMovedOntoTheirSound` with `-v`,
+  set the constants it fits and write the documents' figures from its log;
+  two thirds of its seconds are the kits' renders, three a kit.
 - A set's labels and list are made and checked by `tool/rip-lab`
   ([its README](../tool/rip-lab/README.md)); what its tools found wrong in the
   sets' own files is in [set-issues.md](set-issues.md).

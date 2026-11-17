@@ -2,6 +2,7 @@
 # over: CI deals them, heaviest first, to the lightest of its parallel jobs.
 # It only balances the jobs: a test not named here weighs a second and runs
 # all the same. doc/agent-notes.md says how it is measured.
+207 TestARecordedKitsHitsAreMovedOntoTheirSound
 129 TestRipFitsVoicesAndCompressesToASong
 120 TestAJudgeBesideTheModelRulesItsRips
 97 TestLiveKeepsTheRipRipMakes
@@ -27,6 +28,7 @@
 24 TestBenchGradesEachMeterAndListsEveryLoop
 23 TestDocumentsMadeHereSaveAsMarshalled
 23 TestLabelsWritesWhatTheExportWrote
+22 TestACorpusFromPutsARecordedKitsHitsOnItsSound
 20 TestAStringIsGivenNoKeyUnderItsLowest
 13 TestACorpusGoesOnWhereItStopped
 11 TestEveryMeasuredLevelIsFinite

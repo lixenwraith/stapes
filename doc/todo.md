@@ -54,10 +54,14 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    corpus, and the live rip in the hands (`RipStream` is the library's; its
    host is vif's Android app, and a verb over a file in stapes the step before
    it). Then: real recordings with their notes in the corpus (item 1: `corpus
-   <dir> from` writes E-GMD's, `train.py --mix` mixes them in; still lacking a
+   <dir> from` writes E-GMD's, its hits moved onto their sound or the
+   recording left out, `train.py --mix` mixes them in; still lacking a
    held-out score for a `from` corpus, E-GMD's ET split being the clean one,
-   drum velocity in the labels, a check that drops a render whose hits draw no
-   onset; NSynth's notes play in `corpus ... sampled`, lacking the
+   drum velocity in the labels, its list saying `none` till a kit's law is
+   decided, the lag's constants read back on E-GMD itself (by drummer and
+   session, and whether a performance's kits agree), a lag past half the usual
+   gap between strikes, which reads as a nearer one, and a check that drops a
+   render whose hits draw no onset; NSynth's notes play in `corpus ... sampled`, lacking the
    tempo-synced and multiphonic filters `examples.json` allows and a pipeline
    bench on the 53 held-out instruments), then more loops, or width 384
    (`DIM=384 HEADS=12 FFN=1536`, 7 million weights), each measured by `bench`
@@ -231,8 +235,9 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
     - A placed start still lights the onset head's target and a placed end the
       release head's, where the alignment puts them (`placed` asks the strike
       head alone nothing); the same mask on those two heads is a line each.
-    - E-GMD's velocities stay its MIDI files': a kit's law is not the engine's,
-      a decision still to make.
+    - E-GMD's list says `none`, so its hits are labelled at -1: a kit's law
+      is not the engine's, and whether a hit's velocity is its file's under
+      that law or measured from its sound is a decision still to make.
 
 ### Teach the frame model the beat and the bar line
 

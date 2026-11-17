@@ -12,7 +12,7 @@ Where each part stands:
 
 - **In released code:** `BandFrames` and its layout, the four input planes, the heads,
   weight file versions 3 and 4, `corpus`, `corpus <dir> from`, `corpus ... sampled`, `--mix`,
-  `--channel`, `--over` with its heard-hit rule, draws by length, `skip.txt`,
+  `--channel`, `--over` with its heard-hit rule, draws by length, `skip.txt`, a recorded kit's lag,
   `make_noise.py`, `--pitchnet` and its `ripnotes.bin`, `--shuffle`, `--extra`,
   `--cell`, `--dip`, `--ring`, `--bend`, `--dilations`, `--sung`, each event's family (`families`,
   the list's `family` cell, each note's program, every part of a file), the family head and
@@ -98,6 +98,9 @@ A label is UTF-8 JSON with no whitespace. The loop's fields:
 - `placed`: `true` in a corpus of recordings whose list says the notes' starts are
   placed on the recording, not heard struck (a recording's starts, below), and
   absent otherwise.
+- `lag`: in a recording of hits alone, the seconds its sound sits after its file's
+  hits, which its hits and beats are moved by; `skip`, in its place, why none could
+  be told, the loop being in `skip.txt` (a recording's lag, below). Absent otherwise.
 - `beats`, `downbeats`: its beats and bar lines, in frames. A rendered loop's are where
   the render puts them, each beat on the sample audio's `BeatStarts` gives it under
   its bars' tempos and rounded as an event's frame is, from the loop's first frame to
@@ -213,11 +216,10 @@ of corpus:
   `midiInstruments`: edges, ride, tambourine and shaker read as hihat, cross-stick as
   snare, and other keys as strikes of no line.
 
-E-GMD needs a check `corpus` doesn't make yet. Lined up with its onset flux, a
-recording's hits can sit a steady distance off its audio, the same across all of a
-performance's kits and with no drift over time. Such labels are moved by that lag, and
-those too far off go in the corpus's `skip.txt`, a list of loop names the trainer
-leaves out.
+A recording's hits can sit a steady distance off its audio, the same across all of a
+performance's kits: `corpus` moves such labels by that lag, and a recording it cannot
+place goes in the corpus's `skip.txt`, a list of loop names the trainer leaves out (a
+recording's lag, below).
 
 ### Arranged loops
 
@@ -611,6 +613,71 @@ none in recording(s) not measured: 1 gone from disk`. A recording gone from disk
 whose sound does not read or with a level not finite keeps its label, each of its
 notes at -1, as under `none`; but for one gone, each is named on a line of its own,
 and the run goes on.
+
+### A recording's lag
+
+A recording whose file holds hits alone, as E-GMD's, is labelled where its drums
+sound. `corpus` reads how far the sound sits after the file's hits from the frames
+it writes, and under `labels` from those on disk, so no recording is opened again:
+
+- The rise is each frame's sharp plane over the frame before, the positive part
+  summed over its bands (`rise`), which is what `datacheck.py` reads a label's lag by.
+- A strike is a hit or a strike of no line, one less than a frame after another
+  being the same rise. A lag is looked for within half the usual gap between two
+  strikes, their median, either way (`lagReach`): further, hits moved meet the rises
+  of the hits beside them.
+- The lag is where the strikes, moved by it, meet the most rise, read by half
+  frames and then by eighths of a frame, 1.45 ms. The engine's own drums rise 5.8 ms
+  before their labels (`lagRise`), a frame being centred on its time, and that is
+  taken off: a recorded hit then sits against its sound as a rendered one does.
+- The hits and the beats are moved by the lag, those moved out of the recording
+  dropped, and the label states it: `"lag":0.01306`.
+
+A recording is left out where its hits cannot be put on its sound, by one of three
+reasons (`lagWhy`), read in this order:
+
+- `hits that draw no onset`: fewer than 0.40 of its strikes (`lagDrawn`) have the
+  largest rise within their reach inside a frame of where the lag puts them. A
+  silent file, or one that holds another recording, is such.
+- `no lag that stands clear`: another peak within the reach meets more than 0.97
+  of what the best does (`lagClear`), or the score still rises at the reach.
+- `a lag that drifts`: the median onset of the later half of its strikes lies more
+  than a frame, 11.6 ms, from the earlier half's (`lagBound`). A drift that leaves
+  few strikes within a frame of one lag reads as hits that draw no onset.
+
+Such a recording keeps its frames and its label, the hits as its file has them and
+`"skip":"a lag that drifts"` in place of the lag; the run names it (`a.wav: left out
+for a lag that drifts`), adds its loop to `skip.txt`, which holds a name until it is
+taken out by hand, and goes on. Its last line counts both: `the hits of 2
+recording(s) put on their sound and 1 left out in skip.txt: 1 for hits that draw no
+onset`.
+
+The five constants are fitted on drums whose answer is known
+(`TestARecordedKitsHitsAreMovedOntoTheirSound`): four bars of the arranger's drums
+on a kit drawn for each, the bank's drums under an eq of five bands 10 dB either
+way, a pitch half an octave and a length an octave either way, with no room and
+through `degrade`, the hits moved by none, by a steady lag up to two frames short of
+the reach either way, by a drift of three to six frames over the recording, or
+replaced by another recording's, and the same hits over silence.
+
+- The reach is the widest share of the usual gap, doubling from a quarter, at
+  which every recording of a draw of 24 whose hits were moved by none or a steady
+  lag is read within a frame of their median: a half. At the whole gap one is read
+  120.9 ms off.
+- At a half, over those 96 readings: the median of the lag read less the lag laid
+  is `lagRise`; the furthest from it, 10.2 ms, a step up is `lagBound`; `lagClear`
+  is halfway from the most another lag meets, 0.944, to a tie; `lagDrawn` halfway
+  from the least share of strikes that draw an onset, 0.516, to the most another's
+  hits or silence draw, 0.278. Their halves lie 4.3 ms apart at most.
+- On a second draw of 12, each of 48 lags laid up to 133 ms is found within 6.4 ms,
+  none left out; of the 12 that drift 7 are left out for a lag that drifts and 5 for
+  hits that draw no onset, and all 12 silent and 12 of another's hits for hits that
+  draw no onset.
+
+What the measure cannot tell: a lag past half the usual gap, where a steady pattern's
+hits meet their neighbours' rises as well as their own did, is read as a nearer one,
+or left out where the score still rises at the reach; and the constants are the
+engine's kits', read back on no recorded kit yet ([todo](todo.md)).
 
 ### A recording's starts
 

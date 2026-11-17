@@ -381,9 +381,13 @@ proves wrong or that a document now states, and link the document instead.
 - A `from` corpus's labels pass knows a recording by its label's `source`, so
   a label that does not read stops it. It reads the list again, its `velocity`
   column with it, so a list changed to `none` is relabelled in seconds; under
-  `measured` it opens every recording and hears each note, minutes for a set,
-  and a recording gone from disk, whose sound does not read or with a level
-  not finite keeps its label with every note at -1, which the run's last line
+  `measured` it opens every recording and hears each note, VocalSet's two
+  splits in an hour and a half on half a core but GuitarSet's chords some 220 s
+  of a core a recording, their old rings in doubt and walked window by window,
+  and it takes as many recordings at once as the process runs threads: four at
+  once on one thread held 3.2 GB of rings and, under a memory cap, crawled.
+  A recording gone from disk, whose sound does not read or with a level not
+  finite keeps its label with every note at -1, which the run's last line
   counts by reason: a recording's labels are never lost to its measure.
 - A pitch track at 44.1 kHz and a hop of 256 has two samples a frame, one on
   the frame's own time, so a missing sample lies a whole step from its

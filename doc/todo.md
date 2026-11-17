@@ -215,7 +215,11 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
       sounds with gets none: on NSynth's overlaps such notes held the bound
       fitted on the fit's instruments and missed it on the others and the
       test split, so a chord's notes and a let-ring line's go without until
-      a measure holds there.
+      a measure holds there. A ring in doubt rings on (`heardRing`): a note
+      sounded again with no gap, or under a ring an octave over it, gets
+      none, as does a plucked note struck into a ring loud enough to move
+      it; a ring's hidden partial is bounded by the told ones under it,
+      which a partial dying slower than those under it would defeat.
     - A placed start still lights the onset head's target and a placed end the
       release head's, where the alignment puts them (`placed` asks the strike
       head alone nothing); the same mask on those two heads is a line each.

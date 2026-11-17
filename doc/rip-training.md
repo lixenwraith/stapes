@@ -492,13 +492,30 @@ and at most 1 (`velocity.go`):
     stiffness, of a grid from none to a piano's top octave's the one whose partials
     hold most of its first window (`stiffnesses`), read to 60 dB under its
     strongest there. Fitted with them is every partial of the notes still ringing
-    in the window, each taken to ring 1 s past its label's end, the release of
-    NSynth's 4 s notes past their hold (`measuredRing`), that lies within three
-    bins of the window (60 Hz) of one of them or of a point midway between two.
-    Partials within those three bins of the next form a chain, solved whole, every
-    pair in its Gram: a partial that stops inside the window spreads wider than
-    three bins, and with its far pairs left out the matrix is no Gram and its
-    factor fails.
+    in the window (below) that lies within three bins of the window (60 Hz) of one
+    of them or of a point midway between two. Partials within those three bins of
+    the next form a chain, solved whole, every pair in its Gram: a partial that
+    stops inside the window spreads wider than three bins, and with its far pairs
+    left out the matrix is no Gram and its factor fails.
+  - A note rings past its label's end for as long as its sound does, at the pitch
+    it was let go at (`heardRing`), with no time to cap it: a voice's is gone in a
+    window, a string's lasts seconds. Each window from its end on, hops of half a
+    window, fits its partials with those of the notes labelled there: they are
+    found where those told apart hold more than is left unfitted around them. A
+    partial not told apart is in doubt and could hold the most a told one under it
+    kept of what it could hold in the note's last labelled window, a partial dying
+    no faster than those over it, or, none under it telling, all the window holds
+    there. A ring is let go from a measured note's windows at the first window
+    where its partials are not found and what those within three bins of the
+    note's could hold, added to them in phase, cannot move the note's level past
+    the bound beside what the note's own bound alone already spans: (10^((B −
+    u)/20) − 1)² of its level alone, u that bound's half-width. A window where a
+    ring is found and its partials told apart could, a fit of two notes misleading
+    by a dB within tight bounds, bounds the note's level from above only, by all
+    it holds at its partials and what no partial explains; a partial in doubt
+    already gives the low bound nothing where it inflates one of the note's. A
+    ring called gone gives a wrong velocity and a gone note called ringing costs
+    one, so a note in doubt rings.
   - A partial is the note's own where the partials fitted with it, its own note's
     among them, widen its estimate's variance twice at most (`measuredApart`), its
     chain's inverse read on the diagonal, and its energy bounds the level from below
@@ -516,43 +533,55 @@ and at most 1 (`velocity.go`):
   given -1. The bound is fitted on recorded notes whose levels are known
   (`TestAMeasuredLevelIsKnownWithinItsFittedBound`, with `NSYNTH` naming the folder
   of NSynth's splits): the guitar, vocal, keyboard and string families, notes laid
-  by the sampler one at a time and in overlaps (§3), from two to eight sounding at
-  once, at velocities 0 to 30 dB down, with no room and through `degrade`, each
-  note's truth its level laid alone and carried through the same room (`room`). A
-  seeded half of the training split's instruments fits it, the least bound in
-  tenths of a dB within which nine in ten of the notes known within it lie in
-  every group of twenty known or more (a family, or the four, alone or with
-  others, in a room), sure to one in twenty: the order statistic that bounds a
-  group's ninetieth percentile from above at odds of 19 to 1, a binomial's, lies
-  within it. Fitted without that, the bound held on the fit at 0.7 dB and missed
-  for guitar on the instruments left out and the test split. The other half and
-  the test split read it back, a group failing where it shows at 19 to 1 that
-  more than a tenth of its known notes miss the bound. Notes sounding with others held a bound fitted
-  on the fit's instruments and missed it on the others, nine in ten within 1.84 dB
-  of 1.2 left out and 1.44 on the test split, so they are given none. At 0.8 dB,
-  the share of notes known and nine in ten of their errors, each group of 150
-  notes or so alone, about 350 with others:
+  by the sampler one after another and in overlaps (§3), from two to eight sounding
+  at once, at velocities 0 to 30 dB down, with no room and through `degrade`, each
+  note's truth its level laid alone and carried through the same room (`room`).
+  One after another is in lines of twenty, each note on an instrument drawn anew at
+  a unison, step or leap from the note before, none or up to 2 s after it, short
+  gaps likelier, a soft note 20 to 30 dB under a loud one among them; the note
+  before is released into its sample's release, held on past its label to its
+  file's end, as a string a label lets go too soon, or cut at its end by 60 ms, as
+  a damped string or a voice moving on. A seeded half of the training split's
+  instruments fits it, with three times a readback's lines, the least bound in
+  tenths of a dB within which nine in ten of the notes known within it lie in every
+  group of twenty known or more (a family, or the four, alone or with others, in a
+  room), sure to one in twenty: the order statistic that bounds a group's
+  ninetieth percentile from above at odds of 19 to 1, a binomial's, lies within
+  it. Fitted without that, the bound held on the fit at 0.7 dB and missed for
+  guitar on the instruments left out and the test split. The other half and the
+  test split read it back, a group failing where it shows at 19 to 1 that more
+  than a tenth of its known notes miss the bound. Notes sounding with others held
+  a bound fitted on the fit's instruments and missed it on the others, nine in ten
+  within 1.84 dB of 1.2 left out and 1.44 on the test split, so they are given
+  none. A ring is let go by what the bound leaves, so the bound is fitted until the
+  fit gives it back. With the fit's lines as many as a readback's, 0.9 missed by
+  0.002 dB and 1.0 fitted 1.5, a group's two or three worst notes of some 70 known
+  deciding it; tripled after that near miss, the fit gives 0.8 at 0.9, and 0.8
+  back. At 0.8 dB, the share of notes known and nine in ten of their errors, the
+  fit's groups of 450 notes or so alone, the readbacks' 150, about 350 with others:
 
   ```
                            fit            left out       test
-  guitar    alone, no room   68%  0.66 dB   55%  0.70 dB   64%  0.89 dB
-            alone, degrade   68%  0.66      52%  0.75      58%  0.81
-  keyboard  alone, no room   77%  0.51      75%  0.73      73%  0.45
-            alone, degrade   77%  0.56      72%  0.69      70%  0.51
-  string    alone, no room   77%  0.53      74%  0.45      85%  0.42
-            alone, degrade   80%  0.54      74%  0.58      85%  0.37
-  vocal     alone, no room   82%  0.61      71%  0.36      63%  0.44
-            alone, degrade   82%  0.59      70%  0.45      57%  0.40
-  the four  alone, no room   76%  0.57      69%  0.56      71%  0.55
-            alone, degrade   77%  0.59      67%  0.60      67%  0.56
+  guitar    alone, no room   46%  0.58 dB   44%  0.66 dB   46%  0.62 dB
+            alone, degrade   38%  0.61      35%  0.66      40%  0.63
+  keyboard  alone, no room   55%  0.51      54%  0.57      52%  0.46
+            alone, degrade   48%  0.49      50%  0.63      47%  0.76
+  string    alone, no room   49%  0.49      49%  0.52      46%  0.42
+            alone, degrade   44%  0.49      45%  0.54      36%  0.46
+  vocal     alone, no room   56%  0.55      46%  0.49      32%  0.62
+            alone, degrade   49%  0.51      36%  0.41      26%  0.40
+  the four  alone, no room   52%  0.53      48%  0.55      44%  0.54
+            alone, degrade   45%  0.54      42%  0.63      37%  0.60
   with others, every group    0%             0%             0%
   ```
 
-  Guitar's test split reads over the bound by less than its count can show at 19
-  to 1, its median 0.4 dB where the training split's is under 0.2. A velocity is
-  measured where a note sounds alone, as in a solo line. The test also checks the
-  bound on the engine's voices' overlaps, the bank's and the plucked and vocal
-  focus's.
+  By what the note before did, the four on the fit, no room and through
+  `degrade`: after none 64% and 63% known, nine in ten within 0.51 and 0.63 dB;
+  after a release 59% and 51%, 0.52 and 0.50; after one held on past its label
+  31% and 29%, 0.61 and 0.63; after one cut 61% and 50%, 0.53 and 0.51; 20 dB
+  or more under it 44% and 31%, 0.56 and 0.59. A velocity is measured where a
+  note sounds alone, as in a solo line. The test also checks the bound on the
+  engine's voices' overlaps, the bank's and the plucked and vocal focus's.
 - **The unit** is one number for a recording and a MIDI program, by one rule: the
   recording's loudest notes are given the velocity the generator gives a line's
   loudest. `lineTop` reads that from the arranger's own draw, the median over the

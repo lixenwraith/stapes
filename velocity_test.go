@@ -18,21 +18,26 @@ import (
 
 // heardCheck is a drawn note's measure against its level alone: what plays it,
 // the error in dB, its bound's half-width, the most notes sounding with it at
-// once and the most coinciding interval it sounds at with another
+// once, the most coinciding interval it sounds at with another and, in a line,
+// what the note before did at its end, the seconds between and the dB it lies under
 type heardCheck struct {
 	voice       string
 	err, unsure float64
 	poly        int
 	interval    string
+	after       string
+	gap, under  float64
 }
 
 // heardLaid is a note laid alone for a draw: as it is measured, its key, what
-// plays it and its samples from its start
+// plays it, its samples from its start and, in a line, what came before (heardCheck)
 type heardLaid struct {
-	n    heardNote
-	midi int
-	name string
-	x    []float64
+	n          heardNote
+	midi       int
+	name       string
+	x          []float64
+	after      string
+	gap, under float64
 }
 
 // measureLaid mixes notes laid alone over to samples, through a room rng draws
@@ -53,7 +58,6 @@ func measureLaid(notes []heardLaid, to int, rng *rand.Rand) []heardCheck {
 	heard := make([]heardNote, len(notes))
 	for j, l := range notes {
 		heard[j] = l.n
-		heard[j].rings = min(l.n.rings, to)
 	}
 	got := hearLevels(mix, rate, heard)
 	var out []heardCheck
@@ -66,7 +70,7 @@ func measureLaid(notes []heardLaid, to int, rng *rand.Rand) []heardCheck {
 		if truth <= 0 {
 			continue
 		}
-		c := heardCheck{voice: l.name, err: 20 * math.Log10(got[j].level()/truth), unsure: got[j].unsure(), poly: 1, interval: "alone"}
+		c := heardCheck{voice: l.name, err: 20 * math.Log10(got[j].level()/truth), unsure: got[j].unsure(), poly: 1, interval: "alone", after: l.after, gap: l.gap, under: l.under}
 		for q, o := range notes {
 			if q == j || o.n.start >= l.n.start+span || o.n.end <= l.n.start {
 				continue
@@ -125,8 +129,8 @@ func drawHeard(t *testing.T, s *Session, seed uint64, loops int, degraded bool, 
 						midi -= 12
 					}
 					at, end, key := int(nt.at), min(int(nt.at+nt.dur), m.to), float64(midi)
-					n := heardNote{at, end, end + int(measuredRing*float64(rate)), func(int) float64 { return key }}
-					notes = append(notes, heardLaid{n, midi, v.Name, audio.RenderNote(v, midi, nt.vel, nt.dur/float64(rate), 1)})
+					n := heardNote{at, end, func(int) float64 { return key }}
+					notes = append(notes, heardLaid{n: n, midi: midi, name: v.Name, x: audio.RenderNote(v, midi, nt.vel, nt.dur/float64(rate), 1)})
 				}
 			}
 		}
@@ -148,7 +152,7 @@ func laySampled(t *testing.T, set *sampleSet, in *sampleInstr, at, midi int, vel
 		t.Fatal(err)
 	}
 	end, key := at+ends[0], float64(midi)
-	return heardLaid{heardNote{at, end, end + int(measuredRing*float64(audio.AudioSampleRate)), func(int) float64 { return key }}, midi, in.name, x}, true
+	return heardLaid{n: heardNote{at, end, func(int) float64 { return key }}, midi: midi, name: in.name, x: x}, true
 }
 
 // drawSampled is drawHeard on recorded notes: each part of a loop is played by
@@ -187,26 +191,62 @@ func drawSampled(t *testing.T, s *Session, set *sampleSet, ins []*sampleInstr, s
 	return out
 }
 
-// drawAlone lays count notes of ins one at a time, two seconds of nothing after
-// each, twenty a stretch, at an instrument, a recorded pitch, a velocity 0 to
-// 30 dB down and a length of 0.12 to 2.5 s the seed draws, as V's overlaps do,
-// and measures each against its level alone
-func drawAlone(t *testing.T, set *sampleSet, ins []*sampleInstr, seed uint64, count int, degraded bool) []heardCheck {
+// drawLine lays count notes of ins one after another, twenty a stretch, each on an
+// instrument the seed draws at a unison, step or leap from the note before, 0 to
+// 30 dB down or, after a loud one, 20 to 30 dB under it, labelled 0.12 to 2.5 s,
+// none or up to 2 s after the one before, short gaps likelier, which was released,
+// held on past its label or cut at its end by sampledFade; each against its level alone
+func drawLine(t *testing.T, set *sampleSet, ins []*sampleInstr, seed uint64, count int, degraded bool) []heardCheck {
 	t.Helper()
 	rate := audio.AudioSampleRate
 	rng := rand.New(rand.NewPCG(seed, 0xa1))
+	steps, fade := []int{0, 1, 2, 3, 4, 5, 7, 12}, int(sampledFade*float64(rate))
 	var out []heardCheck
 	for stretch := uint64(0); count > 0; stretch++ {
 		var notes []heardLaid
-		at, cache := rate/10, map[sampleKey][]float64{}
-		for len(notes) < 20 && count > 0 {
+		at, cache, midi, db, end, after := rate/10, map[sampleKey][]float64{}, 0, 0.0, 0, ""
+		for tries := 0; len(notes) < 20 && count > 0 && tries < 400; tries++ {
 			in := ins[rng.IntN(len(ins))]
-			midi, vel, n := in.pitches[rng.IntN(len(in.pitches))], math.Pow(10, -1.5*rng.Float64()), int((0.12+2.38*rng.Float64())*float64(rate))
-			if l, ok := laySampled(t, set, in, at, midi, vel, n, n+2*rate, cache); ok {
-				notes, at, count = append(notes, l), at+n+2*rate, count-1
+			key := midi + (1-2*rng.IntN(2))*steps[rng.IntN(len(steps))]
+			if len(notes) == 0 || rng.IntN(8) == 0 {
+				key = in.pitches[rng.IntN(len(in.pitches))]
 			}
+			d := -30 * rng.Float64()
+			if len(notes) > 0 && db > -10 && rng.IntN(2) == 0 {
+				d = db - 20 - 10*rng.Float64()
+			}
+			n, gap, how := int((0.12+2.38*rng.Float64())*float64(rate)), int(2*sq(rng.Float64())*float64(rate)), rng.IntN(3)
+			if rng.IntN(4) == 0 {
+				gap = 0
+			}
+			held, vel := n, math.Pow(10, d/20)
+			if how == 1 {
+				// its label ends before its sound, which plays its whole file
+				if ok, err := set.fits(in, []audio.RipEvent{{For: n, MIDI: key, Vel: vel}}); err != nil || !ok {
+					continue
+				}
+				held = 5 * rate
+			}
+			l, ok := laySampled(t, set, in, at, key, vel, held, held+2*rate, cache)
+			if !ok {
+				continue
+			}
+			l.n.end = min(l.n.end, at+n)
+			l.after = "nothing"
+			if len(notes) > 0 {
+				l.after, l.gap, l.under = after, float64(at-end)/float64(rate), db-d
+			}
+			after = []string{"released", "held on", "cut"}[how]
+			if how == 2 {
+				// a damped string or a voice moving on: gone sampledFade after its end
+				for i := l.n.end - at; i < len(l.x); i++ {
+					l.x[i] *= max(0, 1-float64(i-(l.n.end-at))/float64(fade))
+				}
+			}
+			notes = append(notes, l)
+			midi, db, end, at, count = key, d, l.n.end, l.n.end+gap, count-1
 		}
-		out = append(out, measureLaid(notes, at, roomOf(degraded, seed, stretch))...)
+		out = append(out, measureLaid(notes, max(at, end+rate), roomOf(degraded, seed, stretch))...)
 	}
 	return out
 }
@@ -336,10 +376,11 @@ func heardTable(checks []heardCheck, bound float64) string {
 	return b.String()
 }
 
-// nsynthReads draws NSynth's notes of four families at seed 1, alone and in V's
+// nsynthReads draws NSynth's notes of four families at seed 1, in lines and in V's
 // overlaps, with no room and through degrade, for three reads: a seeded half of
-// the training split's instruments (fit), the other half (left out) and the
-// test split, each a group by family or the four, alone or with others, and room
+// the training split's instruments (fit), its lines three times a readback's, the
+// other half (left out) and the test split, each a group by family or the four,
+// alone or with others, and room
 func nsynthReads(t *testing.T, s *Session, dir string) map[string]map[string][]heardCheck {
 	t.Helper()
 	train, err := loadSampleSet(filepath.Join(dir, "nsynth-train", "audio"))
@@ -365,11 +406,12 @@ func nsynthReads(t *testing.T, s *Session, dir string) map[string]map[string][]h
 		all := of(train)
 		rand.New(rand.NewPCG(11, 1)).Shuffle(len(all), func(i, j int) { all[i], all[j] = all[j], all[i] })
 		for name, from := range map[string]struct {
-			set *sampleSet
-			ins []*sampleInstr
-		}{"fit": {train, all[:len(all)/2]}, "left out": {train, all[len(all)/2:]}, "test": {test, of(test)}} {
+			set   *sampleSet
+			ins   []*sampleInstr
+			lines int
+		}{"fit": {train, all[:len(all)/2], 450}, "left out": {train, all[len(all)/2:], 150}, "test": {test, of(test), 150}} {
 			for d, how := range []string{"no room", "degrade"} {
-				for _, c := range append(drawAlone(t, from.set, from.ins, 1, 150, d == 1), drawSampled(t, s, from.set, from.ins, 1, 12, d == 1)...) {
+				for _, c := range append(drawLine(t, from.set, from.ins, 1, from.lines, d == 1), drawSampled(t, s, from.set, from.ins, 1, 12, d == 1)...) {
 					kind := " alone, "
 					if c.poly > 1 {
 						kind = " with others, "
@@ -405,6 +447,19 @@ func TestAMeasuredLevelIsKnownWithinItsFittedBound(t *testing.T) {
 				rows.WriteString(heardRow(g, reads[name][g], b))
 				if e := knownErrs(reads[name][g], b); len(e) >= 20 && sure(e, false) > b {
 					t.Errorf("%s, %s: of the %d notes known within %.1f dB, nine in ten lie within %.2f at least, at odds of 19 to 1", name, g, len(e), b, sure(e, false))
+				}
+			}
+			// the line's notes of the four families by what the note before did
+			for _, how := range []string{"no room", "degrade"} {
+				line := reads[name]["the four alone, "+how]
+				for _, after := range []string{"nothing", "released", "held on", "cut", "20 dB louder"} {
+					var of []heardCheck
+					for _, c := range line {
+						if c.after == after || after == "20 dB louder" && c.after != "" && c.under >= 20 {
+							of = append(of, c)
+						}
+					}
+					rows.WriteString(heardRow("after "+after+", "+how, of, b))
 				}
 			}
 			t.Logf("%s, at the bound fitted, %.1f dB:%s", name, b, rows.String())
@@ -451,7 +506,7 @@ func TestEveryMeasuredLevelIsFinite(t *testing.T) {
 					x[j] += 0.1 * math.Sin(2*math.Pi*p*f*sec) / p * math.Exp(-sec/0.5)
 				}
 			}
-			notes = append(notes, heardNote{at, end, rings, func(int) float64 { return key }})
+			notes = append(notes, heardNote{at, end, func(int) float64 { return key }})
 		}
 		for i, h := range hearLevels(x, rate, notes) {
 			if !finite(h.lo) || !finite(h.hi) {
@@ -533,7 +588,7 @@ func lay(t *testing.T, set *sampleSet, keys []int, vels, secs []float64) ([]floa
 	for i, k := range keys {
 		n := int(secs[i] * rate)
 		events = append(events, audio.RipEvent{At: at, For: n, MIDI: k, Vel: vels[i]})
-		notes = append(notes, heardNote{at, at + n, at + n + int(measuredRing*rate), func(int) float64 { return float64(k) }})
+		notes = append(notes, heardNote{at, at + n, func(int) float64 { return float64(k) }})
 		at += n + int(rate)
 	}
 	_, x, err := set.play(set.other[0], events, at, 0, map[sampleKey][]float64{}, true)
@@ -624,7 +679,7 @@ func TestAMeasuredVelocityPlaysAsLoudAsItWasPlayed(t *testing.T) {
 			x[at+i] += v
 		}
 		keys, labels, secs = append(keys, k), append(labels, vel), append(secs, sec)
-		notes = append(notes, heardNote{at, at + n, at + n + int(measuredRing*float64(rate)), func(int) float64 { return float64(k) }})
+		notes = append(notes, heardNote{at, at + n, func(int) float64 { return float64(k) }})
 		at += n + rate
 	}
 	levels := hearLevels(x, rate, notes)

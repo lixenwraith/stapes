@@ -11,8 +11,9 @@ import (
 	"github.com/lixenwraith/audio"
 )
 
-// What puts a recording's hits on its sound, each fitted on the engine's kits
-// by TestARecordedKitsHitsAreMovedOntoTheirSound: the test names its procedure
+// What puts a recording's hits on its sound: the grid a lag is read on, and five
+// constants fitted on the engine's kits by
+// TestARecordedKitsHitsAreMovedOntoTheirSound, which names their procedure
 const (
 	lagStep  = audio.RipFrameSec / 8 // the grid a lag is read on
 	lagReach = 0.5                   // the share of the usual gap between strikes a lag is looked for within

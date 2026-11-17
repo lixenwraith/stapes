@@ -150,12 +150,11 @@ func lagCases(takes []kitTake, seed uint64, share float64) []lagCase {
 	return out
 }
 
-// lagFit is what a draw's recordings of hits moved by none or a steady lag fit
-// at a share of the usual gap: their median lag read less the lag laid, their
-// largest miss about it a step up, halfway from the most another lag meets to
-// a tie, and halfway from the least share of their hits that draw an onset to
-// the most of another's or of silence. It holds where each is read within a
-// frame of the median, its halves within the bound, and the shares part.
+// lagFit is what hits moved by none or a steady lag fit at a share of the usual
+// gap: the median lag read less the lag laid, the largest miss about it to the
+// nearest step and one more, halfway from the most another lag meets to a tie,
+// and from the least share of hits drawing an onset to the most of another's or
+// of silence. It holds where each is within a frame, its halves in the bound.
 type lagFit struct {
 	holds                     bool
 	rise, bound, clear, drawn float64
@@ -178,7 +177,7 @@ func fitLag(takes []kitTake, seed uint64, share float64) lagFit {
 	for _, m := range miss {
 		far = max(far, math.Abs(m-f.rise))
 	}
-	f.bound = (math.Floor(far/lagStep) + 1) * lagStep
+	f.bound = (math.Round(far/lagStep) + 1) * lagStep
 	f.holds = far < audio.RipFrameSec && slices.Max(drifts) <= f.bound && slices.Min(drawn) > slices.Max(strays)
 	f.clear = math.Round(50*(slices.Max(others)+1)) / 100
 	f.drawn = math.Round(50*(slices.Min(drawn)+slices.Max(strays))) / 100
@@ -190,9 +189,8 @@ func fitLag(takes []kitTake, seed uint64, share float64) lagFit {
 // TestARecordedKitsHitsAreMovedOntoTheirSound: the engine's drums alone on drawn
 // kits, with no room and through degrade, their hits moved by a lag laid.
 // lagReach is the widest share of the usual gap, doubling from a quarter, at
-// which lagFit holds on one draw, and the four others what it fits there; on a
-// second draw each lag is found within lagBound and a recording that drifts,
-// is silent or holds another's sound is left out.
+// which lagFit holds on one draw, the four others what it fits there; on a second
+// each lag is found within lagBound, a drifting, a silent and another's left out.
 func TestARecordedKitsHitsAreMovedOntoTheirSound(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
@@ -220,7 +218,7 @@ func TestARecordedKitsHitsAreMovedOntoTheirSound(t *testing.T) {
 		case "none", "steady":
 			fmt.Fprintf(&rows, "\n  %2d %-6s laid %+7.1f ms, found %+7.1f, %+5.1f off", i/7, c.kind, 1000*c.laid, 1000*lag, 1000*(lag-c.laid))
 			if why != "" || math.Abs(lag-c.laid) > lagBound+1e-9 {
-				t.Errorf("recording %d, a lag of %.1f ms laid: found %.1f ms, left out as one %q; want it within %.1f ms", i/7, 1000*c.laid, 1000*lag, why, 1000*lagBound)
+				t.Errorf("recording %d, a lag of %.1f ms laid: found %.1f ms, left out for %q; want it within %.1f ms", i/7, 1000*c.laid, 1000*lag, why, 1000*lagBound)
 			}
 		default:
 			if refused[c.kind] == nil {
@@ -228,7 +226,7 @@ func TestARecordedKitsHitsAreMovedOntoTheirSound(t *testing.T) {
 			}
 			refused[c.kind][why]++
 			if why == "" || c.kind == "silent" && why != lagWhy[0] {
-				t.Errorf("recording %d, %s: placed at %.1f ms or left out as one %q, want it refused", i/7, c.kind, 1000*lag, why)
+				t.Errorf("recording %d, %s: placed at %.1f ms or left out for %q, want it left out", i/7, c.kind, 1000*lag, why)
 			}
 		}
 	}

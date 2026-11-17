@@ -392,7 +392,7 @@ The tools that fetch a set, write its labels and its list and check them are in
 
 - The scripts that render a corpus in parts, run a round and read its rips
   predate the band frames: they go in once a round has run them.
-- No tool there has a test: a smoke test each.
+- Only `audit/corpuscount.py` has a test: a smoke test each for the others.
 - `datasets/fetch.sh egmd` reads `datasets/egmd/batches.tsv`, each file's byte
   range in the set's archive, which the tree does not hold: the batches fetch
   only beside the lab's copy of it.
@@ -649,6 +649,10 @@ about as long as the heaviest test
   `corpus from`'s workers, the screen's long verbs), but a race only a heavy
   test reaches goes unseen. Or that on a pull request and the whole raced
   suite on main, which shows such a race after its merge.
+- The lag's fit and readback, `TestARecordedKitsHitsAreMovedOntoTheirSound`,
+  is weighed at 207 s, fifteen times its plain 13.8, the heaviest until the
+  list is measured again: two thirds of it are eighteen kits' renders, each
+  drum rendered three times as its eq, its shape and its binding are set.
 - A push to a branch with a pull request open runs the workflow twice, for the
   push and for the pull request; `claude/*` in the push trigger is what tests
   a branch before its pull request opens.

@@ -669,10 +669,12 @@ replaced by another recording's, and the same hits over silence.
   lag is read within a frame of their median: a half. At the whole gap one is read
   120.9 ms off.
 - At a half, over those 96 readings: the median of the lag read less the lag laid
-  is `lagRise`; the furthest from it, 10.2 ms, a step up is `lagBound`; `lagClear`
-  is halfway from the most another lag meets, 0.944, to a tie; `lagDrawn` halfway
-  from the least share of strikes that draw an onset, 0.516, to the most another's
-  hits or silence draw, 0.278. Their halves lie 4.3 ms apart at most.
+  is `lagRise`; the furthest from it, 10.2 ms, to the nearest step and one more is
+  `lagBound`; `lagClear` is halfway from the most another lag meets, 0.944, to a
+  tie; `lagDrawn` halfway from the least share of strikes that draw an onset,
+  0.516, to the most another's hits or silence draw, 0.278. A draw holds only
+  where the shares part and no recording's halves lie further apart than the
+  bound: theirs lie 4.3 ms apart at most.
 - On a second draw of 12, each of 48 lags laid up to 133 ms is found within 6.4 ms,
   none left out; of the 12 that drift 7 are left out for a lag that drifts and 5 for
   hits that draw no onset, and all 12 silent and 12 of another's hits for hits that

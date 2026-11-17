@@ -214,7 +214,11 @@ of corpus:
 - **E-GMD:** `corpus <dir> from <list.csv> split train codec`. Each loop is one
   recording, with its hits from the MIDI file. Its keys are mapped by
   `midiInstruments`: edges, ride, tambourine and shaker read as hihat, cross-stick as
-  snare, and other keys as strikes of no line.
+  snare, and other keys as strikes of no line. The list is a draw of the recordings
+  on disk, by hours, spread over drummers, kits, styles and tempos, the test split in
+  a list of its own ([rip-lab](../tool/rip-lab/README.md#datasetsegmdpy)): a
+  recording's frames take 781 MB an hour, so a corpus is a share of the set. The
+  list's `velocity` is `none`.
 
 A recording's hits can sit a steady distance off its audio, the same across all of a
 performance's kits: `corpus` moves such labels by that lag, and a recording it cannot

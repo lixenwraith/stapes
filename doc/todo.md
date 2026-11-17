@@ -393,6 +393,9 @@ The tools that fetch a set, write its labels and its list and check them are in
 - The scripts that render a corpus in parts, run a round and read its rips
   predate the band frames: they go in once a round has run them.
 - No tool there has a test: a smoke test each.
+- `datasets/fetch.sh egmd` reads `datasets/egmd/batches.tsv`, each file's byte
+  range in the set's archive, which the tree does not hold: the batches fetch
+  only beside the lab's copy of it.
 - The free tracker (`labels/vocal.py`, `trackscore.py`, `trackfit.py`) labels
   nothing. It stays for a set with no sheet to place, VocalSet's excerpts
   first, and goes if none is labelled with it.

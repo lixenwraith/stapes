@@ -54,10 +54,14 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    corpus, and the live rip in the hands (`RipStream` is the library's; its
    host is vif's Android app, and a verb over a file in stapes the step before
    it). Then: real recordings with their notes in the corpus (item 1: `corpus
-   <dir> from` writes E-GMD's, `train.py --mix` mixes them in; still lacking a
+   <dir> from` writes E-GMD's, its hits moved onto their sound or the
+   recording left out, `train.py --mix` mixes them in; still lacking a
    held-out score for a `from` corpus, E-GMD's ET split being the clean one,
-   drum velocity in the labels, a check that drops a render whose hits draw no
-   onset; NSynth's notes play in `corpus ... sampled`, lacking the
+   drum velocity in the labels, its list saying `none` till a kit's law is
+   decided, the lag's constants read back on E-GMD itself (by drummer and
+   session, and whether a performance's kits agree), a lag past half the usual
+   gap between strikes, which reads as a nearer one, and a check that drops a
+   render whose hits draw no onset; NSynth's notes play in `corpus ... sampled`, lacking the
    tempo-synced and multiphonic filters `examples.json` allows and a pipeline
    bench on the 53 held-out instruments), then more loops, or width 384
    (`DIM=384 HEADS=12 FFN=1536`, 7 million weights), each measured by `bench`
@@ -231,8 +235,9 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
     - A placed start still lights the onset head's target and a placed end the
       release head's, where the alignment puts them (`placed` asks the strike
       head alone nothing); the same mask on those two heads is a line each.
-    - E-GMD's velocities stay its MIDI files': a kit's law is not the engine's,
-      a decision still to make.
+    - E-GMD's list says `none`, so its hits are labelled at -1: a kit's law
+      is not the engine's, and whether a hit's velocity is its file's under
+      that law or measured from its sound is a decision still to make.
 
 ### Teach the frame model the beat and the bar line
 
@@ -387,7 +392,10 @@ The tools that fetch a set, write its labels and its list and check them are in
 
 - The scripts that render a corpus in parts, run a round and read its rips
   predate the band frames: they go in once a round has run them.
-- No tool there has a test: a smoke test each.
+- Only `audit/corpuscount.py` has a test: a smoke test each for the others.
+- `datasets/fetch.sh egmd` reads `datasets/egmd/batches.tsv`, each file's byte
+  range in the set's archive, which the tree does not hold: the batches fetch
+  only beside the lab's copy of it.
 - The free tracker (`labels/vocal.py`, `trackscore.py`, `trackfit.py`) labels
   nothing. It stays for a set with no sheet to place, VocalSet's excerpts
   first, and goes if none is labelled with it.
@@ -641,6 +649,10 @@ about as long as the heaviest test
   `corpus from`'s workers, the screen's long verbs), but a race only a heavy
   test reaches goes unseen. Or that on a pull request and the whole raced
   suite on main, which shows such a race after its merge.
+- The lag's fit and readback, `TestARecordedKitsHitsAreMovedOntoTheirSound`,
+  is weighed at 207 s, fifteen times its plain 13.8, the heaviest until the
+  list is measured again: two thirds of it are eighteen kits' renders, each
+  drum rendered three times as its eq, its shape and its binding are set.
 - A push to a branch with a pull request open runs the workflow twice, for the
   push and for the pull request; `claude/*` in the push trigger is what tests
   a branch before its pull request opens.

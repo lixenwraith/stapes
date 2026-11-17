@@ -1110,6 +1110,8 @@ type corpusLoop struct {
 	Source string        `json:"source,omitempty"` // the recording a loop was heard from
 	Kind   string        `json:"kind,omitempty"`   // a rendered loop's: bank, arranged or overlap
 	Placed bool          `json:"placed,omitempty"` // its notes' starts are placed on the recording, not heard struck (startsWords)
+	Lag    *float64      `json:"lag,omitempty"`    // the seconds a recording of hits alone sounds after its file's, its hits and beats moved by them (placeHits)
+	Skip   string        `json:"skip,omitempty"`   // or why they are not, a word of lagWhy: the loop is in skip.txt
 	// its beats and bar lines in frames, where the render puts them or a
 	// recording's list names them; a loop of neither, as an overlap, lists none
 	Beats     []int         `json:"beats,omitempty"`
@@ -1293,11 +1295,10 @@ var velocityWords = map[string]struct {
 var startsWords = map[string]bool{"": false, "placed": true}
 
 // corpusFrom writes a corpus of recordings and the MIDI files they were played
-// from, one loop each, listed by a CSV with audio_filename and midi_filename
-// columns, and split, duration, family, velocity, unit, starts, pitch and beats
-// when present: the frames as heard, the notes as the MIDI plays them, placed by
-// the pitch track, the voices unknown. A loop on disk is kept, known by its
-// source; labels writes it over.
+// from, one loop each, as a CSV lists them (doc/rip-training.md §3): the frames
+// as heard, the notes as the MIDI plays them, placed by the pitch track, hits
+// alone put on their sound or the loop left out in skip.txt, the voices unknown.
+// A loop on disk is kept, known by its source; labels writes it over.
 func (s *Session) corpusFrom(dir, list string, a []string) error {
 	split, hours, codec, labels := "", math.Inf(1), false, false
 	for len(a) > 0 {
@@ -1436,6 +1437,8 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		levels []heardLevel // its notes', a measured recording's
 		heard  []float64    // and their velocities
 		failed *unmeasured  // or why it has none
+		moved  bool         // its hits were put on its sound
+		skip   string       // or why they were not, a word of lagWhy
 	}
 	var (
 		jobs    []job
@@ -1576,13 +1579,15 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		if b := beats(j.row); b != "" {
 			grid[0], grid[1], err = readBeats(at(b))
 		}
-		n, placedNotes := 0, 0
+		var lab corpusLoop
+		placedNotes := 0
 		if err == nil {
-			n, placedNotes, err = corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), velocityWords[velocity(j.row)].vel, j.heard, !placed(j.row), j.score, j.tracks, grid, coder, labels)
+			lab, placedNotes, err = corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), velocityWords[velocity(j.row)].vel, j.heard, !placed(j.row), j.score, j.tracks, grid, coder, labels)
 		}
+		j.moved, j.skip = lab.Lag != nil, lab.Skip
 		mu.Lock()
 		if !labels {
-			frames += n
+			frames += lab.Frames
 		}
 		if j.tracks != nil {
 			sat, notes = sat+placedNotes, notes+len(j.score.Notes)
@@ -1593,6 +1598,21 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		return err
 	}
 	if err := writeJSON(filepath.Join(dir, "corpus.json"), newCorpusManifest(loops)); err != nil {
+		return err
+	}
+	// a recording whose hits are not put on its sound is named, and its loop
+	// joins skip.txt, which the trainer leaves out; the run goes on
+	sounding, left, leave := 0, map[string]int{}, []string(nil)
+	for _, j := range jobs {
+		if j.moved {
+			sounding++
+		} else if j.skip != "" {
+			left[j.skip]++
+			leave = append(leave, filepath.Base(loopFile(j.at)))
+			fmt.Fprintf(s.out, "%s: left out for %s\n", j.row[wav], j.skip)
+		}
+	}
+	if err := skipLoops(filepath.Join(dir, "skip.txt"), leave); err != nil {
 		return err
 	}
 	what := fmt.Sprintf("wrote %d recording(s) to %s from %s", len(jobs), dir, list)
@@ -1620,6 +1640,18 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		}
 		what += fmt.Sprintf(", %d of those none in recording(s) not measured: %s", none, strings.Join(by, ", "))
 	}
+	if sounding+len(leave) > 0 {
+		what += fmt.Sprintf(", the hits of %d recording(s) put on their sound", sounding)
+		var by []string
+		for _, w := range lagWhy {
+			if left[w] > 0 {
+				by = append(by, fmt.Sprintf("%d for %s", left[w], w))
+			}
+		}
+		if len(by) > 0 {
+			what += fmt.Sprintf(" and %d left out in skip.txt: %s", len(leave), strings.Join(by, ", "))
+		}
+	}
 	if len(skipped) > 0 {
 		fmt.Fprintf(s.out, "skipped %d whose MIDI has no notes and no kick, snare or hihat, as %s\n", len(skipped), skipped[0])
 	}
@@ -1627,41 +1659,71 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	return nil
 }
 
-// corpusRecording writes a recording's band frames, through a codec when coder is
-// set, or under labels reads how many are on disk, and its score as one loop, its
-// frames and the notes its pitch tracks place returned: a note by family, or its
-// program's (programFamily) when family is -1, a hit and a strike of no line (a tom, a
-// crash: drum -1, midi 0) by the drums, each at vel of its velocity or a note at its
-// heard one, with grid's beats; struck false says its starts are placed.
-func corpusRecording(base, wav, source string, family int, vel func(float64) float64, heard []float64, struck bool, score *audio.MIDIScore, tracks []pitchTrack, grid [2][]float64, coder *rand.Rand, labels bool) (int, int, error) {
+// skipLoops adds the loops named to a corpus's skip.txt, a name a line, those
+// it holds kept: a name leaves it by hand
+func skipLoops(file string, loops []string) error {
+	if len(loops) == 0 {
+		return nil
+	}
+	held, err := os.ReadFile(file)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	names := strings.Fields(string(held))
+	for _, l := range loops {
+		if !slices.Contains(names, l) {
+			names = append(names, l)
+		}
+	}
+	return os.WriteFile(file, []byte(strings.Join(names, "\n")+"\n"), 0o644)
+}
+
+// corpusRecording writes a recording's band frames, through a codec when coder
+// is set, or under labels reads those on disk, and its score as one loop, which
+// it returns with the notes its pitch tracks place: a note by family or its
+// program's, a hit and a strike of no line by the drums, each at vel of its
+// velocity or a note at its heard one. Hits alone are put on their sound.
+func corpusRecording(base, wav, source string, family int, vel func(float64) float64, heard []float64, struck bool, score *audio.MIDIScore, tracks []pitchTrack, grid [2][]float64, coder *rand.Rand, labels bool) (corpusLoop, int, error) {
 	frames, whole, placed := 0, false, 0
+	rows := bandsRows(base + ".bands")
 	if labels {
 		if frames, whole = bandsLength(base + ".bands"); !whole {
-			return 0, 0, fmt.Errorf("%s.bands: no band frames of layout %d whole on disk to label", base, audio.RipLayout)
+			return corpusLoop{}, 0, fmt.Errorf("%s.bands: no band frames of layout %d whole on disk to label", base, audio.RipLayout)
 		}
 	} else {
 		f, err := os.Open(wav)
 		if err != nil {
-			return 0, 0, err
+			return corpusLoop{}, 0, err
 		}
 		x, rate, err := audio.ReadWAV(f)
 		f.Close()
 		if err != nil {
-			return 0, 0, fmt.Errorf("%s: %w", wav, err)
+			return corpusLoop{}, 0, fmt.Errorf("%s: %w", wav, err)
 		}
 		if coder != nil {
 			if x, err = codecRoundTrip(x, rate, coder); err != nil {
-				return 0, 0, err
+				return corpusLoop{}, 0, err
 			}
 		}
 		bands := audio.BandFrames(x, rate)
 		if err := writeRows(base+".bands", bands); err != nil {
-			return 0, 0, err
+			return corpusLoop{}, 0, err
 		}
-		frames = len(bands)
+		frames, rows = len(bands), slices.Values(bands)
 	}
-	frame := func(sec float64) int { return int(sec/audio.RipFrameSec + 0.5) }
 	lab := corpusLoop{Frames: frames, Source: source, Placed: !struck}
+	hits := append(slices.Clip(score.Hits), score.Struck...)
+	var lag float64
+	if len(score.Notes) == 0 {
+		at := make([]float64, len(hits))
+		for i, h := range hits {
+			at[i] = h.Start
+		}
+		if lag, lab.Skip = placeHits(rise(rows), strikeTimes(at)); lab.Skip == "" {
+			lab.Lag = new(math.Round(lag*1e5)/1e5 + 0)
+		}
+	}
+	frame := func(sec float64) int { return int(math.Floor((sec+lag)/audio.RipFrameSec + 0.5)) }
 	for i, n := range score.Notes {
 		f := family
 		if f < 0 {
@@ -1677,18 +1739,18 @@ func corpusRecording(base, wav, source string, family int, vel func(float64) flo
 		}
 		lab.Events = append(lab.Events, ev)
 	}
-	for _, h := range append(slices.Clip(score.Hits), score.Struck...) {
+	for _, h := range hits {
 		lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: vel(h.Vel), Wave: -1, Family: familyIndex("drums")})
 	}
-	lab.Events = slices.DeleteFunc(lab.Events, func(e corpusEvent) bool { return e.Frame >= frames })
+	lab.Events = slices.DeleteFunc(lab.Events, func(e corpusEvent) bool { return e.Frame < 0 || e.Frame >= frames })
 	for i, to := range []*[]int{&lab.Beats, &lab.Downbeats} {
 		for _, sec := range grid[i] {
-			if f := frame(sec); sec >= 0 && f < frames {
+			if f := frame(sec); sec+lag >= 0 && f < frames {
 				*to = append(*to, f)
 			}
 		}
 	}
-	return frames, placed, writeJSON(base+".json", lab)
+	return lab, placed, writeJSON(base+".json", lab)
 }
 
 // readBeats reads a recording's beats and bar lines, in its own seconds, by what

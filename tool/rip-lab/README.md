@@ -32,7 +32,10 @@ own files.
    - `labels/placefit.py <truth root> write`, which writes `labels/place.json`;
    - `labels/label.py <out dir>`, then `labels/placed.py <out dir>` and
      `audit/vocalcheck.py <out dir>/vocal-list.csv`.
-4. A corpus, from a list or from the generator, is counted and read against its
+4. E-GMD: `datasets/egmd.py list <e-gmd-v1.0.0> train <hours>
+   <e-gmd-v1.0.0>/egmd-train.csv`, and `... test all <e-gmd-v1.0.0>/egmd-test.csv`
+   for the split held out, a corpus each.
+5. A corpus, from a list or from the generator, is counted and read against its
    sound before it trains (`audit/corpuscount.py`, `audit/corpusheard.py`), and
    heard on `audit/loop_sheet.py`'s page.
 
@@ -53,6 +56,9 @@ hand: a first training wants few wrong labels more than it wants hours.
   of the test's bounds are ruled stricter than the fit took them, in
   `place.RULED`: a silence over 0.3 s inside a note, and a note under a third
   of the take's median note.
+- E-GMD: nothing by the list; `corpus <dir> from` leaves out a recording whose
+  hits it cannot put on their sound, by its reason, in the corpus's `skip.txt`
+  ([Rip training §3](../../doc/rip-training.md#a-recordings-lag)).
 - As ruled, of 2,978 takes tried 2,532 are listed, 26,142 notes in 5.73 hours:
   241 are refused for a note off its key, 111 for a squeezed note, 50 for a
   note under three frames and 44 for a silence inside a note.
@@ -357,6 +363,34 @@ wave no fit line has, instruments no fit line has). The procedure:
      the fit moved is put back alone on each, to show what it gives where the fit did not look.
 A grid is the hand-set value and a few either side, about a third apart, longer on a side the fit ran to the end of;
 a low-pass corner goes from none down to 600 Hz, and the two blip rules' lengths from none up to 0.45 s. With `write` the fitted bounds go to bounds.json beside vocal.py, which then reads them.
+```
+
+### datasets/egmd.py
+
+```
+egmd.py list <root> <split> <hours|all> <out.csv> [seed]: a list for `corpus <dir> from <out.csv>` of the recordings
+of one of E-GMD's splits (train, validation, test) that <root> holds, the folder of e-gmd-v1.0.0.csv: a row of the set's
+metadata whose WAV and MIDI file are both there. A split is named, so a recording of the test split is in no list
+drawn for training; a performance the metadata puts in two splits stops it. Each row gives the recording, its MIDI
+file as its hits' and again as its `beats`, its split and duration, `none` as its `velocity` (a kit's law is not the
+engine's, so a hit is labelled at -1), and the set's own columns (drummer, session, id, style, bpm, beat_type,
+time_signature, kit_name), which `corpus` does not read and a count can. Paths are relative to <out.csv>'s folder:
+written into <root>, a label's `source` starts with its drummer and session.
+  The draw, the same for a seed (1), measured in hours of audio since a recording runs from under a second to ten
+  minutes. A performance is one take of a drummer, which the set holds on up to 43 kits, a recording each (the
+  metadata's `id`). The performances are laid in an order that goes round their strata, a drummer, a style (its
+  name before the slash) and a quarter of the performances' tempos, one performance of each stratum in turn, the
+  strata and the performances of each shuffled; a pass over that order takes from each performance one recording
+  more, the one on the kit the draw holds the fewest seconds of. So no performance is on two kits before every
+  other is on one, no kit runs ahead of the others, and a draw that ends inside a pass is spread over drummers,
+  styles and tempos as the performances are. A recording that would pass the hours asked is not taken, and the
+  pass it is met in is the last: the draw ends within one recording of the hours, under them. `all` takes every
+  recording. A drummer, a style or a tempo holds what its performances do: three drummers play three quarters of
+  the set's hours.
+  Its last lines are the spread: the recordings and hours drawn of those held, then the hours drawn of those held by
+  drummer, by style and by quarter of tempo, the kits drawn with the least and the most hours a kit holds, and the
+  performances drawn by how many kits each is on.
+egmd.py extract and status are fetch.sh's: one zip member inflated and checked, and the files on disk a batch.
 ```
 
 ### datasets/vocalsing.py

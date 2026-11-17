@@ -1,13 +1,15 @@
 # Checks that share no code with what they check
 
-Seven scripts that read what the generator and the label tools write, from the files alone: the labels, the WAVs, a set's own annotations. None imports stapes, the trainer or a label tool, so a figure here that agrees with theirs was reached twice. They print figures; `corpuscount.py`, `guitarcount.py`, `vocalcheck.py` and `linescheck.py` exit 1 on what may not be. They need Python with numpy; the listening page also needs `ffmpeg`. None has a test yet.
+Seven scripts that read what the generator and the label tools write, from the files alone: the labels, the WAVs, a set's own annotations. None imports stapes, the trainer or a label tool, so a figure here that agrees with theirs was reached twice. They print figures; `corpuscount.py`, `guitarcount.py`, `vocalcheck.py` and `linescheck.py` exit 1 on what may not be. They need Python with numpy; the listening page also needs `ffmpeg`. `corpuscount.py` has a smoke test, on a corpus of recordings it writes by hand (`python3 -m unittest discover tool/rip-lab/audit`, which CI does not run); the others have none yet.
 
-## A rendered corpus
+## A corpus
 
-- **`corpuscount.py <corpus dir> [nowav]`** counts a corpus.
+- **`corpuscount.py <corpus dir> [nowav]`** counts a corpus, rendered or of recordings (`corpus <dir> from`).
   - From the labels: the loops by kind and by meter, those that start part-way into a bar, the notes each of the 88 keys starts and any outside them, the registers' shares, the parts an arranged loop holds, and of the overlaps the instruments a loop holds, the most notes sounding at once, the velocities' spread, the notes struck again while they ring and the intervals between notes that sound together.
   - From each WAV (left out with `nowav`): its loudest half second and its peak against the level a loop is laid at (-32 to -14 dBFS, a peak of -1 dBFS or under), a silent loop, and its length against its label's frames.
-  - What may not be: a note that ends before it starts or starts past its loop, a note outside the 88 keys, a beat in an overlap, an arranged loop with none, a loop outside the level rule.
+  - Of recordings: their hours, the hits by drum, the events of velocity -1, which ask the velocity head nothing and are no fault, the loops whose hits were put on their sound with the least, the median and the most lag, those left out by reason, and the names in `skip.txt`.
+  - A loop with no WAV, as a recording's is, is counted from its label and its frames' header, which must hold the label's frames whole.
+  - What may not be: a note that ends before it starts or starts past its loop, a note outside the 88 keys, a velocity outside (0, 1] that is not -1, a beat in an overlap, an arranged loop with none, a loop outside the level rule, a loop its label leaves out that also states a lag or that `skip.txt` does not name.
 - **`corpusheard.py <corpus dir> [NSynth's audio dir]`** reads whether a corpus's notes sound as its labels say. Run it before a sample of the corpus is cut for the ear.
   - By the genes each label carries, for the notes on the engine's voices: a sine an octave under the note, a filter whose cutoff lies under the note's own fundamental, a modulation on a ratio that is no whole number, an attack longer than the note, a release that rings on after the label ends the note.
   - By the sound, for every note: whether the power at its own first four partials rises 6 dB where the label starts it.

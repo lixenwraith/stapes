@@ -381,9 +381,13 @@ proves wrong or that a document now states, and link the document instead.
 - A `from` corpus's labels pass knows a recording by its label's `source`, so
   a label that does not read stops it. It reads the list again, its `velocity`
   column with it, so a list changed to `none` is relabelled in seconds; under
-  `measured` it opens every recording and hears each note, minutes for a set,
-  and a recording gone from disk, whose sound does not read or with a level
-  not finite keeps its label with every note at -1, which the run's last line
+  `measured` it opens every recording and hears each note, VocalSet's two
+  splits in an hour and a half on half a core but GuitarSet's chords some 220 s
+  of a core a recording, their old rings in doubt and walked window by window,
+  and it takes as many recordings at once as the process runs threads: four at
+  once on one thread held 3.2 GB of rings and, under a memory cap, crawled.
+  A recording gone from disk, whose sound does not read or with a level not
+  finite keeps its label with every note at -1, which the run's last line
   counts by reason: a recording's labels are never lost to its measure.
 - A pitch track at 44.1 kHz and a hop of 256 has two samples a frame, one on
   the frame's own time, so a missing sample lies a whole step from its
@@ -427,9 +431,23 @@ proves wrong or that a document now states, and link the document instead.
   a piano's and a plucked string's run sharp of k f0, the more the higher the
   note, and fitted at k f0 they miss its energy by decibels, so `stiffnesses`
   searches each note's in its first window. A note sounds on past its label's
-  end: unfitted, its partials pass for the next note's (`measuredRing`, the
-  second a sampled note plays on after it is let go; at a quarter second soft
-  notes after louder ones read over within their bound).
+  end, and unfitted its partials pass for the next note's. No one time holds for
+  every ring: at a quarter second soft notes after louder ones read over within
+  their bound, and at NSynth's second of release a soft note after one held past
+  its label read a median 20 dB over, so a ring is read from the sound
+  (`heardRing`). Past a label's end a voice's or a string's pitch track is the
+  next note's: a ring keeps the pitch it was let go at, or a semitone's sits on
+  the next note's partials.
+- A ring's partials that the next note's hide are bounded by those told apart
+  under them, never over: a piano's high partials die first, and bounded by them
+  a unison's low partials passed for gone and the next note read 1.1 dB over. A
+  ring as loud as the note it rings into misleads the fit as a note sounding with
+  it does, by a dB within tight bounds, so a window where a ring is found and its
+  partials told apart could move the level past the bound bounds it from above
+  only. Held for its partials in doubt too, every window after a man's tone or
+  semitone was, his fundamental under a bin from the note before's, and held for
+  a gone ring's background a soft note's were: VocalSet lost a tenth of its
+  velocities so, where the fit's own doubt costs the one partial.
 - Partials closer than a window's bins are nearly one column to least squares.
   Dropping one leaks its sinusoid into its neighbours' estimates, and several
   can blow the solve up together, through partials beyond a pair's reach: a
@@ -466,9 +484,16 @@ proves wrong or that a document now states, and link the document instead.
   sounding with others read 1.13 dB at nine in ten on the fit, 1.84 left out
   and 1.44 on the test split at a bound of 1.2, and a least bound at the fit's
   edge, 0.7 for notes alone, missed for guitar, so the fit is sure to one in
-  twenty and the readbacks gate it. The test runs about twenty minutes on one
-  core beside a training.
-  The measure's time is its projections, which `project` runs as Goertzel's
+  twenty and the readbacks gate it. A ring is let go by what the bound leaves,
+  so a bound the fit moves is fitted again until the fit gives it back: a ring
+  given the whole bound fed it (0.8 fitted 1.1, and 1.1 fitted 1.2), so it gets
+  what the note's own bound leaves. With the fit's lines a readback's 150, 0.9
+  missed by 0.002 dB and 1.0 fitted 1.5, a group's two or three worst notes of
+  some 70 known deciding it: tripled after that near miss, 0.9 fitted 0.8 and 0.8
+  gave itself back. A line kept on one instrument piled one instrument's bias into
+  a family's tail; the lines draw an instrument a note. The test runs about two
+  and a half hours on one core at half a core's quota beside a training. The
+  measure's time is its projections, which `project` runs as Goertzel's
   recurrence four partials side by side.
 - A label a tool made carries the tool's offset. VocalSet states no notes:
   its labels are the notes its exercise sheet writes for each take, placed on

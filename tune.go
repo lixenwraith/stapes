@@ -1487,11 +1487,13 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		first      error
 		sat, notes int // of the recordings a pitch track is named for
 	)
-	// each runs on min(4, cores), as a recording's samples are hundreds of megabytes
+	// each takes as many recordings at once as the process runs threads, four at
+	// most: a recording's samples, and a measured one's rings, take hundreds of
+	// megabytes, and a process held to one thread holding four thrashes
 	each := func(do func(j *job) error) error {
 		var wg sync.WaitGroup
 		work := make(chan *job)
-		for range min(4, runtime.NumCPU()) {
+		for range min(4, runtime.GOMAXPROCS(0)) {
 			wg.Go(func() {
 				for j := range work {
 					err := do(j)

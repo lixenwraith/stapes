@@ -215,7 +215,19 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
       sounds with gets none: on NSynth's overlaps such notes held the bound
       fitted on the fit's instruments and missed it on the others and the
       test split, so a chord's notes and a let-ring line's go without until
-      a measure holds there.
+      a measure holds there. A ring in doubt rings on (`heardRing`): a note
+      sounded again with no gap, or under a ring an octave over it, gets
+      none, as does a plucked note struck into a ring loud enough to move
+      it; a ring's hidden partial is bounded by the told ones under it,
+      which a partial dying slower than those under it would defeat.
+    - The measure's cost on a guitar's chords and lines: for each note it
+      measures, every earlier ring is walked window by window, and where
+      pitches recur an old ring stays in doubt up to that note. GuitarSet's
+      00_BN1-129-Eb comp took 39 s of CPU and 326 MB at its peak, giving none
+      of its 133 notes a velocity; with its solo, 14m51s on half a core, 442 s
+      of CPU, 470 MB and 3 of 204 given: some 44 hours for the set's 360. Its
+      whole readback under `measured` is owed to the work that takes its
+      velocities from the recordings by string; its list says `none` till then.
     - A placed start still lights the onset head's target and a placed end the
       release head's, where the alignment puts them (`placed` asks the strike
       head alone nothing); the same mask on those two heads is a line each.

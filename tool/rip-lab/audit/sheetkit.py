@@ -48,16 +48,29 @@ svg{width:100%;height:auto;display:block;margin:.5em 0;cursor:pointer;touch-acti
 button.on{background:var(--note);border-color:var(--note);color:#fff}button:disabled{opacity:.55;cursor:default}.time{font-variant-numeric:tabular-nums;color:var(--mut);margin-left:4px}.head{stroke:var(--bare);stroke-width:1.6}
 .grid{stroke:var(--line);stroke-width:1}.bar{stroke:var(--mut);stroke-width:1}.ax{fill:var(--mut);font:10px system-ui,sans-serif}.note{fill:var(--note)}.note.off{fill:var(--off)}.dot{fill:var(--dot)}.bare{fill:var(--bare);opacity:.22}.sung{fill:var(--sung)}
 .key span{display:inline-block;width:12px;height:10px;border-radius:2px;margin:0 4px 0 12px;vertical-align:baseline}
+.speed{position:sticky;top:0;z-index:2;background:var(--bg);padding:6px 0;margin:0 0 .4em;border-bottom:1px solid var(--line)}.speed button{padding:5px 12px}.speed span{color:var(--mut)}
+.wave{fill:var(--sung);opacity:.6}.mid{stroke:var(--line);stroke-width:1}
 '''
 
 SCRIPT = '''
+var SPEED = 1, KEEP = false;
+function pace(a) { a.defaultPlaybackRate = SPEED; a.playbackRate = SPEED; a.preservesPitch = KEEP; a.mozPreservesPitch = KEEP; a.webkitPreservesPitch = KEEP; }
+function paced() { document.querySelectorAll('audio').forEach(pace);
+  document.querySelectorAll('button[data-rate]').forEach(function (b) { b.classList.toggle('on', +b.dataset.rate === SPEED); });
+  document.querySelectorAll('button[data-keep]').forEach(function (b) { b.classList.toggle('on', KEEP); }); }
+document.querySelectorAll('button[data-rate]').forEach(function (b) { b.addEventListener('click', function () { SPEED = +b.dataset.rate; paced(); }); });
+document.querySelectorAll('button[data-keep]').forEach(function (b) { b.addEventListener('click', function () { KEEP = !KEEP; paced(); }); });
+paced();
 document.querySelectorAll('section[data-secs]').forEach(function (sec) {
   var secs = +sec.dataset.secs, svg = sec.querySelector('svg'), head = svg.querySelector('.head'), read = sec.querySelector('.time');
   var auds = [].slice.call(sec.querySelectorAll('audio')), btns = [].slice.call(sec.querySelectorAll('button[data-src]'));
-  var L = +svg.dataset.left, PW = +svg.dataset.pw, t = 0, cur = null;
-  function show() { var x = L + Math.min(t / secs, 1) * PW; head.setAttribute('x1', x); head.setAttribute('x2', x); read.textContent = t.toFixed(1) + ' s'; }
-  function stop() { auds.forEach(function (a) { a.pause(); }); btns.forEach(function (b) { b.classList.remove('on'); }); cur = null; }
-  function tick() { if (!cur) return; t = cur.currentTime; show(); requestAnimationFrame(tick); }
+  var L = +svg.dataset.left, PW = +svg.dataset.pw, t = 0, cur = null, run = 0, was = -1, moved = 0, why = '';
+  function show() { var x = L + Math.min(t / secs, 1) * PW; head.setAttribute('x1', x); head.setAttribute('x2', x); read.textContent = t.toFixed(2) + ' s' + why; }
+  function stop() { auds.forEach(function (a) { a.pause(); }); btns.forEach(function (b) { b.classList.remove('on'); }); cur = null; run++; why = ''; }
+  function tick(id) { if (!cur || id !== run) return; t = cur.currentTime; show(); requestAnimationFrame(function () { tick(id); }); }
+  setInterval(function () { if (!cur) return; var now = performance.now();
+    if (cur.currentTime !== was) { was = cur.currentTime; moved = now; why = ''; }
+    else if (now - moved > 1500) { why = cur.readyState < 3 ? ' \\u00b7 not moving: the browser has not read the sound' : ' \\u00b7 not moving: the browser waits on the sound device'; show(); } }, 500);
   auds.forEach(function (a) {
     a.addEventListener('timeupdate', function () { if (cur === a) { t = a.currentTime; show(); } });
     a.addEventListener('ended', function () { if (cur === a) { stop(); t = 0; show(); } }); });
@@ -65,7 +78,9 @@ document.querySelectorAll('section[data-secs]').forEach(function (sec) {
     var a = auds[+b.dataset.src]; if (cur) t = cur.currentTime;
     if (cur === a) { stop(); show(); return; }
     stop(); if (t >= secs - 0.05) t = 0;
-    a.currentTime = t; a.play(); cur = a; b.classList.add('on'); show(); requestAnimationFrame(tick); }); });
+    a.currentTime = t; pace(a); cur = a; b.classList.add('on'); was = -1; moved = performance.now(); show();
+    var id = run, p = a.play(); if (p && p.catch) p.catch(function (e) { if (id === run) { stop(); why = ' \\u00b7 the browser will not play it: ' + e.name; show(); } });
+    requestAnimationFrame(function () { tick(id); }); }); });
   function seek(e) { var r = svg.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * svg.viewBox.baseVal.width;
     t = Math.min(Math.max((x - L) / PW, 0), 0.999) * secs; if (cur) cur.currentTime = t; show(); }
   svg.addEventListener('pointerdown', function (e) { seek(e); svg.setPointerCapture(e.pointerId); svg.onpointermove = seek; });
@@ -74,6 +89,17 @@ document.querySelectorAll('section[data-secs]').forEach(function (sec) {
 });
 '''
 
+SPEED = ('<div class="tr speed"><span>Speed</span><button data-rate="1">1&times;</button><button data-rate="0.75">&frac34;</button><button data-rate="0.5">&frac12;</button>'
+         '<button data-rate="0.25">&frac14;</button><button data-keep="1">Keep pitch</button></div>')
+
+def envelope(x, cols):
+    """a sound's least and greatest value in each of cols equal stretches of its time, for a waveform's picture"""
+    n = max(len(x) // cols, 1); x = np.asarray(x[:n * cols], float).reshape(-1, n)
+    return x.min(1), x.max(1)
+
 def page(title, sub, intro, sections):
+    """the page: its speed row stays at the top as the page scrolls (slower lowers the pitch as a tape does, so timing
+    stays exact; Keep pitch corrects it, and can smear or double a sharp hit)"""
+    intro = intro + SPEED
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>'
             f'<style>{STYLE}</style></head><body><main><h1>{title}</h1><p class="small">{sub}</p>{intro}{"".join(sections)}</main><script>{SCRIPT}</script></body></html>')

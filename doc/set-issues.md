@@ -9,7 +9,8 @@ against the set's archive and mended at its source.
 - **Found wrong** is something a publisher could mend. **Worth knowing** is no fault, but a user of the set would
   want it said.
 - The tools that measured them are in [`tool/rip-lab`](../tool/rip-lab/README.md): `datasets/wavscan.py` for formats,
-  levels and clipping, `datasets/vocalsing.py` for how VocalSet is sung, `labels/guitar.py` for GuitarSet's notes.
+  levels and clipping, `datasets/vocalsing.py` for how VocalSet is sung, `labels/guitar.py` for GuitarSet's notes,
+  `audit/stringrise.py` for where a string rises against its note's start.
 - Each entry says how it was measured, in a line. A hash is a SHA-256 of a whole file. A level is in dB of full scale,
   the largest sample of a file against the largest a 16-bit file can hold.
 - Every entry was measured on the day it gives, in November 2026, on the files alone; none is taken from an earlier
@@ -121,6 +122,25 @@ Found wrong, 15 November 2026:
 Nothing else: the 360 recordings read, none is held twice (by hash), none is clipped (36 touch full scale, none for
 three samples running), and their peaks lie from -24.7 dB to full scale.
 
+Found wrong, 18 November 2026, on the debleeded pickup recordings (`audio/hex/*_hex_cln.wav`, a channel a string)
+beside the JAMS files. For each annotated note: where its own string's channel rises most (the 60 ms after over the
+60 ms before) within 0.3 s either side of its start and between its neighbours on the string. A rise of 15 dB is
+clear; 36,214 of the 62,476 notes have one, and the other 26,262 are not judged. A note starts on a silent string
+when the 60 ms after its annotated start lie 20 dB or more under the 60 ms after the rise. By `audit/stringrise.py`,
+a row a recording.
+
+- **Two recordings are annotated ahead of their sound.** In `04_BN3-154-E_comp`, 41% of the 119 notes with a clear
+  rise start on a silent string and sound over 100 ms later, and its median note rises 153 ms later than the set's
+  median note does. Its chords annotated at 13.28, 16.37, 17.75, 19.53 and 20.85 s are heard, and rise on their
+  strings by 27 to 40 dB, at 13.41, 16.53, 17.89, 19.67 and 21.00 s. In `04_Jazz1-200-B_comp` it is 18% of 131 and
+  93 ms. No other recording is over 5.2%.
+- **Over the set, 282 notes with a clear rise (0.8%) start on a silent string and sound over 100 ms later:** 154 in
+  players 00 to 03 (of 23,797), 105 in player 04 (of 6,645), 23 in player 05 (of 5,772).
+- **A note the annotation lacks:** `03_BN3-154-E_comp`, string 5 rises 25 dB at 18.23 s (to -31 dB) and no note
+  starts on it within 0.2 s. It is heard as a short high note.
+- **A start with no strike:** `01_SS1-68-E_comp`, string 0 at 4.13 s (a note of 1.13 s): the channel's level does
+  not rise within 0.12 s either side (+0.3 dB). It is heard as the note before it sounding on.
+
 Worth knowing:
 
 - The set states no velocity for a note.
@@ -168,5 +188,14 @@ Worth knowing:
 
 ## E-GMD v1.0.0
 
-Nothing recorded yet: a part of the set is unpacked, and nothing has been found wrong in it so far.
+A part of the set is unpacked; what follows is from a draw of 194 recordings (128,601 notes), 18 November 2026.
 
+Worth knowing:
+
+- **A hi-hat pedal note (key 44) may not sound.** In `drummer8/session1/12_latin_118_beat_4-4_11`, the pedal notes
+  at 135.23 and 137.29 s (struck at 45 and 40 of 127) are heard as nothing. Pedal notes are 14,448 of the draw's
+  notes (11.2%). Found by ear at those two places; how many sound over the set is not measured yet.
+- **A buzz stroke is held as a note a bounce.** In `drummer1/session2/6_rock_102_beat_3-4_51` the snare notes at 60.73,
+  60.77, 60.81 and 60.83 s (struck at 35, 34, 26 and 20) are one stick left to bounce, heard as one hit that dies
+  away. In the draw 5,737 of 44,430 snare notes (12.9%) come under 60 ms after the snare note before. By each
+  MIDI file's note-ons.

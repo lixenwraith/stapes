@@ -1231,9 +1231,10 @@ def main() -> None:
 
     low = STRIKE_LOW - ripmodels.LOW if args.pitchnet else None
 
-    def scored(name: str, frs, tgs, notes):
+    def scored(name: str, frs, tgs, notes, said=None):
         """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them, a frame
-        model's with its beats' and bar lines' F1; a family held out sets the model's measure by its notes there"""
+        model's with its beats' and bar lines' F1, and what said says of them before the parts, which end the line;
+        a family held out sets the model's measure by its notes there"""
         v = evaluate(model, frs, tgs, args.device, low, notes)
         # the wave, voice, velocity and family heads say how a note is played and by
         # what, and memorize the corpus's, so they do not pick the step
@@ -1254,7 +1255,7 @@ def main() -> None:
                 count, reach, median, past, right = n["held"]
                 model.sure.fill_(reach)
                 voices += f"; {args.family_holdout}'s {count} notes, held out, reach {reach:.3f}, {median:.3f} at the median: {past:.0%} of the others' notes pass it, {right:.0%} of them right"
-        return v, f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f}{f1}{read}{voices} ({parts})"
+        return v, f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f}{f1}{read}{voices}{said(v) if said else ''} ({parts})"
 
     def weights() -> dict:
         return {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}
@@ -1263,21 +1264,21 @@ def main() -> None:
         nonlocal best_loss, best_step, best_state, validated
         held_loss = None
         if val_frs:
-            v, line = scored("held-out", val_frs, val_tgs, val_notes)
+            v, line = scored("held-out", val_frs, val_tgs, val_notes, rate and (lambda v: rate.read(step, v["windows"])))
             held_loss = v["decoders"]
             if held_loss < best_loss:
                 best_loss, best_step, best_state = held_loss, step, weights()
                 line += " (best)"
-            print(line + (rate.read(step, v["windows"]) if rate else ""), flush=True)
+            print(line, flush=True)
         if check_frs:
             # a notes model's loss on recordings is mostly its onset head, which no decoder
             # reads from it, and ranks rounds unlike their note scores; its strikes' F1 does
-            v, line = scored("validation", check_frs, check_tgs, check_notes)
+            v, line = scored("validation", check_frs, check_tgs, check_notes, rate and (lambda v: rate.said))
             key = v["decoders"] if v.get("struck") is None else -v["struck"]
             if key < validated[0]:
                 validated = (key, step, weights(), held_loss)
                 line += " (best)"
-            print(line + (rate.said if rate else ""), flush=True)
+            print(line, flush=True)
         if rate:
             rate.settle()
 

@@ -847,6 +847,9 @@ proves wrong or that a document now states, and link the document instead.
   zero: a test that a head moved alone leaves the others where they were reads
   each head's difference between the runs against that head's own noise since the
   raise began.
+- A reading line's parts end it, `(onset ...)` and then `(best)`, and the lab's
+  readers anchor on that: what a line adds goes before its parts, as the rate's
+  say does.
 - `torch.load` reads with `weights_only`, which refuses a NumPy array: the rate's
   readings ride in the checkpoint as tensors. `Optimizer.load_state_dict` keeps the
   tensors it is handed and AdamW steps them in place, so a state kept to go back to

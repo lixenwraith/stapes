@@ -760,7 +760,7 @@ class TheRate(unittest.TestCase):
         said, _ = passed("--corpus", self.at("kind1"), "--out", self.at("fast.bin"), "--init", self.at("fast.pt"), "--checkpoint", self.at("fell.pt"),
                          "--every", "10", "--lr", "0.5", "--carry", steps=10)
         fell = torch.load(self.at("fell.pt"))
-        self.assertRegex(line(said, 10), r"rate 5\.0e-01 fine: \+[0-9.]+ on the reading kept at step 0, noise [0-9.]+: fallen back to step 0's weights, fine 2\.5e-01$")
+        self.assertRegex(line(said, 10), r"rate 5\.0e-01 fine: \+[0-9.]+ on the reading kept at step 0, noise [0-9.]+: fallen back to step 0's weights, fine 2\.5e-01 \(onset ")
         self.assertEqual(fell["rate"]["fine"], 0.5 * train.FALL)
         for k, v in ck["model"].items():
             self.assertTrue(torch.equal(fell["model"][k], v), k)
@@ -832,7 +832,7 @@ class TheRate(unittest.TestCase):
         said, _ = passed(*flags, "--checkpoint", self.at("wide.pt"), "--wide", "0", "--lr", "0.5", steps=30)
         wide = torch.load(self.at("wide.pt"))
         self.assertIn("rate 5.0e-01 wide, down to fine", line(said, 0))
-        self.assertRegex(line(said, 30), r"wide: reading 3 of 3, nothing better, .*: ending on the start$")
+        self.assertRegex(line(said, 30), r"wide: reading 3 of 3, nothing better, .*: ending on the start \(onset ")
         self.assertIn("best held-out decoders' loss", said)
         self.assertIn("at step 0; exporting that", said)
         for k, v in first["model"].items():

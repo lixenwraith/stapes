@@ -139,10 +139,11 @@ hand](#by-hand)), and its steps a second follow what they get.
   A frame model's lines give `beats' F1` and `bar lines'` after the decoders'
   loss, each head's peaks over a half against the labelled beats within four
   frames, or `no beat or bar line asked` over a corpus that lists none.
-  A pass that carries on (`--carry`) reads its start before a step, ends each
-  held-out line with the rate since the last reading and what the rule did
-  (`; rate 1.0e-04 fine: gained, -0.012 on the reading kept at step 3000, noise
-  0.008`), the validation line with the rate, and the pass with what it carries on.
+  A pass that carries on (`--carry`) reads its start before a step; each held-out
+  line then says, before its parts, the rate since the last reading and what the
+  rule did (`; rate 1.0e-04 fine: gained, -0.012 on the reading kept at step 3000,
+  noise 0.008`), the validation line the rate, and the pass's last line what it
+  carries on.
   A training loss that keeps falling after the held-out loss turns is a
   model learning the corpus by heart; more loops, not more steps, is the cure.
 - `bench` prints four lines: the analysis and the frame model, on clean and on

@@ -12,7 +12,8 @@ Where each part stands:
 
 - **In released code:** `BandFrames` and its layout, the four input planes, the heads,
   weight file versions 3 and 4, `corpus`, `corpus <dir> from`, `corpus ... sampled`, `--mix`,
-  `--channel`, `--over` with its heard-hit rule, draws by length, `skip.txt`, a recorded kit's lag,
+  `--channel`, `--over` with its heard-hit rule, draws by length, `skip.txt`, a recorded kit's lag
+  and its hits that draw no sound (`left.tsv`),
   `make_noise.py`, `--pitchnet` and its `ripnotes.bin`, `--shuffle`, `--extra`,
   `--cell`, `--dip`, `--ring`, `--bend`, `--dilations`, `--sung`, each event's family (`families`,
   the list's `family` cell, each note's program, every part of a file), the family head and
@@ -101,6 +102,8 @@ A label is UTF-8 JSON with no whitespace. The loop's fields:
 - `lag`: in a recording of hits alone, the seconds its sound sits after its file's
   hits, which its hits and beats are moved by; `skip`, in its place, why none could
   be told, the loop being in `skip.txt` (a recording's lag, below). Absent otherwise.
+- `left`: in a recording put on its sound, the hits its events leave out as drawing
+  none (a hit that draws no sound, below). Absent where none is.
 - `beats`, `downbeats`: its beats and bar lines, in frames. A rendered loop's are where
   the render puts them, each beat on the sample audio's `BeatStarts` gives it under
   its bars' tempos and rounded as an event's frame is, from the loop's first frame to
@@ -218,12 +221,14 @@ of corpus:
   on disk, by hours, spread over drummers, kits, styles and tempos, the test split in
   a list of its own ([rip-lab](../tool/rip-lab/README.md#datasetsegmdpy)): a
   recording's frames take 781 MB an hour, so a corpus is a share of the set. The
-  list's `velocity` is `none`.
+  list's `velocity` is `none`: a kit's law is not the engine's (a recording's
+  velocities, below).
 
 A recording's hits can sit a steady distance off its audio, the same across all of a
 performance's kits: `corpus` moves such labels by that lag, and a recording it cannot
 place goes in the corpus's `skip.txt`, a list of loop names the trainer leaves out (a
-recording's lag, below).
+recording's lag, below). A hit of a recording placed that draws no sound is left out
+of its label and listed in `left.tsv` (a hit that draws no sound, below).
 
 ### Arranged loops
 
@@ -469,7 +474,9 @@ file's velocities say of how its notes were played, a row a word (`velocityWords
 `tune.go`):
 
 - An empty cell, or no column: they say it, and each note and hit is labelled at its
-  MIDI velocity.
+  MIDI velocity. On a kit the set states each hit's strength in the measure the
+  engine's kits use: a hit read at n/127 sounds its take times that (audio's
+  `DrumVoice`), its amplitude over the hit's at velocity one.
 - `none`: they say nothing, as a lab's one velocity for every note does (GuitarSet's,
   VocalSet's), and each note and hit is labelled at `vel` -1, which asks the velocity
   head nothing (§5).
@@ -480,6 +487,12 @@ file's velocities say of how its notes were played, a row a word (`velocityWords
 Any other word is refused, naming those the table has. Without `measured` no
 recording is opened for its velocities, and a list's labels are as they were
 without the word, byte for byte.
+
+E-GMD's list says `none`: a module maps a velocity to a level and a layer by its own
+curve, so n/127 is not known to be a hit's amplitude over its loudest. Whether it
+states each hit's strength, an empty cell, is the lab's to set once the trainer has
+read back whether a kit's stated strengths follow the levels its hits sound at
+([todo](todo.md)). No head asks a hit's `vel` yet (§5).
 
 A measured velocity is the one at which the engine plays a note as loud as the
 recording played it. The engine's law is straight (`vel`, above), so it is the
@@ -762,6 +775,54 @@ What the measure cannot tell: a lag past half the usual gap, where a steady patt
 hits meet their neighbours' rises as well as their own did, is read as a nearer one,
 or left out where the score still rises at the reach; and the constants are the
 engine's kits', read back on no recorded kit yet ([todo](todo.md)).
+
+### A hit that draws no sound
+
+A recording whose hits were put on its sound leaves out of its label each hit that
+draws none, hit by hit, the recording kept. A hit's onset reads the largest rise
+within a frame of where the lag puts it (`onsetRise`), as the lag's measure reads
+one; under 0.001 in the frames' units (`hitBound`) it draws none. A hit on the first
+frame, whose rise is unread, stays. The rule names no key, line or strength: a hit
+close after another on its line is judged as any is, so a buzz's bounces stay while
+each sounds, and no gap merges hits.
+
+Each hit left out is listed in its label's `left`, the frame it would sit at, its
+General MIDI key (audio's `RipHit.Key`), its line (-1 a strike of no line), its
+file's velocity over 127 whatever the list says, and why (`hitWhy`):
+`{"frame":140,"key":44,"drum":2,"vel":0.3543307086614173,"why":"no sound"}`. The
+corpus's `left.tsv` holds a tab-separated row for each under the header `loop
+source sec frame key drum vel why rise`: its file's seconds, and the rise its onset
+read, for a measure to come; `labels` writes the rows of the loops it labels again,
+and a corpus that never left a hit out has no table. The run's last line counts them
+by why: `..., 4 of their hit(s) left out of the labels in left.tsv: 4 for no sound`.
+
+The bound is fitted on drums whose strengths are known
+(`TestAHitThatDrawsNoSoundIsToldByItsRise`): the lag's draw of the arranger's drums
+on drawn kits, a fifth of each recording's hits laid silent and the rest at their
+velocity under a gain drawn evenly from none to 40 dB down. Over 24 recordings with
+no room, 23 of them put on their sound, it is halfway in decades, to the nearest
+tenth, between the most nine in ten silent hits read, 8.6e-5, and the least nine in
+ten hits at the engine's strengths (`softest` up) read, 0.0106, each sure to one in
+twenty (`sure`); a silent hit within two frames of a sounding one is left out of the
+fit. Read back on 12 more with no room and through `degrade`, every take put on its
+sound, the share each keeps:
+
+```
+strength laid           no room             degrade
+0 to -10 dB          42 kept 100.0%     42 kept 100.0%
+-10 to -20          103 kept 100.0%    103 kept 100.0%
+-20 to -30          122 kept 100.0%    122 kept 100.0%
+-30 to -40          129 kept  81.4%    129 kept  86.8%
+-40 to -50           95 kept  56.8%     95 kept  64.2%
+-50 to -60            9 kept  11.1%      9 kept  33.3%
+silent, alone        99 kept   1.0%     99 kept  15.2%
+silent, under a hit  53 kept  92.5%     53 kept  92.5%
+```
+
+What it cannot tell: a silent hit within two frames of a sounding one reads that
+one's rise and stays; a room's tails lift silence's rise; a hit laid 40 dB under
+velocity one is about as often left as kept; and the bound is the engine's kits',
+read back on no recorded kit yet ([todo](todo.md)).
 
 ### A recording's starts
 

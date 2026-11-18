@@ -2,12 +2,14 @@ package stapes
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -50,8 +52,9 @@ func drawKit(t *testing.T, s *Session, rng *rand.Rand) {
 
 // drawDrums is recording i of a draw at seed: four bars of the arranger's drums,
 // played and drifting as its loops are, on a kit drawn for it, as samples and
-// its hits where they sound
-func drawDrums(t *testing.T, s *Session, seed uint64, i int) ([]float64, []audio.RipHit) {
+// its hits where they sound; lay, where given, lays the parts' notes again
+// before they sound
+func drawDrums(t *testing.T, s *Session, seed uint64, i int, lay func(a *arranger)) ([]float64, []audio.RipHit) {
 	t.Helper()
 	stream := func(salt uint64) *rand.Rand { return rand.New(rand.NewPCG(seed^salt, uint64(i)+1)) }
 	drawKit(t, s, stream(0x6b6974))
@@ -63,6 +66,9 @@ func drawDrums(t *testing.T, s *Session, seed uint64, i int) ([]float64, []audio
 	a.perform()
 	for _, p := range a.parts {
 		p.notes = slices.DeleteFunc(p.notes, func(n note) bool { return n.at < a.from || n.at >= a.to })
+	}
+	if lay != nil {
+		lay(a)
 	}
 	m, err := a.music(false)
 	if err != nil {
@@ -96,7 +102,7 @@ func drawTakes(t *testing.T, s *Session, seed uint64, n int) []kitTake {
 	t.Helper()
 	var out []kitTake
 	for i := range n {
-		x, hits := drawDrums(t, s, seed, i)
+		x, hits := drawDrums(t, s, seed, i, nil)
 		for _, room := range []*rand.Rand{nil, roomOf(true, seed, uint64(i))} {
 			y := x
 			if room != nil {
@@ -233,6 +239,157 @@ func TestARecordedKitsHitsAreMovedOntoTheirSound(t *testing.T) {
 	t.Logf("the readback, the bound %.1f ms:%s\n  left out: %v", 1000*lagBound, rows.String(), refused)
 }
 
+// silence is the velocity a test lays a hit that draws no sound at: 180 dB down,
+// under anything a frame reads, and still a hit its recording lists
+const silence = 1e-9
+
+// strengths lays a fifth of a draw's hits silent and the others at their own
+// velocity under a gain drawn evenly from none to 40 dB down
+func strengths(rng *rand.Rand) func(a *arranger) {
+	return func(a *arranger) {
+		for _, p := range a.parts {
+			for k := range p.notes {
+				if rng.Float64() < 0.2 {
+					p.notes[k].vel = silence
+				} else {
+					p.notes[k].vel *= math.Pow(10, -2*rng.Float64())
+				}
+			}
+		}
+	}
+}
+
+// hitRead is a hit of a draw whose strengths reach silence, as its recording
+// reads it: the strength laid, the rise its onset reads where the lag puts it,
+// whether a sounding hit's frames lie within two of its own, and whether it was
+// heard through degrade
+type hitRead struct {
+	vel, rise   float64
+	under, room bool
+}
+
+// readHits is the hits of a draw's n recordings at seed with strengths laid,
+// each with no room and, with rooms, through degrade too, and of those takes how
+// many had their hits put on their sound: no other's hits are read
+func readHits(t *testing.T, s *Session, seed uint64, n int, rooms bool) ([]hitRead, int) {
+	t.Helper()
+	var out []hitRead
+	placed := 0
+	for i := range n {
+		x, hits := drawDrums(t, s, seed, i, strengths(rand.New(rand.NewPCG(seed^0x737472, uint64(i)+1))))
+		takes := []*rand.Rand{nil}
+		if rooms {
+			takes = append(takes, roomOf(true, seed, uint64(i)))
+		}
+		for _, room := range takes {
+			y := x
+			if room != nil {
+				y = degrade(slices.Clone(x), room)
+			}
+			flux := rise(slices.Values(audio.BandFrames(y, audio.AudioSampleRate)))
+			lag, why := placeHits(flux, strikeTimes(hitTimes(hits)))
+			if why != "" {
+				continue
+			}
+			placed++
+			for k, h := range hits {
+				r := hitRead{vel: h.Vel, rise: onsetRise(flux, h.Start+lag+lagRise), room: room != nil}
+				for j, o := range hits {
+					r.under = r.under || j != k && o.Vel > silence && math.Abs(o.Start-h.Start) < 2*audio.RipFrameSec
+				}
+				out = append(out, r)
+			}
+		}
+	}
+	return out, placed
+}
+
+// hitSides is a draw's rises with no room of its silent hits no sounding hit's
+// frames reach, and of its hits at the strengths the engine plays, softest up,
+// as the order statistics that bound nine in ten of each at odds of 19 to 1:
+// the most the silent read and the least the others read, from above and from
+// below when above, from below and from above when not
+func hitSides(reads []hitRead, above bool) (quiet, loud float64) {
+	var q, l []float64
+	for _, r := range reads {
+		switch {
+		case r.room || math.IsNaN(r.rise):
+		case r.vel <= silence && !r.under:
+			q = append(q, r.rise)
+		case r.vel >= softest:
+			l = append(l, -r.rise)
+		}
+	}
+	slices.Sort(q)
+	slices.Sort(l)
+	return sure(q, above), -sure(l, above)
+}
+
+// hitTable is a draw's reads by strength laid and room: how many and the share
+// a bound keeps, a hit whose onset reads no rise being kept
+func hitTable(reads []hitRead, bound float64) string {
+	type cell struct{ n, kept int }
+	rows := []string{"0 to -10 dB", "-10 to -20", "-20 to -30", "-30 to -40", "-40 to -50", "-50 to -60", "-60 and under", "silent, alone", "silent, under a hit"}
+	cells := map[[2]int]*cell{}
+	for _, r := range reads {
+		k := min(int(-20*math.Log10(r.vel)/10), 6)
+		if r.vel <= silence {
+			k = 7
+			if r.under {
+				k = 8
+			}
+		}
+		c := cells[[2]int{k, map[bool]int{false: 0, true: 1}[r.room]}]
+		if c == nil {
+			c = &cell{}
+			cells[[2]int{k, map[bool]int{false: 0, true: 1}[r.room]}] = c
+		}
+		c.n++
+		if !(r.rise < bound) {
+			c.kept++
+		}
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n  %-20s %16s %16s", "strength laid", "no room", "degrade")
+	for k, name := range rows {
+		fmt.Fprintf(&b, "\n  %-20s", name)
+		for room := range 2 {
+			if c := cells[[2]int{k, room}]; c != nil {
+				fmt.Fprintf(&b, " %5d kept %5.1f%%", c.n, 100*float64(c.kept)/float64(c.n))
+			} else {
+				fmt.Fprintf(&b, " %16s", "-")
+			}
+		}
+	}
+	return b.String()
+}
+
+// TestAHitThatDrawsNoSoundIsToldByItsRise: the engine's drums on 24 drawn kits,
+// a fifth of the hits silent and the rest at their velocity under a gain to 40
+// dB down, with no room. hitBound is halfway in decades between the most nine in
+// ten silent hits no sounding hit's frames reach read and the least nine in ten
+// at the engine's strengths read, sure to one in twenty; 12 more read it back.
+func TestAHitThatDrawsNoSoundIsToldByItsRise(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	fit, placed := readHits(t, s, 24, 24, false)
+	quiet, loud := hitSides(fit, true)
+	t.Logf("the fit, %d of 24 recordings placed: nine in ten silent hits read under %.3g, nine in ten at the engine's strengths over %.3g, sure to one in twenty", placed, quiet, loud)
+	if !(quiet < loud) {
+		t.Fatalf("no bound parts them")
+	}
+	bound := math.Pow(10, math.Round(5*math.Log10(quiet*loud))/10)
+	if math.Abs(10*math.Log10(bound/hitBound)) > 0.05 {
+		t.Errorf("the fit gives %.3g, hitBound is %.3g", bound, hitBound)
+	}
+	back, placed := readHits(t, s, 25, 12, true)
+	t.Logf("the readback, %d of 24 takes placed, at %.3g:%s", placed, hitBound, hitTable(back, hitBound))
+	if quiet, loud := hitSides(back, false); quiet >= hitBound || loud < hitBound {
+		t.Errorf("the readback with no room: nine in ten silent hits read over %.3g and nine in ten at the engine's strengths under %.3g, at odds of 19 to 1; hitBound is %.3g", quiet, loud, hitBound)
+	}
+}
+
 // TestACorpusFromPutsARecordedKitsHitsOnItsSound: a recording whose file holds
 // hits alone is labelled with them and its beats moved by the lag its label
 // states, each hit within a frame of where its drum sounds; a silent one keeps
@@ -248,7 +405,7 @@ func TestACorpusFromPutsARecordedKitsHitsOnItsSound(t *testing.T) {
 	truth, laid := map[string][]int{}, map[string]float64{}
 	csv := "audio_filename,midi_filename,beats,velocity\n"
 	for i, name := range []string{"on", "late", "silent"} {
-		x, hits := drawDrums(t, s, 23, i)
+		x, hits := drawDrums(t, s, 23, i, nil)
 		if name == "late" { // its sound a quarter of its reach after its file's hits
 			laid[name] = reachOf(strikeTimes(hitTimes(hits)), loopFrames(len(x)), lagReach) / 2
 		}
@@ -336,5 +493,162 @@ func TestACorpusFromPutsARecordedKitsHitsOnItsSound(t *testing.T) {
 	}
 	if skipped != skip {
 		t.Errorf("labels left skip.txt as %q, want %q", skipped, skip)
+	}
+}
+
+// groove lays a recording's drums again over its steps: hats on the eighths,
+// kicks and snares in turn on the quarters, then a soft snare, kick and hat (12
+// of 127), a buzz of four snare strokes 35 ms apart (35, 34, 26 and 20 of 127),
+// two foot's hi-hats at 45 and 40 of 127 and two more silent
+func groove(a *arranger) {
+	on := map[audio.InstrumentType][]note{}
+	lay := func(d audio.InstrumentType, step, vel float64) {
+		on[d] = append(on[d], note{at: a.from + step, dur: 1, vel: vel})
+	}
+	for k := 0.0; k < a.to-a.from; k += 2 {
+		lay(audio.InstrHihat, k, 0.6)
+		if d := audio.InstrKick + audio.InstrumentType(int(k)/4%2); int(k)%4 == 0 && k != 12 {
+			lay(d, k, 0.9-0.1*float64(d))
+		}
+	}
+	for k, d := range []audio.InstrumentType{audio.InstrSnare, audio.InstrKick, audio.InstrHihat} {
+		lay(d, float64(1+4*k), 12.0/127)
+	}
+	for k, vel := range []float64{35, 34, 26, 20} {
+		lay(audio.InstrSnare, 12+float64(k)*0.035*float64(a.bpm)/15, vel/127)
+	}
+	for k, vel := range []float64{45.0 / 127, 40.0 / 127, silence, silence} {
+		lay(audio.InstrHihat, []float64{15, 17, 19, 23}[k], vel)
+	}
+	for _, p := range a.parts {
+		p.notes = on[p.instr]
+	}
+}
+
+// TestACorpusFromLeavesOutAKitsHitsThatDrawNoSound: a recording of the engine's
+// drums whose file adds two foot's hi-hats where nothing sounds is labelled as
+// its file without them, which it leaves out by key, time and strength in its
+// label and left.tsv; soft hits, a buzz's bounces and foot's hi-hats that sound
+// stay, an empty velocity cell gives each its file's strength, labels the same.
+func TestACorpusFromLeavesOutAKitsHitsThatDrawNoSound(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	dir := t.TempDir()
+	at := func(name string) string { return filepath.Join(dir, name) }
+	x, hits := drawDrums(t, s, 26, 5, groove)
+	slices.SortStableFunc(hits, func(a, b audio.RipHit) int { return cmp.Compare(a.Start, b.Start) })
+	var every, some []audio.RipHit
+	stated := []float64{45.0 / 127, 40.0 / 127}
+	var silent []float64
+	for _, h := range hits {
+		if h.Drum == audio.InstrHihat && slices.Contains(stated, h.Vel) {
+			h.Key = 44
+		}
+		if h.Vel == silence {
+			h.Key, h.Vel, silent = 44, stated[len(silent)], append(silent, h.Start)
+		} else {
+			every = append(every, h)
+		}
+		some = append(some, h)
+	}
+	for name, hs := range map[string][]audio.RipHit{"every": every, "some": some} {
+		var mid bytes.Buffer
+		if err := audio.WriteMIDI(&mid, nil, hs, tuneTempos[5], audio.Meter{}); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, at(name+".mid"), mid.String())
+	}
+	for _, name := range []string{"every", "some", "stated"} {
+		writeWAV(t, at(name+".wav"), x)
+	}
+	writeFile(t, at("list.csv"), "audio_filename,midi_filename,velocity\nevery.wav,every.mid,none\nsome.wav,some.mid,none\nstated.wav,some.mid,\n")
+	corpus := at("corpus")
+	// each recording's label as read and as written, its loop's name, and left.tsv
+	read := func() (labs map[string]corpusLoop, raw map[string][]byte, loops map[string]string, table string) {
+		labs, raw, loops = map[string]corpusLoop{}, map[string][]byte{}, map[string]string{}
+		for i := range 3 {
+			name := fmt.Sprintf("loop_%03d", i)
+			data, _ := os.ReadFile(filepath.Join(corpus, name+".json"))
+			var l corpusLoop
+			if err := json.Unmarshal(data, &l); err != nil {
+				t.Fatal(err)
+			}
+			src := strings.TrimSuffix(l.Source, ".wav")
+			labs[src], raw[src], loops[src] = l, data, name
+		}
+		held, _ := os.ReadFile(filepath.Join(corpus, "left.tsv"))
+		return labs, raw, loops, string(held)
+	}
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s\n", corpus, at("list.csv")))
+	labs, raw, loops, table := read()
+	all, part, full := labs["every"], labs["some"], labs["stated"]
+	if all.Lag == nil || all.Left != nil || bytes.Contains(raw["every"], []byte(`"left"`)) || len(all.Events) != len(every) {
+		t.Fatalf("every hit sounding: a lag of %v, %d left out, %d event(s) of %d hits; want a lag, none left and every hit", all.Lag, len(all.Left), len(all.Events), len(every))
+	}
+	if part.Lag == nil || *part.Lag != *all.Lag || !reflect.DeepEqual(part.Events, all.Events) {
+		t.Errorf("with two silent hits more: a lag of %v and %d event(s), want every hit's label's %v and %d", part.Lag, len(part.Events), *all.Lag, len(all.Events))
+	}
+	var want []string
+	for k, sec := range silent {
+		want = append(want, fmt.Sprintf("frame %d key 44 drum 2 vel %.4f %s", int(math.Floor((sec+*all.Lag)/audio.RipFrameSec+0.5)), stated[k], hitWhy[0]))
+	}
+	for _, src := range []string{"some", "stated"} {
+		var got, rows []string
+		for _, h := range labs[src].Left {
+			got = append(got, fmt.Sprintf("frame %d key %d drum %d vel %.4f %s", h.Frame, h.Key, h.Drum, h.Vel, h.Why))
+		}
+		for _, r := range strings.Split(strings.TrimSpace(table), "\n")[1:] {
+			if f := strings.Split(r, "\t"); f[0] == loops[src] && f[1] == src+".wav" {
+				rows = append(rows, fmt.Sprintf("frame %s key %s drum %s vel %s %s", f[3], f[4], f[5], f[6], f[7]))
+			}
+		}
+		if !slices.Equal(got, want) || !slices.Equal(rows, want) {
+			t.Errorf("%s: left out in its label %q and in left.tsv %q, want %q", src, got, rows, want)
+		}
+	}
+	vels := func(es []corpusEvent) []float64 {
+		var v []float64
+		for _, e := range es {
+			v = append(v, e.Vel)
+		}
+		return slices.Sorted(slices.Values(v))
+	}
+	var file []float64
+	for _, h := range every {
+		file = append(file, math.Round(h.Vel*127)/127)
+	}
+	slices.Sort(file)
+	strip := func(es []corpusEvent) []corpusEvent {
+		es = slices.Clone(es)
+		for i := range es {
+			es[i].Vel = 0
+		}
+		return es
+	}
+	if !reflect.DeepEqual(strip(full.Events), strip(part.Events)) || !slices.EqualFunc(vels(full.Events), file, func(a, b float64) bool { return math.Abs(a-b) < 1e-12 }) || slices.Max(vels(part.Events)) != -1 {
+		t.Errorf("an empty velocity cell: events differing from none's by more than their velocities, or not at the file's %v", file)
+	}
+	if said := fmt.Sprintf("4 of their hit(s) left out of the labels in left.tsv: 4 for %s", hitWhy[0]); !strings.Contains(out.String(), said) {
+		t.Errorf("the run says %q, want %q in it", out.String(), said)
+	}
+	flux := rise(bandsRows(filepath.Join(corpus, loops["some"]+".bands")))
+	var b strings.Builder
+	for _, h := range some {
+		fmt.Fprintf(&b, "\n  %6.3fs drum %d key %2d vel %3.0f of 127: rise %.3g", h.Start, h.Drum, h.Key, h.Vel*127, onsetRise(flux, h.Start+*part.Lag+lagRise))
+	}
+	t.Logf("the hits as their onsets read, the bound %.3g:%s", hitBound, b.String())
+	for _, name := range []string{"every", "some", "stated"} {
+		os.Remove(at(name + ".wav"))
+	}
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s labels\n", corpus, at("list.csv")))
+	_, again, _, tableAgain := read()
+	for src, data := range raw {
+		if !bytes.Equal(again[src], data) {
+			t.Errorf("labels wrote %s as\n%s\nwant the export's\n%s", src, again[src], data)
+		}
+	}
+	if tableAgain != table {
+		t.Errorf("labels left left.tsv as\n%s\nwant\n%s", tableAgain, table)
 	}
 }

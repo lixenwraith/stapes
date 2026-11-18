@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """corpuscount.py <corpus dir> [nowav]: a corpus counted from its labels, its WAV files and its frames' headers
 alone, with no code of stapes or of the trainer: its loops by kind and meter, the notes each key starts, the overlaps'
-instruments, intervals and velocities, a recording's hits, lag and why it is left out, and each WAV's level against the
-level a loop is laid at. Exits 1 on what may not be (a note outside its loop or the 88 keys, a beat in an overlap, a
-silent or clipped loop, a loop left out that skip.txt lacks). The README says what it counts."""
+instruments, intervals and velocities, a recording's hits, lag, why it is left out and the hits its label leaves out,
+and each WAV's level against the level a loop is laid at. Exits 1 on what may not be (a note outside its loop or the 88
+keys, a beat in an overlap, a silent or clipped loop, a loop left out that skip.txt lacks, a hit left out that left.tsv
+does not hold). The README says what it counts."""
 import collections, glob, json, math, os, struct, sys, wave
 import numpy as np
 D = sys.argv[1].rstrip('/'); WAVS = 'nowav' not in sys.argv[2:]
@@ -12,7 +13,8 @@ labs = {int(os.path.basename(p)[5:-5]): json.load(open(p)) for p in sorted(glob.
 bad = collections.defaultdict(list)
 kinds = collections.Counter(l.get('kind', 'recorded' if l.get('source') else '?') for l in labs.values())
 skip = set(open(D + '/skip.txt').read().split()) if os.path.exists(D + '/skip.txt') else set()
-hits = collections.Counter(); unasked = 0; lags = []; left = collections.Counter(); frames = 0
+hits = collections.Counter(); unasked = 0; lags = []; left = collections.Counter(); frames = 0; gone = collections.Counter(); gone_keys = collections.Counter()
+table = [r.split('\t') for r in open(D + '/left.tsv').read().split('\n')[1:] if r] if os.path.exists(D + '/left.tsv') else []
 keys = collections.Counter(); regs = collections.Counter(); low = high = total = 0; fam = collections.Counter(); recorded = engine = 0; vels = []
 meters = collections.Counter(); pickup = 0; parts = collections.Counter(); insts = collections.Counter(); most = collections.Counter(); soft = again = ov_notes = 0; rel = collections.Counter()
 for i, l in labs.items():
@@ -26,6 +28,9 @@ for i, l in labs.items():
         if 'lag' in l: lags.append(l['lag'])
         if 'skip' in l: left[l['skip']] += 1
         if 'skip' in l and ('lag' in l or f'loop_{i:03d}' not in skip): bad['a loop left out by its label that states a lag, or that skip.txt lacks'].append(f'loop {i}')
+        for h in l.get('left', []):  # a hit its label leaves out, which only a loop put on its sound has
+            gone[h['why']] += 1; gone_keys[h['key']] += 1
+            if 'lag' not in l or not 0 <= h['frame'] < l['frames']: bad['a hit left out of a label that states no lag, or out of its loop'].append(f'loop {i}')
     for e in notes:
         k = e['midi']; keys[k] += 1; total += 1; vels += [e['vel']] * (e['vel'] != -1); fam[e.get('family', -1)] += 1
         if e.get('voice'): engine += 1
@@ -63,6 +68,9 @@ print(f'overlaps: {ov_notes} notes, {soft} of them 15 dB down or more, {again} s
 if kinds['recorded']:
     print(f'recorded: {frames * HOP / 3600:.2f} hours; hits: ' + (', '.join(f'{n} {k}' for k, n in sorted(hits.items())) or 'none') + f'; events of velocity -1, which ask nothing: {unasked}')
     print(f'hits put on their sound in {len(lags)} loops' + (f', by a lag from {1000 * min(lags):+.1f} to {1000 * max(lags):+.1f} ms, median {1000 * float(np.median(lags)):+.1f}' if lags else '') + f'; left out: {sum(left.values())}' + ''.join(f', {n} for {k}' for k, n in sorted(left.items())) + f'; skip.txt names {len(skip)} loops')
+    print(f'hits left out of their labels: {sum(gone.values())}' + ''.join(f', {n} for {k}' for k, n in sorted(gone.items())) + '; by key: ' + (', '.join(f'{k} {n}' for k, n in sorted(gone_keys.items())) or 'none') + f'; left.tsv rows: {len(table)}')
+if sorted((r[0], int(r[3]), int(r[4]), int(r[5]), r[7]) for r in table) != sorted((f'loop_{i:03d}', h['frame'], h['key'], h['drum'], h['why']) for i, l in labs.items() for h in l.get('left', [])):
+    bad["left.tsv's rows that are not the hits its labels leave out"].append(f'{len(table)} rows')
 if WAVS:
     lv, pk, silent, off, short, framed = [], [], 0, [], 0, 0
     for i, l in labs.items():

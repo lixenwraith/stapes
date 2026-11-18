@@ -13,7 +13,7 @@ own files.
 - `labels/`: a set's labels and list, and the known lines a label procedure is
   fitted and checked on.
 - `audit/`: checks written apart from `labels/`, sharing no code with it, and
-  the counts and the listening page of a rendered corpus
+  the counts and the listening pages of a corpus
   ([its README](audit/README.md)).
 
 ## The order
@@ -37,7 +37,8 @@ own files.
    for the split held out, a corpus each.
 5. A corpus, from a list or from the generator, is counted and read against its
    sound before it trains (`audit/corpuscount.py`, `audit/corpusheard.py`), and
-   heard on `audit/loop_sheet.py`'s page.
+   heard on `audit/loop_sheet.py`'s page, or `audit/from_sheet.py`'s where it is
+   made from recordings.
 
 A tool writes only where its arguments say. The sets' folders come from the
 environment, each with the default of the machine the labels were made on:

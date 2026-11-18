@@ -415,6 +415,14 @@ proves wrong or that a document now states, and link the document instead.
   out and plays it at its step's velocity, as the engine's voices do. A release
   (from 3 s) falls 20 dB in a median 108 ms, an organ's 40 and a plucked or
   struck one's 65 to 82, which the cut's crossfade follows.
+- A string's greatest rise near a note's annotated start does not say the note
+  starts late: 14% of GuitarSet's notes with a clear rise have it over 100 ms
+  after the annotation, and for all but 0.8% the string was already sounding (a
+  swell, a second strike). Ask whether the string was silent at the annotated
+  start, as `tool/rip-lab/audit/stringrise.py` does.
+- A listening page plays in a hidden tab, where `requestAnimationFrame` never
+  fires: what must run while a clip plays, such as the check that it moves, is
+  on a timer.
 - The bench's loops play no piano: a piano change moves no bench number, a bass
   change does.
 - `corpus <dir> from` writes a MIDI file's velocities as labels. GuitarSet's and

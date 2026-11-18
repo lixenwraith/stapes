@@ -22,6 +22,11 @@ Seven scripts that read what the generator and the label tools write, from the f
   - In the picture a note is a bar in its part's colour, as faint as its velocity is low in dB; a thin tail is the voice's release after the label ends the note; upright lines are the label's beats and bar lines.
   - Under each clip: every part's instrument, how many of its notes show at their start, and how far under the loop's strongest note it sits.
   - A picks file names loops, a line each: the loop's number, a tab, the one question. A time in a question is the clip's own.
+- **`from_sheet.py <corpus dir> <out dir> <picks.tsv>`** builds the page for a corpus made from recordings.
+  - A clip is a stretch of a recording and, on the same timeline, what its label says as plain sounds: a tone with a struck start for a note, a thump, a burst of noise or a hiss for a kit's hit.
+  - On top of the picture is the recording's waveform with the label over it: a line where a note or a hit starts, a tick where a note ends, a dashed line at the left edge for a note held from before the clip. Under it are the label's notes as bars and its hits in lanes.
+  - A pick is a line: the loop (with its folder, for another corpus's), the stretch's start and end in seconds, the question, and optionally spans to shade.
+- Every page has a speed row that stays at the top: slower lowers the pitch as a tape does, so that timing stays exact, and Keep pitch corrects it. The time beside a clip says when it is playing and not moving, and why.
 
 ## Labels made from a set
 
@@ -35,6 +40,8 @@ Seven scripts that read what the generator and the label tools write, from the f
   - The second reading locks onto the third, fifth or seventh harmonic of some loud notes and spans the neighbours of a note under 0.2 s: read "another pitch" and the fast takes with that in mind. The doubtful notes are written to a file for a listening page.
 - **`linescheck.py <draw dir>...`** checks the known lines that sing VocalSet's exercises, before a placing is fitted or scored on them: each truth's keys against the sheet's shape and against what its list says is wrong with the take, and each note's pitch twice. The comb of ten partials about the pitch the truth gives is sure within the octave and blind to it; it reads a vibrato at the middle of its swing and only where the held part holds a whole cycle. The difference function says the octave where no partial outweighs the first.
 
+- **`stringrise.py <guitar list csv> <out tsv>`** reads, for every note GuitarSet's annotation starts, where its own string's channel rises most within 0.3 s, a row a recording. A note that rises late is a swell or a second strike where its string was already sounding; where the string was all but silent at the annotated start and sounds over 100 ms later (`silent100`), the annotation is ahead of its sound or the set lacks a strike. It needs the list's `strings` column.
+
 ## Not here
 
-A capped launcher for one machine, the readers of a round's rips (they follow once a round has a reading), and the page of VocalSet's labels beside their recordings (it follows once it stands on `sheetkit.py`).
+A capped launcher for one machine and the readers of a round's rips (they follow once a round has a reading).

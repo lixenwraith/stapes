@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import array
+import copy
 import gc
 import json
 import math
@@ -511,13 +512,15 @@ class Batches:
 
 
 def validation(loops, window: int, planes: int):
-    """every held-out loop cut into windows of `window` frames, fixed, so the held-out loss is comparable step to step;
-    and their notes, a column a note in the windows' `note`: its name, its wave and its voice's row, -1 where its label says none"""
+    """every held-out loop cut into windows of `window` frames, fixed, so the held-out loss is comparable step to step,
+    each window naming its loop; and their notes, a column a note in the windows' `note`: its name, its wave and its
+    voice's row, -1 where its label says none"""
     frs, tgs, notes, first = [], [], [np.zeros((3, 0), np.int64)], 0
-    for fr, lab in loops:
+    for i, (fr, lab) in enumerate(loops):
         for start in range(0, max(len(fr) - 1, 1), window):
             m, tg = stack([sample(fr, lab, start, window, planes)])
             tg["note"] = torch.where(tg["note"] >= 0, tg["note"] + first, tg["note"])
+            tg["loop"] = torch.tensor([i])  # a reading's noise counts a loop's windows as one draw (apart)
             frs.append(m)
             tgs.append(tg)
         notes.append(np.stack([lab.name, lab.wave, lab.voice]).astype(np.int64))
@@ -598,13 +601,14 @@ def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
 
 
 def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None) -> dict:
-    """the mean of the losses over fixed windows, the model's weights untouched; with low, the first
-    pitch over the strikes' low bar, the strikes' F1 and what a cents head reads, by kind the median
-    miss, the median error stated and the share within it; with notes, the windows' (validation), what
-    a model that says what plays each pitch heard them as (noted); and of a frame model with the heads
-    the beats' and the bar lines' F1 at their peaks, None and no loss of theirs where no frame is asked"""
+    """the mean of the losses over fixed windows, the model's weights untouched, and in windows each window's with its
+    loop, the rate's reading (Rate); with low, the first pitch over the strikes' low bar, the strikes' F1 and what a
+    cents head reads, by kind the median miss, the median error stated and the share within it; with notes, the
+    windows' (validation), what a model that says what plays each pitch heard them as (noted); and of a frame model
+    with the heads the beats' and the bar lines' F1 at their peaks, None and no loss of theirs where no frame is asked"""
     model.eval()
     sums: dict = {}
+    each, loops = {}, []
     counts = torch.zeros(4, dtype=torch.long, device=device)
     bars = torch.where(torch.arange(model.cfg.pitches, device=device) < low, STRIKE_BARS[1], STRIKE_BARS[0]) if low is not None else None
     timed = "beat" in dict(model.cfg.outputs)
@@ -618,7 +622,10 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
             fr, t = fr.to(device), {k: v.to(device) for k, v in t.items()}
             l = losses(model, fr, t)
             for k, v in l.items():
-                sums[k] = sums.get(k, 0.0) + v.item()
+                x = v.item()
+                sums[k] = sums.get(k, 0.0) + x
+                each.setdefault(k, []).append(x)
+            loops.append(int(t["loop"][0]) if "loop" in t else len(loops))
             if low is not None or timed:
                 out = model(fr)
             if timed:
@@ -661,6 +668,10 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
         out["beats"] = tuple(fscore(c) for c in beats) if metered else None
         if not metered:
             out.pop("beat", None), out.pop("downbeat", None)
+    w = {k: torch.tensor(x, dtype=torch.float64) for k, x in each.items() if k in out}
+    if w:
+        w["decoders"], w["loop"] = sum(f * w[k] for k, f in DECODERS if k in w), torch.tensor(loops)
+        out["windows"] = w
     return out
 
 
@@ -673,6 +684,54 @@ SPREAD = 0.2  # the stated error's weight in the total: its own row of weights l
 PLAYS = 0.25  # what plays a cell against what plays the frame: its heads teach the channels the decoders read, and at the whole weight the strikes are heard worse
 
 
+# The rate a pass that carries on follows, doc/rip-training.md §8, each constant by the procedure written there
+NOISE = 2.0  # a difference between two readings counts past this many standard errors of it
+ALPHA = 0.5 * math.erfc(NOISE / math.sqrt(2))  # the share of differences by chance alone past the noise, one way
+STALL = 3  # readings without a gain that stall a figure, and passes in a row without one before a wide pass
+FALL = 0.5  # what a fall back leaves of the fine rate
+# the heads the decoders read, and the weight of each in the decoders' loss
+DECODERS = (("onset", 1.0), ("drums", 1.0), ("pitch", 1.0), ("voicing", 0.5), ("strike", 1.0), ("release", 1.0), ("beat", 1.0), ("downbeat", 1.0))
+
+
+def apart(new, old, loops) -> tuple:
+    """how far reading new's figure is over old's on the same windows, and the noise of that: NOISE standard errors
+    of the mean difference, a loop's windows one draw, as they share its sound"""
+    d = np.asarray(new, np.float64) - np.asarray(old, np.float64)
+    _, g = np.unique(np.asarray(loops), return_inverse=True)
+    n, per, mean = np.bincount(g), np.bincount(g, d), d.mean()
+    if len(n) < 2:
+        return mean, math.inf
+    return mean, NOISE * math.sqrt(len(n) / (len(n) - 1) * ((per - n * mean) ** 2).sum()) / len(d)
+
+
+def better(old: dict, new: dict) -> tuple:
+    """whether reading new is better than old, each window's figures: the decoders' loss under old's past its noise,
+    and no decoders' head over its own past its noise; with how far the loss is over old's, its noise, and the heads
+    past theirs"""
+    d, noise = apart(new["decoders"], old["decoders"], new["loop"])
+    fell = [h for h, _ in DECODERS if h in new and h in old and np.greater(*apart(new[h], old[h], new["loop"]))]
+    return d < -noise and not fell, d, noise, fell
+
+
+def rows(model) -> dict:
+    """each head's own weights, as (layer, rows) of the layer that outputs it: a frame model's output layer, or its
+    tower's; a notes model's notes convolution for a head of each pitch, its frame layer for a head of the frame"""
+    cfg, out = model.cfg, {}
+    if isinstance(model, ripmodels.PitchNet):
+        sizes = dict(cfg.outputs)
+        layers = [(model.notes, ripmodels.cell_heads(cfg)), (model.frame, [(k, sizes[k]) for k in ripmodels.FRAME_HEADS])]
+    elif cfg.towers:
+        tops = list(accumulate((h for _, h in cfg.towers), initial=0))
+        layers = [(tower.out, cfg.outputs[a:b]) for tower, a, b in zip(model.towers, tops, tops[1:])]
+    else:
+        layers = [(model.out, cfg.outputs)]
+    for layer, heads in layers:
+        at = 0
+        for k, n in heads:
+            out[k], at = (layer, slice(at, at + n)), at + n
+    return out
+
+
 def probe(model) -> callable:
     """holds every weight of a model but the rows of the heads a probe trains: a notes model's cell heads that say
     what plays each pitch, a frame model's beat and downbeat. No other weight takes a gradient, theirs is masked
@@ -680,18 +739,12 @@ def probe(model) -> callable:
     back after a step, since AdamW's decay moves a row with no gradient"""
     for p in model.parameters():
         p.requires_grad_(False)
-    if isinstance(model, ripmodels.PitchNet):
-        layer, heads, probed = model.notes, ripmodels.cell_heads(model.cfg), ("pitchfamily", "pitchwave", "pitchvoice")
-    else:
-        layer, heads, probed = model.out, model.cfg.outputs, ("beat", "downbeat")
-    at, new = 0, []
-    for k, n in heads:
-        if k in probed:
-            new.append((at, at + n))
-        at += n
-    mask = torch.zeros(at, device=layer.weight.device)
-    for a, b in new:
-        mask[a:b] = 1
+    probed = ("pitchfamily", "pitchwave", "pitchvoice") if isinstance(model, ripmodels.PitchNet) else ("beat", "downbeat")
+    heads = rows(model)
+    layer = heads[probed[0]][0]
+    mask = torch.zeros(len(layer.bias), device=layer.weight.device)
+    for k in probed:
+        mask[heads[k][1]] = 1
     held = {t: t.detach().clone() for t in (layer.weight, layer.bias)}
     for t in held:
         t.requires_grad_(True)
@@ -783,6 +836,227 @@ def shape(cfg) -> str:
     return ", ".join(f"{k} {v}" if k != "outputs" else "outputs " + "+".join(h for h, _ in v) for k, v in cfg.items()) if cfg else "an unrecorded shape"
 
 
+def whose(name: str) -> str:
+    return name + ("'" if name.endswith("s") else "'s")
+
+
+class Rate:
+    """The rate of a pass that carries on (--carry), by the held-out readings, doc/rip-training.md §8: fine while the
+    decoders gain; raised to --lr after STALL readings without a gain; fallen back, at FALL of the fine rate, when a
+    raise has not paid or a reading is worse than the one kept past its noise. A head stalled while the decoders gain
+    is raised alone, its rows' step scaled; a wide pass is a raise as long as the pass, judged at its end."""
+
+    CARRIED = ("fine", "quiet")  # from pass to pass; the rest is a pass's own, which a resumed run reads back
+
+    def __init__(self, model, opt, top: float, steps: int, every: int, wide: int):
+        self.model, self.opt, self.top, self.steps, self.every, self.wide = model, opt, top, steps, every, wide
+        self.heads = rows(model)
+        self.fine, self.quiet = top, 0  # a model no pass trained starts fine at --lr
+        self.start = self.ref = self.kept = self.swing = None
+        self.count, self.gained, self.own = 0, False, {}
+        self.moving, self.undo, self.put, self.said = [], None, [], ""
+
+    def state(self) -> dict:
+        return {k: getattr(self, k) for k in self.CARRIED + ("start", "ref", "kept", "swing", "count", "gained", "own")}
+
+    def load(self, saved: dict | None, whole: bool = False) -> str:
+        """what a checkpoint carries, all of it to a run resumed (whole); from a checkpoint of none the fine rate
+        starts a fall under --lr, as a good model's does"""
+        if saved is None:
+            self.fine = self.top * FALL
+            return f"no rate carried, fine {self.fine:.1e}, a fall under --lr"
+        for k, v in saved.items():
+            if whole or k in self.CARRIED:
+                setattr(self, k, v)
+        self.fine = min(self.fine, self.top)
+        return f"fine {self.fine:.1e} carried, " + self.passes()
+
+    def snap(self, step: int) -> tuple:
+        return {k: t.detach().clone() for k, t in self.model.state_dict().items()}, copy.deepcopy(self.opt.state_dict()), step
+
+    def curve(self, s: dict, step: int) -> float:
+        """a raise's rate at step: --lr at its first, down half a cosine to the fine rate at its end"""
+        return self.fine + (self.top - self.fine) * 0.5 * (1 + math.cos(math.pi * (step - s["at"]) / (s["end"] - s["at"])))
+
+    def rate(self, step: int) -> float:
+        s = self.swing
+        return self.curve(s, step) if s is not None and s["at"] <= step < s["end"] else self.fine
+
+    def at(self, step: int) -> float:
+        """the rate for step, and each raised head's rows as they stand, for scale to move at the head's own rate"""
+        lr, self.moving = self.rate(step), []
+        for h, o in self.own.items():
+            if o["swing"] is not None and lr > 0:
+                layer, at = self.heads[h]
+                self.moving.append((layer, at, [p.detach()[at].clone() for p in (layer.weight, layer.bias)], self.curve(o["swing"], step) / lr))
+        return lr
+
+    def scale(self) -> None:
+        """each raised head's rows moved at its own rate: AdamW's step is the rate times what the rate leaves alone"""
+        with torch.no_grad():
+            for layer, at, was, k in self.moving:
+                for p, x in zip((layer.weight, layer.bias), was):
+                    p[at] = x + k * (p[at] - x)
+
+    def rows_of(self, h: str) -> dict:
+        """a head's rows and the optimizer's state of them"""
+        layer, at = self.heads[h]
+        out = {}
+        for name in ("weight", "bias"):
+            p = getattr(layer, name)
+            out[name] = p.detach()[at].clone()
+            out.update({f"{name}.{k}": v[at].clone() for k, v in self.opt.state.get(p, {}).items() if torch.is_tensor(v) and v.shape == p.shape})
+        return out
+
+    @staticmethod
+    def told(d: float, noise: float, fell: list, against: str) -> str:
+        """a difference of the decoders' loss as a line says it, and the heads past their noise"""
+        return f"{d:+.3f} on {against}, noise {noise:.3f}" + (f", over past their own noise: {', '.join(fell)}" if fell else "")
+
+    def keep(self, w: dict, step: int) -> None:
+        self.ref, self.kept, self.count, self.gained = w, self.snap(step), 0, True
+
+    def reset(self, w: dict) -> None:
+        """each head followed afresh from reading w: no head asked nothing there"""
+        self.count, self.own = 0, {h: {"ref": w[h], "count": 0, "swing": None} for h in self.heads if h in w and bool(w[h].any())}
+
+    def back(self, kept: tuple, w: dict) -> None:
+        """the weights and optimizer's state kept, put back at settle, and the heads followed from their reading w"""
+        self.undo = kept
+        self.reset(w)
+
+    def read(self, step: int, w: dict) -> str:
+        """reading w at step, evaluate's windows: what the rate was and what the rule does now, for the held-out line;
+        the weights a fall back puts back wait for settle, after the validation line has read the ones read here"""
+        if self.start is None:
+            return self.begin(w)
+        s, a, b = self.swing, self.rate((step - 1) // self.every * self.every), self.rate(step - 1)
+        self.said = f"; rate {a:.1e}" + (f" to {b:.1e}" if f"{a:.1e}" != f"{b:.1e}" else "")
+        if s is None:
+            self.said += " fine"
+            text = f"{self.said}: " + self.follow(step, w)
+        else:
+            k, n = (-(-(x - s["at"]) // self.every) for x in (step, s["end"]))
+            self.said += " wide" if s["kind"] == "wide" else " raised"
+            text = f"{self.said}: reading {k} of {n}" + (", " + self.judge(s, w) if step >= s["end"] else "")
+        if step >= self.steps:
+            self.quiet = 0 if self.gained or s is not None and s["kind"] == "wide" else self.quiet + 1
+        return text
+
+    def begin(self, w: dict) -> str:
+        """the start, read before a step: kept, and swung from by a wide pass"""
+        self.start, self.ref, self.kept, self.gained = w, w, self.snap(0), False
+        self.reset(w)
+        if self.quiet < self.wide:
+            self.said = f"; rate {self.fine:.1e} fine"
+            return f"; the start, read before a step: rate {self.fine:.1e} fine"
+        self.swing = {"kind": "wide", "at": 0, "end": self.steps, "began": w, "before": self.kept}
+        self.said = f"; rate {self.top:.1e} wide"
+        return f"; the start, read before a step: rate {self.top:.1e} wide, down to fine {self.fine:.1e} over the pass, after {self.passes()}"
+
+    def follow(self, step: int, w: dict) -> str:
+        """a reading at the fine rate: a gain, the decoders' loss under the kept one's past its noise, is kept; one over
+        it past its noise falls back to it; STALL readings without a gain raise the rate, or fall it back where it is
+        --lr already; then each head on its own"""
+        d, noise = apart(w["decoders"], self.ref["decoders"], w["loop"])
+        told = self.told(d, noise, [], f"the reading kept at step {self.kept[2]}")
+        if d < -noise:
+            self.keep(w, step)
+            return f"gained, {told}" + self.follow_heads(step, w)
+        if d > noise:
+            self.fine *= FALL
+            self.back(self.kept, self.ref)
+            return f"{told}: fallen back to step {self.kept[2]}'s weights, fine {self.fine:.1e}"
+        self.count += 1
+        told += f", {self.count} without a gain"
+        if self.count >= STALL and self.fine >= self.top:
+            self.fine *= FALL
+            self.count = 0
+            return f"{told}: fallen back to fine {self.fine:.1e}, as --lr is the most a raise reaches"
+        if self.count >= STALL and step + STALL * self.every <= self.steps:
+            self.swing = {"kind": "raise", "at": step, "end": step + STALL * self.every, "began": w, "before": self.snap(step)}
+            self.reset(w)
+            return f"{told}: raised to {self.top:.1e}, down to fine over {STALL} readings"
+        return told + (", too few readings left to raise" if self.count >= STALL else "") + self.follow_heads(step, w)
+
+    def judge(self, s: dict, w: dict) -> str:
+        """a raise or a wide pass at its end: one better than the reading kept, a wide pass's start, is kept; a raise
+        not is fallen back from, to the weights before it where it ended over where it began; a wide pass's start"""
+        self.swing = None
+        wide = s["kind"] == "wide"
+        good, d, noise, fell = better(s["began"] if wide else self.ref, w)
+        told = self.told(d, noise, fell, "the start" if wide else f"the reading kept at step {self.kept[2]}")
+        if good:
+            self.keep(w, s["end"])
+            self.reset(w)
+            return f"{'better' if wide else 'paid'}, {told}" + (": ending on it" if wide else "")
+        if wide:
+            self.back(s["before"], s["began"])
+            return f"nothing better, {told}: ending on the start"
+        self.fine *= FALL
+        _, up, _, fell = better(s["began"], w)
+        if up > 0 or fell:
+            self.back(s["before"], s["began"])
+            return f"not paid, {told}, and {up:+.3f} on where it began: fallen back to step {s['at']}'s weights, fine {self.fine:.1e}"
+        self.reset(w)
+        return f"not paid, {told}, no worse than where it began: fallen back to fine {self.fine:.1e}"
+
+    def follow_heads(self, step: int, w: dict) -> str:
+        """each head on its own: one STALL readings without a gain past its own noise while the decoders gained is
+        raised alone, its rows at a raise's rate; at the raise's end its rows go back to before it where its figure
+        ended over where it began"""
+        text = ""
+        for h, o in self.own.items():
+            d, noise = apart(w[h], o["ref"], w["loop"])
+            s = o["swing"]
+            if s is not None and step < s["end"]:
+                a, b = self.curve(s, step - self.every), self.curve(s, step - 1)
+                text += f"; {whose(h)} rows rate {a:.1e} to {b:.1e} raised: reading {(step - s['at']) // self.every} of {STALL}"
+            elif s is not None:
+                o["swing"], o["count"] = None, 0
+                if d < -noise:
+                    o["ref"] = w[h]
+                    text += f"; {whose(h)} rows raised: reading {STALL} of {STALL}, paid, {d:+.3f} on its kept, noise {noise:.3f}"
+                elif (w[h] - s["began"]).mean() > 0:
+                    self.put.append((h, s["before"]))
+                    text += f"; {whose(h)} rows raised: reading {STALL} of {STALL}, not paid and over where it began: fallen back to step {s['at']}'s rows"
+                else:
+                    text += f"; {whose(h)} rows raised: reading {STALL} of {STALL}, not paid, no worse than where it began"
+            elif d < -noise:
+                o["ref"], o["count"] = w[h], 0
+            else:
+                o["count"] += 1
+                if o["count"] >= STALL and self.count < STALL and self.fine < self.top and step + STALL * self.every <= self.steps:
+                    o["swing"] = {"at": step, "end": step + STALL * self.every, "began": w[h], "before": self.rows_of(h)}
+                    text += (f"; {h}: {d:+.3f} on its kept, noise {noise:.3f}, {o['count']} without a gain while the decoders "
+                             f"gained: its rows raised to {self.top:.1e}, down to fine over {STALL} readings")
+        return text
+
+    def settle(self) -> None:
+        """the fall backs the last reading called for, after the validation line has read the weights it read"""
+        if self.undo is not None:
+            self.model.load_state_dict(self.undo[0])
+            self.opt.load_state_dict(copy.deepcopy(self.undo[1]))  # the optimizer steps its state in place
+            self.undo = None
+        with torch.no_grad():
+            for h, saved in self.put:
+                layer, at = self.heads[h]
+                for name in ("weight", "bias"):
+                    p = getattr(layer, name)
+                    p[at] = saved[name]
+                    for k, v in self.opt.state.get(p, {}).items():
+                        if f"{name}.{k}" in saved:
+                            v[at] = saved[f"{name}.{k}"]
+        self.put = []
+
+    def passes(self) -> str:
+        return f"{self.quiet} pass{'es' if self.quiet != 1 else ''} in a row without a gain kept, a wide one after {self.wide}"
+
+    def close(self) -> str:
+        """what the pass carries to the next"""
+        return f"the rate carries fine {self.fine:.1e} on, " + ("a gain kept this pass" if self.gained else self.passes())
+
+
 def main() -> None:
     global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT, EVEN_GLIDES, PLAYS, FAMILY_UNASKED
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -825,7 +1099,12 @@ def main() -> None:
     ap.add_argument("--builders", type=int, default=1, help="processes forked from the run that build its batches beside the device, each at most two batches ahead: batch k is drawn "
                     "from a stream of --seed, --shard-seed and k alone, so the batches are the same whatever builds them and a run resumed at step k draws those the unbroken run drew")
     ap.add_argument("--checkpoint", default="", help="write a .pt every --every steps, and resume from it when present")
-    ap.add_argument("--init", default="", help="start from this .pt's model weights, without its optimizer state or step: a training round's common start; a --checkpoint present wins")
+    ap.add_argument("--init", default="", help="start from this .pt's model weights, without its optimizer state (--carry carries it) or step: a training round's common start; a --checkpoint present wins")
+    ap.add_argument("--carry", action="store_true", help="a pass that carries on from --init's checkpoint, or starts a chain without one: its optimizer's state and its rate's carried as well as its weights "
+                    "(a checkpoint of weights alone starts the optimizer fresh), the held-out loops read before a step, and the rate following their readings by doc/rip-training.md §8 rather than "
+                    "running a cosine from --lr: fine while the decoders gain, raised to --lr after 3 readings without a gain, fallen back when a raise does not pay")
+    ap.add_argument("--wide", type=int, help="with --carry, a pass swings wide, from --lr down to the fine rate over the pass, after this many passes in a row kept no gain, "
+                    "as its checkpoint counts them (3 by default); 0 swings this one. It ends on whichever is better, its start or its end")
     ap.add_argument("--every", type=int, default=200, help="steps between checkpoints and the held-out and validation scores")
     ap.add_argument("--holdout", type=int, default=-1, help="loops held out of training and scored every --every steps; the step that scores best is what --out gets (default a tenth, none under five loops)")
     ap.add_argument("--validate", default="", help="a corpus of recordings (corpus <dir> from <list>) cut into fixed windows and scored every --every steps; the step that scores best on it is what --out gets, in place of the held-out loops' best: by the decoders' loss, a notes model by its strikes' F1 at the decoder's bars")
@@ -849,6 +1128,10 @@ def main() -> None:
         raise SystemExit("--family-unasked: the family head is a frame model's, on one output layer")
     if args.probe and towers and not args.pitchnet:
         raise SystemExit("--probe with --towers: a model in towers lays its heads over several output layers, and a probe holds one")
+    if args.carry and args.probe:
+        raise SystemExit("--carry with --probe: a probe holds the weights the rate moves")
+    if args.wide is not None and (not args.carry or args.wide < 0):
+        raise SystemExit(f"--wide {args.wide}: the passes before a wide one, 0 or more, of a pass that carries on (--carry)")
     heads = [h for h in ripmodels.PITCHNET_HEADS if h[0] != "cents" or not args.probe]  # a probe's file rips as its start
     heard = dict(inputs=ripmodels.STACK_BINS + 1, channels=ripmodels.STACK_CHANNELS, outputs=heads) if args.pitchnet else \
         dict(channels=4 if args.pcen else 2, outputs=list(ripmodels.HEADS))
@@ -860,6 +1143,8 @@ def main() -> None:
     ck = torch.load(start, map_location=args.device) if start else None
     if ck is not None and ck.get("layout") != ripmodels.LAYOUT:  # before its shape is read: another layout's is no start at all
         raise SystemExit(ripmodels.refused(start, ck.get("layout")))
+    if resume and args.carry != ("rate" in ck):
+        raise SystemExit(f"{start} was written {'with' if 'rate' in ck else 'without'} --carry: resume it as it began")
     had = None
     if ck is not None and "cfg" in ck:
         had = ripmodels.shape(ck["cfg"])  # a setting newer than the checkpoint takes the value it was built with
@@ -879,6 +1164,8 @@ def main() -> None:
     holdout = args.holdout if args.holdout >= 0 else (len(loops) // 10 if len(loops) >= 5 else 0)
     held = loops[len(loops) - holdout:] if holdout else []
     loops = loops[:len(loops) - holdout] if holdout else loops
+    if args.carry and len(held) < 2:
+        raise SystemExit(f"--carry: the rate follows the held-out loops' readings, and a reading's noise takes two loops at least, not {len(held)} (--holdout)")
     val_frs, val_tgs, val_notes = validation(held, args.window, planes)
     assert manifest["voice_genes"] == ripmodels.VOICE_GENES and len(manifest["waves"]) == ripmodels.WAVES
     recorded, check_frs, check_tgs, check_notes = [], [], [], None
@@ -902,12 +1189,15 @@ def main() -> None:
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     step, best_loss, best_step, best_state = 0, float("inf"), 0, None
     validated = (float("inf"), 0, None, None)  # the best validation loss, its step, its weights and the held-out loss there
+    rate = Rate(model, opt, args.lr, args.steps, args.every, STALL if args.wide is None else args.wide) if args.carry else None
     if resume:
         model.load_state_dict(ck["model"])
         opt.load_state_dict(ck["opt"])
         step = ck["step"]
         best_loss, best_step, best_state = ck.get("best", (best_loss, best_step, best_state))
         validated = ck.get("validated", validated)
+        if rate:
+            rate.load(ck["rate"], whole=True)
         print(f"resumed at step {step}")
     elif grown:
         try:
@@ -915,9 +1205,15 @@ def main() -> None:
         except ValueError as err:
             raise SystemExit(f"{start}: {err}")
         print(f"started from {args.init}, its heads but {', '.join(h for h, _ in cfg.outputs[len(had.outputs):])}, which start fresh")
+        if rate:
+            print(f"carried on, the optimizer fresh as the heads grew: {rate.load(ck.get('rate'))}")
     elif ck is not None:
         model.load_state_dict(ck["model"])
         print(f"started from {args.init}")
+        if rate:
+            if "opt" in ck:
+                opt.load_state_dict(ck["opt"])
+            print(f"carried on, {'its optimizer' if 'opt' in ck else 'weights alone, the optimizer fresh'}: {rate.load(ck.get('rate'))}")
     if args.sure and hasattr(model, "sure"):
         model.sure.fill_(args.sure)
     if FAMILY_UNASKED:
@@ -939,12 +1235,10 @@ def main() -> None:
         """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them, a frame
         model's with its beats' and bar lines' F1; a family held out sets the model's measure by its notes there"""
         v = evaluate(model, frs, tgs, args.device, low, notes)
-        # the decoders read the onset, drum, pitch, voicing, strike and release heads
-        # and a frame model's beat and downbeat; the wave, voice, velocity and family
-        # heads say how a note is played and by what, and memorize the corpus's, so
-        # they do not pick the step
-        v["decoders"] = v["onset"] + v["drums"] + v["pitch"] + 0.5 * v["voicing"] + v["strike"] + v["release"] + v.get("beat", 0.0) + v.get("downbeat", 0.0)
-        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read", "voices", "beats"))
+        # the wave, voice, velocity and family heads say how a note is played and by
+        # what, and memorize the corpus's, so they do not pick the step
+        v["decoders"] = sum(f * v.get(k, 0.0) for k, f in DECODERS)
+        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read", "voices", "beats", "windows"))
         f1 = f", strikes' F1 {v['struck']:.3f}" if "struck" in v else ""
         if "beats" in v:
             f1 += ", beats' F1 {:.3f}, bar lines' {:.3f}".format(*v["beats"]) if v["beats"] else ", no beat or bar line asked"
@@ -960,7 +1254,7 @@ def main() -> None:
                 count, reach, median, past, right = n["held"]
                 model.sure.fill_(reach)
                 voices += f"; {args.family_holdout}'s {count} notes, held out, reach {reach:.3f}, {median:.3f} at the median: {past:.0%} of the others' notes pass it, {right:.0%} of them right"
-        return v["decoders"], v.get("struck"), f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f}{f1}{read}{voices} ({parts})"
+        return v, f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f}{f1}{read}{voices} ({parts})"
 
     def weights() -> dict:
         return {k: t.detach().cpu().clone() for k, t in model.state_dict().items()}
@@ -969,20 +1263,23 @@ def main() -> None:
         nonlocal best_loss, best_step, best_state, validated
         held_loss = None
         if val_frs:
-            held_loss, _, line = scored("held-out", val_frs, val_tgs, val_notes)
+            v, line = scored("held-out", val_frs, val_tgs, val_notes)
+            held_loss = v["decoders"]
             if held_loss < best_loss:
                 best_loss, best_step, best_state = held_loss, step, weights()
                 line += " (best)"
-            print(line, flush=True)
+            print(line + (rate.read(step, v["windows"]) if rate else ""), flush=True)
         if check_frs:
             # a notes model's loss on recordings is mostly its onset head, which no decoder
             # reads from it, and ranks rounds unlike their note scores; its strikes' F1 does
-            loss, f1, line = scored("validation", check_frs, check_tgs, check_notes)
-            key = loss if f1 is None else -f1
+            v, line = scored("validation", check_frs, check_tgs, check_notes)
+            key = v["decoders"] if v.get("struck") is None else -v["struck"]
             if key < validated[0]:
                 validated = (key, step, weights(), held_loss)
                 line += " (best)"
-            print(line, flush=True)
+            print(line + (rate.said if rate else ""), flush=True)
+        if rate:
+            rate.settle()
 
     channel, channel_share = None, 0.0
     if args.channel:
@@ -1029,6 +1326,8 @@ def main() -> None:
             return rng.choices(drums, cum_weights=by_drums)[0]
         return rng.choice(loops)
 
+    if rate and step == 0:  # the start read on this pass's held-out loops, which every reading after is judged against
+        score()
     # Processes, since a batch is Python holding the interpreter's lock; forked, they share the corpora's pages until a
     # write copies one, and the collector, frozen while they fork, writes to no header of theirs
     build = lambda rng: batch(draw, args.window, args.batch, rng, planes, channel, channel_share, pick, args.shuffle, args.bend)
@@ -1039,7 +1338,7 @@ def main() -> None:
     gc.unfreeze()
     for fr, t in batches:  # in index order, batch k at step k
         fr, t = fr.to(args.device), {k: v.to(args.device) for k, v in t.items()}
-        lr = args.lr * 0.5 * (1 + math.cos(math.pi * step / args.steps))  # cosine to zero
+        lr = rate.at(step) if rate else args.lr * 0.5 * (1 + math.cos(math.pi * step / args.steps))  # the readings' rate, or a cosine to zero
         for g in opt.param_groups:
             g["lr"] = lr
         l = losses(model, fr, t)
@@ -1049,6 +1348,8 @@ def main() -> None:
         opt.step()
         if hold:
             hold()
+        if rate:
+            rate.scale()
         step += 1
         if step % 20 == 0 or step == args.steps:
             parts = " ".join(f"{k} {v.item():.3f}" for k, v in l.items() if k != "total")
@@ -1058,9 +1359,11 @@ def main() -> None:
             if args.checkpoint:
                 # the layout and the shape ride along for average.py and the checks above, the
                 # frames heard, the heads and the window showing in no tensor; the best held-out
-                # and validation steps, so a resumed run, or one run again once done, still exports its pick
+                # and validation steps, so a resumed run, or one run again once done, still exports its pick; the rate's
                 torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "step": step, "layout": ripmodels.LAYOUT, "cfg": asdict(cfg),
-                            "best": (best_loss, best_step, best_state), "validated": validated}, args.checkpoint)
+                            "best": (best_loss, best_step, best_state), "validated": validated, **({"rate": rate.state()} if rate else {})}, args.checkpoint)
+    if rate:
+        print(rate.close())
     if args.probe:
         print(f"a probe: exporting its last step, {step}")
     elif args.validate and validated[2] is not None:

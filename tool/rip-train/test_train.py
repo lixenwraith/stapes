@@ -750,6 +750,24 @@ class TheRate(unittest.TestCase):
         self.assertGreater(mean, noise)
         self.assertIn("carried on, weights alone, the optimizer fresh: no rate carried, fine 5.0e-03, a fall under --lr", alone)
 
+    def test_a_reading_at_the_fine_rate_worse_than_the_one_kept_falls_back_to_it(self):
+        """A reading at the fine rate whose decoders' loss is over the reading kept past its noise falls back: training
+        goes on from the kept weights and optimizer's state, here the start's, the fine rate falls by FALL, and the
+        line says so."""
+        ck = torch.load(self.at("first.pt"))
+        ck["rate"]["fine"] = 0.5
+        torch.save(ck, self.at("fast.pt"))
+        said, _ = passed("--corpus", self.at("kind1"), "--out", self.at("fast.bin"), "--init", self.at("fast.pt"), "--checkpoint", self.at("fell.pt"),
+                         "--every", "10", "--lr", "0.5", "--carry", steps=10)
+        fell = torch.load(self.at("fell.pt"))
+        self.assertRegex(line(said, 10), r"rate 5\.0e-01 fine: \+[0-9.]+ on the reading kept at step 0, noise [0-9.]+: fallen back to step 0's weights, fine 2\.5e-01$")
+        self.assertEqual(fell["rate"]["fine"], 0.5 * train.FALL)
+        for k, v in ck["model"].items():
+            self.assertTrue(torch.equal(fell["model"][k], v), k)
+        for i, state in ck["opt"]["state"].items():
+            for k, v in state.items():
+                self.assertTrue(torch.equal(fell["opt"]["state"][i][k], v), (i, k))
+
     def test_a_figure_made_to_stall_draws_a_raise_and_a_raise_that_does_not_pay_falls_back(self):
         """A carried fine rate too small to move a weight stalls the decoders' figure: after STALL readings without a
         gain the rate is raised to --lr, down half a cosine to the fine rate over STALL readings; a raise that ends no
@@ -791,7 +809,7 @@ class TheRate(unittest.TestCase):
             with mock.patch.object(train.Rate, "follow_heads", lambda rate, step, w: ""):
                 _, held = passed(*flags, "--checkpoint", at("held.pt"), steps=200)
         began = next(step for step in range(20, 141, 20) if "family: " in line(said, step) and "its rows raised to 1.0e-02" in line(said, step))
-        self.assertIn("while the decoders gained", line(said, began))
+        self.assertIn("while the decoders' loss has not stalled", line(said, began))
         end = began + 3 * 20
         self.assertIn("family's rows raised: reading 3 of 3", line(said, end))
         k, b = end // 20, began // 20

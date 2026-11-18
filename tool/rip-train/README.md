@@ -139,6 +139,10 @@ hand](#by-hand)), and its steps a second follow what they get.
   A frame model's lines give `beats' F1` and `bar lines'` after the decoders'
   loss, each head's peaks over a half against the labelled beats within four
   frames, or `no beat or bar line asked` over a corpus that lists none.
+  A pass that carries on (`--carry`) reads its start before a step, ends each
+  held-out line with the rate since the last reading and what the rule did
+  (`; rate 1.0e-04 fine: gained, -0.012 on the reading kept at step 3000, noise
+  0.008`), the validation line with the rate, and the pass with what it carries on.
   A training loss that keeps falling after the held-out loss turns is a
   model learning the corpus by heart; more loops, not more steps, is the cure.
 - `bench` prints four lines: the analysis and the frame model, on clean and on
@@ -375,9 +379,12 @@ the same whatever builds it ([Rip training §8](../../doc/rip-training.md#8-a-tr
 `--checkpoint` saves every `--every` steps, with the best held-out step's
 weights, and resumes from the file when it exists, drawing from its step the
 batches the unbroken run drew; `--init` starts from a `.pt`'s weights alone (no
-optimizer state, step 0), and `--shard-seed` moves the streams while `--seed`
-keeps the starting weights; `average.py --pt next.pt --out next.bin
-[--trim 0.1] a.pt b.pt ...` is the merge. A builder holds memory of its own
+optimizer state, step 0), and with `--carry` carries on from it, the optimizer's
+state and the rate's too, the rate following the held-out readings in place of
+the cosine and `--wide` making a pass swing wide ([Rip training
+§8](../../doc/rip-training.md#a-pass-that-carries-on)); `--shard-seed` moves the
+streams while `--seed` keeps the starting weights; `average.py --pt next.pt --out
+next.bin [--trim 0.1] a.pt b.pt ...` is the merge. A builder holds memory of its own
 and, once it has drawn from every loop, a copy of the run's objects its reads
 write to, so each builder adds to a run's memory with the corpus's loops. The
 defaults are `ripmodels.FrameSpec`:

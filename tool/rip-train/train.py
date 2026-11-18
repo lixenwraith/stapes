@@ -1002,9 +1002,9 @@ class Rate:
         return f"not paid, {told}, no worse than where it began: fallen back to fine {self.fine:.1e}"
 
     def follow_heads(self, step: int, w: dict) -> str:
-        """each head on its own: one STALL readings without a gain past its own noise while the decoders gained is
-        raised alone, its rows at a raise's rate; at the raise's end its rows go back to before it where its figure
-        ended over where it began"""
+        """each head on its own: one STALL readings without a gain past its own noise while the decoders' loss has not
+        stalled is raised alone, its rows at a raise's rate; at the raise's end its rows go back to before it where its
+        figure ended over where it began"""
         text = ""
         for h, o in self.own.items():
             d, noise = apart(w[h], o["ref"], w["loop"])
@@ -1028,8 +1028,8 @@ class Rate:
                 o["count"] += 1
                 if o["count"] >= STALL and self.count < STALL and self.fine < self.top and step + STALL * self.every <= self.steps:
                     o["swing"] = {"at": step, "end": step + STALL * self.every, "began": w[h], "before": self.rows_of(h)}
-                    text += (f"; {h}: {d:+.3f} on its kept, noise {noise:.3f}, {o['count']} without a gain while the decoders "
-                             f"gained: its rows raised to {self.top:.1e}, down to fine over {STALL} readings")
+                    text += (f"; {h}: {d:+.3f} on its kept, noise {noise:.3f}, {o['count']} without a gain while the decoders' loss "
+                             f"has not stalled: its rows raised to {self.top:.1e}, down to fine over {STALL} readings")
         return text
 
     def settle(self) -> None:

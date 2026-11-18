@@ -837,3 +837,25 @@ proves wrong or that a document now states, and link the document instead.
   reads a steady tone from A0 to C8 within 0.6 dB of its energy, noise within 3.
   Energy read back from stored frames (`np.expm1`) is already a hundred times
   the energy, so what is laid from it takes no other hundred.
+- **A pass that carries on is judged by readings of a few loops, which a toy
+  corpus starves.** `TheRate` renders 40 loops of notes over a kick and a hat, 8
+  held out, at batch 8: with 12 loops or batch 2 the readings' own noise hid
+  carrying on from a restart, and over loops without drums the drums head sits at
+  its floor, where a loss near zero drifts past a noise near zero, which is why a
+  gain at the fine rate is the decoders' sum alone.
+- Two runs alike up to a step read alike there, so their paired noise is near
+  zero: a test that a head moved alone leaves the others where they were reads
+  each head's difference between the runs against that head's own noise since the
+  raise began.
+- `torch.load` reads with `weights_only`, which refuses a NumPy array: the rate's
+  readings ride in the checkpoint as tensors. `Optimizer.load_state_dict` keeps the
+  tensors it is handed and AdamW steps them in place, so a state kept to go back to
+  is a deep copy, and so is the one loaded from it.
+- A pass that carries on, resumed, reads its rate back whole, and its weights and
+  lines match the unbroken run's: checked by raising `KeyboardInterrupt` from a
+  patched `train.losses` between readings and running the same words again. No
+  test holds it.
+- From a checkpoint of today's schedule, its rate near zero at the end, a pass that
+  carries on at half `--lr` can read worse at its first reading on a toy corpus:
+  the fall back halves the fine rate until readings hold, and the next pass carries
+  the rate found.

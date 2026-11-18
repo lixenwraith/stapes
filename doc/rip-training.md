@@ -1071,14 +1071,15 @@ frame          B x T x 42               wide pooled to 16 regions over every bin
 ## 8. A training step
 
 Each step: 8 windows, targets, forward, losses, backward, gradient clipped to norm 1,
-AdamW at weight decay 0.01. The learning rate runs from 3e-4 to zero on a cosine over
-the steps. The batches are built beside the device by `--builders` processes forked
-from the run, one by default, each at most two batches ahead, handed over in index
-order: a batch is Python holding the interpreter's lock, so a second thread builds
-less, not more. Batch k draws every window from a stream of its own,
-`random.Random(seed + (shard << 32) + (k << 64))` (`stream`), so it is the same
-tensors whatever builds it, a run resumed at step k draws the batches the unbroken run
-drew from k on, and two shards draw different batches.
+AdamW at weight decay 0.01. The learning rate runs from `--lr` (3e-4) to zero on a
+cosine over the steps, or follows the readings in a pass that carries on
+([below](#a-pass-that-carries-on)). The batches are built beside the device by
+`--builders` processes forked from the run, one by default, each at most two batches
+ahead, handed over in index order: a batch is Python holding the interpreter's lock,
+so a second thread builds less, not more. Batch k draws every window from a stream of
+its own, `random.Random(seed + (shard << 32) + (k << 64))` (`stream`), so it is the
+same tensors whatever builds it, a run resumed at step k draws the batches the
+unbroken run drew from k on, and two shards draw different batches.
 
 ```
 onset, drums, pitch, voicing, strike, release: binary cross-entropy with a weight on
@@ -1181,8 +1182,71 @@ a real instrument its guess means little, which is why a rip can play a piano on
 
 The checkpoint, a PyTorch `.pt`, holds `model`, `opt`, `step`, `cfg` (the shape, which a
 resumed run must match), `best` (the best held-out score, its step and its weights) and
-`validated` (the best validation score, its step, its weights and the held-out score there);
-no stream, since the step is all a batch's draws need.
+`validated` (the best validation score, its step, its weights and the held-out score there),
+and in a pass that carries on `rate` (below), with the weights and optimizer's state it
+may go back to, up to twice the file; no stream, since the step is all a batch's draws
+need.
+
+### A pass that carries on
+
+`--carry` makes a pass start where the last one ended: from `--init`'s checkpoint it
+takes the weights, the optimizer's state and the rate's, and it reads its held-out loops
+before a step, the start every later reading is judged against. A checkpoint of weights
+alone, or one whose heads grow, starts one with the optimizer fresh; a run resumed reads
+the rate back whole. The step written is picked as above, and the checkpoint the next
+pass starts from is the last step's. Without the word a pass runs the cosine above, bit
+for bit. The rate (`Rate`) follows the decoders' loss over the held-out windows:
+
+- **Fine**: the rate between raises; `--lr` for a model no pass trained, half of it
+  for a checkpoint that carries no rate, else the checkpoint's own, never over `--lr`.
+  A reading under the reading kept past its noise is a gain, kept with its weights and
+  the optimizer's state. One over it past its noise falls back: training goes on from
+  the kept weights and state, and fine falls.
+- **Raised**: `STALL` readings without a gain raise the rate to `--lr`, down half a
+  cosine to fine over `STALL` readings. The raise paid when its last reading is better
+  than the one kept, which it then replaces. One that did not pay falls fine, and when
+  it ended worse than where it began, its decoders' loss over that reading's by any
+  amount or a head past its noise, training goes on from the weights and state before
+  it. A stall at fine as high as `--lr` falls fine instead, and one with fewer than
+  `STALL` readings left in the pass raises nothing.
+- **Wide** (`--wide n`): after `n` passes in a row without a gain kept, `STALL` by
+  default and counted in the checkpoint, or this pass with `--wide 0`, a pass runs from
+  `--lr` down half a cosine to fine over all its steps and ends on its end if that is
+  better than its start, else on the start's weights and state. It starts the count again.
+- **A head** asked on the held-out windows, with rows of its own in the layer that
+  outputs it (`rows`), is stalled when its own loss goes `STALL` readings without a gain
+  past its own noise while the decoders' loss has not stalled, fine is under `--lr` and
+  `STALL` readings are left. Its rows alone are raised: AdamW's step is the rate times
+  what the rate leaves alone, so after each step their move is scaled by a raise's rate
+  over fine (`scale`), and every other weight moves at fine. At the raise's end they and
+  their optimizer's state go back to before it where the head's loss ended over where
+  it began.
+- **Better** (`better`): the decoders' loss under the other reading's past its noise,
+  and no decoders' head over its own past that head's noise, so no gain in the sum is
+  bought with a head falling. A raise's end and a wide pass's are judged so; a gain at
+  fine by the sum alone, as a run picks its step, since a head at its floor drifts
+  past a noise near zero, as the drums do over loops without them.
+- **The lines**: each held-out line after the start says the rate since the last
+  reading, `fine`, `raised` or `wide`, the difference on the reading kept and its
+  noise, and what the rule did (`gained`, `3 without a gain: raised to 3.0e-04`, `not
+  paid ...: fallen back to step 4000's weights, fine 5.0e-05`); a raised head's rows
+  likewise. The validation line repeats the rate, and the pass's last line says what
+  it carries on: the fine rate and the passes in a row without a gain kept.
+
+Each constant comes from a procedure, and each procedure has its test (`TheRate`):
+
+- **The noise** (`apart`, `NOISE` 2): two readings differ by the mean of their windows'
+  differences, which counts past `NOISE` standard errors of it, a loop's windows one
+  draw since they share its sound. By chance alone it passes one way `ALPHA` of the
+  time, 2.3%; counted window by window it would pass over three times as often.
+- **A stall** (`STALL` 3): the fewest readings without a gain that a figure still
+  gaining one noise a reading, the least a reading can tell, goes through less often
+  than `ALPHA` from a reading kept: two do 3.0% of the time, three under 0.01%.
+- **The rise**: to `--lr`, the rate a pass is given, which trains a fresh model;
+  nothing in the rule is set to the lab's passes.
+- **The fall** (`FALL` 0.5): fine halves at each fall, a search by octaves: where a rate
+  holds as long as it is small enough, fine lands within a factor of two under the
+  highest that holds, in as many falls as that lies octaves under `--lr`.
 
 ## 9. The weight file
 

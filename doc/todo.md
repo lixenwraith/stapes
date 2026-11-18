@@ -394,6 +394,26 @@ measure ([credits](../CREDITS.md)). The generator writes every key A0 to C8
 rounds naming every collection they took, and CREDITS.md crediting exactly
 those.
 
+### Carry a pass's rate further
+
+- Priority: P2
+- Affected files: `tool/rip-train/train.py` (`Rate`)
+
+A pass that carries on follows its readings by a rule whose gaps wait on what the
+lab's chain shows ([Rip training §8](rip-training.md#a-pass-that-carries-on)):
+
+- The fine rate only falls: a model that would take a higher one once it settles
+  gets there by raises alone. Read a chain's fine rate pass by pass first.
+- A head at its floor, nothing left to learn, still stalls and is raised, which
+  costs its rows a raise and a fall back, as the velocity head's over the tests'
+  notes. Its floor could be read from its noise against its loss.
+- A raised head moves its rows of the layer that outputs it alone; what it shares
+  with the other heads moves at fine.
+- `better` reads each decoders' head at its own noise: past it by chance alone,
+  one of six or eight refuses up to one good raise in six, and a head at its
+  floor drifts past a noise near zero.
+- A pass that carries on, resumed, has no test.
+
 ### Bring the rest of the lab in
 
 - Priority: P2

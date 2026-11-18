@@ -589,6 +589,265 @@ class TheBatches(unittest.TestCase):
         self.assertEqual(digest.hexdigest(), "82e0bd088a3cc46e95c43dc4d99fac8faab52033")
 
 
+def played(frames, events) -> np.ndarray:
+    """a loop's frames as a corpus stores them: sounding's notes, and each drum hit a burst over its drum's third of
+    the bands in both planes, for two frames"""
+    e = np.expm1(sounding(frames, [x for x in events if x["drum"] < 0]).astype(np.float64)) / 100
+    for x in events:
+        if x["drum"] >= 0:
+            third = np.arange(x["drum"] * ripmodels.BANDS // 3, (x["drum"] + 1) * ripmodels.BANDS // 3)
+            e[x["frame"]:x["frame"] + 2, np.concatenate([third, ripmodels.BANDS + third])] += 0.3
+    return np.log1p(100 * e).astype(np.float32)
+
+
+def kind(d, seed, loops=40, frames=128, families=("piano", "guitar")) -> None:
+    """a corpus of one kind on disk, its seed's draw of it: each loop notes one after another, each of seven pitches
+    and of a family of families, over a kick and a hat"""
+    rng = random.Random(seed)
+    labels = []
+    for _ in range(loops):
+        events, t = [], 2
+        while t < frames - 12:
+            n = rng.randrange(6, 20)
+            events.append(note(t, min(t + n, frames - 1), rng.choice([48, 52, 55, 60, 64, 67, 72]), rng.choice(families)))
+            t += n + rng.randrange(6)
+        events += [{"frame": f, "end": f, "drum": drum, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]}
+                   for drum, every in ((0, 32), (2, 8)) for f in range(rng.randrange(every), frames - 2, every)]
+        labels.append({"events": events})
+    os.makedirs(d, exist_ok=True)
+    corpus(d, labels, frames, lambda lab: played(frames, lab["events"]))
+
+
+def passed(*flags, steps) -> tuple:
+    """a pass of the shape the rate's tests train, a reading every 20 steps over 8 held-out loops: what it printed,
+    and each held-out reading's windows in turn, with the weights read"""
+    seen, real = [], train.evaluate
+
+    def evaluate(model, *args, **kw):
+        v = real(model, *args, **kw)
+        seen.append({**v["windows"], "weights": {k: t.detach().clone() for k, t in model.state_dict().items()}})
+        return v
+    with mock.patch.object(train, "evaluate", evaluate):
+        said = run("--batch", "8", "--dim", "16", "--ffn", "32", "--attention-window", "8", "--holdout", "8", "--every", "20", "--lr", "0.01", *flags, steps=steps)
+    return said, seen
+
+
+def line(said: str, step: int) -> str:
+    """the held-out line of a step"""
+    return next(x for x in said.splitlines() if x.startswith(f"step {step} held-out "))
+
+
+class TheRate(unittest.TestCase):
+    """The rate of a pass that carries on, doc/rip-training.md §8: its constants by their procedures, and its rules
+    on corpora of one kind the tests render, from a pass that began a chain."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.TemporaryDirectory()
+        cls.at = staticmethod(lambda name: os.path.join(cls.dir.name, name))
+        for k in range(2):
+            kind(cls.at(f"kind{k}"), k + 1)
+        passed("--corpus", cls.at("kind0"), "--out", cls.at("first.bin"), "--checkpoint", cls.at("first.pt"), "--carry", steps=300)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.dir.cleanup()
+
+    def test_a_difference_by_chance_alone_crosses_a_readings_noise_at_alpha(self):
+        """A reading's noise is NOISE standard errors of the mean difference over the same windows, a loop's windows
+        one draw: two models alike but for chance, read on 200 loops of three windows that share their loop's sound,
+        differ past it one way ALPHA of the time; counted window by window, as if each were a draw of its own, more
+        than three times as often."""
+        rng, loops, crossed, naive = np.random.default_rng(1), np.repeat(np.arange(200), 3), 0, 0
+        for _ in range(4000):
+            d = np.repeat(rng.normal(0, 1, 200), 3) + rng.normal(0, 1, 600)
+            mean, noise = train.apart(d, np.zeros(600), loops)
+            crossed += mean < -noise
+            naive += mean < -train.NOISE * d.std(ddof=1) / math.sqrt(600)
+        self.assertAlmostEqual(crossed / 4000, train.ALPHA, delta=0.007)
+        self.assertGreater(naive / 4000, 3 * train.ALPHA)
+
+    def test_a_stall_is_the_fewest_readings_a_figure_gaining_one_noise_a_reading_rarely_goes_without_a_gain(self):
+        """STALL is the fewest readings without a gain that a figure still gaining one noise a reading, the least a
+        reading tells, goes through less often than ALPHA in a stretch from a reading kept: each reading off by chance,
+        its difference from another of one standard error, and a gain counted past the noise. One fewer stalls it more
+        often than ALPHA."""
+        rng = np.random.default_rng(2)
+
+        def stalls(n, trials=20000, readings=60):
+            y = -train.NOISE * np.arange(readings) + rng.normal(0, 1 / math.sqrt(2), (trials, readings))
+            ref, count, stretches, stalled = y[:, 0].copy(), np.zeros(trials, int), 0, 0
+            for t in range(1, readings):
+                gain = ref - y[:, t] > train.NOISE
+                count = np.where(gain, 0, count + 1)
+                stall = count >= n
+                stretches, stalled = stretches + int((gain | stall).sum()), stalled + int(stall.sum())
+                ref, count = np.where(gain | stall, y[:, t], ref), np.where(stall, 0, count)
+            return stalled / stretches
+        self.assertGreater(stalls(train.STALL - 1), train.ALPHA)
+        self.assertLess(stalls(train.STALL), train.ALPHA)
+
+    def test_a_gain_bought_with_a_decoders_head_falling_past_its_noise_is_no_better(self):
+        """A reading is better than another when the decoders' loss is under the other's past its noise and no
+        decoders' head is over its own past that head's noise: a gain past the noise is better; the same gain bought
+        with the strikes falling past theirs is not, nor a gain within the noise."""
+        rng, loops = np.random.default_rng(3), torch.arange(20).repeat_interleave(3)
+        base = {h: rng.uniform(0.2, 0.4, 60) for h, _ in train.DECODERS}
+
+        def reading(**by):
+            w = {h: torch.from_numpy(base[h] + by.get(h, 0.0) + rng.normal(0, 0.01, 60)) for h, _ in train.DECODERS}
+            return {**w, "decoders": sum(f * w[h] for h, f in train.DECODERS), "loop": loops}
+        old = reading()
+        self.assertEqual(train.better(old, reading(onset=-0.1))[::3], (True, []))
+        self.assertEqual(train.better(old, reading(onset=-0.15, strike=0.05))[::3], (False, ["strike"]))
+        self.assertEqual(train.better(old, reading(onset=-0.002))[::3], (False, []))
+
+    def test_without_carry_the_schedule_is_todays_bit_for_bit(self):
+        """A run without the new words is today's: from --init's weights alone, a fresh optimizer though the
+        checkpoint holds one, the rate down a cosine from --lr to zero, no reading before a step and no rate in its
+        checkpoint. Its weights are, bit for bit, those of that schedule written out here over the batches it was
+        handed."""
+        with tempfile.TemporaryDirectory() as d:
+            at = lambda name: os.path.join(d, name)
+            kind(at("kind"), 1, loops=4)
+            run("--corpus", at("kind"), "--out", at("start.bin"), "--checkpoint", at("start.pt"), "--lr", "0.01", steps=5)
+            seen = handed("--corpus", at("kind"), "--out", at("run.bin"), "--init", at("start.pt"), "--checkpoint", at("run.pt"), "--lr", "0.01", steps=8)
+            start, ran = torch.load(at("start.pt")), torch.load(at("run.pt"))
+        model = ripmodels.build(ripmodels.shape(start["cfg"]))
+        model.load_state_dict(start["model"])
+        opt = torch.optim.AdamW(model.parameters(), lr=0.01, weight_decay=0.01)
+        for step, (x, t) in enumerate(seen):
+            for g in opt.param_groups:
+                g["lr"] = 0.01 * 0.5 * (1 + math.cos(math.pi * step / 8))
+            loss = train.losses(model, x, t)["total"]
+            opt.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            opt.step()
+        self.assertEqual((len(seen), "opt" in start, sorted(ran)), (8, True, ["best", "cfg", "layout", "model", "opt", "step", "validated"]))
+        for k, v in model.state_dict().items():
+            with self.subTest(tensor=k):
+                self.assertTrue(torch.equal(ran["model"][k], v))
+
+    def test_a_pass_that_carries_on_is_not_worse_at_its_first_reading(self):
+        """A pass that carries on from the last one's checkpoint, its optimizer's state and its fine rate with its
+        weights, reads its start on its fresh corpus's held-out loops before a step, and its first reading is not worse
+        than that past the reading's noise; today's schedule from that checkpoint, its optimizer fresh and its rate
+        back at --lr, is. A checkpoint of weights alone still carries on, its optimizer fresh and its fine rate a fall
+        under --lr."""
+        first = torch.load(self.at("first.pt"))
+        torch.save({k: first[k] for k in ("model", "layout", "cfg")}, self.at("alone.pt"))
+        flags = ("--corpus", self.at("kind1"), "--out", self.at("next.bin"))
+        said, carried = passed(*flags, "--init", self.at("first.pt"), "--checkpoint", self.at("carried.pt"), "--carry", steps=20)
+        _, today = passed(*flags, "--init", self.at("first.pt"), "--checkpoint", self.at("today.pt"), steps=100)
+        alone, _ = passed(*flags, "--init", self.at("alone.pt"), "--checkpoint", self.at("alone2.pt"), "--carry", steps=20)
+        start = carried[0]
+        self.assertIn(f"carried on, its optimizer: fine {first['rate']['fine']:.1e} carried", said)
+        self.assertIn("the start, read before a step", line(said, 0))
+        mean, noise = train.apart(carried[1]["decoders"], start["decoders"], start["loop"])
+        self.assertLessEqual(mean, noise)
+        mean, noise = train.apart(today[0]["decoders"], start["decoders"], start["loop"])
+        self.assertGreater(mean, noise)
+        self.assertIn("carried on, weights alone, the optimizer fresh: no rate carried, fine 5.0e-03, a fall under --lr", alone)
+
+    def test_a_reading_at_the_fine_rate_worse_than_the_one_kept_falls_back_to_it(self):
+        """A reading at the fine rate whose decoders' loss is over the reading kept past its noise falls back: training
+        goes on from the kept weights and optimizer's state, here the start's, the fine rate falls by FALL, and the
+        line says so."""
+        ck = torch.load(self.at("first.pt"))
+        ck["rate"]["fine"] = 0.5
+        torch.save(ck, self.at("fast.pt"))
+        said, _ = passed("--corpus", self.at("kind1"), "--out", self.at("fast.bin"), "--init", self.at("fast.pt"), "--checkpoint", self.at("fell.pt"),
+                         "--every", "10", "--lr", "0.5", "--carry", steps=10)
+        fell = torch.load(self.at("fell.pt"))
+        self.assertRegex(line(said, 10), r"rate 5\.0e-01 fine: \+[0-9.]+ on the reading kept at step 0, noise [0-9.]+: fallen back to step 0's weights, fine 2\.5e-01 \(onset ")
+        self.assertEqual(fell["rate"]["fine"], 0.5 * train.FALL)
+        for k, v in ck["model"].items():
+            self.assertTrue(torch.equal(fell["model"][k], v), k)
+        for i, state in ck["opt"]["state"].items():
+            for k, v in state.items():
+                self.assertTrue(torch.equal(fell["opt"]["state"][i][k], v), (i, k))
+
+    def test_a_figure_made_to_stall_draws_a_raise_and_a_raise_that_does_not_pay_falls_back(self):
+        """A carried fine rate too small to move a weight stalls the decoders' figure: after STALL readings without a
+        gain the rate is raised to --lr, down half a cosine to the fine rate over STALL readings; a raise that ends no
+        better than the reading kept, and worse than where it began, falls the fine rate back by FALL, and training
+        goes on from the weights before it, each line saying so."""
+        ck = torch.load(self.at("first.pt"))
+        ck["rate"]["fine"] = 1e-30
+        torch.save(ck, self.at("still.pt"))
+        rates, real = [], train.Rate.at
+
+        def at(rate, step):
+            rates.append(real(rate, step))
+            return rates[-1]
+        with mock.patch.object(train.Rate, "at", at):
+            said, seen = passed("--corpus", self.at("kind1"), "--out", self.at("still.bin"), "--init", self.at("still.pt"), "--checkpoint", self.at("stalled.pt"),
+                                "--every", "10", "--lr", "0.1", "--carry", steps=70)
+        self.assertIn("rate 1.0e-30 fine: +0.000 on the reading kept at step 0, noise 0.000, 3 without a gain: raised to 1.0e-01, down to fine over 3 readings", line(said, 30))
+        self.assertIn("raised: reading 1 of 3", line(said, 40))
+        self.assertRegex(line(said, 60), r"raised: reading 3 of 3, not paid, .*: fallen back to step 30's weights, fine 5\.0e-31")
+        self.assertIn("rate 5.0e-31 fine", line(said, 70))
+        raised = [1e-30 + (0.1 - 1e-30) * 0.5 * (1 + math.cos(math.pi * k / 30)) for k in range(30)]
+        self.assertEqual(rates, [1e-30] * 30 + raised + [5e-31] * 10)
+        self.assertGreater(*train.apart(seen[6]["decoders"], seen[3]["decoders"], seen[3]["loop"]))
+        self.assertTrue(torch.equal(seen[7]["decoders"], seen[3]["decoders"]))
+
+    def test_a_head_stalled_while_the_decoders_gain_is_moved_alone_and_the_others_hold(self):
+        """A head whose own figure goes STALL readings without a gain past its own noise while the decoders' loss
+        gains, here the frame's family where every note's is drawn at random, has its rows raised alone, its step
+        scaled to a raise's rate: at the raise's end its rows are not where a run that never moved them has them, and
+        every decoders' head is within the noise of its own reading since the raise began of where that run has it."""
+        cfg = ripmodels.Config(dim=16, heads=2, layers=1, ffn=32, window=8)
+        torch.manual_seed(3)
+        with tempfile.TemporaryDirectory() as d:
+            at = lambda name: os.path.join(d, name)
+            kind(at("kind"), 7, families=("piano", "guitar", "strings", "winds"))
+            torch.save({"model": ripmodels.FrameModel(cfg).state_dict(), "layout": ripmodels.LAYOUT, "cfg": asdict(cfg)}, at("fresh.pt"))
+            flags = ("--corpus", at("kind"), "--out", at("out.bin"), "--init", at("fresh.pt"), "--carry", "--batch", "2")
+            said, moved = passed(*flags, "--checkpoint", at("moved.pt"), steps=200)
+            with mock.patch.object(train.Rate, "follow_heads", lambda rate, step, w: ""):
+                _, held = passed(*flags, "--checkpoint", at("held.pt"), steps=200)
+        began = next(step for step in range(20, 141, 20) if "family: " in line(said, step) and "its rows raised to 1.0e-02" in line(said, step))
+        self.assertIn("while the decoders' loss has not stalled", line(said, began))
+        end = began + 3 * 20
+        self.assertIn("family's rows raised: reading 3 of 3", line(said, end))
+        k, b = end // 20, began // 20
+        rows = lambda run, i: run[i]["weights"]["out.weight"][cfg.slice("family")]
+        self.assertTrue(torch.equal(rows(moved, b), rows(held, b)))
+        self.assertFalse(torch.equal(rows(moved, k), rows(held, k)))
+        for h in ("onset", "drums", "pitch", "voicing", "strike", "release"):
+            with self.subTest(head=h):
+                apart, _ = train.apart(moved[k][h], held[k][h], moved[k]["loop"])
+                _, noise = train.apart(moved[k][h], moved[b][h], moved[k]["loop"])
+                self.assertLessEqual(abs(apart), noise)
+
+    def test_a_wide_pass_that_finds_nothing_better_ends_on_its_start(self):
+        """A pass that swings wide reads its start, then runs from --lr down to the fine rate over the pass; at its end
+        nothing better than its start, it ends on the start: its checkpoint holds the start's weights and optimizer
+        state bit for bit, and the count of passes without a gain kept starts again. --wide 0 makes this pass wide;
+        without the word a pass is wide after STALL passes in a row without a gain kept."""
+        first = torch.load(self.at("first.pt"))
+        flags = ("--corpus", self.at("kind1"), "--out", self.at("wide.bin"), "--init", self.at("first.pt"), "--every", "10", "--carry")
+        said, _ = passed(*flags, "--checkpoint", self.at("wide.pt"), "--wide", "0", "--lr", "0.5", steps=30)
+        wide = torch.load(self.at("wide.pt"))
+        self.assertIn("rate 5.0e-01 wide, down to fine", line(said, 0))
+        self.assertRegex(line(said, 30), r"wide: reading 3 of 3, nothing better, .*: ending on the start \(onset ")
+        self.assertIn("best held-out decoders' loss", said)
+        self.assertIn("at step 0; exporting that", said)
+        for k, v in first["model"].items():
+            self.assertTrue(torch.equal(wide["model"][k], v), k)
+        for i, state in first["opt"]["state"].items():
+            for k, v in state.items():
+                self.assertTrue(torch.equal(wide["opt"]["state"][i][k], v), (i, k))
+        self.assertEqual(wide["rate"]["quiet"], 0)
+        first["rate"]["quiet"] = train.STALL
+        torch.save(first, self.at("quiet.pt"))
+        said, _ = passed("--corpus", self.at("kind1"), "--out", self.at("wide.bin"), "--init", self.at("quiet.pt"), "--every", "10", "--carry",
+                         "--checkpoint", self.at("quiet2.pt"), steps=10)
+        self.assertIn(f"wide, down to fine {first['rate']['fine']:.1e} over the pass, after 3 passes in a row without a gain kept", line(said, 0))
+
+
 class TheLayout(unittest.TestCase):
     """The frames the models hear are one layout, ripmodels.LAYOUT: a corpus's manifest, a checkpoint and a noise bank
     of another, or of none, are refused, and the refusal names this one."""

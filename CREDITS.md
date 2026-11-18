@@ -57,8 +57,9 @@ take them:
   Xuzhou Ye and Juan P. Bello, <https://doi.org/10.5281/zenodo.3371780>, CC BY
   4.0, introduced in "GuitarSet: A Dataset for Guitar Transcription" (ISMIR
   2018), as its record asks to be cited. Its recordings are labelled with
-  their notes, pitch contours and beats; players 00 to 03 train, 04 validates
-  and 05 tests.
+  their notes, pitch contours and beats, each note ending where its string's
+  debleeded hexaphonic recording stops sounding it; players 00 to 03 train, 04
+  validates and 05 tests.
 - **MusicNet** v1.0, by John Thickstun, Zaid Harchaoui and Sham M. Kakade,
   <https://doi.org/10.5281/zenodo.5120004>, CC BY 4.0, whose recordings are
   Creative Commons and public-domain performances from the Isabella Stewart

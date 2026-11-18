@@ -319,9 +319,11 @@ doc/rip-training.md, "A recording's velocities"): a corpus made from it gives ea
 recording, against the recording's own unit, -1 where the strings sounding with it hide it.
 A MIDI file is one track at 120 bpm with 22,050 ticks a quarter, a tick a sample at 44,100 Hz, a string a channel, so
 two strings on one pitch stay two notes. The list gives each recording its JAMS file as `pitch` and as `beats` (stapes
-reads each string's pitch_contour and the beat_position from it), `guitar` as its family, and its split by its player,
-the first two characters of its name: 00 to 03 train, 04 val, 05 test. Writes only under <out dir>: the list's paths
-are relative to it, as `corpus ... from` reads them.
+reads each string's pitch_contour and the beat_position from it), `guitar` as its family, its split by its player,
+the first two characters of its name: 00 to 03 train, 04 val, 05 test, and as `strings` its debleeded hexaphonic file,
+`audio/hex/<name>_hex_cln.wav` from the set's audio_hex-pickup_debleeded.zip, where it is unpacked and a pitch track is
+named: stapes ends each note where its string stops sounding it (doc/rip-training.md, "A recording's strings").
+Writes only under <out dir>: the list's paths are relative to it, as `corpus ... from` reads them.
 ```
 
 ### labels/trackscore.py

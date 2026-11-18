@@ -1406,6 +1406,10 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	if err != nil {
 		return err
 	}
+	strung, err := named("strings")
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -1434,11 +1438,13 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		row    []string
 		score  *audio.MIDIScore
 		tracks []pitchTrack
-		levels []heardLevel // its notes', a measured recording's
-		heard  []float64    // and their velocities
-		failed *unmeasured  // or why it has none
-		moved  bool         // its hits were put on its sound
-		skip   string       // or why they were not, a word of lagWhy
+		levels []heardLevel  // its notes', a measured recording's
+		heard  []float64     // and their velocities
+		failed *unmeasured   // or why it has none
+		strung []heardString // its notes as its strings say them, its by-string file's
+		rate   int           // the samples a second they are counted in
+		moved  bool          // its hits were put on its sound
+		skip   string        // or why they were not, a word of lagWhy
 	}
 	var (
 		jobs    []job
@@ -1517,12 +1523,37 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		if p := pitch(j.row); p != "" {
 			j.tracks, err = readPitch(at(p))
 		}
-		if err == nil && velocityWords[velocity(j.row)].heard {
+		switch {
+		case err != nil:
+		case strung(j.row) != "":
+			j.strung, j.rate, j.failed = hearPickup(at(j.row[wav]), at(strung(j.row)), j.score, j.tracks)
+		case velocityWords[velocity(j.row)].heard:
 			j.levels, j.failed = hearRecording(at(j.row[wav]), j.score, j.tracks)
 		}
 		return err
 	}); err != nil {
 		return err
+	}
+	// a note ends where its string stops sounding it, and is measured on the
+	// microphone where it sounds alone by the ends its strings give
+	strungNotes := 0
+	for i := range jobs {
+		j := &jobs[i]
+		if j.strung != nil && velocityWords[velocity(j.row)].heard {
+			j.levels = make([]heardLevel, len(j.strung))
+		}
+		for k, h := range j.strung {
+			if h.string < 0 {
+				continue
+			}
+			if j.levels != nil {
+				j.levels[k] = h.mic
+			}
+			if n := &j.score.Notes[k]; h.end != int(n.End*float64(j.rate)) {
+				n.End = float64(h.end) / float64(j.rate)
+			}
+			strungNotes++
+		}
 	}
 	// a measured note's velocity is its level over the unit read from every
 	// recording its unit cell names alike, an instrument's apart
@@ -1543,10 +1574,14 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	// a recording the measure gives no levels is named but for one gone, and
 	// its notes say nothing; the run goes on
 	var opened, given, refused, none int
-	unheard := map[string]int{} // recordings, by why
+	unheard, unstrung := map[string]int{}, map[string]int{} // recordings, by why
 	for i := range jobs {
 		j := &jobs[i]
 		if !velocityWords[velocity(j.row)].heard {
+			if j.failed != nil {
+				unstrung[j.failed.why]++
+				fmt.Fprintf(s.out, "%s: no ends read on its strings, %s\n", j.row[wav], j.failed)
+			}
 			continue
 		}
 		j.heard = make([]float64, len(j.score.Notes))
@@ -1639,6 +1674,18 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 			}
 		}
 		what += fmt.Sprintf(", %d of those none in recording(s) not measured: %s", none, strings.Join(by, ", "))
+	}
+	if strungNotes > 0 || len(unstrung) > 0 {
+		what += fmt.Sprintf(", the ends of %d note(s) read on their strings", strungNotes)
+		var by []string
+		for _, w := range unmeasuredWhy {
+			if unstrung[w] > 0 {
+				by = append(by, fmt.Sprintf("%d %s", unstrung[w], w))
+			}
+		}
+		if len(by) > 0 {
+			what += fmt.Sprintf(" and none in recording(s) not read: %s", strings.Join(by, ", "))
+		}
 	}
 	if sounding+len(leave) > 0 {
 		what += fmt.Sprintf(", the hits of %d recording(s) put on their sound", sounding)

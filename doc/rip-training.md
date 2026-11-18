@@ -395,13 +395,13 @@ reaches a corpus that way without its hours of render.
 - `part k/n` labels every n-th loop from the k-th, as it renders them, and leaves
   `corpus.json` to a run without it.
 - A `from` line writes each recording's label again from the list: its family, its
-  velocity word, its starts, its MIDI file, its pitch track and its beats. The
-  recording is known by the `source` of the label on disk, and its WAV is read only
-  where its velocity word is `measured`, so it may otherwise be gone; a label that
-  does not read stops the run, its recording being unknown then. A `measured`
-  row whose WAV is gone or does not read keeps its label, each of its notes at
-  `vel` -1, and the run's last line counts them by reason (a recording's
-  velocities, below).
+  velocity word, its starts, its MIDI file, its pitch track, its beats and its
+  strings. The recording is known by the `source` of the label on disk, and its WAV
+  is read only where its velocity word is `measured` or its strings cell names a
+  file, so it may otherwise be gone; a label that does not read stops the run, its
+  recording being unknown then. A `measured` row whose WAV is gone or does not read
+  keeps its label, each of its notes at `vel` -1, and the run's last line counts
+  them by reason (a recording's velocities, below).
 
 ### A recording's pitch track
 
@@ -617,6 +617,84 @@ none in recording(s) not measured: 1 gone from disk`. A recording gone from disk
 whose sound does not read or with a level not finite keeps its label, each of its
 notes at -1, as under `none`; but for one gone, each is named on a line of its own,
 and the run goes on.
+
+### A recording's strings
+
+A `from` list's `strings` column names a recording's by-string file: a WAV of a
+channel a string, each a pickup under its string with the other strings' bleed
+taken out, as GuitarSet's debleeded hexaphonic recordings are, the channels in the
+order the recording's pitch track names its strings (GuitarSet's `data_source`). An
+empty cell names none, and that recording is labelled as without the column, byte
+for byte. A named file is read with the recording and its pitch track, a JAMS file
+whose `note_midi` annotations say which string plays each note (`hearPickup`):
+
+- **A note's string** is the one whose annotation holds a note of its key starting
+  within a frame of it, the nearest, two notes alike taking two strings
+  (`stringsOf`). A note no string holds keeps its label.
+- **A note ends where its string stops sounding it** (`heardEnds`): on its
+  string's channel, from its start by hops of a quarter window, at the middle of
+  the first window where its partials told apart no longer hold more than what is
+  left unfitted around them, the test a ring is found by (above); or at its
+  string's next note, which stops it, where it still sounds there. Past its label's
+  end it is read at the pitch it was let go at. A note its first window does not
+  find keeps its end.
+- **Under `measured`** a note is measured on the microphone where it sounds alone
+  by the ends its strings give, as a note alone is (above), those ends saying that
+  nothing rings into it; a note sounding with another gets none. A note's level on
+  its string's channel is not put on the microphone's scale: on GuitarSet's notes
+  alone the microphone's level over the channel's strays note to note further than
+  the bound (below).
+- A recording whose by-string file is gone, does not read, holds fewer channels
+  than its strings or is at another rate than the recording keeps its label, its
+  notes at -1 under `measured`, and the run's last line counts it by reason
+  (`unmeasuredWhy`) after the notes it ended: `the ends of 14 note(s) read on their
+  strings`.
+
+Which channel is which string is shown on GuitarSet
+(`TestAByStringChannelIsItsString`, with `GUITARSET` naming the set's folder): of
+the notes no other note's label comes within a window of, each string's hold the
+most at their partials on its own channel, 273 of 289 on the lowest string, 466 of
+500, 1,060 of 1,064, 1,409 of 1,409, 1,108 of 1,114 and 732 of 737 on the highest;
+what they hold on each other channel is the bleed the truth below lays
+(`stringBleed`).
+
+The ends are read back on six lines of NSynth's guitars that hold what GuitarSet's
+channels hold (`TestAStringsNoteIsReadFromItsChannel`, with `NSYNTH`): solo lines,
+58 notes in a hundred on the string of the one before as in the set's solos, and
+strummed chords of two to six spread over up to 60 ms, each note on an instrument
+drawn anew 0 to 30 dB down, released, cut over `sampledFade`, held on past its
+label, or struck again on a string still ringing. Each line is on its own channel
+at a gain drawn 6 dB either way, the set's strings' channels against the
+microphone spanning a median 8.7 dB a recording; each note strays from it by a
+Laplace of 2.25 dB, as the set's notes alone stray from their string's; the other
+lines bleed in at levels drawn from the set's (`stringBleed`), and a white floor
+lies under each channel as far as the set's quietest windows lie under its
+loudest (`stringFloor`). The microphone is the lines summed, with no room and
+through `room`. A note's end laid is where its own sound at its partials, alone,
+stops holding more than the rest of its channel holds there, or its string's next
+note; one under that rest from its first window is buried, its label's end its
+end. A seeded half of the training split's guitars fits each kind's bound
+(`stringEndBound`, the least in frames within which nine in ten of the ends lie,
+sure to one in twenty), with three times a readback's recordings; the other half
+and the test split read it back, none past it at 19 to 1. The ends in seconds, the
+median and nine in ten, and a note alone on the microphone, the share known and
+nine in ten of its errors in dB:
+
+```
+                        fit             left out        test         bound
+released             0.037  0.575    0.050  0.575    0.012  0.065    0.778
+cut                  0.025  0.267    0.025  0.187    0.012  0.086    0.441
+held on              0.037  0.987    0.037  0.825    0.012  0.475    1.370
+struck again         0      0        0      0        0      0        0
+buried               0.726  1.880    0.420  1.736    0.118  0.207    2.810
+alone, no room       55%    0.48     55%    0.27     67%    0.50
+alone, degrade       52%    0.42     55%    0.30     67%    0.70
+```
+
+A note sounding with another is known on the microphone none of the time. Its
+level on its channel put on the microphone's by its line's gain, fitted on half
+the notes alone both know, lies nine in ten within 5.7 to 13 dB of its level laid
+on the others, as GuitarSet's own notes alone stray (the todo).
 
 ### A recording's lag
 

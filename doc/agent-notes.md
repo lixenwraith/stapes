@@ -386,6 +386,8 @@ proves wrong or that a document now states, and link the document instead.
   of a core a recording, their old rings in doubt and walked window by window,
   and it takes as many recordings at once as the process runs threads: four at
   once on one thread held 3.2 GB of rings and, under a memory cap, crawled.
+  Read by their strings, GuitarSet's 360 took 2.3 s of a core each and 446 MB
+  at the most, the set in under half an hour on half a core.
   A recording gone from disk, whose sound does not read or with a level not
   finite keeps its label with every note at -1, which the run's last line
   counts by reason: a recording's labels are never lost to its measure.
@@ -495,6 +497,23 @@ proves wrong or that a document now states, and link the document instead.
   and a half hours on one core at half a core's quota beside a training. The
   measure's time is its projections, which `project` runs as Goertzel's
   recurrence four partials side by side.
+- **A by-string file's channel k is its pitch track's k-th string.** GuitarSet's
+  JAMS files name `data_source` 0 to 5 in that order in all 360, and its notes
+  alone hold the most on their own string's channel nine in ten times or more a
+  string (`TestAByStringChannelIsItsString`). A vote by notes a recording named
+  the wrong channel for a string in 41 recordings: in a comp few notes sound
+  alone, and another string ringing on holds more at a note's partials than the
+  note's own rise. audio's `ReadWAV` mixes channels to one, so `readChannels`
+  patches the header's count to one and deals the samples out by the file's.
+- **A pickup is not the microphone**, by several dB a note
+  ([todo](todo.md#tune-the-rip), item 11): a map from a string's
+  level to the microphone's, fitted any way, missed the bound on notes left out.
+  Look at the same note played again with every other string silent before
+  fitting a finer one.
+- An end read over exact silence comes late: a window that holds the last few
+  samples of a cut note at its edge is found. GuitarSet's channels have a floor
+  37 to 59 dB under their loudest windows, and the strings' truth lays one
+  (`stringFloor`); a test's fixture with none allows a window.
 - A label a tool made carries the tool's offset. VocalSet states no notes:
   its labels are the notes its exercise sheet writes for each take, placed on
   the take by an alignment the lab fitted on sound whose notes are known, so

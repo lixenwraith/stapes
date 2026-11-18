@@ -229,9 +229,21 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
       pitches recur an old ring stays in doubt up to that note. GuitarSet's
       00_BN1-129-Eb comp took 39 s of CPU and 326 MB at its peak, giving none
       of its 133 notes a velocity; with its solo, 14m51s on half a core, 442 s
-      of CPU, 470 MB and 3 of 204 given: some 44 hours for the set's 360. Its
-      whole readback under `measured` is owed to the work that takes its
-      velocities from the recordings by string; its list says `none` till then.
+      of CPU, 470 MB and 3 of 204 given: some 44 hours for the set's 360. A
+      recording with a by-string file is measured by its strings' ends instead
+      ([Rip training §3](rip-training.md#a-recordings-strings)), which walk no
+      ring.
+    - A chord's notes on the microphone's scale. A string's channel holds each
+      of its notes apart, but on GuitarSet's 7,713 notes alone the microphone's
+      level over the channel's strays a median 0.5 dB and nine in ten within
+      2.1 dB for the same note played again in a recording, every other string
+      silent, and 1.6 and 5.1 dB over a string's keys; a ratio by player,
+      string and frequency, partial by partial, read on recordings it was not
+      fitted on, strays 1.5 and 4.9 dB, past `measuredBound`, so a note with
+      others gets none. A measure on the microphone that fits a chord's notes
+      with the strings' partials, ends and levels as their shape is the way left;
+      the set's original, not debleeded, by-string archive would say whether the
+      debleeding adds to the stray.
     - A placed start still lights the onset head's target and a placed end the
       release head's, where the alignment puts them (`placed` asks the strike
       head alone nothing); the same mask on those two heads is a line each.

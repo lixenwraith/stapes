@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """guitar.py <out dir>: GuitarSet's notes as MIDI files, a string a channel, and a list for `corpus <dir> from <out
-dir>/guitar-list.csv` that names each recording's JAMS file as its pitch track and its beats; from the set's JAMS
-files alone (GUITARSET names the set's folder). ../README.md has the rules a note is written by."""
+dir>/guitar-list.csv` that names each recording's JAMS file as its pitch track and its beats, and its by-string file
+where the set's is unpacked; from the set's JAMS files (GUITARSET names the set's folder). ../README.md has the rules."""
 import csv, json, math, os, struct, sys, wave
 G = os.path.join(os.path.expanduser(os.environ.get('GUITARSET', '~/data/rip/guitarset')), '')
 O = os.path.abspath(sys.argv[1])
@@ -34,7 +34,7 @@ def write(path, notes):
     with open(path, 'wb') as f:
         f.write(b'MThd' + struct.pack('>IHHH', 6, 0, 1, TICKS // 2) + b'MTrk' + struct.pack('>I', len(tr)) + tr)
 rel = lambda p: os.path.relpath(p, O)
-rows, count = [], dict(notes=0, outside=0, cut=0, overlap=0, short=0, nopitch=0, nobeats=0, beats=0, lines=0, nowav=0)
+rows, count = [], dict(notes=0, outside=0, cut=0, overlap=0, short=0, nopitch=0, nobeats=0, beats=0, lines=0, nowav=0, strung=0)
 keys, off = [], []
 for name in sorted(os.listdir(G + 'annotation')):
     if not name.endswith('.jams'):
@@ -84,10 +84,14 @@ for name in sorted(os.listdir(G + 'annotation')):
     count['notes'] += len(notes)
     with wave.open(wav) as w:
         secs = w.getnframes() / w.getframerate()
-    rows.append((rel(wav), rel(mid), SPLIT[clip[:2]], secs, 'guitar', rel(jams) if pitch else '', rel(jams) if beats else '', 'measured'))
+    hexwav = f'{G}audio/hex/{clip}_hex_cln.wav'
+    strung = pitch and os.path.exists(hexwav)  # stapes puts a note on its string by the pitch track's notes
+    count['strung'] += strung
+    rows.append((rel(wav), rel(mid), SPLIT[clip[:2]], secs, 'guitar', rel(jams) if pitch else '', rel(jams) if beats else '', 'measured',
+                 rel(hexwav) if strung else ''))
 with open(f'{O}/guitar-list.csv', 'w', newline='') as f:
     w = csv.writer(f)
-    w.writerow(['audio_filename', 'midi_filename', 'split', 'duration', 'family', 'pitch', 'beats', 'velocity'])
+    w.writerow(['audio_filename', 'midi_filename', 'split', 'duration', 'family', 'pitch', 'beats', 'velocity', 'strings'])
     w.writerows(rows)
 off.sort()
 print('guitarset', len(rows), 'recordings', count['notes'], 'notes', round(sum(r[3] for r in rows) / 3600, 2), 'hours;',
@@ -96,4 +100,5 @@ print('keys MIDI', min(keys), 'to', max(keys), ';', count['outside'], 'notes out
       round(off[len(off) // 2], 3), 'of a semitone from its key, the furthest', round(off[-1], 3), ',', sum(1 for x in off if x > 0.4), 'past 0.4')
 print(count['overlap'], 'notes run past the start of a later note on their string,', count['cut'], 'of them on its key and so ended there;',
       count['short'], 'notes shorter than a tick;', count['beats'], 'beats,', count['lines'], 'of them bar lines;',
-      count['nopitch'], 'recordings with no pitch track named,', count['nobeats'], 'with no beats named,', count['nowav'], 'annotations with no recording')
+      count['nopitch'], 'recordings with no pitch track named,', count['nobeats'], 'with no beats named,', count['nowav'], 'annotations with no recording,',
+      count['strung'], 'with a by-string file named')

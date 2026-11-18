@@ -55,11 +55,12 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    host is vif's Android app, and a verb over a file in stapes the step before
    it). Then: real recordings with their notes in the corpus (item 1: `corpus
    <dir> from` writes E-GMD's, its hits moved onto their sound or the
-   recording left out, `train.py --mix` mixes them in; still lacking a
-   held-out score for a `from` corpus, E-GMD's ET split being the clean one,
-   drum velocity in the labels, its list saying `none` till a kit's law is
-   decided, the lag's constants read back on E-GMD itself (by drummer and
-   session, and whether a performance's kits agree), a lag past half the usual
+   recording left out and a hit that draws no sound left out of its label,
+   `train.py --mix` mixes them in; still lacking a held-out score for a `from`
+   corpus, E-GMD's ET split being the clean one, drum velocity in the labels,
+   its list saying `none` till a kit's law is decided, the lag's and the silent
+   hit's constants read back on E-GMD itself (by drummer and session, whether a
+   performance's kits agree, `left.tsv`'s hits by key and kit), a lag past half the usual
    gap between strikes, which reads as a nearer one, and a check that drops a
    render whose hits draw no onset; NSynth's notes play in `corpus ... sampled`, lacking the
    tempo-synced and multiphonic filters `examples.json` allows and a pipeline
@@ -248,8 +249,16 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
       release head's, where the alignment puts them (`placed` asks the strike
       head alone nothing); the same mask on those two heads is a line each.
     - E-GMD's list says `none`, so its hits are labelled at -1: a kit's law
-      is not the engine's, and whether a hit's velocity is its file's under
-      that law or measured from its sound is a decision still to make.
+      is not the engine's. An empty cell would label each hit at its file's
+      n/127, the engine's kits' measure; whether the lab's list says so waits
+      on the trainer's reading of whether a kit's stated strengths follow the
+      levels its hits sound at, and where they do not a hit's strength
+      measured from its sound is the way left. No head asks a hit's velocity.
+    - A hit that draws no sound is told by its own rise alone: a silent hit
+      within two frames of a sounding one reads that one's and stays, and a
+      room's tails lift silence's rise, so through `degrade` 15% of lone silent
+      hits stay. `left.tsv` keeps each hit left out, with the rise it read,
+      for a measure that tells them apart.
 
 ### Teach the frame model the beat and the bar line
 
@@ -682,9 +691,13 @@ about as long as the heaviest test
   test reaches goes unseen. Or that on a pull request and the whole raced
   suite on main, which shows such a race after its merge.
 - The lag's fit and readback, `TestARecordedKitsHitsAreMovedOntoTheirSound`,
-  is weighed at 207 s, fifteen times its plain 13.8, the heaviest until the
-  list is measured again: two thirds of it are eighteen kits' renders, each
-  drum rendered three times as its eq, its shape and its binding are set.
+  is weighed at 207 s, fifteen times its plain 13.8: two thirds of it are
+  eighteen kits' renders, each drum rendered three times as its eq, its shape
+  and its binding are set. The silent hit's,
+  `TestAHitThatDrawsNoSoundIsToldByItsRise`, at 384 s, fifteen times its plain
+  25.6, is the heaviest until the list is measured again: 36 kits' renders, and
+  the band frames of their 48 takes, a quarter second each. A fit on 12
+  recordings in place of 24 reads 2.5e-3, a silent hit's rise having a long tail.
 - A push to a branch with a pull request open runs the workflow twice, for the
   push and for the pull request; `claude/*` in the push trigger is what tests
   a branch before its pull request opens.

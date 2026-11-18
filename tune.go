@@ -1112,11 +1112,25 @@ type corpusLoop struct {
 	Placed bool          `json:"placed,omitempty"` // its notes' starts are placed on the recording, not heard struck (startsWords)
 	Lag    *float64      `json:"lag,omitempty"`    // the seconds a recording of hits alone sounds after its file's, its hits and beats moved by them (placeHits)
 	Skip   string        `json:"skip,omitempty"`   // or why they are not, a word of lagWhy: the loop is in skip.txt
+	Left   []leftHit     `json:"left,omitempty"`   // of hits put on their sound, those its events leave out as drawing none
 	// its beats and bar lines in frames, where the render puts them or a
 	// recording's list names them; a loop of neither, as an overlap, lists none
 	Beats     []int         `json:"beats,omitempty"`
 	Downbeats []int         `json:"downbeats,omitempty"`
 	Chords    []corpusChord `json:"chords,omitempty"`
+}
+
+// leftHit is a hit of a recording put on its sound that its label leaves out:
+// the frame it would sit at, its key, its line (-1 a strike of no line), the
+// strength its set gives it over 127 whatever its list says, and a word of
+// hitWhy; and for left.tsv its file's seconds and the rise its onset read
+type leftHit struct {
+	Frame     int     `json:"frame"`
+	Key       int     `json:"key"`
+	Drum      int     `json:"drum"`
+	Vel       float64 `json:"vel"`
+	Why       string  `json:"why"`
+	sec, rise float64
 }
 
 // corpusChord is the chord an arranged loop sounds from a frame on: its pitch
@@ -1445,6 +1459,7 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		rate   int           // the samples a second they are counted in
 		moved  bool          // its hits were put on its sound
 		skip   string        // or why they were not, a word of lagWhy
+		left   []leftHit     // its hits left out of its label
 	}
 	var (
 		jobs    []job
@@ -1619,7 +1634,7 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		if err == nil {
 			lab, placedNotes, err = corpusRecording(loopFile(j.at), at(j.row[wav]), j.row[wav], family(j.row), velocityWords[velocity(j.row)].vel, j.heard, !placed(j.row), j.score, j.tracks, grid, coder, labels)
 		}
-		j.moved, j.skip = lab.Lag != nil, lab.Skip
+		j.moved, j.skip, j.left = lab.Lag != nil, lab.Skip, lab.Left
 		mu.Lock()
 		if !labels {
 			frames += lab.Frames
@@ -1648,6 +1663,20 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		}
 	}
 	if err := skipLoops(filepath.Join(dir, "skip.txt"), leave); err != nil {
+		return err
+	}
+	// a hit left out of its label keeps a row of left.tsv, for a later measure
+	var cut []string
+	labelled, gone := map[string]bool{}, map[string]int{}
+	for _, j := range jobs {
+		name := filepath.Base(loopFile(j.at))
+		labelled[name] = true
+		for _, h := range j.left {
+			gone[h.Why]++
+			cut = append(cut, fmt.Sprintf("%s\t%s\t%.5f\t%d\t%d\t%d\t%.4f\t%s\t%.3g", name, j.row[wav], h.sec, h.Frame, h.Key, h.Drum, h.Vel, h.Why, h.rise))
+		}
+	}
+	if err := leaveHits(filepath.Join(dir, "left.tsv"), labelled, cut); err != nil {
 		return err
 	}
 	what := fmt.Sprintf("wrote %d recording(s) to %s from %s", len(jobs), dir, list)
@@ -1699,11 +1728,44 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 			what += fmt.Sprintf(" and %d left out in skip.txt: %s", len(leave), strings.Join(by, ", "))
 		}
 	}
+	if len(cut) > 0 {
+		var by []string
+		for _, w := range hitWhy {
+			if gone[w] > 0 {
+				by = append(by, fmt.Sprintf("%d for %s", gone[w], w))
+			}
+		}
+		what += fmt.Sprintf(", %d of their hit(s) left out of the labels in left.tsv: %s", len(cut), strings.Join(by, ", "))
+	}
 	if len(skipped) > 0 {
 		fmt.Fprintf(s.out, "skipped %d whose MIDI has no notes and no kick, snare or hihat, as %s\n", len(skipped), skipped[0])
 	}
 	fmt.Fprintf(s.out, "%s, %d loop(s) and %.1f hours in all; %d listed were not on disk\n", what, loops, float64(frames)*audio.RipFrameSec/3600, missing)
 	return nil
+}
+
+// leftHead is left.tsv's header: a hit left out of its label a row (leftHit)
+const leftHead = "loop\tsource\tsec\tframe\tkey\tdrum\tvel\twhy\trise"
+
+// leaveHits writes a corpus's left.tsv, the rows of the loops labelled replaced
+// by theirs and the others' kept, in their loops' order; a corpus that never
+// left a hit out has none
+func leaveHits(file string, labelled map[string]bool, rows []string) error {
+	held, err := os.ReadFile(file)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if len(held) == 0 && len(rows) == 0 {
+		return nil
+	}
+	for _, r := range strings.Split(strings.TrimSuffix(string(held), "\n"), "\n")[1:] {
+		if loop, _, _ := strings.Cut(r, "\t"); !labelled[loop] {
+			rows = append(rows, r)
+		}
+	}
+	loop := func(r string) string { l, _, _ := strings.Cut(r, "\t"); return l }
+	slices.SortStableFunc(rows, func(a, b string) int { return strings.Compare(loop(a), loop(b)) })
+	return os.WriteFile(file, []byte(strings.Join(append([]string{leftHead}, rows...), "\n")+"\n"), 0o644)
 }
 
 // skipLoops adds the loops named to a corpus's skip.txt, a name a line, those
@@ -1761,12 +1823,14 @@ func corpusRecording(base, wav, source string, family int, vel func(float64) flo
 	lab := corpusLoop{Frames: frames, Source: source, Placed: !struck}
 	hits := append(slices.Clip(score.Hits), score.Struck...)
 	var lag float64
+	var flux []float64
 	if len(score.Notes) == 0 {
 		at := make([]float64, len(hits))
 		for i, h := range hits {
 			at[i] = h.Start
 		}
-		if lag, lab.Skip = placeHits(rise(rows), strikeTimes(at)); lab.Skip == "" {
+		flux = rise(rows)
+		if lag, lab.Skip = placeHits(flux, strikeTimes(at)); lab.Skip == "" {
 			lab.Lag = new(math.Round(lag*1e5)/1e5 + 0)
 		}
 	}
@@ -1787,7 +1851,13 @@ func corpusRecording(base, wav, source string, family int, vel func(float64) flo
 		lab.Events = append(lab.Events, ev)
 	}
 	for _, h := range hits {
-		lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: vel(h.Vel), Wave: -1, Family: familyIndex("drums")})
+		e := corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: vel(h.Vel), Wave: -1, Family: familyIndex("drums")}
+		// a hit put on its sound whose onset reads no rise there draws none
+		if r := onsetRise(flux, h.Start+lag+lagRise); lab.Lag != nil && e.Frame >= 0 && e.Frame < frames && r < hitBound {
+			lab.Left = append(lab.Left, leftHit{Frame: e.Frame, Key: h.Key, Drum: e.Drum, Vel: h.Vel, Why: hitWhy[0], sec: h.Start, rise: r})
+			continue
+		}
+		lab.Events = append(lab.Events, e)
 	}
 	lab.Events = slices.DeleteFunc(lab.Events, func(e corpusEvent) bool { return e.Frame < 0 || e.Frame >= frames })
 	for i, to := range []*[]int{&lab.Beats, &lab.Downbeats} {

@@ -609,6 +609,15 @@ proves wrong or that a document now states, and link the document instead.
   to the measure run `TestARecordedKitsHitsAreMovedOntoTheirSound` with `-v`,
   set the constants it fits and write the documents' figures from its log;
   two thirds of its seconds are the kits' renders, three a kit.
+- A hit that draws no sound is told by the rise its own onset reads
+  (`onsetRise`, [Rip training §3](rip-training.md#a-hit-that-draws-no-sound)).
+  The sharp plane's window is 93 ms, so a hit's rise spreads over about two
+  frames either way: a silent hit nearer a sounding one reads that one's, and
+  a loud snare's tail reads up to 6e-4 seven frames on. A measure over the
+  recording (its median strike, its loudest) parted silence from soft hits no
+  better than the rise in the frames' own units. The fit's silent side has a
+  long tail: 12 recordings read 2.5e-3, 16 and 24 read 1e-3. After a change to
+  the rise or the lag run `TestAHitThatDrawsNoSoundIsToldByItsRise` with `-v`.
 - A set's labels and list are made and checked by `tool/rip-lab`
   ([its README](../tool/rip-lab/README.md)); what its tools found wrong in the
   sets' own files is in [set-issues.md](set-issues.md).

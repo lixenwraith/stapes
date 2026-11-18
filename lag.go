@@ -27,6 +27,28 @@ const (
 // run counts its recordings left out by
 var lagWhy = []string{"hits that draw no onset", "no lag that stands clear", "a lag that drifts"}
 
+// hitBound is the least rise a hit's onset reads where it draws a sound, in the
+// frames' own units, fitted on the engine's kits by
+// TestAHitThatDrawsNoSoundIsToldByItsRise, which names its procedure
+const hitBound = 1e-3
+
+// hitWhy is why a hit of a recording put on its sound is left out of its label,
+// each a reason its loop's left lists and a run counts hits by
+var hitWhy = []string{"no sound"}
+
+// onsetRise is the rise a hit's onset reads at seconds at, where the lag puts
+// its sound's onset: the largest within a frame, as lagOf reads one. A frame's
+// rise is read against the frame before, so the first frame's is unread: a hit
+// on it, or past the last, reads NaN.
+func onsetRise(flux []float64, at float64) float64 {
+	p := at / audio.RipFrameSec
+	a, b := max(int(math.Ceil(p-1)), 1), min(int(math.Floor(p+1)), len(flux)-1)
+	if a > b {
+		return math.NaN()
+	}
+	return slices.Max(flux[a : b+1])
+}
+
 // rise is how far each frame's sharp plane rises over the frame before, summed
 // over its bands, none at the first: the onset flux a hit's lag is read by,
 // as the trainer's datacheck.py reads it

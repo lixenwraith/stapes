@@ -872,9 +872,9 @@ def whose(name: str) -> str:
 
 class Rate:
     """The rate of a pass that carries on (--carry), by the held-out readings, doc/rip-training.md §8: fine while the
-    decoders gain, up by FALL at each gain kept and down by it at each fall back; raised to --lr once the readings
-    without a gain stall it (stall), a raise kept unless it ends over where it began past the noise. A head stalled
-    while the decoders gain is raised alone, its rows' step scaled; a wide pass is a raise as long as the pass."""
+    decoders gain; raised to --lr once the readings without a gain stall it (stall); up by FALL where a raise pays,
+    kept with its end the reading kept where it ends within the noise of where it began, undone and down by FALL where
+    it ends over it. A head stalled while the decoders gain is raised alone; a wide pass is a raise as long as the pass."""
 
     CARRIED = ("fine", "quiet")  # from pass to pass; the rest is a pass's own, which a resumed run reads back
 
@@ -1017,9 +1017,9 @@ class Rate:
         return told + (", too few readings left to raise" if stalled else "") + self.follow_heads(step, w)
 
     def judge(self, s: dict, w: dict) -> str:
-        """a raise or a wide pass at its end. Better than the reading kept, a wide pass's start: a gain kept. Over where
-        it began past the noise, or a head past its own: back to the weights before it, and a raise's fine rate falls.
-        Else kept as no gain, the reading kept moving with the weights"""
+        """a raise or a wide pass at its end. Better than the reading kept, a wide pass's start: a gain kept, the fine
+        rate up by FALL. Over where it began past the noise, or a head past its own: back to the weights before it, a
+        raise's fine rate down by FALL. Else kept as no gain, the reading kept moving with the weights"""
         self.swing = None
         wide = s["kind"] == "wide"
         good, d, noise, fell = better(s["began"] if wide else self.ref, w, self.sum)

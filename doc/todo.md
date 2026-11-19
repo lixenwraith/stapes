@@ -426,6 +426,11 @@ Left open by what landed:
 - A sound's takes are seeded by its name, so the pieces numbered alike share their
   noise and their takes' spread from loop to loop: a seed of the loop's wants audio
   to take one.
+- Until the trainer reads a piece, a corpus rendered with the word gives the
+  three-line drums head no hit, each of its drums a strike of no line: a pass on
+  it teaches that head silence under every drum, `--over` takes each of its loops
+  as having no drums, and `datacheck.py` reads no lag of its strikes. The
+  smallest close meanwhile: the trainer refusing a corpus whose labels hold a kit.
 
 ### Train both models again
 

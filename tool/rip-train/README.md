@@ -143,7 +143,9 @@ hand](#by-hand)), and its steps a second follow what they get.
   line then says, before its parts, the rate since the last reading and what the
   rule did (`; rate 1.0e-04 fine: gained, -0.012 on the reading kept at step 3000,
   noise 0.008`), the validation line the rate, and the pass's last line what it
-  carries on.
+  carries on. Its `decoders` is the sum of the heads audio reads from its model in
+  a pair, which a line before its start names: a notes model's pitch, strike and
+  release, a frame model's onset, drums, beat and downbeat.
   A training loss that keeps falling after the held-out loss turns is a
   model learning the corpus by heart; more loops, not more steps, is the cure.
 - `bench` prints four lines: the analysis and the frame model, on clean and on
@@ -625,7 +627,7 @@ mean under anything a run measured. On a held-out or validation line,
 after the cents:
 
 ```
-families F of N notes (piano F of N, ...), F of the N under another, waves F, genes G off; guitar's N notes, held out, reach R, M at the median: P% of the others' notes pass it, Q% of them right
+families F of N notes (piano F of N, ...), F of the N under another, waves F, genes G off; guitar's N notes, held out, reach R, M at the median: P% of the others' notes pass it, Q% of them right; names L a cell, S by their shares alone, F of the notes with the shares divided out (piano F, ...)
 ```
 
 The share named their family is over the notes with a family to ask, read as
@@ -638,6 +640,11 @@ surest name reaches at the 95th percentile of them, which is the measure, the
 median, how many of the other families' notes pass the measure and how many of
 those are named right: a measure most named notes fall under is a model that
 tells too little apart yet, and its file names few notes rather than wrong ones.
+`names` is the family head's loss as a mean over the cells asked a name, beside
+the loss of the names' shares alone there, each family's share of the cells the
+held-out loops ask: a head at or over it has learned no sound, and the notes
+named right with each name's say taken over its share show one the commonest
+name outvotes.
 
 The trainer's rules for the band frames and their layout, for what plays each
 pitch, for the beat and the bar line, for a list's velocities, for the batches

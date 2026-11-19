@@ -385,6 +385,10 @@ Left open by what landed, each with the option not taken:
 - Generated loops teach the names little past register: they want recorded
   families (NSynth's) and a round's length. Not taken: weighing a name by its
   rarity, which moves the shares the measure reads.
+- The names' prior a line reads against is the held-out loops' shares. A corpus
+  mixed in (`--extra`, `--mix`) moves the shares a head is taught and not that
+  prior. Not taken: the shares of the batches drawn, a count the checkpoint
+  would carry.
 - The lines count a note told on any frame: one never among a frame's twelve
   most salient pitches is in no share, so the count of notes moves a little
   with the notes model's salience from step to step.
@@ -422,6 +426,11 @@ Left open by what landed:
 - A sound's takes are seeded by its name, so the pieces numbered alike share their
   noise and their takes' spread from loop to loop: a seed of the loop's wants audio
   to take one.
+- Until the trainer reads a piece, a corpus rendered with the word gives the
+  three-line drums head no hit, each of its drums a strike of no line: a pass on
+  it teaches that head silence under every drum, `--over` takes each of its loops
+  as having no drums, and `datacheck.py` reads no lag of its strikes. The
+  smallest close meanwhile: the trainer refusing a corpus whose labels hold a kit.
 
 ### Train both models again
 
@@ -444,15 +453,31 @@ those.
 A pass that carries on follows its readings by a rule whose gaps wait on what the
 lab's chain shows ([Rip training §8](rip-training.md#a-pass-that-carries-on)):
 
-- The fine rate only falls: a model that would take a higher one once it settles
-  gets there by raises alone. Read a chain's fine rate pass by pass first.
+- The rule is read on drawn readings alone (`Replay`), no chain's checkpoints
+  through it yet. Read a chain's fine rate and what each raise did, pass by pass,
+  first.
+- A raise's height is `--lr` whatever its raises did: a model that rate hurts is
+  raised, undone and raised again at each stall, its fine rate an octave down
+  each time. Not taken: a height carried beside the fine rate, halved where a
+  raise is undone.
+- A gain kept at a fine rate too small to move a weight is still one: it holds
+  off the stall and the wide pass, and the fine rate rises only where a raise
+  pays.
+- A raise kept without a gain leaves the fine rate where it was, so a model at
+  its rate's floor is not taken down by the raises that do not pay. Not taken:
+  the fall kept where a stall's readings showed no gain at all.
+- A stall's count is read once, at its third reading; the readings after it move
+  no count.
+- A frame model that gives the notes itself, no notes model beside it, carries
+  on under the pair's sum, its pitched heads unread: the smallest close is a
+  word that says it stands alone.
 - A head at its floor, nothing left to learn, still stalls and is raised, which
   costs its rows a raise and a fall back, as the velocity head's over the tests'
   notes. Its floor could be read from its noise against its loss.
 - A raised head moves its rows of the layer that outputs it alone; what it shares
   with the other heads moves at fine.
-- `better` reads each decoders' head at its own noise: past it by chance alone,
-  one of six or eight refuses up to one good raise in six, and a head at its
+- `better` reads each head of the sum at its own noise: past it by chance alone,
+  one of three or four refuses up to one good raise in eleven, and a head at its
   floor drifts past a noise near zero.
 - A pass that carries on, resumed, has no test.
 
@@ -500,11 +525,9 @@ measures it against the offline rip of the same recording, the measurement the
 Android app's microphone mode (vif's todo) is judged by ([Rip design
 §7](rip-design.md#7-plan)). What is left:
 - Tempo, meter and phase are held from the first six bars, so the stream's
-  bar grid is not the offline rip's: on twelve recordings through the models
-  of 9 November, since deleted, it found 95 in a hundred of the offline rip's
-  notes but read its grid on three (five at another tempo, a rubato piano take
-  keeping 5 to 38 in a hundred of the offline downbeats, a song's intro half a
-  bar off). Not measured: `pace`, and a phone.
+  bar grid is not the offline rip's. Not measured since the refresh: how many
+  of the offline rip's notes and bar lines the stream finds, `pace`, and a
+  phone.
 - The wait. The ear waits the frame model's reach, 2.97 s, so the stream's
   frames are the offline rip's; audio's `FrontEnd.Ahead` waits less and no
   verb sets it. Half a second leaves the notes where they are and moves the

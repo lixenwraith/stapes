@@ -10,35 +10,36 @@ A collection under the Creative Commons Attribution 4.0 International licence
 (CC BY 4.0, <https://creativecommons.org/licenses/by/4.0/>, its text in
 [CC-BY-4.0.txt](CC-BY-4.0.txt)) is offered as is, under the licence's
 disclaimer of warranties and limitation of liability (its section 5). What
-stapes changes in each:
-
-- A recording is read into band frames (22,050 Hz, a hop of 256 samples,
-  315 bands in two planes) and cut into training windows, some heard through a
-  simulated speaker, room and phone, some through a codec, some mixed with
-  other windows; its annotations are rewritten as stapes' labels, without
-  their velocities where its list says they tell nothing.
-- A MIDI file's stretches are played on the engine's voices, and the render is
-  read as a recording.
+stapes changes in each: a recording is read into band frames (22,050 Hz, a hop
+of 256 samples, 315 bands in two planes) and cut into training windows, some
+heard through a simulated speaker, room and phone, some through a codec, some
+mixed with other windows; its annotations are rewritten as stapes' labels, a
+velocity left out where its list says the set's tell nothing or measured from
+the recording.
 
 ## The collections
 
-By the [data rule](AGENTS.md#data), E-GMD, VocalSet, NSynth and GuitarSet
-train the models, their held-out parts measuring them, and MusicNet and
-vocadito only measure; [Rip training](doc/rip-training.md) says how the corpora
-take them:
+The [data rule](AGENTS.md#data) lets E-GMD, VocalSet, NSynth and GuitarSet
+train the models, their held-out parts measuring them, while MusicNet and
+vocadito only measure. A round today trains on the engine's own loops, NSynth's
+notes and VocalSet's train split, and picks the step it exports on GuitarSet's
+player 04; E-GMD and GuitarSet's train split are labelled and in no round yet.
+[Rip training](doc/rip-training.md) says how the corpora take them:
 
 - **The Expanded Groove MIDI Dataset (E-GMD)** v1.0.0, by Lee Callender,
   Curtis Hawthorne and Jesse Engel, made available by Google LLC,
   <https://magenta.withgoogle.com/datasets/e-gmd>, CC BY 4.0, introduced in
   "Improving Perceptual Quality of Drum Transcription with the Expanded Groove
   MIDI Dataset" (Callender, Hawthorne and Engel, 2020, arXiv:2004.00188), as
-  its page asks to be cited. Its train split's recordings are laid over loops
-  with no drums or drawn as they stand, their MIDI hits the labels; its test
-  split measures the drums.
+  its page asks to be cited. In no round yet: its recordings are labelled by
+  their MIDI file's hits, each moved onto its sound and one that draws none
+  left out; its train split is to train the drums and its test split to
+  measure them.
 - **VocalSet: A Singing Voice Dataset** v1.2, by Julia Wilkins, Prem
   Seetharaman, Alison Wahl and Bryan Pardo,
-  <https://doi.org/10.5281/zenodo.1442513>, CC BY 4.0. Its recordings train,
-  their notes read from a pitch track of each; five singers are held out to
+  <https://doi.org/10.5281/zenodo.1442513>, CC BY 4.0. Its train split
+  trains: a take's notes are those its exercise sheet writes, placed on the
+  take's sound, each velocity measured from it; five singers are held out to
   measure.
 - **vocadito** v3, by Rachel Bittner, Katherine Pasalo, Juan José Bosch,
   Gabriel Meseguer Brocal and David Rubinstein,
@@ -58,8 +59,9 @@ take them:
   4.0, introduced in "GuitarSet: A Dataset for Guitar Transcription" (ISMIR
   2018), as its record asks to be cited. Its recordings are labelled with
   their notes, pitch contours and beats, each note ending where its string's
-  debleeded hexaphonic recording stops sounding it; players 00 to 03 train, 04
-  validates and 05 tests.
+  debleeded hexaphonic recording stops sounding it; player 04 validates,
+  picking the step a round exports, and 05 tests, while players 00 to 03, the
+  train split, are in no round yet.
 - **MusicNet** v1.0, by John Thickstun, Zaid Harchaoui and Sham M. Kakade,
   <https://doi.org/10.5281/zenodo.5120004>, CC BY 4.0, whose recordings are
   Creative Commons and public-domain performances from the Isabella Stewart

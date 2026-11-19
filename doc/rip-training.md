@@ -1266,6 +1266,14 @@ share of the notes with a family asked whose highest share is theirs, by family,
 that share over the notes another note sounds over, the share of the engine's notes
 whose wave is right, and the genes' miss, an RMS over the 32.
 
+It ends on the names against their prior, each family's share of the cells the held-out
+loops ask a name of (`shares`): the names' loss as a mean over the cells asked, where
+`pitchfamily` among the line's parts is a mean over windows, one that asks no name
+counted as zero; beside it the loss of those shares alone on the same cells, the held-out
+line's their entropy, at or over which a head has learned no sound; and the share of the
+notes named right with each name's say taken over its share, by family, which shows a
+name the commonest outvotes.
+
 `--family-holdout <family>` tells no head that family's name: its notes stay in the run,
 their sound, wave and voice taught, and neither the cells' head nor the frame's is asked
 their family. The line then gives what those notes reach: the highest share any name
@@ -1307,25 +1315,35 @@ takes the weights, the optimizer's state and the rate's, and it reads its held-o
 before a step, the start every later reading is judged against. A checkpoint of weights
 alone, or one whose heads grow, starts one with the optimizer fresh; a run resumed reads
 the rate back whole. The step written is picked as above, and the checkpoint the next
-pass starts from is the last step's. Without the word a pass runs the cosine above, bit
-for bit. The rate (`Rate`) follows the decoders' loss over the held-out windows:
+pass starts from is the last step's. Without the word a pass runs the cosine above, its
+lines and its pick as they were, bit for bit.
+
+Such a pass is read by the heads audio reads from its model in a pair (`READ`), each at
+its weight in `decoders`: a notes model's pitch, strike and release, a frame model's
+onset, drums, beat and downbeat. Their sum is its lines' `decoders`, picks its step
+where the decoders' loss does, and is what the rate (`Rate`) follows over the held-out
+windows; a line before its start names them.
 
 - **Fine**: the rate between raises; `--lr` for a model no pass trained, half of it
   for a checkpoint that carries no rate, else the checkpoint's own, never over `--lr`.
   A reading under the reading kept past its noise is a gain, kept with its weights and
   the optimizer's state. One over it past its noise falls back: training goes on from
   the kept weights and state, and fine falls.
-- **Raised**: `STALL` readings without a gain raise the rate to `--lr`, down half a
-  cosine to fine over `STALL` readings. The raise paid when its last reading is better
-  than the one kept, which it then replaces. One that did not pay falls fine, and when
-  it ended worse than where it began, its decoders' loss over that reading's by any
-  amount or a head past its noise, training goes on from the weights and state before
-  it. A stall at fine as high as `--lr` falls fine instead, and one with fewer than
+- **Raised**: readings without a gain, as many as a stall counts (below), raise the
+  rate to `--lr`, down half a cosine to fine over `STALL` readings, and the raise is
+  judged at its last. Better than the reading kept, it paid: its end is kept as a gain,
+  and fine rises. Over where it began past the noise between the two, or a head past
+  its own, it is undone: training goes on from the weights and state before it, and
+  fine falls. Else it is kept as no gain, fine as it was, and its end is the reading
+  kept from then on, so the readings after it are told against the weights they go on
+  from. A stall at fine as high as `--lr` falls fine instead, and one with fewer than
   `STALL` readings left in the pass raises nothing.
 - **Wide** (`--wide n`): after `n` passes in a row without a gain kept, `STALL` by
   default and counted in the checkpoint, or this pass with `--wide 0`, a pass runs from
-  `--lr` down half a cosine to fine over all its steps and ends on its end if that is
-  better than its start, else on the start's weights and state. It starts the count again.
+  `--lr` down half a cosine to fine over all its steps and is judged as a raise is,
+  against its start: it ends on its end, a gain where that is better, and on the
+  start's weights and state only where its end is over them past the noise. It starts
+  the count again.
 - **A head** asked on the held-out windows, with rows of its own in the layer that
   outputs it (`rows`), is stalled when its own loss goes `STALL` readings without a gain
   past its own noise while the decoders' loss has not stalled, fine is under `--lr` and
@@ -1333,18 +1351,21 @@ for bit. The rate (`Rate`) follows the decoders' loss over the held-out windows:
   what the rate leaves alone, so after each step their move is scaled by a raise's rate
   over fine (`scale`), and every other weight moves at fine. At the raise's end they and
   their optimizer's state go back to before it where the head's loss ended over where
-  it began.
-- **Better** (`better`): the decoders' loss under the other reading's past its noise,
-  and no decoders' head over its own past that head's noise, so no gain in the sum is
-  bought with a head falling. A raise's end and a wide pass's are judged so; a gain at
-  fine by the sum alone, as a run picks its step, since a head at its floor drifts
-  past a noise near zero, as the drums do over loops without them.
+  it began past its noise; kept without a gain, they take the head's reading kept with
+  them.
+- **Better** (`better`): the sum under the other reading's past its noise, and none of
+  its heads over its own past that head's noise, so no gain in the sum is bought with a
+  head falling. A raise's end and a wide pass's are judged so; a gain at fine by the
+  sum alone, as a run picks its step, since a head at its floor drifts past a noise
+  near zero, as the drums do over loops without them.
 - **The lines**: each held-out line after the start says the rate since the last
   reading, `fine`, `raised` or `wide`, the difference on the reading kept and its
-  noise, and what the rule did (`gained`, `3 without a gain: raised to 3.0e-04`, `not
-  paid ...: fallen back to step 4000's weights, fine 5.0e-05`); a raised head's rows
-  likewise. The validation line repeats the rate, and the pass's last line says what
-  it carries on: the fine rate and the passes in a row without a gain kept.
+  noise, and what the rule did (`gained`, `3 without a gain of the 9 the gain they
+  show takes`, `3 without a gain: raised to 1.0e-04`, `not paid ..., within its noise:
+  kept, the reading kept now this one`, `not paid ...: fallen back to step 4000's
+  weights, fine 2.5e-05`); a raised head's rows likewise. The validation line repeats
+  the rate, and the pass's last line says what it carries on: the fine rate and the
+  passes in a row without a gain kept.
 
 Each constant comes from a procedure, and each procedure has its test (`TheRate`):
 
@@ -1352,14 +1373,30 @@ Each constant comes from a procedure, and each procedure has its test (`TheRate`
   differences, which counts past `NOISE` standard errors of it, a loop's windows one
   draw since they share its sound. By chance alone it passes one way `ALPHA` of the
   time, 2.3%; counted window by window it would pass over three times as often.
-- **A stall** (`STALL` 3): the fewest readings without a gain that a figure still
-  gaining one noise a reading, the least a reading can tell, goes through less often
-  than `ALPHA` from a reading kept: two do 3.0% of the time, three under 0.01%.
-- **The rise**: to `--lr`, the rate a pass is given, which trains a fresh model;
+- **A stall** (`STALL` 3, `stall`): a figure gaining g noises a reading has gained two
+  after 2/g readings, one to pass the noise and one more against chance, and ⌊2/g⌋ + 1
+  is its count. `STALL` is that at one noise a reading, the least a reading can tell:
+  from a reading kept, two readings go without a gain 3.0% of the time, three under
+  0.01%. A figure gaining less shows its pace: its first `STALL` readings without a
+  gain read d under the reading kept, in a noise n, so its count is ⌊2·`STALL`·n/d⌋ + 1,
+  and `STALL` where they show none. Each reading off by chance, a still-gaining figure
+  is stalled at `STALL` and at that count in 19% and 0.3% of its stretches at half a
+  noise a reading, 51% and 5% at a third, 66% and 14% at a quarter; one gaining
+  nothing, in 94% and 80%, the rest a gain by chance.
+- **The raise**: to `--lr`, the rate a pass is given, which trains a fresh model;
   nothing in the rule is set to the lab's passes.
-- **The fall** (`FALL` 0.5): fine halves at each fall, a search by octaves: where a rate
-  holds as long as it is small enough, fine lands within a factor of two under the
-  highest that holds, in as many falls as that lies octaves under `--lr`.
+- **The fall and the rise** (`FALL` 0.5): fine halves at each fall and doubles where a
+  raise or a wide pass pays, a search by octaves either way: where a rate holds as long
+  as it is small enough, fine lands within a factor of two under the highest that
+  holds, in as many falls as that lies octaves under `--lr`, and a rate found too low
+  comes back the way it went. A raise kept without a gain moves neither: it says
+  nothing of the fine rate.
+- **The whole**, replayed with no model on drawn readings (`Replay`), a reading's noise
+  growing with how far the weights moved: over chains of four passes of twelve readings
+  from a checkpoint with no rate, a figure gaining a quarter of a reading's noise at
+  every reading keeps its fine rate, at or over where it began in three chains of four
+  and under a step in twenty rolled back; one gaining nothing ends within an octave
+  under it at the median, under a step in ten rolled back.
 
 ## 9. The weight file
 

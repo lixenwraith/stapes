@@ -165,6 +165,30 @@ class WhatPlaysEachPitch(unittest.TestCase):
         self.assertAlmostEqual(median, float(np.median(shares)), places=3)
         self.assertEqual((round(past, 6), right), (round(2 / 3, 6), 0.5))  # the voice and the bass, named wrong, are surer than they reach
 
+    def test_a_line_reads_the_names_loss_a_cell_beside_their_shares_and_the_notes_with_the_shares_divided_out(self):
+        """Under the names' prior, each family's share of the cells fixed windows ask a name of, a line gives the names'
+        loss as a mean over the cells asked, a window that asks none adding nothing, beside the loss of the shares
+        alone, their entropy on the cells they were counted on; and the share of the notes named right with each
+        name's say over its share, where the commoner name outvoted a note's own."""
+        frames = 64
+        model = Said(frames)
+        model.say(0, 30, 72, 9.0, "piano")
+        model.say(0, 10, 60, 9.0)  # a guitar's note the cells give 0.73 to the piano and 0.27 to the guitar
+        for family, score in (("piano", 1.0), ("guitar", 0.0)):
+            model.y[0, 0:10, CFG.slice("pitchfamily")][:, F[family] * ripmodels.PITCHES + 60 - LOW] = score
+        recorded = label([note(0, 30, 72, "piano"), note(0, 10, 60, "guitar")], frames)
+        engine = label([note(0, 30, 50, "piano", voice(0.2), 4)], frames)  # asks no name
+        frs, tgs, notes = train.validation([(Frames(frames), recorded), (Frames(frames), engine)], frames, 4)
+        prior = train.shares(tgs)
+        self.assertEqual([round(float(x), 6) for x in prior[[F["piano"], F["guitar"]]]], [0.75, 0.25])
+        heard = train.evaluate(model, frs, tgs, "cpu", 24, notes, prior=prior)
+        v, guitar = heard["voices"], -math.log(1 / (1 + math.e))
+        self.assertAlmostEqual(v["cells"][0], guitar / 4, places=4)
+        self.assertAlmostEqual(heard["pitchfamily"], guitar / 8, places=4)  # the loss among the parts, a mean over windows
+        self.assertAlmostEqual(v["cells"][1], -(0.75 * math.log(0.75) + 0.25 * math.log(0.25)), places=6)
+        self.assertEqual((v["families"], v["by"]), ((0.5, 2), [("piano", 1.0, 1), ("guitar", 0.0, 1)]))
+        self.assertEqual(v["even"], (1.0, [("piano", 1.0), ("guitar", 1.0)]))
+
     def test_the_weight_file_carries_the_heads_and_the_measure(self):
         """The file names the heads of what plays each pitch after the cents, a value a pitch each, states the layout
         of the frames it hears as a constant after the heads, and carries the measure as a frame head whose weights
@@ -637,9 +661,80 @@ def line(said: str, step: int) -> str:
     return next(x for x in said.splitlines() if x.startswith(f"step {step} held-out "))
 
 
+def stalls(gain, first, due, trials=20000, readings=60) -> float:
+    """how often a figure gaining `gain` noises a reading stalls in a stretch from a reading kept: each reading off by
+    chance, its difference from another of one standard error, a gain counted past the noise, and a stall once the
+    readings without one reach due(d), d what the first `first` of them read on the reading kept"""
+    rng = np.random.default_rng(2)
+    y = -train.NOISE * gain * np.arange(readings) + rng.normal(0, 1 / math.sqrt(2), (trials, readings))
+    ref, count, need, stretches, stalled = y[:, 0].copy(), np.zeros(trials, int), np.full(trials, readings), 0, 0
+    for t in range(1, readings):
+        gained = ref - y[:, t] > train.NOISE
+        count = np.where(gained, 0, count + 1)
+        read = count == first
+        need[read] = [due(d) for d in (y[:, t] - ref)[read]]
+        stall = count >= need
+        stretches, stalled = stretches + int((gained | stall).sum()), stalled + int(stall.sum())
+        ref, count, need = np.where(gained | stall, y[:, t], ref), np.where(stall, 0, count), np.where(gained | stall, readings, need)
+    return stalled / stretches
+
+
+class Replay:
+    """The rate's rule replayed on readings and no model. Its weights are each loop's loss a head a notes model's pass
+    is read by; a step moves them by its rate over --lr, down by a gain and about by a jitter (move), or a test lays
+    them (put). Rate reads them, keeps them and puts them back as a model's; the optimizer holds no state."""
+
+    LOOPS, HEADS = 100, train.READ[True]
+
+    def __init__(self, fine=None, readings=12, top=1e-4, seed=0, carried=None, wide=None):
+        self.rng = np.random.default_rng(seed)
+        self.x = {h: torch.zeros(self.LOOPS, dtype=torch.float64) for h in self.HEADS}
+        self.state = {}
+        with mock.patch.object(train, "rows", lambda model: {}):  # a latent has no head's rows to raise alone
+            self.rate = train.Rate(self, self, top, readings, 1, train.STALL if wide is None else wide, tuple((h, 1.0) for h in self.HEADS))
+        self.rate.load(carried)
+        self.rate.fine = self.rate.fine if fine is None else fine
+        self.step, self.rolled = 0, 0
+        self.said = [self.read()]
+
+    def state_dict(self) -> dict:
+        return self.x
+
+    def load_state_dict(self, state) -> None:
+        self.x = {h: v.clone() for h, v in state.items()}
+
+    def read(self) -> str:
+        """the weights read at this step, as a held-out line's rate says them, and what the reading called for done"""
+        w = {h: v.clone() for h, v in self.x.items()}
+        line = self.rate.read(self.step, {**w, "decoders": sum(w.values()), "loop": torch.arange(self.LOOPS)})
+        self.rolled += self.step - self.rate.undo[2] if self.rate.undo else 0
+        self.rate.settle()
+        return line
+
+    def put(self, level: float, at: float) -> str:
+        """the next reading, laid: its sum level over the first's, and |at - another's at| the noise between the two"""
+        spread = at * math.sqrt(self.LOOPS - 1) / train.NOISE * torch.tensor([1.0, -1.0], dtype=torch.float64).repeat(self.LOOPS // 2)
+        self.x = {h: (level + spread) / len(self.HEADS) for h in self.HEADS}
+        self.step += 1
+        self.said.append(self.read())
+        return self.said[-1]
+
+    def move(self, gain: float) -> str:
+        """the next reading, drawn: a step at the rule's rate, a fine one gaining `gain` of its reading's noise"""
+        r = self.rate.at(self.step) / self.rate.top
+        g = gain * train.NOISE / math.sqrt(len(self.HEADS) * self.LOOPS)
+        self.x = {h: v - g * r + r * torch.from_numpy(self.rng.normal(0, 1, self.LOOPS)) for h, v in self.x.items()}
+        self.step += 1
+        self.said.append(self.read())
+        return self.said[-1]
+
+    def carried(self) -> dict:
+        return {k: getattr(self.rate, k) for k in self.rate.CARRIED}
+
+
 class TheRate(unittest.TestCase):
     """The rate of a pass that carries on, doc/rip-training.md §8: its constants by their procedures, and its rules
-    on corpora of one kind the tests render, from a pass that began a chain."""
+    on drawn and laid readings (Replay) and on corpora of one kind the tests render, from a pass that began a chain."""
 
     @classmethod
     def setUpClass(cls):
@@ -669,23 +764,97 @@ class TheRate(unittest.TestCase):
 
     def test_a_stall_is_the_fewest_readings_a_figure_gaining_one_noise_a_reading_rarely_goes_without_a_gain(self):
         """STALL is the fewest readings without a gain that a figure still gaining one noise a reading, the least a
-        reading tells, goes through less often than ALPHA in a stretch from a reading kept: each reading off by chance,
-        its difference from another of one standard error, and a gain counted past the noise. One fewer stalls it more
-        often than ALPHA."""
-        rng = np.random.default_rng(2)
+        reading tells, goes through less often than ALPHA in a stretch from a reading kept (stalls). One fewer stalls
+        it more often than ALPHA."""
+        self.assertGreater(stalls(1, train.STALL - 1, lambda d: train.STALL - 1), train.ALPHA)
+        self.assertLess(stalls(1, train.STALL, lambda d: train.STALL), train.ALPHA)
 
-        def stalls(n, trials=20000, readings=60):
-            y = -train.NOISE * np.arange(readings) + rng.normal(0, 1 / math.sqrt(2), (trials, readings))
-            ref, count, stretches, stalled = y[:, 0].copy(), np.zeros(trials, int), 0, 0
-            for t in range(1, readings):
-                gain = ref - y[:, t] > train.NOISE
-                count = np.where(gain, 0, count + 1)
-                stall = count >= n
-                stretches, stalled = stretches + int((gain | stall).sum()), stalled + int(stall.sum())
-                ref, count = np.where(gain | stall, y[:, t], ref), np.where(stall, 0, count)
-            return stalled / stretches
-        self.assertGreater(stalls(train.STALL - 1), train.ALPHA)
-        self.assertLess(stalls(train.STALL), train.ALPHA)
+    def test_a_stalls_count_is_what_the_gain_its_readings_show_takes_to_gain_two_noises(self):
+        """A stall's count is read from its first STALL readings without a gain: STALL where they show none on the
+        reading kept, else as many as their pace takes to gain two noises (stall). A figure gaining a half of a noise a
+        reading stalls at STALL more often than ALPHA and at that count less often; and the rate raises at the third
+        reading of three that show no gain, and at the thirteenth where the third shows 0.14 under a noise of 0.3."""
+        self.assertEqual([train.stall(d, 1.0) for d in (0.5, 0.0, -0.9, -0.45, -0.22)], [3, 3, 7, 14, 28])
+        self.assertGreater(stalls(0.5, train.STALL, lambda d: train.STALL), train.ALPHA)
+        self.assertLess(stalls(0.5, train.STALL, lambda d: train.stall(d, train.NOISE)), train.ALPHA)
+        none, some = Replay(readings=20), Replay(readings=20)
+        for k in (1, 2, 3):
+            none.put(0.0, 0.1 * k)
+        for k in range(1, 14):
+            some.put(-0.14 * min(k, 3) / 3, 0.1 * min(k, 3))
+        self.assertIn("3 without a gain: raised to 1.0e-04, down to fine over 3 readings", none.said[3])
+        self.assertIn("3 without a gain of the 13 the gain they show takes", some.said[3])
+        self.assertIn("13 without a gain: raised to 1.0e-04, down to fine over 3 readings", some.said[13])
+
+    def raised(self, level, at, fine=None) -> Replay:
+        """a pass raised at its third reading, three that show no gain, the third 0.3 noises from the reading kept, and
+        its raise's end laid at level over that reading and `at` noises from it"""
+        r = Replay(fine)
+        for a in (0.1, 0.2, 0.3, 0.5, 0.9):
+            r.put(0.0, a)
+        r.put(level, at)
+        return r
+
+    def test_a_raise_kept_moves_the_reading_kept_with_the_weights(self):
+        """A raise that does not pay and ends within the noise of where it began is kept, and its end is then the
+        reading kept, with its weights: the next fine reading is told against it, a gain past the noise between the
+        two, where against the reading kept before the raise the raise's whole way lay in its noise."""
+        r = self.raised(-0.05, 1.3)
+        self.assertIn("not paid, -0.050 on the reading kept at step 0, noise 1.300, and -0.050 on where it began, noise 1.000, "
+                      "within its noise: kept, the reading kept now this one", r.said[6])
+        self.assertIn("gained, -0.010 on the reading kept at step 6, noise 0.005", r.put(-0.06, 1.305))
+
+    def test_a_raise_goes_back_only_where_it_ends_over_where_it_began_past_the_noise(self):
+        """A raise that ends over where it began within the noise between the two is kept, its fine rate as it was; one
+        that ends over it past that noise goes back to the weights before it, its steps lost, and its fine rate falls
+        by FALL."""
+        kept, back = self.raised(0.9, 1.3), self.raised(1.1, 1.3)
+        self.assertIn("+0.900 on where it began, noise 1.000, within its noise: kept", kept.said[6])
+        self.assertEqual((kept.rate.fine, kept.rolled, round(float(sum(kept.x.values()).mean()), 9)), (5e-5, 0, 0.9))
+        self.assertIn("+1.100 on where it began, noise 1.000, over past their own noise: pitch, strike, release: "
+                      "fallen back to step 3's weights, fine 2.5e-05", back.said[6])
+        self.assertEqual((back.rate.fine, back.rolled, round(float(sum(back.x.values()).mean()), 9)), (2.5e-5, 3, 0.0))
+
+    def test_a_raise_that_pays_raises_the_fine_rate_and_no_further_than_lr(self):
+        """The fine rate rises by FALL where a raise pays, its end under the reading kept past the noise, and never
+        over --lr; a gain at the fine rate leaves it where it is."""
+        paid, high = self.raised(-1.5, 1.3, 2e-5), self.raised(-1.5, 1.3, 8e-5)
+        self.assertIn("paid, -1.500 on the reading kept at step 0, noise 1.300: kept, fine risen to 4.0e-05", paid.said[6])
+        self.assertIn("gained, -0.500 on the reading kept at step 6, noise 0.100", paid.put(-2.0, 1.4))
+        self.assertEqual((paid.rate.fine, high.rate.fine), (4e-5, 1e-4))
+
+    def test_a_figure_gaining_under_its_noise_keeps_its_fine_rate_from_pass_to_pass(self):
+        """Replayed over forty chains of four passes from a checkpoint that carries no rate, twelve drawn readings a
+        pass: a figure gaining a quarter of a reading's noise at every reading ends with its fine rate at or over where
+        it began in three chains of four and within an octave under it in nine of ten, under a step in twenty rolled
+        back; one gaining nothing ends within an octave under it at the median, under a step in ten rolled back."""
+        for gain, most in ((0.25, 0.05), (0.0, 0.1)):
+            fines, rolled = [], 0
+            for chain in range(40):
+                carried = None
+                for k in range(4):
+                    r = Replay(seed=100 * chain + k, carried=carried)
+                    for _ in range(12):
+                        r.move(gain)
+                    carried, rolled = r.carried(), rolled + r.rolled
+                fines.append(carried["fine"])
+            with self.subTest(gain=gain):
+                self.assertGreaterEqual(float(np.quantile(fines, 0.1 if gain else 0.5)), 2.5e-5)
+                self.assertGreaterEqual(float(np.mean(np.array(fines) >= 5e-5)), 0.75 if gain else 0.0)
+                self.assertLess(rolled / (40 * 4 * 12), most)
+
+    def test_a_pass_that_carries_on_is_read_by_the_heads_audio_reads_from_its_model(self):
+        """A pass that carries on sums, as its decoders' loss, the heads audio reads from its model in a pair, which
+        pick its step and move its rate: a frame model's onset, drums, beat and bar line, here a corpus that lists no
+        beat, a notes model's pitch, strike and release. A run without the word sums every decoders' head."""
+        flags = ("--corpus", self.at("kind1"), "--out", self.at("read.bin"))
+        said, frame = passed(*flags, "--init", self.at("first.pt"), "--carry", steps=20)
+        _, plain = passed(*flags, "--init", self.at("first.pt"), steps=20)
+        _, notes = passed(*flags, "--pitchnet", "--cell", "4", "--carry", steps=20)
+        self.assertIn("read by its onset, drums, beat, downbeat, the heads audio reads from a frame model in a pair", said)
+        self.assertTrue(torch.equal(frame[0]["decoders"], frame[0]["onset"] + frame[0]["drums"]))
+        self.assertTrue(torch.equal(plain[0]["decoders"], sum(f * plain[0][h] for h, f in train.DECODERS if h in plain[0])))
+        self.assertTrue(torch.equal(notes[0]["decoders"], notes[0]["pitch"] + notes[0]["strike"] + notes[0]["release"]))
 
     def test_a_gain_bought_with_a_decoders_head_falling_past_its_noise_is_no_better(self):
         """A reading is better than another when the decoders' loss is under the other's past its noise and no
@@ -822,9 +991,9 @@ class TheRate(unittest.TestCase):
                 _, noise = train.apart(moved[k][h], moved[b][h], moved[k]["loop"])
                 self.assertLessEqual(abs(apart), noise)
 
-    def test_a_wide_pass_that_finds_nothing_better_ends_on_its_start(self):
+    def test_a_wide_pass_that_ends_over_its_start_past_the_noise_ends_on_its_start(self):
         """A pass that swings wide reads its start, then runs from --lr down to the fine rate over the pass; at its end
-        nothing better than its start, it ends on the start: its checkpoint holds the start's weights and optimizer
+        over its start past the noise, it ends on the start: its checkpoint holds the start's weights and optimizer
         state bit for bit, and the count of passes without a gain kept starts again. --wide 0 makes this pass wide;
         without the word a pass is wide after STALL passes in a row without a gain kept."""
         first = torch.load(self.at("first.pt"))
@@ -832,7 +1001,7 @@ class TheRate(unittest.TestCase):
         said, _ = passed(*flags, "--checkpoint", self.at("wide.pt"), "--wide", "0", "--lr", "0.5", steps=30)
         wide = torch.load(self.at("wide.pt"))
         self.assertIn("rate 5.0e-01 wide, down to fine", line(said, 0))
-        self.assertRegex(line(said, 30), r"wide: reading 3 of 3, nothing better, .*: ending on the start \(onset ")
+        self.assertRegex(line(said, 30), r"wide: reading 3 of 3, worse, \+[0-9.]+ on the start, noise [0-9.]+.*: ending on the start \(onset ")
         self.assertIn("best held-out decoders' loss", said)
         self.assertIn("at step 0; exporting that", said)
         for k, v in first["model"].items():

@@ -754,7 +754,8 @@ proves wrong or that a document now states, and link the document instead.
   bars, not by its loss on recordings, which holds its onset head's, a head Go
   never reads from it. One instrument's score can trade against another's, so
   validate on every kind of recording at once. A frame model is still picked by
-  the decoders' loss there, which can rise as its onset head grows surer while
+  the decoders' loss there, in a pass that carries on the sum of the heads audio
+  reads from it, which can rise as its onset head grows surer while
   its beats' F1 rises. Read a line at its last step, each head by its own score
   on the recordings, not by one sum. A round's `.bin` is its pick's export: a
   line's file is its `.last.pt` through `average.py --out`.
@@ -879,3 +880,20 @@ proves wrong or that a document now states, and link the document instead.
   carries on at half `--lr` can read worse at its first reading on a toy corpus:
   the fall back halves the fine rate until readings hold, and the next pass carries
   the rate found.
+- **A reading's paired noise is how far the weights moved.** Two readings a raise
+  apart differ by the raise's whole way, so a reading kept left behind a kept
+  raise registers no later gain: the reading kept moves with the weights.
+- **The rate's rule is read with no model first** (`test_train.Replay`): each
+  loop's loss a head, moved by the rate, down by a gain and about by a jitter,
+  or laid by a test to a level and a noise. Chains of passes on it say what the
+  rule does with such readings in a second, and nothing of what a chain's
+  readings are: replay the lab's checkpoints before trusting a change.
+- **A line's masked losses are means over windows, an empty window a zero.**
+  `pitchfamily`, `pitchwave`, `wave`, `velocity`, `family`, `cents`, `beat`: a
+  window that asks nothing of a head reads 0 and counts, so the line's figure
+  sits under the loss a cell by the share of such windows. The names' is printed
+  a cell apart (`names`); pool any other the same way before holding it to a
+  bound.
+- **No decoder reads the voicing head**, from either model: audio's `read` fills
+  no plane from it, and `RipParams.Voicing` is a bar on the salience. It weighs
+  a half in `DECODERS` all the same, and is in no pass's sum that carries on.

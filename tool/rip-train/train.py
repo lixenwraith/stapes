@@ -576,11 +576,12 @@ def said(y: torch.Tensor, cfg):
     return v, torch.sigmoid(p) * (p >= p.topk(VOICE_CELLS, -1).values[..., -1:])
 
 
-def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
+def noted(heard: torch.Tensor, notes: torch.Tensor, prior: torch.Tensor | None = None) -> dict:
     """the notes of fixed windows as they were heard against their labels: the share named their family, over
-    all, by family and over those under another note; the share given their wave; their genes' RMS miss; and of
+    all, by family and over those under another note; the share given their wave; their genes' RMS miss; of
     a family held out, the share its notes' surest name reaches, SURE of them under it and at the median, with
-    the share of the other notes past it and of those the share named right"""
+    the share of the other notes past it and of those the share named right; and under prior, each family's share
+    of the cells asked a name, the share named right with each name's say over its share there, over all and by family"""
     name, wave, voice = notes
     names, waves = ripmodels.NAMES, ripmodels.WAVES
     w = heard[:, -2]
@@ -593,6 +594,10 @@ def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
     out = {"families": rate(asked), "by": [(ripmodels.FAMILIES[k], *rate(asked & (name == k))) for k in range(names) if (asked & (name == k)).any()],
            "under": rate(asked & (heard[:, -1] > 0.5 * w)), "waves": (to == wave)[(w > 0) & (wave >= 0)].float().mean().item(),
            "genes": miss.mean(1).sqrt().mean().item()}
+    if prior is not None:  # a name the prior never holds is given to no note
+        even = torch.where(prior > 0, share / prior.float().clamp(min=1e-12), share.new_zeros(())).argmax(1) == name
+        got = lambda at: even[at].float().mean().item()
+        out["even"] = (got(asked), [(ripmodels.FAMILIES[k], got(asked & (name == k))) for k in range(names) if (asked & (name == k)).any()])
     held = (w > 0) & (name == FAMILY_HOLDOUT) if FAMILY_HOLDOUT is not None else torch.zeros(0, dtype=torch.bool)
     if held.any():
         reach = top[held].quantile(SURE).item()
@@ -600,12 +605,21 @@ def noted(heard: torch.Tensor, notes: torch.Tensor) -> dict:
     return out
 
 
-def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None) -> dict:
-    """the mean of the losses over fixed windows, the model's weights untouched, and in windows each window's with its
-    loop, the rate's reading (Rate); with low, the first pitch over the strikes' low bar, the strikes' F1 and what a
-    cents head reads, by kind the median miss, the median error stated and the share within it; with notes, the
-    windows' (validation), what a model that says what plays each pitch heard them as (noted); and of a frame model
-    with the heads the beats' and the bar lines' F1 at their peaks, None and no loss of theirs where no frame is asked"""
+def shares(tgs) -> torch.Tensor | None:
+    """the share each family holds of the cells fixed windows ask a name of, the names' prior; None where none is asked"""
+    n = torch.zeros(ripmodels.NAMES, dtype=torch.float64)
+    for t in tgs:
+        n += torch.bincount(t["pitchfamily"][(t["pitchfamily"] >= 0) & (t["valid"][..., None] > 0)].long(), minlength=ripmodels.NAMES)
+    return n / n.sum() if n.sum() else None
+
+
+def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None,
+             heads: tuple | None = None, prior: torch.Tensor | None = None) -> dict:
+    """the mean of the losses over fixed windows, the weights untouched, and in windows each window's with its loop and
+    the sum of heads, the decoders' unless given, the rate's reading (Rate); with low, the first pitch over the strikes'
+    low bar, their F1 and a cents head's reads by kind, the median miss, error stated and share within it; with notes,
+    the windows' (validation), what plays each as heard (noted), under prior the names' loss a cell beside the prior's;
+    of a frame model with the heads the beats' and bar lines' F1 at their peaks, None and no loss where no frame is asked"""
     model.eval()
     sums: dict = {}
     each, loops = {}, []
@@ -617,6 +631,7 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
     voiced = notes is not None and notes.shape[1] > 0 and "pitchfamily" in dict(model.cfg.outputs)
     # a note's cells' say summed by their weights, then the weights and those of the cells under a higher one sounding
     heard = torch.zeros(notes.shape[1] if voiced else 0, ripmodels.NAMES + ripmodels.WAVES + ripmodels.VOICE_GENES + 2, device=device)
+    named = torch.zeros(1 + ripmodels.NAMES, dtype=torch.float64, device=device)  # the names' loss summed over its cells, and the cells by name
     with torch.no_grad():
         for fr, t in zip(frs, tgs):
             fr, t = fr.to(device), {k: v.to(device) for k, v in t.items()}
@@ -653,10 +668,16 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
                     under = cell < (t["pitch"] * cell).amax(-1, keepdim=True)
                     w = w[at]
                     heard.index_add_(0, t["note"][at].long(), torch.cat([v[at] * w[:, None], w[:, None], (w * under[at])[:, None]], 1))
+                    at = (t["pitchfamily"] >= 0) & (t["valid"][..., None] > 0)
+                    named[0] += F.cross_entropy(cells(out, model.cfg, "pitchfamily")[at], t["pitchfamily"][at].long(), reduction="sum")
+                    named[1:] += torch.bincount(t["pitchfamily"][at].long(), minlength=ripmodels.NAMES)
     model.train()
     out = {k: v / max(len(frs), 1) for k, v in sums.items()}
     if voiced:
-        out["voices"] = noted(heard.cpu(), notes)
+        out["voices"] = noted(heard.cpu(), notes, prior)
+        if prior is not None and named[1:].sum() > 0:  # a mean over the cells, where the loss above is one over windows, an empty one nothing
+            count = named[1:].cpu()
+            out["voices"]["cells"] = (named[0].item() / count.sum().item(), -(count[count > 0] * prior[count > 0].log()).sum().item() / count.sum().item())
     if read and sum(r.shape[1] for r in read):
         miss, stated, kind = torch.cat(read, 1)
         out["read"] = [(name, miss[at].median().item(), stated[at].median().item(),
@@ -670,7 +691,7 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
             out.pop("beat", None), out.pop("downbeat", None)
     w = {k: torch.tensor(x, dtype=torch.float64) for k, x in each.items() if k in out}
     if w:
-        w["decoders"], w["loop"] = sum(f * w[k] for k, f in DECODERS if k in w), torch.tensor(loops)
+        w["decoders"], w["loop"] = sum(f * w[k] for k, f in heads or DECODERS if k in w), torch.tensor(loops)
         out["windows"] = w
     return out
 
@@ -687,10 +708,12 @@ PLAYS = 0.25  # what plays a cell against what plays the frame: its heads teach 
 # The rate a pass that carries on follows, doc/rip-training.md §8, each constant by the procedure written there
 NOISE = 2.0  # a difference between two readings counts past this many standard errors of it
 ALPHA = 0.5 * math.erfc(NOISE / math.sqrt(2))  # the share of differences by chance alone past the noise, one way
-STALL = 3  # readings without a gain that stall a figure, and passes in a row without one before a wide pass
-FALL = 0.5  # what a fall back leaves of the fine rate
+STALL = 3  # readings without a gain that stall a figure showing none, and passes in a row without one before a wide pass
+FALL = 0.5  # what a fall back leaves of the fine rate, and a raise that pays gives back
 # the heads the decoders read, and the weight of each in the decoders' loss
 DECODERS = (("onset", 1.0), ("drums", 1.0), ("pitch", 1.0), ("voicing", 0.5), ("strike", 1.0), ("release", 1.0), ("beat", 1.0), ("downbeat", 1.0))
+# of those, the heads audio reads from each model of a pair, a notes model's and the frame model's beside it: a pass that carries on is read by its model's
+READ = {True: ("pitch", "strike", "release"), False: ("onset", "drums", "beat", "downbeat")}
 
 
 def apart(new, old, loops) -> tuple:
@@ -704,12 +727,19 @@ def apart(new, old, loops) -> tuple:
     return mean, NOISE * math.sqrt(len(n) / (len(n) - 1) * ((per - n * mean) ** 2).sum()) / len(d)
 
 
-def better(old: dict, new: dict) -> tuple:
+def stall(d: float, noise: float) -> int:
+    """the readings without a gain that stall a figure whose first STALL read d on the reading kept: STALL where they
+    show no gain, else as many as a figure gaining at their pace takes to gain two noises, one to pass and one more
+    against chance, as STALL is at a noise a reading"""
+    return STALL if d >= 0 else int(min(2 * STALL * noise / -d, 1e9)) + 1
+
+
+def better(old: dict, new: dict, heads=DECODERS) -> tuple:
     """whether reading new is better than old, each window's figures: the decoders' loss under old's past its noise,
-    and no decoders' head over its own past its noise; with how far the loss is over old's, its noise, and the heads
+    and none of its heads over its own past its noise; with how far the loss is over old's, its noise, and the heads
     past theirs"""
     d, noise = apart(new["decoders"], old["decoders"], new["loop"])
-    fell = [h for h, _ in DECODERS if h in new and h in old and np.greater(*apart(new[h], old[h], new["loop"]))]
+    fell = [h for h, _ in heads if h in new and h in old and np.greater(*apart(new[h], old[h], new["loop"]))]
     return d < -noise and not fell, d, noise, fell
 
 
@@ -842,22 +872,22 @@ def whose(name: str) -> str:
 
 class Rate:
     """The rate of a pass that carries on (--carry), by the held-out readings, doc/rip-training.md §8: fine while the
-    decoders gain; raised to --lr after STALL readings without a gain; fallen back, at FALL of the fine rate, when a
-    raise has not paid or a reading is worse than the one kept past its noise. A head stalled while the decoders gain
-    is raised alone, its rows' step scaled; a wide pass is a raise as long as the pass, judged at its end."""
+    decoders gain, up by FALL at each gain kept and down by it at each fall back; raised to --lr once the readings
+    without a gain stall it (stall), a raise kept unless it ends over where it began past the noise. A head stalled
+    while the decoders gain is raised alone, its rows' step scaled; a wide pass is a raise as long as the pass."""
 
     CARRIED = ("fine", "quiet")  # from pass to pass; the rest is a pass's own, which a resumed run reads back
 
-    def __init__(self, model, opt, top: float, steps: int, every: int, wide: int):
-        self.model, self.opt, self.top, self.steps, self.every, self.wide = model, opt, top, steps, every, wide
+    def __init__(self, model, opt, top: float, steps: int, every: int, wide: int, heads=DECODERS):
+        self.model, self.opt, self.top, self.steps, self.every, self.wide, self.sum = model, opt, top, steps, every, wide, heads
         self.heads = rows(model)
         self.fine, self.quiet = top, 0  # a model no pass trained starts fine at --lr
         self.start = self.ref = self.kept = self.swing = None
-        self.count, self.gained, self.own = 0, False, {}
+        self.count, self.due, self.gained, self.own = 0, STALL, False, {}
         self.moving, self.undo, self.put, self.said = [], None, [], ""
 
     def state(self) -> dict:
-        return {k: getattr(self, k) for k in self.CARRIED + ("start", "ref", "kept", "swing", "count", "gained", "own")}
+        return {k: getattr(self, k) for k in self.CARRIED + ("start", "ref", "kept", "swing", "count", "due", "gained", "own")}
 
     def load(self, saved: dict | None, whole: bool = False) -> str:
         """what a checkpoint carries, all of it to a run resumed (whole); from a checkpoint of none the fine rate
@@ -916,6 +946,10 @@ class Rate:
     def keep(self, w: dict, step: int) -> None:
         self.ref, self.kept, self.count, self.gained = w, self.snap(step), 0, True
 
+    def stalled(self) -> bool:
+        """whether the readings without a gain have stalled the decoders' loss: as many as their first STALL said"""
+        return self.count >= max(self.due, STALL)
+
     def reset(self, w: dict) -> None:
         """each head followed afresh from reading w: no head asked nothing there"""
         self.count, self.own = 0, {h: {"ref": w[h], "count": 0, "swing": None} for h in self.heads if h in w and bool(w[h].any())}
@@ -956,8 +990,8 @@ class Rate:
 
     def follow(self, step: int, w: dict) -> str:
         """a reading at the fine rate: a gain, the decoders' loss under the kept one's past its noise, is kept; one over
-        it past its noise falls back to it; STALL readings without a gain raise the rate, or fall it back where it is
-        --lr already; then each head on its own"""
+        it past its noise falls back to it; as many readings without a gain as the first STALL of them say (stall)
+        raise the rate, or fall it back where it is --lr already; then each head on its own"""
         d, noise = apart(w["decoders"], self.ref["decoders"], w["loop"])
         told = self.told(d, noise, [], f"the reading kept at step {self.kept[2]}")
         if d < -noise:
@@ -968,43 +1002,51 @@ class Rate:
             self.back(self.kept, self.ref)
             return f"{told}: fallen back to step {self.kept[2]}'s weights, fine {self.fine:.1e}"
         self.count += 1
-        told += f", {self.count} without a gain"
-        if self.count >= STALL and self.fine >= self.top:
+        if self.count == STALL:
+            self.due = stall(d, noise)
+        stalled = self.stalled()
+        told += f", {self.count} without a gain" + (f" of the {self.due} the gain they show takes" if self.count >= STALL and not stalled else "")
+        if stalled and self.fine >= self.top:
             self.fine *= FALL
             self.count = 0
             return f"{told}: fallen back to fine {self.fine:.1e}, as --lr is the most a raise reaches"
-        if self.count >= STALL and step + STALL * self.every <= self.steps:
+        if stalled and step + STALL * self.every <= self.steps:
             self.swing = {"kind": "raise", "at": step, "end": step + STALL * self.every, "began": w, "before": self.snap(step)}
             self.reset(w)
             return f"{told}: raised to {self.top:.1e}, down to fine over {STALL} readings"
-        return told + (", too few readings left to raise" if self.count >= STALL else "") + self.follow_heads(step, w)
+        return told + (", too few readings left to raise" if stalled else "") + self.follow_heads(step, w)
 
     def judge(self, s: dict, w: dict) -> str:
-        """a raise or a wide pass at its end: one better than the reading kept, a wide pass's start, is kept; a raise
-        not is fallen back from, to the weights before it where it ended over where it began; a wide pass's start"""
+        """a raise or a wide pass at its end. Better than the reading kept, a wide pass's start: a gain kept. Over where
+        it began past the noise, or a head past its own: back to the weights before it, and a raise's fine rate falls.
+        Else kept as no gain, the reading kept moving with the weights"""
         self.swing = None
         wide = s["kind"] == "wide"
-        good, d, noise, fell = better(s["began"] if wide else self.ref, w)
+        good, d, noise, fell = better(s["began"] if wide else self.ref, w, self.sum)
         told = self.told(d, noise, fell, "the start" if wide else f"the reading kept at step {self.kept[2]}")
         if good:
             self.keep(w, s["end"])
             self.reset(w)
-            return f"{'better' if wide else 'paid'}, {told}" + (": ending on it" if wide else "")
-        if wide:
+            self.fine = min(self.fine / FALL, self.top)
+            return f"{'better' if wide else 'paid'}, {told}: {'ending on it' if wide else 'kept'}, fine risen to {self.fine:.1e}"
+        _, up, slack, fell = better(s["began"], w, self.sum)
+        if up > slack or fell:
             self.back(s["before"], s["began"])
-            return f"nothing better, {told}: ending on the start"
-        self.fine *= FALL
-        _, up, _, fell = better(s["began"], w)
-        if up > 0 or fell:
-            self.back(s["before"], s["began"])
-            return f"not paid, {told}, and {up:+.3f} on where it began: fallen back to step {s['at']}'s weights, fine {self.fine:.1e}"
+            if wide:
+                return f"worse, {told}: ending on the start"
+            self.fine *= FALL
+            return (f"not paid, {told}, and {self.told(up, slack, fell, 'where it began')}: "
+                    f"fallen back to step {s['at']}'s weights, fine {self.fine:.1e}")
+        self.ref, self.kept = w, self.snap(s["end"])
         self.reset(w)
-        return f"not paid, {told}, no worse than where it began: fallen back to fine {self.fine:.1e}"
+        if wide:
+            return f"no better, {told}, within its noise: ending on it"
+        return f"not paid, {told}, and {self.told(up, slack, [], 'where it began')}, within its noise: kept, the reading kept now this one"
 
     def follow_heads(self, step: int, w: dict) -> str:
         """each head on its own: one STALL readings without a gain past its own noise while the decoders' loss has not
         stalled is raised alone, its rows at a raise's rate; at the raise's end its rows go back to before it where its
-        figure ended over where it began"""
+        figure ended over where it began past its noise, and its reading kept moves with them where they stay"""
         text = ""
         for h, o in self.own.items():
             d, noise = apart(w[h], o["ref"], w["loop"])
@@ -1017,16 +1059,17 @@ class Rate:
                 if d < -noise:
                     o["ref"] = w[h]
                     text += f"; {whose(h)} rows raised: reading {STALL} of {STALL}, paid, {d:+.3f} on its kept, noise {noise:.3f}"
-                elif (w[h] - s["began"]).mean() > 0:
+                elif np.greater(*apart(w[h], s["began"], w["loop"])):
                     self.put.append((h, s["before"]))
-                    text += f"; {whose(h)} rows raised: reading {STALL} of {STALL}, not paid and over where it began: fallen back to step {s['at']}'s rows"
+                    text += f"; {whose(h)} rows raised: reading {STALL} of {STALL}, not paid and over where it began past its noise: fallen back to step {s['at']}'s rows"
                 else:
-                    text += f"; {whose(h)} rows raised: reading {STALL} of {STALL}, not paid, no worse than where it began"
+                    o["ref"] = w[h]
+                    text += f"; {whose(h)} rows raised: reading {STALL} of {STALL}, not paid, within its noise of where it began"
             elif d < -noise:
                 o["ref"], o["count"] = w[h], 0
             else:
                 o["count"] += 1
-                if o["count"] >= STALL and self.count < STALL and self.fine < self.top and step + STALL * self.every <= self.steps:
+                if o["count"] >= STALL and not self.stalled() and self.fine < self.top and step + STALL * self.every <= self.steps:
                     o["swing"] = {"at": step, "end": step + STALL * self.every, "began": w[h], "before": self.rows_of(h)}
                     text += (f"; {h}: {d:+.3f} on its kept, noise {noise:.3f}, {o['count']} without a gain while the decoders' loss "
                              f"has not stalled: its rows raised to {self.top:.1e}, down to fine over {STALL} readings")
@@ -1167,6 +1210,9 @@ def main() -> None:
     if args.carry and len(held) < 2:
         raise SystemExit(f"--carry: the rate follows the held-out loops' readings, and a reading's noise takes two loops at least, not {len(held)} (--holdout)")
     val_frs, val_tgs, val_notes = validation(held, args.window, planes)
+    prior = shares(val_tgs) if args.pitchnet else None
+    # a pass that carries on is read by the heads audio reads from its model in a pair, any other run by them all
+    heads = tuple((h, f) for h, f in DECODERS if h in READ[args.pitchnet]) if args.carry else DECODERS
     assert manifest["voice_genes"] == ripmodels.VOICE_GENES and len(manifest["waves"]) == ripmodels.WAVES
     recorded, check_frs, check_tgs, check_notes = [], [], [], None
     if args.validate:
@@ -1189,7 +1235,7 @@ def main() -> None:
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     step, best_loss, best_step, best_state = 0, float("inf"), 0, None
     validated = (float("inf"), 0, None, None)  # the best validation loss, its step, its weights and the held-out loss there
-    rate = Rate(model, opt, args.lr, args.steps, args.every, STALL if args.wide is None else args.wide) if args.carry else None
+    rate = Rate(model, opt, args.lr, args.steps, args.every, STALL if args.wide is None else args.wide, heads) if args.carry else None
     if resume:
         model.load_state_dict(ck["model"])
         opt.load_state_dict(ck["opt"])
@@ -1221,6 +1267,8 @@ def main() -> None:
         print("the family head is asked nothing: its rows zero, every frame's shares even")
     hold = probe(model) if args.probe else None
     print(f"{sum(p.numel() for p in model.parameters())} weights, {len(loops)} loops, {sum(len(m) for m, _ in loops)} frames, {len(held)} held out in {len(val_frs)} windows")
+    if rate:
+        print(f"read by its {', '.join(h for h, _ in heads)}, the heads audio reads from a {'notes' if args.pitchnet else 'frame'} model in a pair")
     if recorded:
         print(f"{len(recorded)} recordings of {sum(len(m) for m, _ in recorded)} frames to validate on in {len(check_frs)} windows, from {args.validate}")
     if mixed:
@@ -1235,10 +1283,10 @@ def main() -> None:
         """the decoders' loss over fixed windows, a notes model's strike F1, and the line that reports them, a frame
         model's with its beats' and bar lines' F1, and what said says of them before the parts, which end the line;
         a family held out sets the model's measure by its notes there"""
-        v = evaluate(model, frs, tgs, args.device, low, notes)
+        v = evaluate(model, frs, tgs, args.device, low, notes, heads, prior)
         # the wave, voice, velocity and family heads say how a note is played and by
         # what, and memorize the corpus's, so they do not pick the step
-        v["decoders"] = sum(f * v.get(k, 0.0) for k, f in DECODERS)
+        v["decoders"] = sum(f * v.get(k, 0.0) for k, f in heads)
         parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "struck", "read", "voices", "beats", "windows"))
         f1 = f", strikes' F1 {v['struck']:.3f}" if "struck" in v else ""
         if "beats" in v:
@@ -1255,6 +1303,9 @@ def main() -> None:
                 count, reach, median, past, right = n["held"]
                 model.sure.fill_(reach)
                 voices += f"; {args.family_holdout}'s {count} notes, held out, reach {reach:.3f}, {median:.3f} at the median: {past:.0%} of the others' notes pass it, {right:.0%} of them right"
+            if "cells" in n:  # the names' loss a cell beside the held-out shares' alone, and the notes named with those shares divided out
+                by = ", ".join(f"{k} {x:.3f}" for k, x in n["even"][1])
+                voices += f"; names {n['cells'][0]:.3f} a cell, {n['cells'][1]:.3f} by their shares alone, {n['even'][0]:.3f} of the notes with the shares divided out ({by})"
         return v, f"step {step} {name} {v['total']:.3f}, decoders {v['decoders']:.3f}{f1}{read}{voices}{said(v) if said else ''} ({parts})"
 
     def weights() -> dict:

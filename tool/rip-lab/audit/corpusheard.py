@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """corpusheard.py <corpus dir> [NSynth's audio dir]: whether a rendered corpus's notes sound as its labels say, from
-the labels and the WAV files alone: what the genes of the engine's voices switch on, each note's rise at its own
-partials, where a note that sounds alone has its power, what rings on after a label ends a note, the recorded notes
-let go before their recording speaks, and how empty the overlaps are. It prints figures and judges nothing: run it
-before a sample of a corpus is cut, so the ear is asked only what this cannot tell. The README has each measure."""
+the labels and the WAV files alone: what the engine's voices' genes switch on, each note's rise at its own partials,
+where a lone note has its power, what rings on after a label ends a note, recorded notes let go before they speak, how
+empty the overlaps are, and each kit strike's rise in its piece's band. It prints figures and judges nothing: run it
+before a sample is cut, so the ear is asked only what this cannot tell. The README has each measure."""
 import collections, json, os, sys, wave
 import numpy as np
 HOP = 256 / 22050
@@ -68,6 +68,16 @@ def shares(x, sr, a, b, f):
 
 def db(a, b): return 10 * np.log10((a + 1e-16) / (b + 1e-16))
 
+def band_hz(k): return 440 * 2 ** ((20 + k / 3 - 69) / 12)   # band k of the frames' 315, three a semitone from MIDI 20
+
+def third(x, sr, t, f, n):
+    """the power within a third of an octave about f in n samples from t, the bin nearest f where none falls in it"""
+    a = int(t * sr)
+    if a < 0 or a + n > len(x): return None
+    m = 1 << int(np.ceil(np.log2(n)) + 2); p = np.abs(np.fft.rfft(x[a:a + n] * np.hanning(n), m)) ** 2; fr = np.fft.rfftfreq(m, 1 / sr)
+    k = (fr >= f * 2 ** (-1 / 6)) & (fr <= f * 2 ** (1 / 6))
+    return float(p[k].sum() if k.any() else p[np.argmin(np.abs(fr - f))]) / n ** 2
+
 def main():
     D = sys.argv[1].rstrip('/') + '/'; NS = sys.argv[2].rstrip('/') + '/' if len(sys.argv) > 2 else None
     C = json.load(open(D + 'corpus.json')); waves = C['waves']; N = C['loops']
@@ -85,10 +95,10 @@ def main():
             speaks[f] = float(a[np.argmax(r >= r.max() * 0.5)] / sr)
         return speaks[f]
     census = collections.Counter(); bywave = collections.defaultdict(collections.Counter); inloops = collections.Counter(); engloops = 0
-    R = []; A = []; ring = []; early = []; gaps = collections.defaultdict(list)
+    R = []; A = []; ring = []; early = []; gaps = collections.defaultdict(list); S = []; P = []
     for i in range(N):
         lab = json.load(open(f'{D}loop_{i:03d}.json')); tun = lab.get('tuning', 0) / 100; kind = lab.get('kind', '?'); x, sr = read(f'{D}loop_{i:03d}.wav')
-        notes = sorted((e for e in lab['events'] if e['drum'] < 0 and e.get('midi', 0) > 0), key=lambda e: e['frame']); hits = [e['frame'] for e in lab['events'] if e['drum'] >= 0]
+        notes = sorted((e for e in lab['events'] if e['drum'] < 0 and e.get('midi', 0) > 0), key=lambda e: e['frame']); hits = [e['frame'] for e in lab['events'] if e['drum'] >= 0 or 'piece' in e]
         st = {id(e): state(e, tun, waves) for e in notes if e.get('voice')}; engloops += bool(st); seen = set()
         for w, s in st.values():
             census['notes'] += 1; bywave[w]['notes'] += 1; seen |= s
@@ -115,6 +125,15 @@ def main():
             if b0 - a0 > 0.05 * sr and np.mean(x[a0:b0] ** 2) > np.mean(x[a1:b1] ** 2) * 10 ** -1.5: continue   # what sounded before it still rings within 15 dB of it
             A.append((rec, fam if rec else st[id(e)][0], st[id(e)][1] if not rec else set(), r))
         for e, a, before, same, rec, fam in got: R.append((kind, rec, fam, length(e), e['vel'], db(a, before), db(a, top), same))
+        kit = lab.get('kit') or []; rose = collections.defaultdict(list); frames = collections.Counter(e['frame'] for e in lab['events'] if 'piece' in e)
+        for e in lab['events']:   # a kit's strike: the power about its piece's band just after its frame against just before it
+            if 'piece' not in e or not 0 <= e['piece'] < len(kit): continue
+            b = kit[e['piece']]['band']; f = band_hz(b); n = int(max(0.03, 4 / f) * sr); t0 = e['frame'] * HOP
+            after = [v for v in (third(x, sr, t0 + d, f, n) for d in (0, 0.01, 0.02)) if v is not None]
+            if not after: continue
+            up = db(max(after), third(x, sr, t0 - 0.005 - n / sr, f, n) or 0.0); rose[e['piece']].append(up)
+            S.append((len(kit), b, frames[e['frame']] == 1, up))
+        for k, ups in rose.items(): P.append((i, k, kit[k]['band'], len(ups), max(ups)))
         if kind == 'overlap' and notes:
             cov = np.zeros(lab['frames'], bool)
             for e in notes: cov[e['frame']:max(e['end'], e['frame'] + 1)] = True
@@ -154,6 +173,17 @@ def main():
             if m.sum(): print(f'   {name}: {m.sum()} notes, held a median {np.median(e[m, 0]):.2f} s; let go before that {np.mean(e[m, 0] < e[m, 1]):.0%}')
         for f, c in collections.Counter(fams).most_common():
             m = fams == f; print(f'   {f}: {c} notes; the recording takes a median {np.median(e[m, 1]):.2f} s; let go before that {np.mean(e[m, 0] < e[m, 1]):.0%}')
+    if S:
+        print(f'{len(S)} strikes of {len(P)} pieces on kits, each at its frame: the power within a third of an octave about its piece\'s band against just before it')
+        def heard(name, sel):
+            u = [s[3] for s in S if sel(s)]
+            if u: print(f'   {name}: {len(u)} strikes, {np.mean(np.array(u) < 6):.0%} with no rise of 6 dB, a median rise of {np.median(u):.0f} dB')
+        heard('all', lambda s: True); heard('struck alone on their frame', lambda s: s[2]); heard('struck with another piece', lambda s: not s[2])
+        for lo, hi in ((0, 105), (105, 210), (210, 315)): heard(f'in bands {lo} to {hi - 1} ({band_hz(lo):.0f} to {band_hz(hi - 1):.0f} Hz)', lambda s, lo=lo, hi=hi: lo <= s[1] < hi)
+        for k in sorted({s[0] for s in S}): heard(f'on kits of {k}', lambda s, k=k: s[0] == k)
+        none = [p for p in P if p[4] < 6]
+        print(f'pieces none of whose strikes rises 6 dB about their band, which cannot be heard in their loop: {len(none)} of {len(P)}'
+              + ''.join(f'; loop {i} piece {k}, band {b} ({band_hz(b):.0f} Hz), {c} strike{"" if c == 1 else "s"}, at best {u:+.0f} dB' for i, k, b, c, u in none[:12]))
     print('the overlaps, by instruments (loops; the median share of a loop with no note sounding by its label; its median seconds; its median notes):')
     for k in sorted(gaps):
         g = np.array(gaps[k]); print(f'   {k}{" or more" if k == 4 else ""} instrument{"" if k == 1 else "s"}: {len(g)} loops, {np.median(g[:, 0]):.0%} with no note, {np.median(g[:, 1]):.1f} s, {np.median(g[:, 2]):.0f} notes')

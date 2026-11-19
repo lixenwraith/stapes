@@ -394,6 +394,39 @@ Left open by what landed, each with the option not taken:
   with the notes model's salience from step to step.
 - `test_train.py` runs by hand: CI has no PyTorch.
 
+### Hear what is struck
+
+- Priority: P1
+- Affected files: `kit.go`, `tool/rip-train`, `tool/rip-lab/audit`, `lixenwraith/audio`
+  (`ripmodels`, the decoder)
+
+A hit is to be described by what it sounds like, not named. Landed: `corpus ... gen
+kits` plays an arranged loop's drums on a kit of two to ten struck sounds drawn over
+audio's struck genome, each strike labelled with its piece and the loop with each
+piece's genes and band ([Rip training §3](rip-training.md#a-loops-kit)). What
+remains, each read before the next:
+
+- The count of 200 loops with the word, by `corpuscount.py` and `corpusheard.py`,
+  and a listening sample of kits of two, five and ten pieces.
+- The places: a grouping of the bands, which the count's share of same-frame strikes
+  that share a place, for each count of places, decides.
+- The heads that say a strike's place and genes, and the trainer that reads `piece`
+  and `kit`; the decoder and `tune` reading strikes so.
+- A recorded kit's labels by piece: E-GMD's hits keep their keys' drums.
+
+Left open by what landed:
+
+- A piece's level is drawn and not labelled: a strike says its velocity, not where
+  its piece sits in the mix.
+- A strike its loop hides is labelled all the same. `corpusheard.py` names the
+  pieces never heard; whether such a strike leaves its label, as a recording's
+  silent hit does (`left.tsv`), waits on the count.
+- A piece costs 0.4 s of a loop's render, most of it the engine rendering all 18
+  of its takes, whichever the loop plays.
+- A sound's takes are seeded by its name, so the pieces numbered alike share their
+  noise and their takes' spread from loop to loop: a seed of the loop's wants audio
+  to take one.
+
 ### Train both models again
 
 - Priority: P1

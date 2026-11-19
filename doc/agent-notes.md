@@ -626,6 +626,17 @@ proves wrong or that a document now states, and link the document instead.
   better than the rise in the frames' own units. The fit's silent side has a
   long tail: 12 recordings read 2.5e-3, 16 and 24 read 1e-3. After a change to
   the rise or the lag run `TestAHitThatDrawsNoSoundIsToldByItsRise` with `-v`.
+- **A kit's pieces register under `corpus_piece_<n>`**, each loop's piece n
+  over the last's: a name new to the process through `DefineSound`, which
+  renders it and sends it to the mixer, a known one through
+  `audio.RegisterSound`, which puts the new definition's pointer in the
+  registry. The engine keeps a drum's offline takes by that pointer
+  (`offlineTakes`), so a piece never plays on the last one's takes. Binding a
+  piece (`SetKit`) renders its 18 takes, 0.3 s, most of a kit loop's render;
+  its band renders one hit more, 20 ms, which a labels pass pays too.
+- Passes of a kit sum to the loop whole because no arranged step draws: the
+  engine's `Prob` and `Humanize` draw from one stream for every track, so a
+  pass that empties a track would move the others'. The arranger sets neither.
 - A set's labels and list are made and checked by `tool/rip-lab`
   ([its README](../tool/rip-lab/README.md)); what its tools found wrong in the
   sets' own files is in [set-issues.md](set-issues.md).

@@ -658,7 +658,9 @@ func lineTop() float64 {
 	for i := range 64 {
 		stream := func(salt uint64) *rand.Rand { return rand.New(rand.NewPCG(salt, uint64(i)+1)) }
 		a := newArranger(stream(0x5a5a5a5a), stream(0x3e7e3e7e), 4, 120, false, false)
-		a.compose(nil, nil, nil)
+		if a.compose(nil, nil, nil, nil) != nil {
+			continue // no kit is drawn, so none fails
+		}
 		for _, p := range a.parts {
 			if p.instr.IsDrum() || len(p.notes) == 0 {
 				continue

@@ -3,10 +3,12 @@
 # It only balances the jobs: a test not named here weighs a second and runs
 # all the same. doc/agent-notes.md says how it is measured.
 384 TestAHitThatDrawsNoSoundIsToldByItsRise
+207 TestAKitOfFourOrFewerSoundsTheSameInOnePassAsInSeveral
 207 TestARecordedKitsHitsAreMovedOntoTheirSound
 129 TestRipFitsVoicesAndCompressesToASong
 120 TestAJudgeBesideTheModelRulesItsRips
 97 TestLiveKeepsTheRipRipMakes
+94 TestEveryPieceOfADrawnKitPlays
 87 TestALoopsLevelIsDrawnWhateverItsParts
 84 TestARedrawnNoteIsAsLoudAsItsVelocitySays
 79 TestALoopOfRecordedNotesAloneCarriesAir
@@ -23,6 +25,7 @@
 34 TestARedrawMovesWhatItsVoicePlays
 31 TestCompressPlaysTheRecordingsDrums
 31 TestTuneTruthReadsKeptFramesBack
+29 TestEachWordDrawsWhatItNamesAlone
 28 TestRipPinsTheMeterItsSongRipsBackIn
 28 TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem
 25 TestAGlidingCorpusLabelsWhereEachMovingNoteSits
@@ -31,8 +34,10 @@
 23 TestLabelsWritesWhatTheExportWrote
 22 TestACorpusFromPutsARecordedKitsHitsOnItsSound
 20 TestAStringIsGivenNoKeyUnderItsLowest
+17 TestAKitsLabelSaysWhatWasStruck
 13 TestACorpusGoesOnWhereItStopped
 11 TestACorpusFromLeavesOutAKitsHitsThatDrawNoSound
+11 TestAPiecesBandIsWhereItsStrikeRisesMost
 11 TestEveryMeasuredLevelIsFinite
 10 TestCompressMergesScatteredFalseHitsNotNotes
 10 TestRenderAndCorpusWriteWhatTheEngineHears

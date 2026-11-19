@@ -41,6 +41,8 @@ type tuneOptions struct {
 	glide                          bool           // a share of the arranged notes bend into the next or scoop, and of the voices sway
 	meters                         bool           // the loops in 2/4 to 12/8 by corpusMeters' shares, and three in ten starting part-way into a bar
 	overlaps                       float64        // the share of the loops of single notes overlapping and no beat; none at 0
+	kits                           bool           // an arranged loop's drums play a kit drawn from the struck genome (kit.go)
+	pass                           int            // the pieces of a kit a render plays at once, kitPass where 0
 	steady                         bool           // the arranged loops keep their tempo and start on a bar line, as a rip's score asks
 	nowav                          bool           // an export keeps the frames and the labels only
 	codec                          bool           // a third of the loops go through a lossy codec and back
@@ -181,6 +183,9 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 		return errors.New("a corpus without gen needs registered rhythm, melody and bass patterns (builtin pattern, apply)")
 	}
 	rng := rand.New(rand.NewPCG(o.seed, 0x5bd1e995))
+	if o.kits && !o.labels {
+		defer s.eng.SetKit(s.kit) // the transport's, which every kit's passes bound over
+	}
 	for i := range o.loops {
 		var slots [audio.MusicSlots]audio.PatternID
 		for slot, pool := range byRole {
@@ -213,11 +218,14 @@ func (s *Session) eachLoop(o tuneOptions, visit func(int, tuneLoop) error) error
 		case o.overlaps > 0 && orng.Float64() < o.overlaps:
 			m, err = s.overlap(orng, o.samples)
 		case o.gen || a.m != (audio.Meter{}) || a.bars != o.bars: // the bank is 4/4 from its bar line
-			var glrng *rand.Rand
+			var glrng, krng *rand.Rand
 			if o.glide {
 				glrng = stream(0x676c6964)
 			}
-			m, err = s.arrange(a, o.samples, srng, glrng, o.steady)
+			if o.kits {
+				krng = stream(kitSalt)
+			}
+			m, err = s.arrange(a, o.samples, srng, glrng, krng, o.steady)
 		default:
 			m = bankMusic(slots, bpm, o.bars, root, scale)
 		}
@@ -377,7 +385,7 @@ func (s *Session) play(o tuneOptions, i int, m *music, srng *rand.Rand) (tuneLoo
 	}
 	played := m.played()
 	s.eng.SetTuning(l.tuning)
-	buf, err := s.eng.RenderBars(played, m.heads, m.root, m.scale, m.prog, int64(i+1), nil)
+	buf, err := s.renderKit(m, played, int64(i+1), cmp.Or(o.pass, kitPass))
 	s.eng.SetTuning(0)
 	if err != nil {
 		return l, err
@@ -402,7 +410,7 @@ func (s *Session) play(o tuneOptions, i int, m *music, srng *rand.Rand) (tuneLoo
 	}
 	level(buf, stream(0x6c65766c))
 	l.audio = buf
-	if m.from == 0 && m.kind != "overlap" {
+	if m.from == 0 && m.kind != "overlap" && m.kit == nil { // a kit's strikes are no drum's hits
 		l.want = audio.ExpectedRipBars(m.timeline, m.heads, m.root, m.scale, m.prog)
 	}
 	return l, nil
@@ -458,12 +466,16 @@ func (m *music) label(events []audio.RipEvent, ends map[int]int, voices map[stri
 		}
 		p := m.parts[e.Slot][e.Track]
 		ev := corpusEvent{Frame: frame(e.At), Drum: -1, Vel: e.Vel, Wave: -1, Family: -1, Part: p.kind.name, Instr: audio.InstrumentName(e.Instr)}
-		if e.Instr.IsDrum() {
+		switch {
+		case p.piece != nil: // a kit's strike: its piece, and nothing of the drum it sounded on
+			n := p.piece.n
+			ev.End, ev.Family, ev.Instr, ev.Piece = ev.Frame, familyIndex("drums"), "", &n
+		case e.Instr.IsDrum():
 			if e.Instr >= audio.InstrClap {
 				continue
 			}
 			ev.Drum, ev.End, ev.Family = int(e.Instr), ev.Frame, familyIndex("drums")
-		} else {
+		default:
 			ev.MIDI = e.MIDI
 			ev.End = frame(e.At + e.For)
 			if p.sample != nil {
@@ -477,6 +489,11 @@ func (m *music) label(events []audio.RipEvent, ends map[int]int, voices map[stri
 		}
 		if ev.Frame < frames {
 			lab.Events = append(lab.Events, ev)
+		}
+	}
+	if m.kit != nil {
+		for _, pc := range m.kit.pieces {
+			lab.Kit = append(lab.Kit, corpusPiece{Genes: pc.genes, Band: pc.band})
 		}
 	}
 	if m.kind == "overlap" {
@@ -1081,6 +1098,7 @@ type corpusEvent struct {
 	Cents  centsList `json:"cents,omitempty"` // a note that moves or a pitch track places: cents from MIDI's cell centre at each frame from Frame to End
 	Part   string    `json:"part,omitempty"`  // the line of a rendered loop it plays in
 	Instr  string    `json:"instr,omitempty"` // what it sounds on: a voice's name, a drum's, or a recorded instrument's
+	Piece  *int      `json:"piece,omitempty"` // a strike of a loop's kit: its piece's number in the kit
 }
 
 // centsList is where a note sits at each of its frames, NaN at a frame its pitch
@@ -1113,11 +1131,20 @@ type corpusLoop struct {
 	Lag    *float64      `json:"lag,omitempty"`    // the seconds a recording of hits alone sounds after its file's, its hits and beats moved by them (placeHits)
 	Skip   string        `json:"skip,omitempty"`   // or why they are not, a word of lagWhy: the loop is in skip.txt
 	Left   []leftHit     `json:"left,omitempty"`   // of hits put on their sound, those its events leave out as drawing none
+	Kit    []corpusPiece `json:"kit,omitempty"`    // the pieces its strikes name, in their numbers' order
 	// its beats and bar lines in frames, where the render puts them or a
 	// recording's list names them; a loop of neither, as an overlap, lists none
 	Beats     []int         `json:"beats,omitempty"`
 	Downbeats []int         `json:"downbeats,omitempty"`
 	Chords    []corpusChord `json:"chords,omitempty"`
+}
+
+// corpusPiece is a piece of a loop's kit as its label holds it: the genes it
+// was drawn as, in the manifest's struck_genes order, and the band its hit
+// rises most in where it is struck (strikeBand)
+type corpusPiece struct {
+	Genes []float64 `json:"genes"`
+	Band  int       `json:"band"`
 }
 
 // leftHit is a hit of a recording put on its sound that its label leaves out:
@@ -1186,6 +1213,9 @@ type corpusManifest struct {
 	Waves      []string `json:"waves"`
 	Families   []string `json:"families"`
 	VoiceGenes int      `json:"voice_genes"`
+	// a corpus whose loops play kits names the struck genome's genes, the
+	// order a kit's piece lists them in
+	StruckGenes []string `json:"struck_genes,omitempty"`
 }
 
 // newCorpusManifest is the manifest of a corpus of loops
@@ -1216,6 +1246,8 @@ func cmdCorpus(s *Session, a []string) error {
 			o.codec = true
 		case a[n-1] == "labels":
 			o.labels = true
+		case a[n-1] == "kits":
+			o.kits = true
 		case n > 2 && a[n-2] == "seed":
 			v, err := strconv.ParseUint(a[n-1], 10, 64)
 			if err != nil {
@@ -1260,6 +1292,9 @@ func cmdCorpus(s *Session, a []string) error {
 	}
 	if len(a) > 3 {
 		return fmt.Errorf("%q: not a word of corpus", a[len(a)-1])
+	}
+	if o.kits && !o.gen {
+		return errors.New("kits gives the arranger's drums a kit: it wants gen")
 	}
 	for i, p := range []*int{&o.loops, &o.bars} {
 		limit := 65536
@@ -2140,10 +2175,13 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 		}
 		return err == nil && whole
 	}
-	var sampled, tonal, metered, starts, overlaps, arranged int
+	var sampled, tonal, metered, starts, overlaps, arranged, kits int
 	err := s.eachLoop(o, func(i int, l tuneLoop) error {
 		written++
 		sampled, tonal = sampled+l.sampled, tonal+l.tonal
+		if len(l.label.Kit) > 0 {
+			kits++
+		}
 		switch {
 		case l.texture == "overlap":
 			overlaps++
@@ -2185,7 +2223,11 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 		return err
 	}
 	if o.parts == 0 && unheard == 0 {
-		if err := writeJSON(filepath.Join(dir, "corpus.json"), newCorpusManifest(o.loops)); err != nil {
+		man := newCorpusManifest(o.loops)
+		if o.kits {
+			man.StruckGenes = audio.StruckGeneNames()
+		}
+		if err := writeJSON(filepath.Join(dir, "corpus.json"), man); err != nil {
 			return err
 		}
 	}
@@ -2204,6 +2246,9 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	}
 	if overlaps > 0 {
 		how += fmt.Sprintf(", %d of single notes overlapping and no beat", overlaps)
+	}
+	if o.kits {
+		how += fmt.Sprintf(", %d with drums on a kit of %d to %d struck sounds drawn from the genome", kits, kitFewest, kitMost)
 	}
 	if o.codec {
 		how += ", a third through a lossy codec"

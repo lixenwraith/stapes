@@ -539,19 +539,21 @@ and the checkpoint earn their keep.
    legato steps kept; each family's recall on NSynth's held-out instruments
    and the rip's voice over the fit's distance there; a song's bass and
    kicks, clean and through a phone; and `bench`.
-   Dropped by measurement: padding or mirroring a recording's edges (the
-   strike head at a loop's first frame scores as mid-song; silence before it
-   and the mirror both cost); more width; soups of rounds; rounds of one
-   recipe plus one augmentation judged by the mean; a step picked by the
-   validation loss, most of which is a head Go never reads; a `rip.toml`
-   tuned on one instrument; `strike_again` or `strike_low` moved by hand for
-   a set, each measured to trade one set for another; a recording's
-   thresholds searched against `Fidelity`, which puts no price on a wrong
-   note and so ranks a recording's decodes at chance against their truth;
-   the accounting's logistics refitted on more recordings; and a second pass
-   over a recording, its evidence read against its own notes, its fit bent
-   to its sure verdicts or its bar set by its own odds, each trading one
-   family for another.
+   Dropped before the refresh, by measurements it deleted, and unmeasured
+   since: each is what was read then, and binds no model trained after it.
+   Padding or mirroring a recording's edges (the strike head at a loop's
+   first frame scored as mid-song; silence before it and the mirror both
+   cost); more width; soups of rounds; rounds of one recipe plus one
+   augmentation judged by the mean; a step picked by the validation loss,
+   most of which is a head Go never reads; a `rip.toml` tuned on one
+   instrument; `strike_again` or `strike_low` moved by hand for a set, each
+   read to trade one set for another; a recording's thresholds searched
+   against `Fidelity`, which puts no price on a wrong note and ranked a
+   recording's decodes at chance against their truth; the accounting's
+   logistics refitted on more recordings; and a second pass over a
+   recording, its evidence read against its own notes, its fit bent to its
+   sure verdicts or its bar set by its own odds, each trading one family for
+   another then.
 5. Then: the weights shipped as data with the `rip.toml` they were judged
    under.
 

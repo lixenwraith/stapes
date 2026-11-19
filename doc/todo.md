@@ -467,11 +467,9 @@ measures it against the offline rip of the same recording, the measurement the
 Android app's microphone mode (vif's todo) is judged by ([Rip design
 §7](rip-design.md#7-plan)). What is left:
 - Tempo, meter and phase are held from the first six bars, so the stream's
-  bar grid is not the offline rip's: on twelve recordings through the models
-  of 9 November, since deleted, it found 95 in a hundred of the offline rip's
-  notes but read its grid on three (five at another tempo, a rubato piano take
-  keeping 5 to 38 in a hundred of the offline downbeats, a song's intro half a
-  bar off). Not measured: `pace`, and a phone.
+  bar grid is not the offline rip's. Not measured since the refresh: how many
+  of the offline rip's notes and bar lines the stream finds, `pace`, and a
+  phone.
 - The wait. The ear waits the frame model's reach, 2.97 s, so the stream's
   frames are the offline rip's; audio's `FrontEnd.Ahead` waits less and no
   verb sets it. Half a second leaves the notes where they are and moves the

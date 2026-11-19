@@ -23,26 +23,33 @@ type music struct {
 	chords   [][]int // each bar's chord, its pitch classes from its root's; nil for none
 	parts    [audio.MusicSlots][]*part
 	from, to int
+	kit      *loopKit // the kit its drums play, the bank's drums where nil
 }
 
 // part is one line of a loop, a track of its slot's patterns: its kind, the
 // instrument it plays on, or the recorded one in place of it, the pitches that
-// instrument has, and its notes in steps from the timeline's start
+// instrument has, and its notes in steps from the timeline's start; or a kit's
+// piece, or the strikes a kit writes beside the drums' lines
 type part struct {
 	kind   *partKind
 	instr  audio.InstrumentType
 	sample *sampleInstr
 	lo, hi int
 	notes  []note
+	piece  *kitPiece
+	kit    bool // played from the kit's stream
 }
 
 // note is a part's note: its onset and length in steps, its pitch, 0 for a
-// drum's, its velocity, and its bend as a Step holds one
+// drum's, its velocity, and its bend as a Step holds one; a drum's, whether it
+// is a fill's, and the kit's piece it is dealt to where not its line's
 type note struct {
 	at, dur      float64
 	midi         int
 	vel          float64
 	bend, bendAt float64
+	fill         bool
+	piece        *kitPiece
 }
 
 // partKind is a kind of line: the slot it plays in, the families it is drawn
@@ -175,6 +182,8 @@ type arranger struct {
 	swing16  bool    // the sixteenths swing in place of the eighths
 	from, to float64 // the steps the loop keeps
 	parts    []*part
+	kit      *loopKit   // the kit its drums play, none where nil
+	krng     *rand.Rand // the kit's stream
 }
 
 // newArranger draws an arranged loop's meter and feel and, with starts, where
@@ -394,9 +403,7 @@ func writeDrums(a *arranger, ps []*part) {
 		end := float64(a.steps)
 		if fill && b == a.bars-1 {
 			end = float64(starts[len(starts)-1])
-			for t := end; t < float64(a.steps); t++ {
-				snare.add(x+t, 1, 0, 0.45+0.5*(t-end)/(float64(a.steps)-end))
-			}
+			writeFill(snare, x+end, x+float64(a.steps))
 		}
 		for t := 0.0; t < end-1e-9; t += every {
 			v := 0.35 + 0.15*rng.Float64()
@@ -419,6 +426,15 @@ func writeDrums(a *arranger, ps []*part) {
 		for t := float64(a.steps - 2); t < float64(a.steps); t++ {
 			snare.add(t, 1, 0, 0.5+0.2*rng.Float64())
 		}
+	}
+}
+
+// writeFill is a fill into the bar line at to, from from on: a sixteenth a
+// step, rising from 0.45 by half of full over the run
+func writeFill(p *part, from, to float64) {
+	for t := from; t < to; t++ {
+		p.add(t, 1, 0, 0.45+0.5*(t-from)/(to-from))
+		p.notes[len(p.notes)-1].fill = true
 	}
 }
 
@@ -1016,37 +1032,49 @@ func (a *arranger) swung(x float64) float64 {
 // perform plays each part as a player would: swung where the loop swings, its
 // onsets off the grid by a feel of its own and a jitter of its kind's, its
 // velocities shaped over the loop, swelling, fading or both, the strong pulses
-// accented, each note a little apart
+// accented, each note a little apart; a kit's own strikes from the kit's
+// stream after the rest, so the rest play as they would without it
 func (a *arranger) perform() {
-	rng := a.rng
 	starts := a.pulseStarts()
 	for _, p := range a.parts {
-		k := p.kind
-		feel := min(max(rng.NormFloat64()*6, -15), 15)
-		if p.instr == audio.InstrKick {
-			feel = 0 // the kick anchors the grid
+		if !p.kit {
+			a.play(p, a.rng, starts)
 		}
-		gain := k.level[0] + (k.level[1]-k.level[0])*rng.Float64()
-		shape, depth := pick(rng, 40, 20, 20, 20), 4+8*rng.Float64()
-		for i := range p.notes {
-			n := &p.notes[i]
-			on, off := a.swung(n.at), a.swung(n.at+n.dur)
-			t := (n.at - a.from) / max(a.to-a.from, 1)
-			db := []float64{0, -depth * (1 - t), -depth * t, -depth * math.Abs(2*t-1)}[shape]
-			if y := n.at - math.Floor(n.at/float64(a.steps))*float64(a.steps); !p.instr.IsDrum() {
-				switch {
-				case y == 0:
-					db += 3
-				case y == math.Trunc(y) && slices.Contains(starts, int(y)):
-					db += 1
-				default:
-					db -= 1.5
-				}
+	}
+	for _, p := range a.parts {
+		if p.kit {
+			a.play(p, a.krng, starts)
+		}
+	}
+}
+
+// play is perform's playing of one part, its draws from rng
+func (a *arranger) play(p *part, rng *rand.Rand, starts []int) {
+	k := p.kind
+	feel := min(max(rng.NormFloat64()*6, -15), 15)
+	if p.instr == audio.InstrKick {
+		feel = 0 // the kick anchors the grid
+	}
+	gain := k.level[0] + (k.level[1]-k.level[0])*rng.Float64()
+	shape, depth := pick(rng, 40, 20, 20, 20), 4+8*rng.Float64()
+	for i := range p.notes {
+		n := &p.notes[i]
+		on, off := a.swung(n.at), a.swung(n.at+n.dur)
+		t := (n.at - a.from) / max(a.to-a.from, 1)
+		db := []float64{0, -depth * (1 - t), -depth * t, -depth * math.Abs(2*t-1)}[shape]
+		if y := n.at - math.Floor(n.at/float64(a.steps))*float64(a.steps); !p.instr.IsDrum() {
+			switch {
+			case y == 0:
+				db += 3
+			case y == math.Trunc(y) && slices.Contains(starts, int(y)):
+				db += 1
+			default:
+				db -= 1.5
 			}
-			db += rng.NormFloat64() * 1.2
-			n.vel = min(max(n.vel*gain*math.Pow(10, db/20), softest), 1)
-			n.at, n.dur = on+a.ms(feel+rng.NormFloat64()*k.jitter), off-on
 		}
+		db += rng.NormFloat64() * 1.2
+		n.vel = min(max(n.vel*gain*math.Pow(10, db/20), softest), 1)
+		n.at, n.dur = on+a.ms(feel+rng.NormFloat64()*k.jitter), off-on
 	}
 }
 
@@ -1090,20 +1118,30 @@ const softest = 0.03
 
 // arrange writes a loop: its texture, each part's instrument and notes, played;
 // steady keeps its tempo, else it drifts beat by beat in seven loops of ten
-func (s *Session) arrange(a *arranger, set *sampleSet, srng, glrng *rand.Rand, steady bool) (*music, error) {
-	a.compose(set, srng, glrng)
+func (s *Session) arrange(a *arranger, set *sampleSet, srng, glrng, krng *rand.Rand, steady bool) (*music, error) {
+	if err := a.compose(set, srng, glrng, krng); err != nil {
+		return nil, err
+	}
 	return a.music(steady)
 }
 
 // compose draws a loop's texture and writes each part's instrument and notes,
-// played: all of a loop but its patterns
-func (a *arranger) compose(set *sampleSet, srng, glrng *rand.Rand) {
+// played: all of a loop but its patterns. With krng a loop with drums plays
+// them on a kit drawn from it (kit.go), the rest as they would without it.
+func (a *arranger) compose(set *sampleSet, srng, glrng, krng *rand.Rand) error {
 	rng := a.rng
 	weights := make([]float64, len(textures))
 	for i, t := range textures {
 		weights[i] = t.weight
 	}
 	names := textures[pick(rng, weights...)].parts
+	if krng != nil && slices.Contains(names, "drums") {
+		k, err := newKit(krng)
+		if err != nil {
+			return err
+		}
+		a.kit, a.krng = k, krng
+	}
 	for i := range partKinds {
 		k := &partKinds[i]
 		if !slices.Contains(names, k.name) {
@@ -1140,6 +1178,9 @@ func (a *arranger) compose(set *sampleSet, srng, glrng *rand.Rand) {
 	for _, p := range a.parts {
 		p.notes = slices.DeleteFunc(p.notes, func(n note) bool { return n.at < a.from || n.at >= a.to })
 	}
+	if a.kit != nil {
+		a.strike()
+	}
 	a.perform()
 	for _, p := range a.parts { // a note written in the loop and played early starts it
 		for i := range p.notes {
@@ -1153,6 +1194,10 @@ func (a *arranger) compose(set *sampleSet, srng, glrng *rand.Rand) {
 	if glrng != nil {
 		a.glide(glrng)
 	}
+	if a.kit != nil {
+		a.deal()
+	}
+	return nil
 }
 
 // instrument draws a part's instrument by its kind's families, a voice no
@@ -1250,7 +1295,7 @@ func (a *arranger) heads(steady bool) []audio.BarHead {
 // of a step after it; past the ring a step's late onsets wait in, one sounds on
 // the step
 func (a *arranger) music(steady bool) (*music, error) {
-	m := &music{kind: "arranged", root: a.root, scale: a.scale, prog: a.degrees, chords: a.chords}
+	m := &music{kind: "arranged", root: a.root, scale: a.scale, prog: a.degrees, chords: a.chords, kit: a.kit}
 	m.heads = a.heads(steady)
 	for _, p := range a.parts {
 		m.parts[p.kind.slot] = append(m.parts[p.kind.slot], p)

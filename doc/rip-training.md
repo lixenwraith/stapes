@@ -115,6 +115,9 @@ A label is UTF-8 JSON with no whitespace. The loop's fields:
   (0 for the first, a pickup's), as `{"frame":f,"tones":[t,...]}`, its pitch classes
   from C with its root's first; a chord the bar before already holds is not listed
   again.
+- `kit`: under `kits`, the kit an arranged loop's drums play, each piece in its
+  number's order as `{"genes":[g,...],"band":b}`, its thirteen genes in the manifest's
+  `struck_genes` order and the band its hit rises most in (a loop's kit, below).
 - `events`: in no time order; the trainer sorts them.
 
 An event's fields:
@@ -156,6 +159,8 @@ An event's fields:
   loop's slot (`rhythm`, `melody`, `fill`, `bass`), an overlap's `single`.
 - `instr`: a rendered loop's, what it sounds on: the engine's instrument (`piano`,
   `kick`), or the recorded instrument's name in NSynth (`guitar_acoustic_002`).
+- `piece`: a strike of a loop's kit, its piece's number in the loop's `kit`; it names
+  no `instr`, the drum it sounded on being no part of what was struck.
 - `cents`: on a note that moves, where it sits at each frame from `frame` to `end`, one
   frame at least, in cents from `midi`'s cell centre to a tenth, the tuning in it: its
   step's bend and its voice's vibrato as the engine played them (audio's
@@ -168,7 +173,8 @@ An event's fields:
 Six kinds of event are in use: a drum hit, `drum` 0 to 2 at `midi` 0; a note on a
 voice, with its `wave` and `voice`; a recorded note, such as one of NSynth's, whose
 `wave` is -1 and whose voice is unknown; a strike of no line, `drum` -1 at `midi` 0,
-something struck that no drum head or pitch owns, such as a tom or a crash from E-GMD;
+something struck that no drum head or pitch owns, such as a tom or a crash from E-GMD
+or a piece of a loop's kit, which names its `piece`;
 a note that moves, with its `cents`; and a tracked note, a recorded note whose `cents`
 its pitch track writes (below). `glide` draws from two streams of its own, so a loop's patterns, key, voices and tuning are those
 the same line draws without it:
@@ -191,7 +197,8 @@ The same seeds render the same frames, byte for byte.
  "families":["piano","guitar","voice","bass","strings","winds","synth","drums","unknown"],"voice_genes":32}
 ```
 
-`loops` counts the files `loop_000` onward; the number grows past three digits as
+Under `kits` it adds `struck_genes`, the names of a piece's thirteen genes in their
+order (audio's `StruckGeneNames`). `loops` counts the files `loop_000` onward; the number grows past three digits as
 needed (`loop_39999`). `layout` is the frames' (§2): the trainer refuses a corpus of
 another, or of none, by name, and one is exported again for a new layout. A label holds
 each note's own MIDI number, and a model's cells are the piano's 88 keys (§5). The kinds
@@ -348,6 +355,49 @@ double's, are two events in the label, each with its own `part`, `instr`, `vel`,
 family and voice, both struck; a label never merges them. What the trainer asks of
 such a cell is §5's (two notes on one pitch).
 
+### A loop's kit
+
+`kits` plays an arranged loop's drums on a kit drawn from audio's struck genome
+(`kit.go`), from a stream of its own: the loop's notes, voices, tuning and the drums'
+rhythm are those the line draws without it, which a test compares, and a corpus
+without the word is what it was. A loop whose texture has no drums draws none.
+
+1. **The draw.** Two to ten pieces, evenly; each piece's thirteen genes evenly over
+   [0, 1] in `struck_genes`' order, then its level evenly in dB between the quietest
+   and the loudest of the bank's drums (`kitLevels`). No piece is refused, whatever
+   it sounds like.
+2. **Its band.** A piece's band is where its hit rises most: its first take at full
+   velocity laid on frame 4 after silence, as audio's `HitFrames` lays a hit, read
+   through `BandFrames`, the band whose sharp plane rises most over the frame before
+   on frames 3 to 5, the lowest of equals (`strikeBand`). Its test: a tone reads its
+   pitch's band within one, and 24 drawn pieces read the same band laid on frame 8.
+3. **Roles by band.** The pieces are ordered by band, of equals the first drawn
+   first: the lowest is the low pulse and plays the kick's line, the highest the time
+   and the hats' line, the one half the kit's size up the backbeat and the snare's
+   line; those between the lowest and the backbeat are the fill, the highest of them
+   first, and those between the backbeat and the highest the accents. Of two pieces
+   the higher is backbeat and time.
+4. **What a kit adds.** The accents strike the bar lines the kick strikes, at its
+   velocity there: every accent on the first, then one in turn. The fill takes the
+   last pulse into the bar line after the last whole bar the kick strikes: the
+   snare's fill where it drew one, else one written as the snare's, dealt from the
+   highest fill piece down in runs as even as they fall. These strikes are played
+   from the kit's stream after every other part. A piece left with none strikes
+   with the drums' first; a loop whose drums strike nothing in its span keeps no kit.
+5. **Passes of four.** The engine plays four drums at once, so piece n sounds on drum
+   n mod 4 (`SetKit`), and a kit of more than four renders in passes of four from one
+   timeline and seed, the first with the rest of the loop and each other with the
+   drums alone; the room, the mix and the level take their sum once. The arranger
+   draws everything before the passes, so every pass plays the same loop: its test
+   renders kits of four and five in one pass a piece and whole, the same to 1e-9 of
+   their peak.
+
+A strike is labelled as a strike of no line in the `drums` part, with its frame, its
+velocity and its `piece`; the loop's `kit` lists each piece's genes and band once.
+A band says where a piece sits, not which drum it is: any grouping of the 315 bands
+into places can be read from the labels later. `tool/rip-lab/audit` reads a corpus
+of kits ([its README](../tool/rip-lab/audit/README.md)).
+
 ### A loop's level
 
 Every rendered loop, after its room, its mix and its codec, is laid at a level drawn
@@ -373,6 +423,8 @@ floor, from a stream of its own. Its test reads three such loops at -63.6, -63.3
 - `overlaps` is a word of its own: notes in no meter teach the beat heads silence and
   the pitch heads chords no harmony wrote, a share a run sets. It changes only the
   loops it takes.
+- `kits` is a word of its own and wants `gen`: a kit is what the drums sound on, and
+  it changes only that, the strikes it adds and their labels.
 - `glide`, `aug` and `sampled` keep their words: each changes only what it names, as
   its test checks, a moving note's cents, the voices, the instruments.
 - `dense` and `midi <dir>` are gone with the MIDI files they played: the corpus plays

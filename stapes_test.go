@@ -4015,7 +4015,9 @@ func TestAStringIsGivenNoKeyUnderItsLowest(t *testing.T) {
 	}
 	for i := range 48 {
 		a := newArranger(rand.New(rand.NewPCG(uint64(i), 1)), rand.New(rand.NewPCG(uint64(i), 2)), 4, 120, false, false)
-		a.compose(nil, nil, nil)
+		if err := a.compose(nil, nil, nil, nil); err != nil {
+			t.Fatal(err)
+		}
 		for _, p := range a.parts {
 			low(p)
 		}
@@ -5833,9 +5835,9 @@ func recordedInstr(set *sampleSet, name string) (*sampleInstr, bool) {
 
 // TestEachWordDrawsWhatItNamesAlone: meters changes only the loops it puts in
 // another meter or starts part-way, overlaps only those it gives single notes,
-// glide only a moving note's cents and a scoop's pitch, aug only the voices and
-// sampled only the instruments; without gen a loop is the bank's, and corpus
-// refuses a word it has not
+// glide only a moving note's cents and a scoop's pitch, aug only the voices,
+// sampled only the instruments and kits only the drums; without gen a loop is
+// the bank's, and corpus refuses a word it has not, and kits without gen
 func TestEachWordDrawsWhatItNamesAlone(t *testing.T) {
 	dir := t.TempDir()
 	if err := writeNSynth(dir, "keyboard_acoustic_000", 0.5, 21, 108, 2); err != nil {
@@ -5899,6 +5901,11 @@ func TestEachWordDrawsWhatItNamesAlone(t *testing.T) {
 			names := func(l corpusLoop) []string { return slices.Sorted(maps.Keys(byPart(l))) }
 			return l.BPM == p.BPM && l.Root == p.Root && l.Meter == p.Meter && reflect.DeepEqual(l.Chords, p.Chords) && reflect.DeepEqual(names(l), names(p))
 		}},
+		{"kits", func(o *tuneOptions) { o.kits, o.loops = true, 24 }, func(l, p corpusLoop) bool { // the first 24 alone: a piece's band costs a render
+			drums := func(e corpusEvent) bool { return e.Part == "drums" }
+			l.Events, p.Events, l.Kit = slices.DeleteFunc(slices.Clone(l.Events), drums), slices.DeleteFunc(slices.Clone(p.Events), drums), nil
+			return reflect.DeepEqual(l, p)
+		}},
 	} {
 		changed := 0
 		for i, l := range draw(w.change) {
@@ -5925,6 +5932,9 @@ func TestEachWordDrawsWhatItNamesAlone(t *testing.T) {
 		if err := Execute(s, fmt.Sprintf("corpus %s 4 1 gen %s", dir, word)); err == nil || !strings.Contains(err.Error(), word) {
 			t.Errorf("corpus took %q: %v", word, err)
 		}
+	}
+	if err := Execute(s, fmt.Sprintf("corpus %s 4 1 kits", dir)); err == nil || !strings.Contains(err.Error(), "gen") {
+		t.Errorf("corpus took kits without gen: %v", err)
 	}
 }
 

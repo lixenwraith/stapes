@@ -29,9 +29,9 @@ VOICE_GENES = 32
 FAMILIES = ("piano", "guitar", "voice", "bass", "strings", "winds", "synth", "drums", "unknown")  # RipFamilies, in its order
 NAMES = len(FAMILIES) - 1  # the families a note may be named: unknown is the absence of a name, the last
 
-# the frame model's heads
+# the frame model's heads, each added after the last; struck says that something was struck, of no line or pitch
 HEADS = [("onset", 1), ("drums", DRUMS), ("pitch", PITCHES), ("voicing", 1), ("wave", WAVES), ("voice", VOICE_GENES), ("strike", PITCHES),
-         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1)]
+         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1), ("struck", 1)]
 
 
 def refused(what: str, layout) -> str:
@@ -369,7 +369,7 @@ class PitchNet(nn.Module):
         self.frame1 = nn.Conv1d(16 * 16 + STACK_PLANES, 64, 5, padding=2)  # the regions, then each plane's scalar
         self.frame2 = nn.Conv1d(64, 64, 9, padding=8, dilation=2)
         sizes = dict(cfg.outputs)
-        self.frame = nn.Linear(64, sum(sizes[k] for k in ("onset", "drums", "voicing", "wave", "voice")))
+        self.frame = nn.Linear(64, sum(n for _, n in frame_heads(cfg)))
         if "pitchfamily" in sizes:  # the share a family must reach over a note to name it; zero until a run measures one
             self.register_buffer("sure", torch.zeros(()))
 
@@ -398,10 +398,9 @@ class PitchNet(nn.Module):
         f = torch.cat([f, scalars], 1)
         f = F.gelu(self.frame1(f))
         f = self.frame(F.gelu(self.frame2(f) + f).transpose(1, 2))  # B T frame heads
-        sizes = dict(self.cfg.outputs)
         at, part = 0, {}
-        for k in ("onset", "drums", "voicing", "wave", "voice"):
-            part[k], at = f[..., at:at + sizes[k]], at + sizes[k]
+        for k, size in frame_heads(self.cfg):
+            part[k], at = f[..., at:at + size], at + size
         at = 0
         for k, per in cell_heads(self.cfg):  # a head of several values a pitch lays each value's pitches in turn
             part[k], at = n[:, at:at + per].transpose(1, 2).flatten(2), at + per
@@ -414,18 +413,24 @@ class PitchNet(nn.Module):
 # the three after it say what plays the pitch: a score for each family a note may be named, one for each wave, and the voice's genes
 CELL_HEADS = (("pitch", 1), ("strike", 1), ("release", 1), ("velocity", 1), ("cents", 2),
               ("pitchfamily", NAMES), ("pitchwave", WAVES), ("pitchvoice", VOICE_GENES))
-FRAME_HEADS = ("onset", "drums", "voicing", "wave", "voice")
+FRAME_HEADS = ("onset", "drums", "voicing", "wave", "voice", "struck")
 
 
 # PitchNet's heads: those of the frame model's in its order but the frame's family, which names one note of the frame,
-# then the per-pitch heads the frame model has none of
-PITCHNET_HEADS = [h for h in HEADS if h[0] in dict(CELL_HEADS) or h[0] in FRAME_HEADS] + \
-    [(k, n * PITCHES) for k, n in CELL_HEADS if k not in dict(HEADS)]
+# then the per-pitch heads the frame model has none of, then struck, added after them
+PITCHNET_HEADS = [h for h in HEADS if h[0] in dict(CELL_HEADS) or h[0] in FRAME_HEADS and h[0] != "struck"] + \
+    [(k, n * PITCHES) for k, n in CELL_HEADS if k not in dict(HEADS)] + [("struck", 1)]
 
 
 def cell_heads(cfg: Config) -> list:
     """the per-pitch heads a model of this shape has, in the notes convolution's order: one trained before a head has none of it"""
     return [(k, n) for k, n in CELL_HEADS if k in dict(cfg.outputs)]
+
+
+def frame_heads(cfg: Config) -> list:
+    """the frame heads a notes model of this shape has and their sizes, in its frame layer's order"""
+    sizes = dict(cfg.outputs)
+    return [(k, sizes[k]) for k in FRAME_HEADS if k in sizes]
 
 
 def carried(model: nn.Module, had: Config, state: dict) -> dict:
@@ -487,7 +492,7 @@ def export(model: nn.Module, path: str) -> None:
     if isinstance(model, PitchNet):
         body += struct.pack("<4I", VERSION, KIND_CELLS, cfg.inputs, cfg.channels) + _cells_header(model)
         sizes = dict(cfg.outputs)
-        heads = [(k, sizes[k]) for k in [k for k, _ in cell_heads(cfg)] + list(FRAME_HEADS)]
+        heads = [(k, sizes[k]) for k, _ in cell_heads(cfg)] + frame_heads(cfg)
         layers = [("reduce", model.reduce), ("wide", model.wide), ("cells", model.cells)]
         layers += [(f"near.{i}", n) for i, n in enumerate(_nears(model))]
         layers += [(f"long.{i}", n) for i, n in enumerate(model.long)]

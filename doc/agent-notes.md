@@ -556,13 +556,15 @@ proves wrong or that a document now states, and link the document instead.
   kit. The analysis hears a kick still ringing at 50 to 60 Hz as the bass line,
   and a snare's fixed modes move the melody's key.
 
-- A frame model's heads are audio's `FrameSpec`'s exactly, unlike a notes
-  model's, which audio reads by name: `ripmodels.New` refuses a frame model of
-  any other heads ("frame model's heads are [...], want [...]"), so after a head
-  is added the weights trained before it load in no audio that has it, and
-  weights with it in none without it. Install frame weights beside the audio tag
-  whose `FrameSpec` they match; `--init` grows the head onto the weights from
-  before it.
+- A frame model's heads start with audio's `FrameSpec`'s, and any after them
+  are read by nothing, as a notes model's heads are read by name:
+  `ripmodels.New` refuses a frame model whose heads do not start with them
+  ("frame model's heads are [...], want [...] first"), so after a head audio
+  reads is added the weights trained before it load in no audio that reads it.
+  A head no decoder reads goes after them, as `struck` does, and loads in audio
+  from v0.34.0, which keeps the prefix rule; an older audio wants the heads
+  exactly. Install frame weights beside the audio tag whose `FrameSpec` they
+  start with; `--init` grows the head onto the weights from before it.
 - **A rendered loop's beats are in its label**, where audio's `BeatStarts`
   puts them under the bars' tempos (`music.label`), and the trainer reads them
   as it reads a recording's, asking every frame of a rendered loop but its last
@@ -695,6 +697,16 @@ proves wrong or that a document now states, and link the document instead.
   `pitchvoice`, a row of it, differs between them though the genes are the
   same: a test that compares two runs' batches gives each a fresh `GENES`
   (`handed`), as a process of its own starts.
+- A head no window asks still moves, as the shared layers under it move: a term
+  that takes a head's output through an exponent takes it only where the head is
+  asked (the cents head's stated error, `torch.where(asked > 0, spread, 0.0)`),
+  or a head drifting where nothing asks it overflows, and inf times a zero mask
+  is NaN in the whole loss. A head that moves the shared layers' path shows it
+  first in the test that teaches a note at either end of the keys.
+- `evaluate`'s keys are printed as the line's parts unless `scored` leaves them
+  out by name: a reading that is no head's loss takes a key no head has
+  (`strikes`, `hits`, `beats`) and joins that list, as a head named alike would
+  overwrite it.
 - A family's name is learned long after its sound, the wave and the genes moving
   from the start. Each engine voice far from the bank is a synth, so read a
   family's own share, never the total.

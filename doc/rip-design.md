@@ -294,12 +294,15 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   oscillator voices sway with a vibrato; every note that moves is labelled with
   its cents at each frame. `kits` plays an arranged loop's drums on a kit of two
   to ten struck sounds drawn over audio's struck genome, each piece's role its
-  band's place among the kit's ([Rip training §3](rip-training.md#a-loops-kit)).
-  Each word draws from streams of its own, so a loop it leaves alone is the
+  band's place among the kit's ([Rip training §3](rip-training.md#a-loops-kit));
+  both models say on a head of their own, which no decoder reads yet, that
+  something of no pitch is struck, a kit's piece or a line's hit, and a loop
+  that holds a kit asks the drums head nothing ([Rip training
+  §5](rip-training.md#5-the-targets)). Each word draws from streams of its own, so a loop it leaves alone is the
   same with it and without. The trainer changes a share of the windows as it
   draws them: `--channel` hears them through a small speaker, a room and a
-  phone, and `--over` lays real drums under loops that have none, labelling a
-  hit only where it can be heard ([Rip training
+  phone, and `--over` lays real drums under loops where nothing is struck,
+  labelling a strike only where it can be heard ([Rip training
   §6](rip-training.md#6-what-may-change-a-windows-frames)).
 - **Harness.** `tool/rip-train/pipeline.sh` runs the corpus, the training, the
   bench and the install with every knob an environment variable, the corpus in

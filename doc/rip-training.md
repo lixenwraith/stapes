@@ -22,8 +22,8 @@ Where each part stands:
   `rows`, `judge.py` and the root's `ripjudge.bin`, the frame model's beat and downbeat
   heads, a `from` list's `beats` and `velocity` columns, `corpus ... gen`'s arranged
   loops, `corpus ... meters`, `corpus ... overlaps`, a loop's level and air, and a label's
-  `kind`, `chords`, an event's `part` and `instr`, and a rendered loop's `beats` and
-  `downbeats`.
+  `kind`, `chords`, an event's `part` and `instr`, a rendered loop's `beats` and
+  `downbeats`, and the struck head.
 
 ## 1. The path
 
@@ -31,9 +31,9 @@ Where each part stands:
 2. Each training step draws 8 windows of 512 frames, 5.9 s each (§7).
 3. A window's frames may be changed in place, as §6 lists, then become the input
    planes (§4).
-4. A window's events and its loop's beats become per-frame targets for the 12 heads,
+4. A window's events and its loop's beats become per-frame targets for the 13 heads,
    and a notes model's cents head (§5).
-5. The frame model turns frames into 405 numbers a frame, and the losses train it (§7, §8).
+5. The frame model turns frames into 406 numbers a frame, and the losses train it (§7, §8).
 6. The best step is written as a weight file (§9).
 7. At a rip, Go computes the same planes, runs the file and hands the heads to the
    decoders (§10).
@@ -398,7 +398,9 @@ A strike is labelled as a strike of no line in the `drums` part, with its frame,
 velocity and its `piece`; the loop's `kit` lists each piece's genes and band once.
 A band says where a piece sits, not which drum it is: any grouping of the 315 bands
 into places can be read from the labels later. `tool/rip-lab/audit` reads a corpus
-of kits ([its README](../tool/rip-lab/audit/README.md)).
+of kits ([its README](../tool/rip-lab/audit/README.md)). The trainer reads no piece
+and no gene: a kit's strike is struck as any, and a loop that holds a kit asks the
+drums head nothing (§5).
 
 ### A loop's level
 
@@ -968,7 +970,7 @@ sounds, is struck and is let go in the cell nearest its frequency at each frame,
 glide's pitch target walks the cells it crosses.
 
 - `onset`: within one frame of any event, drum or note, that is `t-1 <= frame < t+2`,
-  but a placed start (§3), which marks `stretch` instead.
+  but a placed start (§3), which marks `stretch` instead; a strike marks it wherever it is.
 - `stretch`: a placed start's reach either side of it and its mark's frame past
   that, `t-reach-1 <= frame < t+reach+2`, where the onset's loss asks a rise
   somewhere (§8); stretches that touch are one, asking one rise at least. 2 where
@@ -976,7 +978,11 @@ glide's pitch target walks the cells it crosses.
   whose start may lie past the edge, so it asks nothing.
 - `starts`: a placed start's mark, asked nothing: the onset head's peaks are read
   against it within the reach (§8).
-- `drums[d]`: the same, for that drum's hits.
+- `drums[d]`: the same as the onset, for that drum's hits; asked nothing on a loop whose
+  label holds a kit (`kit`, its frames' mask), whose pieces name no line.
+- `struck`: the same, for anything struck of no pitch: a hit of a line, a strike of no
+  line and a kit's strike, every event at `midi` 0 (`Label.struck`). Asked at every
+  frame of every window.
 - `pitch[p]`: from a note's `frame` until its `end`, at least one frame.
 - `voicing`: any pitch on.
 - `strike[p]`: within one frame of a note's start, and 0 throughout a loop whose
@@ -1086,12 +1092,13 @@ with no music; a bank of another width is refused.
 A corpus's own noise sits 40 to 65 dB under the loop, a phone's far nearer the music.
 
 **`--over dir:share`** lays real drums over rendered music. A share of the windows draw
-a loop with no drums of its own, then a recording from a corpus of drums alone, placed
+a loop where nothing is struck, then a recording from a corpus of drums alone, placed
 at random. Its level is -12 to +6 dB of its mean power
 against the loop's, and uncorrelated sounds add in power, so `e = e_loop + gain x e_drums`.
-A hit joins the onset and drum targets only where it can be heard: what it adds, over its
-best ten bands of the sharp plane, must top everything else sounding (`stands_out`),
-judged after the channel, a hit in a placed start's stretch as anywhere, the stretch kept.
+A strike, a line's hit or one of no line, joins the onset and struck targets, and a hit
+its drum's, only where it can be heard: what it adds, over its best ten bands of the
+sharp plane, must top everything else sounding (`stands_out`), judged after the channel,
+a strike in a placed start's stretch as anywhere, the stretch kept.
 The window is asked no beat and no bar line: the drums laid under it keep
 their own.
 
@@ -1101,7 +1108,8 @@ their own.
 **`--shuffle share`** splices a share of the windows from chunks of a second, each two clips
 from random places summed, the second at -6 to +6 dB of the first's power. Notes keep their
 labels, a placed start its stretch where it falls in its chunk, cut by the chunk's edges as by
-a window's, a drum hit counts where it stands out of the other clip, and wave, voice,
+a window's, a strike counts where it stands out of the other clip, as a laid one does, a
+chunk of a kit's loop asks no drums, and wave, voice,
 family, the beat and the bar line go unasked.
 
 **`--sung dir:share`** draws that share of the chunks from a corpus of solo singing.
@@ -1140,19 +1148,19 @@ conv 2         B x 32 x 512 x 79             3x3, GELU, max over 2 features
 flatten        B x 512 x 2528
 input layer    B x 512 x 256
 4 blocks       B x 512 x 256                 pre-norm attention and feed-forward 1024
-norm, output   B x 512 x 405                 raw scores
+norm, output   B x 512 x 406                 raw scores
 ```
 
 Attention has 8 heads and looks 64 frames (0.74 s) either side, in every block. There
 are no position embeddings: each head subtracts a slope of `2^(-8(h+1)/8)` per frame of
 distance from its scores (ALiBi), so a window of any length works.
 
-The 3,918,613 weights: 592 + 2,320 + 4,640 in the convolutions, 647,424 in the input
-layer, 789,760 in each block, 512 in the final norm, 104,085 in the output layer, 2,313
-of them the family head's and 514 the beat's and the downbeat's. A model of the two dB
-planes has 288 fewer, all in `convs.0.weight`.
+The 3,918,870 weights: 592 + 2,320 + 4,640 in the convolutions, 647,424 in the input
+layer, 789,760 in each block, 512 in the final norm, 104,342 in the output layer, 2,313
+of them the family head's, 514 the beat's and the downbeat's and 257 the struck head's.
+A model of the two dB planes has 288 fewer, all in `convs.0.weight`.
 
-The 405 outputs, in the order the file lists the heads:
+The 406 outputs, in the order the file lists the heads:
 
 ```
 offset    size  head       read as
@@ -1168,16 +1176,17 @@ offset    size  head       read as
 394..402    9   family     softmax: piano, guitar, voice, bass, strings, winds, synth, drums, unknown
 403         1   beat       sigmoid: a beat of the meter within a frame
 404         1   downbeat   sigmoid: a bar line within a frame
+405         1   struck     sigmoid: something struck within a frame, of no line or pitch
 ```
 
 Every model's pitches are the piano's 88 keys, MIDI 21 to 108. A file has every head;
 only a notes model's may lack the cents head, as a probe's does (§9).
 
-`--pitchnet` builds another model on the same heads but `family`, the frame model's to hear:
-convolutions only, the same weights at every pitch, so 172,181 weights in all, 66 of them the
+`--pitchnet` builds another model on the same heads but `family`, `beat` and `downbeat`, the frame model's to hear:
+convolutions only, the same weights at every pitch, so 172,246 weights in all, 66 of them the
 cents head's and 1,485 those of what plays each pitch. Its file is `ripnotes.bin` (§9).
 `--dilations 3,9,27` adds a residual 3x3 over the cells for each, its frames that far apart:
-each note head then hears half a second either way instead of 80 ms, 199,925 weights, about
+each note head then hears half a second either way instead of 80 ms, 199,990 weights, about
 1.5 times the compute. Its per-pitch heads are a table, `CELL_HEADS` in `ripmodels.py`, a row
 a head with the values it reads at a pitch; the cents head reads two, the offset in semitones
 and the log of the error it states, and what plays the pitch is three heads: `pitchfamily`,
@@ -1198,7 +1207,7 @@ near           B x 32 x T x 90          7x3 with a residual, GELU
 long           B x 32 x T x 90          3x3 dilated in time, one each of --dilations, with a residual, GELU
 notes          B x 51 x T x 88          1x1: pitch, strike, release, velocity, the cents head's two,
                                         and the 8, 5 and 32 of what plays the pitch
-frame          B x T x 42               wide pooled to 16 regions over every bin plus the four
+frame          B x T x 43               wide pooled to 16 regions over every bin plus the four
                                         scalars, a 1D conv of 5
                                         and one of 9 dilated by 2, linear: the other heads
 ```
@@ -1217,10 +1226,11 @@ same tensors whatever builds it, a run resumed at step k draws the batches the
 unbroken run drew from k on, and two shards draw different batches.
 
 ```
-onset, drums, pitch, voicing, strike, release: binary cross-entropy with a weight on
-    the positive class of 8, 8, 12, 2, 20, 20, the strike's on frames not placed;
-    the onset's asks a stretch the window holds whole one term, its highest logit
-    against 1, and no frame inside a stretch but another event's mark
+onset, drums, pitch, voicing, strike, release, struck: binary cross-entropy with a weight
+    on the positive class of 8, 8, 12, 2, 20, 20, 8, the strike's on frames not placed,
+    the drums' on frames of no kit, the rest on every frame; the onset's asks a stretch
+    the window holds whole one term, its highest logit against 1, and no frame inside a
+    stretch but another event's mark
 velocity: squared error, on strike frames with a known velocity
 wave:     cross-entropy, on frames with a known voice
 voice:    squared error, on frames with a known voice
@@ -1236,7 +1246,7 @@ spread:   miss / e + log e where asked, e the error the head states and miss the
 
 total    = onset + drums + pitch + 0.5 voicing + strike + release + 2 velocity + 0.5 wave + 2 voice
            + 0.5 family + beat + downbeat + 2 cents + 0.2 spread
-           + 0.25 (0.5 pitchfamily + 0.5 pitchwave + 2 pitchvoice)
+           + 0.25 (0.5 pitchfamily + 0.5 pitchwave + 2 pitchvoice) + struck
 decoders = onset + drums + pitch + 0.5 voicing + strike + release + beat + downbeat
 ```
 
@@ -1248,6 +1258,16 @@ the mean over the frames and the stretches asked, a stretch one term (`onset_los
 a batch without a stretch asks every frame as the other heads are. A known start
 past its stretch, under one in twenty where the reach was measured, is asked
 silence where it is, as any frame outside one.
+
+The struck head says that something was struck, of no line or pitch, both models'.
+It is asked at every frame of every window, a recording's of guitar or voice among
+them, and joins the total but not `decoders` nor what a pass that carries on is read
+by (`DECODERS`, `READ`): no decoder reads it yet. A strike weighs 8, as a hit does
+in the drums head; at that weight the head's score sits at `STRUCK_BAR`, 8/9, where
+a strike is as likely as not. A loop whose label holds a kit asks the drums head
+nothing: its pieces name no line, and the head would be taught silence under them.
+A strike in a loop of placed starts marks the onset where it is, as a drum hit does:
+it is heard, not placed.
 
 The beat and the downbeat are the onset head's kind of loss with one difference: no
 weight. Audio reads the two by their level, as posteriors: the tempo from how the beat
@@ -1286,15 +1306,20 @@ of itself where the decoder leans on it.
 A frame model's lines give `beats' F1` and `bar lines'` after the decoders' loss:
 each head's peaks at a half or over (`BEAT_BAR`) among the frames asked, a peak right
 when a beat the labels give lies within four frames of it, counted as the strikes'
-are (`struck`). Over a corpus that lists no beat, such as a `--validate` corpus whose
+are (`peaks`). Over a corpus that lists no beat, such as a `--validate` corpus whose
 list has no `beats` column, the line says `no beat or bar line asked` and gives
 neither head's loss: a mean over no frame prints 0.000, which reads as a head never
 wrong, and adds nothing to `decoders` either way.
 
+Every line of a model with a struck head then gives `struck's F1`: the head's peaks at
+`STRUCK_BAR` or over against what its corpus strikes within four frames, counted so,
+or over a corpus where nothing is struck, as GuitarSet's and VocalSet's, `nothing
+struck, struck's peaks N a minute`, which a head that hears no strike there keeps near 0.
+
 Over loops of placed starts, held out or `--validate`'s, either model's lines then
 give `placed starts' F1 ... within R frames`: the onset head's peaks at a half or
 over (`ONSET_BAR`), a peak right when a placed start lies within the corpus's reach
-R of it, counted as the strikes' are (`struck`). No loss enters it, so it reads any
+R of it, counted as the strikes' are (`peaks`). No loss enters it, so it reads any
 weights alike, whatever loss trained them.
 
 A notes model's lines then say what plays each note, read as audio reads it (§10): a
@@ -1444,24 +1469,25 @@ is the contract. All numbers are little-endian. An FNV-1a 64 of every byte befor
 ends the file. The checksum catches damage, not tampering. A file only ever holds
 numbers, and `Load` checks its shape against its tensors. The trainer writes version 6:
 a `kind` word
-after the version, 0 for the frame model, twelve heads, `beat` and `downbeat` of one value
-each after `family`, an `out.weight` of 405 x 256, and after the heads the constants it
-states, a count and for each a name and a float32: one, `layout`, the layout of the
-frames it hears, 1 (audio's `ripmodels.Layout`, §2). Audio refuses a file of another
-layout, or of none, by name, and so do the trainer's `--init` and `average.py`.
+after the version, 0 for the frame model, thirteen heads, `beat`, `downbeat` and `struck`
+of one value each after `family`, an `out.weight` of 406 x 256, and after the heads the
+constants it states, a count and for each a name and a float32: one, `layout`, the layout
+of the frames it hears, 1 (audio's `ripmodels.Layout`, §2). Audio refuses a file of another
+layout, or of none, by name, and so do the trainer's `--init` and `average.py`; it loads a
+frame model whose heads start with `FrameSpec`'s and reads nothing of `struck` after them.
 
 `--pitchnet` writes the same version, whose `kind` word, 1, makes the notes model
 transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
 scalars, then the long convolutions' spacings and the bins its regions pool, the first and
 how many (0 and 0, every bin), then the heads, the per-pitch ones first: pitch,
 strike, release, velocity, cents, pitchfamily, pitchwave and pitchvoice, then onset, drums,
-voicing, wave, voice and sure. `cents` is 176 numbers a frame, the 88 offsets then the 88 log
+voicing, wave, voice, struck and sure. `cents` is 176 numbers a frame, the 88 offsets then the 88 log
 errors, `cellout`'s fifth and sixth channels; `pitchfamily` 704, `pitchwave` 440 and
 `pitchvoice` 2,816, a value's 88 pitches together, `cellout`'s next 45. `sure` is the measure
 of §8, written as a frame head of one value whose row of `frameout.weight` is zero and whose
 bias is the measure, so every frame states it. A file without the cents head, a probe's,
-loads and rips with no glides. Version 6 needs transformer v0.7.0, and its layout audio
-v0.30.0. The tensors are
+loads and rips with no glides. Version 6 needs transformer v0.7.0, its layout audio
+v0.30.0, and a frame model's `struck` audio v0.34.0. The tensors are
 `reduce`, `wide`, `cells`, `near.0`, `long.{i}`, `cellout`, `frame1`, `frame2` and `frameout`, each as its `nn.Conv2d`,
 `nn.Conv1d` or `nn.Linear` holds it. In the stapes root the file is `ripnotes.bin`.
 Beside the frame model's `ripframe.bin` it gives pitch, voicing, strike, release, velocity

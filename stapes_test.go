@@ -2825,6 +2825,82 @@ func TestRowsReadACorpusThatKeptItsAudio(t *testing.T) {
 	}
 }
 
+// TestFitsReadTheSameRowsWhateverTheCores: fits rips and fits each loop of a
+// corpus that kept its audio and writes a row a line, read against its label;
+// one seed gives the same rows with one candidate scored at a time or several,
+// a part takes its share, a run after keeps it, and other sizes are refused.
+func TestFitsReadTheSameRowsWhateverTheCores(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	dir := t.TempDir()
+	corpus, one, many := filepath.Join(dir, "engine"), filepath.Join(dir, "one"), filepath.Join(dir, "many")
+	s.fit.cores = 1
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %[1]s 2 2\nfits %[2]s from %[1]s\n", corpus, one))
+	s.fit.cores = 3
+	runOrFatal(t, s, &out, fmt.Sprintf("fits %s from %s part 1/2\n! fits %[1]s from %[2]s notes 3\n", many, corpus))
+	rows := func(dir string) (files map[string]string, rows []fitRow) {
+		files = map[string]string{}
+		names, _ := filepath.Glob(filepath.Join(dir, "*.json"))
+		for _, name := range names {
+			data, _ := os.ReadFile(name)
+			if files[filepath.Base(name)] = string(data); filepath.Base(name) != fitsFile {
+				var loop []fitRow
+				if err := json.Unmarshal(data, &loop); err != nil {
+					t.Fatalf("%s: %v", name, err)
+				}
+				rows = append(rows, loop...)
+			}
+		}
+		return files, rows
+	}
+	whole, all := rows(one)
+	part, _ := rows(many)
+	for name, data := range part {
+		if whole[name] != data {
+			t.Errorf("%s differs scored three at a time from one at a time:\n%s\n%s", name, data, whole[name])
+		}
+	}
+	var owned, held int
+	for _, r := range all {
+		if r.Fit == nil || r.Seed == nil || r.Listened < 1 || r.Listened+r.Held > r.Notes || r.Heard != nil {
+			t.Errorf("a row of the analysis's rip reads %+v", r)
+		}
+		if r.Own != nil && r.Share > 0 && r.Share <= 1 && r.Voice != "" && r.Wave != "" && len(r.FitGenes) == audio.VoiceGeneCount && r.FitFar != nil {
+			owned++
+		}
+		if r.Held > 0 && r.FitHeld != nil && r.SeedHeld != nil {
+			held++
+		}
+	}
+	if len(whole) != 3 || len(part) != 2 || len(all) == 0 || owned == 0 || held == 0 || !strings.Contains(out.String(), "part 1 of 2") {
+		t.Fatalf("%d file(s) whole and %d of the part, %d row(s), %d of a labelled voice and %d with notes held out:\n%s", len(whole), len(part), len(all), owned, held, out.String())
+	}
+	// the run after keeps the part's loop and reads the other through a model,
+	// whose front end hears each line's voice
+	cfg := ripmodels.FrameSpec()
+	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
+	m, err := transformer.NewRandom(cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.frontEnd, err = ripmodels.New(m, nil); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	runOrFatal(t, s, &out, fmt.Sprintf("fits %s from %s\n", many, corpus))
+	after, all := rows(many)
+	heard := 0
+	for _, r := range all {
+		if r.Heard != nil {
+			heard++
+		}
+	}
+	if len(after) != 3 || heard == 0 || !strings.Contains(out.String(), "1 loop(s) were there") || !strings.Contains(out.String(), "one voice") {
+		t.Errorf("a run after the part left %d file(s), %d row(s) with a voice heard:\n%s", len(after), heard, out.String())
+	}
+}
+
 // TestALabelServesReportedNotesFirstAndATruthNoteOnce: a strike is right when
 // a truth note of its pitch starts within the matcher's window of it; a truth
 // note answers one strike, the nearest, a reported note before a dropped
@@ -3499,6 +3575,30 @@ save pattern %s
 	runOrFatal(t, s, &out, "fit loop 1\n")
 	if !strings.Contains(out.String(), "registered; the patterns naming it play it") {
 		t.Errorf("fit replaced no voice:\n%s", out.String())
+	}
+	// a fit's sizes are its line's words, each its own, and with none the
+	// session's, which start as today's; genes says a fitted voice as a label does
+	out.Reset()
+	runOrFatal(t, s, &out, "fit loop\nfit loop notes 1 pool 5 generations 2 seed 3\n! fit loop pool 2\n! fit loop tempo 3\ngenes loop_bass_voice\n! genes loop\n")
+	sized := s.fit
+	for _, w := range [][2]string{{"notes", "1"}, {"pool", "5"}, {"generations", "2"}, {"seed", "3"}} {
+		if err := sized.size(w[0], w[1]); err != nil {
+			t.Error(err)
+		}
+	}
+	lines := strings.Count(out.String(), "fitting the ") / 2
+	if sized != (fitOptions{notes: 1, pool: 5, generations: 2, seed: 3}) || defaultFit != (fitOptions{notes: 6, generations: 8, pool: 16, seed: 1}) ||
+		lines == 0 || strings.Count(out.String(), "over 2 note(s), 1 generation(s) of 4...") != lines || strings.Count(out.String(), "over 1 note(s), 2 generation(s) of 5...") != lines {
+		t.Errorf("the words sized a fit %+v from %+v, the default %+v:\n%s", sized, s.fit, defaultFit, out.String())
+	}
+	var said struct {
+		Voice, Wave string
+		Genes       []float64
+	}
+	bass, _ := s.voices.get("loop_bass_voice")
+	if i := strings.LastIndex(out.String(), "{"); i < 0 || json.Unmarshal([]byte(strings.SplitN(out.String()[i:], "\n", 2)[0]), &said) != nil ||
+		said.Voice != "loop_bass_voice" || said.Wave != cmp.Or(bass.Wave, "sine") || !slices.Equal(said.Genes, bass.Genes()) {
+		t.Errorf("genes said %+v of a voice of wave %q and genes %v:\n%s", said, bass.Wave, bass.Genes(), out.String())
 	}
 	// the two witnesses and a truth: a rip agrees with itself on every note,
 	// and read back from its own transcript, as text and as MIDI, hears every

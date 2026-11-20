@@ -176,7 +176,12 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    a plucked string (a harp or a santur) or a flute. A plucked voice
    (`string`) with a doubled, beating course, and the fit's samples cleared of
    the other lines (item 4 of the loop below), measured by the floor the fit
-   reaches.
+   reaches. Read against a corpus's own voices through the analysis (`fits`),
+   the fit was nearer the recording than the label's own voice on 73 of 73
+   lines of one voice, so the measure is what is owed, not a longer search.
+   Left: the same reading through the trained weights on loops they did not
+   train on, which alone fills `heard`; then a measure the label's own voice
+   is nearest by, read by `fits`' `prefers` falling.
 9. The judge as a trained stage ([Rip design](rip-design.md) §7) is built and
    none is fitted on recordings or installed: `rows`, `tool/rip-train`'s
    `judge.py` and the root's `ripjudge.bin`
@@ -627,10 +632,16 @@ rip are in place; what remains:
 
 7. A rip's voice from what was heard: `rip` fits every line, and the heard
    voice is its first seed. What remains is the voice of every note (the
-   instrument model, above) and a distance that does not favour a dark voice.
+   instrument model, above) and a distance that does not favour a dark voice,
+   nor part a unison voice from its own note by where its oscillators start
+   ([agent notes](agent-notes.md#the-rip-and-its-truths)).
 8. Put off: a second piece of music under the first, which the rip
    transcribes with it; it wants the judge to follow instruments as it
    follows notes.
+9. The fit's memo names a genome to three decimals (`genomeKey`): two new
+   candidates of one generation within it take whichever was scored first,
+   which the cores decide. Key it by the genome's bits and read `fits` before
+   and after.
 
 ## Files and banks
 

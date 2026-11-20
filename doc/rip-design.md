@@ -167,7 +167,9 @@ flowchart TD
    set after to the recording's there. The melody's second line gets one of its
    own (`Rip.UnderVoice`). The recording around a note holds the other voices
    too, so the fit is to the mix there: the models propose, the engine
-   disposes.
+   disposes. `fits` reads the search against the voices a corpus's labels
+   state, the label's own voice measured at the fit's notes beside the fit
+   ([Stapes §4](stapes.md#4-the-rips-verbs)).
 5. **Patterns and the dictionary.** Notes and hits fall into bars on the
    sixteenth grid. `rip` writes windows of up to four bars as patterns, the
    estimate heard first; `compress` writes the dictionary, per part (beat,

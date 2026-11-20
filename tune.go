@@ -1340,7 +1340,8 @@ var velocityWords = map[string]struct {
 // startsWords is what a list's starts column may say of its notes' starts: an
 // empty cell that each is heard struck, placed that they are placed on the
 // recording by a fitted alignment, missing by frames, so its labels say so and
-// ask the strike head nothing (doc/rip-training.md)
+// ask the strike head nothing and the onset head a rise within the corpus's
+// reach (doc/rip-training.md)
 var startsWords = map[string]bool{"": false, "placed": true}
 
 // corpusFrom writes a corpus of recordings and the MIDI files they were played
@@ -3097,7 +3098,7 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 	ag, _ := matchHeard(r, given, t.timed)
 	c := truthCount{notes: everyNote(ag), lines: len(t.lines), drummed: missed.drummed, drumless: missed.drumless}
 	if t.drums {
-		for _, l := range audio.MatchHits(r.Hits(), t.hits, 30/float64(r.BPM)/audio.StepsPerBeat).Drums {
+		for _, l := range audio.MatchHits(r.Hits(), t.hits, 30/float64(r.BPM)/audio.StepsPerBeat, t.timed).Drums {
 			c.drums = c.drums.plus(noteCount{l.Matched, l.B, l.A})
 		}
 	}

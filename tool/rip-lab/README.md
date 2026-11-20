@@ -31,7 +31,11 @@ own files.
      `.../engine-shapes-out engine 7 240 out shapes`;
    - `labels/placefit.py <truth root> write`, which writes `labels/place.json`;
    - `labels/label.py <out dir>`, then `labels/placed.py <out dir>` and
-     `audit/vocalcheck.py <out dir>/vocal-list.csv`.
+     `audit/vocalcheck.py <out dir>/vocal-list.csv`;
+   - once its corpora are made, and again after any `corpus ... from` into
+     one, which writes its `corpus.json` afresh, `labels/placefit.py <truth
+     root> reach <corpus dir>...`, which writes each one's reach: the trainer
+     refuses a corpus of placed starts without one.
 4. E-GMD: `datasets/egmd.py list <e-gmd-v1.0.0> train <hours>
    <e-gmd-v1.0.0>/egmd-train.csv`, and `... test all <e-gmd-v1.0.0>/egmd-test.csv`
    for the split held out, a corpus each.
@@ -70,7 +74,8 @@ hand: a first training wants few wrong labels more than it wants hours.
 A placed start is an aligned score's, not a label to the frame, and the list says so
 (`starts` `placed`): on the check draws about 0.82 to 0.84 of starts lie within 50
 ms of the truth and 0.97 within 100 ms. A semitone sung narrow and a wide vibrato
-are where the starts are loosest.
+are where the starts are loosest. The trainer asks the onset head for a rise within
+a start's reach, which `placefit.py ... reach` measures, and the strike head nothing.
 
 ## The tools
 
@@ -95,7 +100,7 @@ file sets no program is asked no name. The set states no velocity: every note is
 so the list's `velocity` cell is `measured` (stapes v0.37.0, doc/rip-training.md, "A recording's velocities"): a
 corpus made from it gives each note the velocity heard in its take, -1 where it cannot be told, against a unit its
 singer's takes share, the singer named in `unit`. A take's starts are placed, not heard struck, and its `starts` cell
-says `placed`, so its notes ask the strike head nothing.
+says `placed`, so its notes ask the strike head nothing and the onset head a rise within the corpus's reach.
 A recording's duration is its WAV header's. The placing's bounds are place.py's, printed first; vocal-placed.tsv has
 a row a take: its exercise, technique, tonic, standard in cents, whether it is listed or why not, and the voiced
 frames the fold moved an octave. vocadito is not here: it measures at most (stapes' AGENTS, Data), from its own
@@ -179,6 +184,11 @@ note sung off among them, the wrong takes refused by kind, and on the takes that
 label would hold; and of every two joined neighbours of those takes, by the step between them, how often one is
 placed at twice the other's length or more, which the truth never is (a note of a slow take is a step in four
 longer or shorter at most). With `write` the fitted bounds go to place.json beside place.py, which then reads them.
+
+placefit.py <truth root> reach <corpus dir>...: a placed start's reach, how far its known start may lie from it: the
+REACH (0.95) quantile of how far each start of the right takes that pass, on the three draws, placed under place.py's
+bounds as a label is, sits from its known start, in frames rounded up. Each corpus.json named gets it as `reach`, and
+the line says how many placed starts the corpus holds and how many stretches they make, those that touch being one.
 ```
 
 ### labels/placed.py

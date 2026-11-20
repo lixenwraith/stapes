@@ -139,6 +139,9 @@ hand](#by-hand)), and its steps a second follow what they get.
   A frame model's lines give `beats' F1` and `bar lines'` after the decoders'
   loss, each head's peaks over a half against the labelled beats within four
   frames, or `no beat or bar line asked` over a corpus that lists none.
+  Over loops of placed starts either model's lines then give `placed starts' F1
+  ... within R frames`, the onset head's peaks over a half against those starts
+  within the corpus's reach.
   A pass that carries on (`--carry`) reads its start before a step; each held-out
   line then says, before its parts, the rate since the last reading and what the
   rule did (`; rate 1.0e-04 fine: gained, -0.012 on the reading kept at step 3000,
@@ -320,8 +323,9 @@ To write your own:
   nothing there, or `measured`, each note's velocity heard in the recording
   instead, none where the notes with it hide its level, with `unit`, the
   recordings measured together, and `starts`, `placed` where an alignment
-  placed the notes' starts, which asks the strike head nothing there:
-  [Rip training](../../doc/rip-training.md) §3), and
+  placed the notes' starts, which asks the strike head nothing there and the
+  onset head a rise within the corpus's `reach`, which `placefit.py ... reach`
+  writes: [Rip training](../../doc/rip-training.md) §3), and
   `train.py --mix <dir>:<share>` draws that share of the windows from it,
   labelled by the MIDI's notes, velocities and hits, a tom's or a cymbal's an
   onset of no drum, every hit the drums', the voices unknown, and `--over
@@ -406,7 +410,8 @@ the first convolution taking the four as its channels. Since the average looks
 back, `train.py` computes a window's from 128 frames before it (`WARM`, three
 of its time constants), so a window starts as settled as it would in a rip.
 The losses: onsets, drums, pitches and each pitch's strikes and releases (within a frame of a
-note's start and end, no strike where a recording's starts are placed) as weighted binary cross-entropy, voicing likewise, the
+note's start and end, no strike where a recording's starts are placed and an onset anywhere
+within the start's reach) as weighted binary cross-entropy, voicing likewise, the
 wave as cross-entropy and the voice genes as squared error over frames a note
 sounds in, each strike's velocity as squared error where the corpus gives one,
 and the family of the highest note or hit sounding as cross-entropy where the

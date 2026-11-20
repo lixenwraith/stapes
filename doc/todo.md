@@ -152,8 +152,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    `timed` on GuitarSet's lines and `drumless` on every line no drum plays
    in (a `.mid` says nothing of drums without it, and the phantom hits on a
    guitar or a singer alone are then unseen), before a run after every round
-   writes a `rip.toml`; a timed truth's drum hits still pass through
-   `MatchHits`' own map; and kept frames outlive a change to the models'
+   writes a `rip.toml`; and kept frames outlive a change to the models'
    code, which their names do not hold. It scores the drums and the bars
    beside the notes where a truth gives them, a hit heard where a truth
    knows no drum plays against the drums, and then searches `onset_min` and
@@ -245,9 +244,12 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
       with the strings' partials, ends and levels as their shape is the way left;
       the set's original, not debleeded, by-string archive would say whether the
       debleeding adds to the stray.
-    - A placed start still lights the onset head's target and a placed end the
-      release head's, where the alignment puts them (`placed` asks the strike
-      head alone nothing); the same mask on those two heads is a line each.
+    - A placed end still lights the release head's target where the alignment
+      puts it; a placed start asks a rise within its reach. The head
+      learns the alignment's miss if, on the engine-shapes takes placed as a
+      label is, its peaks agree better with the placed ends than with the known
+      ones, and more so pass on pass; then an end's own reach, measured as a
+      start's is, asks it one rise within it.
     - E-GMD's list says `none`, so its hits are labelled at -1: a kit's law
       is not the engine's. An empty cell would label each hit at its file's
       n/127, the engine's kits' measure; whether the lab's list says so waits

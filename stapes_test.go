@@ -2379,6 +2379,57 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	}
 }
 
+// TestTuneTruthCountsATimedTruthsHitsWhereTheyStand: a rendered loop played
+// twice, against its own label taken timed, counts its hits at no shift, though
+// the label shifted by the loop, a whole number of beats, matches as many or more
+func TestTuneTruthCountsATimedTruthsHitsWhereTheyStand(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	loops, err := s.corpus(tuneOptions{loops: 1, bars: 4, seed: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, dir := loops[0], t.TempDir()
+	writeWAV(t, filepath.Join(dir, "loop.wav"), append(slices.Clone(l.audio), l.audio...))
+	if err := writeJSON(filepath.Join(dir, "loop.json"), l.label); err != nil {
+		t.Fatal(err)
+	}
+	list := filepath.Join(dir, "truths.txt")
+	writeFile(t, list, "loop.wav\tloop.json\tloop\ttimed\n")
+	takes, _, err := readTruthList(list, analysisEar{}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := takes[0].count(s.rip, s.lead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := audio.Ripper{Params: s.rip, FrontEnd: analysisEar{}, Lead: s.lead}.Samples(takes[0].x, audio.RipRate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matched := func(beats int) int {
+		var given []audio.RipHit
+		for _, h := range l.label.hits() {
+			h.Start += float64(beats) * 60 / float64(l.bpm)
+			given = append(given, h)
+		}
+		n := 0
+		for _, d := range audio.MatchHits(r.Hits(), given, 30/float64(r.BPM)/audio.StepsPerBeat, true).Drums {
+			n += d.Matched
+		}
+		return n
+	}
+	here, there := matched(0), matched(l.label.Bars*l.meter.Beats())
+	if here == 0 || there < here {
+		t.Fatalf("%d hit(s) given match %d where they stand and %d a loop on: no fixture", len(l.label.hits()), here, there)
+	}
+	if c.drums.hits != here {
+		t.Errorf("counted %d of %d hit(s) given, want the %d matched where they stand, not the %d a loop on", c.drums.hits, c.drums.given, here, there)
+	}
+}
+
 // TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays: a label and a
 // drumless line know that no drum plays, a .mid alone says nothing; a hit heard
 // there is heard and not given, its condition scoring one by none heard and

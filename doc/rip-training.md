@@ -198,7 +198,9 @@ The same seeds render the same frames, byte for byte.
 ```
 
 Under `kits` it adds `struck_genes`, the names of a piece's thirteen genes in their
-order (audio's `StruckGeneNames`). `loops` counts the files `loop_000` onward; the number grows past three digits as
+order (audio's `StruckGeneNames`). A corpus of placed starts adds `reach`, in frames,
+how far a placed start's known start may lie from it (a recording's starts, below):
+the trainer refuses one without it and says how to give it one. `loops` counts the files `loop_000` onward; the number grows past three digits as
 needed (`loop_39999`). `layout` is the frames' (§2): the trainer refuses a corpus of
 another, or of none, by name, and one is exported again for a new layout. A label holds
 each note's own MIDI number, and a model's cells are the piano's 88 keys (§5). The kinds
@@ -885,13 +887,22 @@ A `from` list's `starts` column says how its notes' starts were found, a row a w
   label is as without the column, byte for byte.
 - `placed`: they are placed on the recording by an alignment, as a take's notes
   that its exercise sheet writes and a procedure fitted on known sound lays on the
-  take, and such a start can miss its strike by frames. A strike target a frame
-  wide there would teach the alignment's miss, so the label says `placed` (§3) and
-  its notes ask the strike head nothing (§5). Their frames, velocities and cents
-  are asked as any note's, the onset head at each start and the release head at
-  each end, which the same alignment places.
+  take, and such a start can miss its strike by frames. A target a frame wide
+  there would teach the alignment's miss, so the label says `placed` (§3): its
+  notes ask the strike head nothing and the onset head for a rise anywhere within
+  the corpus's `reach` of each start (§5). Their frames, velocities and cents are
+  asked as any note's, and the release head at each end, which the same alignment
+  places.
 
 Any other word is refused.
+
+The reach is measured where the placing was fitted, on known sound:
+`tool/rip-lab/labels/placefit.py <truth root> reach <corpus dir>...` places the
+takes of its three engine-shapes draws under `place.py`'s bounds as a label is, and
+writes into each `corpus.json` the 0.95 quantile of how far a start of the right
+takes that pass sits from its known start, a high share and not the worst, in
+frames rounded up. A `corpus ... from` run writes `corpus.json` afresh, so the line
+runs again after it.
 
 ## 4. The input: four planes
 
@@ -956,7 +967,15 @@ A note that carries `cents`
 sounds, is struck and is let go in the cell nearest its frequency at each frame, so a
 glide's pitch target walks the cells it crosses.
 
-- `onset`: within one frame of any event, drum or note, that is `t-1 <= frame < t+2`.
+- `onset`: within one frame of any event, drum or note, that is `t-1 <= frame < t+2`,
+  but a placed start (§3), which marks `stretch` instead.
+- `stretch`: a placed start's reach either side of it and its mark's frame past
+  that, `t-reach-1 <= frame < t+reach+2`, where the onset's loss asks a rise
+  somewhere (§8); stretches that touch are one, asking one rise at least. 2 where
+  the window holds it whole, 1 where the window's first or last frame cuts it,
+  whose start may lie past the edge, so it asks nothing.
+- `starts`: a placed start's mark, asked nothing: the onset head's peaks are read
+  against it within the reach (§8).
 - `drums[d]`: the same, for that drum's hits.
 - `pitch[p]`: from a note's `frame` until its `end`, at least one frame.
 - `voicing`: any pitch on.
@@ -1072,7 +1091,8 @@ at random. Its level is -12 to +6 dB of its mean power
 against the loop's, and uncorrelated sounds add in power, so `e = e_loop + gain x e_drums`.
 A hit joins the onset and drum targets only where it can be heard: what it adds, over its
 best ten bands of the sharp plane, must top everything else sounding (`stands_out`),
-judged after the channel. The window is asked no beat and no bar line: the drums laid under it keep
+judged after the channel, a hit in a placed start's stretch as anywhere, the stretch kept.
+The window is asked no beat and no bar line: the drums laid under it keep
 their own.
 
 **`--mix dir:share`** draws a share of the windows from another corpus as it stands.
@@ -1080,7 +1100,8 @@ their own.
 
 **`--shuffle share`** splices a share of the windows from chunks of a second, each two clips
 from random places summed, the second at -6 to +6 dB of the first's power. Notes keep their
-labels, a drum hit counts where it stands out of the other clip, and wave, voice,
+labels, a placed start its stretch where it falls in its chunk, cut by the chunk's edges as by
+a window's, a drum hit counts where it stands out of the other clip, and wave, voice,
 family, the beat and the bar line go unasked.
 
 **`--sung dir:share`** draws that share of the chunks from a corpus of solo singing.
@@ -1095,7 +1116,8 @@ about twenty at A0 and one at the top, so a low note's rise counts once.
 **`--bend share`** reads that share of the plain windows along a tempo that sways: a rate up
 to 18% either way and a slow sine of up to 12 frames, the features interpolated and the
 targets taken nearest, so no steady grid or pulse is there to learn, as a pianist's isn't.
-The beat, the bar line and their mask are taken the same way and sway with the hits.
+The beat, the bar line and their mask are taken the same way and sway with the hits, and so
+are a placed start's stretches, cut again by the window's edges.
 
 **`--strike-weight w`** is a strike's weight against a frame without one, 20 by default.
 **`--again-weight a`** weighs a strike of a pitch still sounding a times more.
@@ -1196,7 +1218,9 @@ unbroken run drew from k on, and two shards draw different batches.
 
 ```
 onset, drums, pitch, voicing, strike, release: binary cross-entropy with a weight on
-    the positive class of 8, 8, 12, 2, 20, 20, the strike's on frames not placed
+    the positive class of 8, 8, 12, 2, 20, 20, the strike's on frames not placed;
+    the onset's asks a stretch the window holds whole one term, its highest logit
+    against 1, and no frame inside a stretch but another event's mark
 velocity: squared error, on strike frames with a known velocity
 wave:     cross-entropy, on frames with a known voice
 voice:    squared error, on frames with a known voice
@@ -1215,6 +1239,15 @@ total    = onset + drums + pitch + 0.5 voicing + strike + release + 2 velocity +
            + 0.25 (0.5 pitchfamily + 0.5 pitchwave + 2 pitchvoice)
 decoders = onset + drums + pitch + 0.5 voicing + strike + release + beat + downbeat
 ```
+
+A placed start's stretch asks the onset head to rise somewhere in it and is
+indifferent to where: a rise at any of its frames costs the same, and none of its
+frames is asked silence, so the head cannot learn where in the reach the alignment
+put the start; stretches that touch ask one rise between them. The onset's loss is
+the mean over the frames and the stretches asked, a stretch one term (`onset_loss`);
+a batch without a stretch asks every frame as the other heads are. A known start
+past its stretch, under one in twenty where the reach was measured, is asked
+silence where it is, as any frame outside one.
 
 The beat and the downbeat are the onset head's kind of loss with one difference: no
 weight. Audio reads the two by their level, as posteriors: the tempo from how the beat
@@ -1257,6 +1290,12 @@ are (`struck`). Over a corpus that lists no beat, such as a `--validate` corpus 
 list has no `beats` column, the line says `no beat or bar line asked` and gives
 neither head's loss: a mean over no frame prints 0.000, which reads as a head never
 wrong, and adds nothing to `decoders` either way.
+
+Over loops of placed starts, held out or `--validate`'s, either model's lines then
+give `placed starts' F1 ... within R frames`: the onset head's peaks at a half or
+over (`ONSET_BAR`), a peak right when a placed start lies within the corpus's reach
+R of it, counted as the strikes' are (`struck`). No loss enters it, so it reads any
+weights alike, whatever loss trained them.
 
 A notes model's lines then say what plays each note, read as audio reads it (§10): a
 note's family, wave and genes are its cells' say over the frames it sounds, each frame

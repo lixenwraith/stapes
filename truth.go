@@ -94,7 +94,7 @@ func cmdTruth(s *Session, a []string) error {
 		at = ag.At
 	}
 	if len(hits) > 0 {
-		hg := reportHits(s.out, a[0], rp.rip, hits)
+		hg := reportHits(s.out, a[0], rp.rip, hits, timed)
 		if at == nil {
 			at = func(sec float64) float64 { return hg.Stretch*sec + hg.Offset }
 		}
@@ -151,10 +151,15 @@ func reportBars(w io.Writer, name string, r *audio.Rip, beats, downbeats []float
 }
 
 // reportHits prints each drum's count of a rip's hits against the hits given,
-// matched within half a step, and the hits only one side has
-func reportHits(w io.Writer, name string, r *audio.Rip, given []audio.RipHit) audio.HitsAgreement {
-	hg := audio.MatchHits(r.Hits(), given, 30/float64(r.BPM)/audio.StepsPerBeat)
-	fmt.Fprintf(w, "%s against %d hit(s) given: the rip's seconds = %.3f × the given %+.2f\n", name, len(given), hg.Stretch, hg.Offset)
+// matched within half a step, and the hits only one side has; timed, the hits
+// given are on the recording's own clock and no map is fitted
+func reportHits(w io.Writer, name string, r *audio.Rip, given []audio.RipHit, timed bool) audio.HitsAgreement {
+	hg := audio.MatchHits(r.Hits(), given, 30/float64(r.BPM)/audio.StepsPerBeat, timed)
+	if timed {
+		fmt.Fprintf(w, "%s against %d hit(s) given on the recording's own clock: no map fitted\n", name, len(given))
+	} else {
+		fmt.Fprintf(w, "%s against %d hit(s) given: the rip's seconds = %.3f × the given %+.2f\n", name, len(given), hg.Stretch, hg.Offset)
+	}
 	brief := func(hits []audio.RipHit) string {
 		notes := make([]audio.RipNote, len(hits))
 		for i, h := range hits {

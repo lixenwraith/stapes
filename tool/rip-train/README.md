@@ -93,7 +93,7 @@ tool/rip-train/pipeline.sh install
 | `DIM`, `HEADS`, `LAYERS`, `FFN` | 256, 8, 4, 1024 | the frame model's width, attention heads, layers and feed-forward width, `train.py`'s `--dim`, `--heads`, `--layers` and `--ffn`; a `CHECKPOINT` or `INIT` of another shape is refused |
 | `CONVS`, `TOWERS` | none | convolutions before the input layer, and towers of layers over it, each computing a run of the heads, `train.py`'s `--convs` and `--towers` |
 | `MIX` | empty | another corpus and the share of windows drawn from it, `dir:share`, such as recordings with their MIDI files (`corpus <dir> from`) |
-| `OVER` | empty | a corpus of drums alone and the share of windows that lay it over a loop with no drums of its own, `dir:share`, at -12 to +6 dB of the loop's power, a hit labelled only where it can be heard, `train.py`'s `--over` |
+| `OVER` | empty | a corpus of drums alone and the share of windows that lay it over a loop where nothing is struck, `dir:share`, at -12 to +6 dB of the loop's power, a strike labelled only where it can be heard, `train.py`'s `--over` |
 | `CHANNEL` | empty | a noise bank and the share of windows heard through a small speaker, a room and a phone, `file.npz:share`, `train.py`'s `--channel`; `make_noise.py` builds the bank ([Phones](#turning-a-run-toward-your-music)) |
 | `PCEN` | empty | `pcen`: a second input channel, each band's PCEN and their mean, `train.py`'s `--pcen`; a `CHECKPOINT` or `INIT` of the other channel count is refused |
 | `HOLDOUT`, `EVERY` | 200, 1000 | loops held out, and how often they are scored and a checkpoint written |
@@ -139,6 +139,10 @@ hand](#by-hand)), and its steps a second follow what they get.
   A frame model's lines give `beats' F1` and `bar lines'` after the decoders'
   loss, each head's peaks over a half against the labelled beats within four
   frames, or `no beat or bar line asked` over a corpus that lists none.
+  A model with a struck head gives `struck's F1` after them, its peaks at 8/9
+  or over against every strike of no pitch within four frames, a line's hit,
+  one of no line or a kit's, or over a corpus where nothing is struck
+  `nothing struck, struck's peaks N a minute`, which should read near 0.
   Over loops of placed starts either model's lines then give `placed starts' F1
   ... within R frames`, the onset head's peaks over a half against those starts
   within the corpus's reach.
@@ -329,8 +333,9 @@ To write your own:
   `train.py --mix <dir>:<share>` draws that share of the windows from it,
   labelled by the MIDI's notes, velocities and hits, a tom's or a cymbal's an
   onset of no drum, every hit the drums', the voices unknown, and `--over
-  <dir>:<share>` lays a corpus of drums alone over loops with no drums in that
-  share of the windows, a hit labelled only where it stands out of the rest.
+  <dir>:<share>` lays a corpus of drums alone over loops where nothing is struck
+  in that share of the windows, a strike labelled only where it stands out of
+  the rest.
   Both draw a recording by its length, so a minutes-long one
   counts for its minutes, and a corpus's `skip.txt`, a loop's name
   (`loop_123`) a line, lists those the trainer leaves out, such as recordings
@@ -400,7 +405,7 @@ mean and the mean itself, then the sharp plane's (`ripmodels.features`, derived
 from the stored frames), width 256, eight heads, four layers, feed-forward
 1024, a window of 64 frames either side, 3.4 million weights. `--convs
 16x3x3/1,32x3x3/2` puts convolutions before the input layer, each its
-channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:10`
+channels, frames by bands kernel and the pooling over bands; `--towers 2:2,4:11`
 splits the layers into towers over the shared input layer, each its layers and
 the run of heads it computes in `ripmodels.HEADS` order: the onset and the drums
 on two layers, the rest on four. `--pcen` gives the frame model two more planes of
@@ -416,9 +421,13 @@ wave as cross-entropy and the voice genes as squared error over frames a note
 sounds in, each strike's velocity as squared error where the corpus gives one,
 and the family of the highest note or hit sounding as cross-entropy where the
 corpus gives one, at half weight and outside the score that picks the step;
-and whether a beat of the meter and a bar line fall within a frame, as binary
+whether a beat of the meter and a bar line fall within a frame, as binary
 cross-entropy with no weight, in the score that picks the step
-([the beat and the bar line](#the-beat-and-the-bar-line)).
+([the beat and the bar line](#the-beat-and-the-bar-line)); and whether something
+of no pitch is struck within a frame, as weighted binary cross-entropy over every
+frame, outside the score that picks the step ([the struck head](#the-struck-head)).
+A loop whose label holds a kit asks the drums head nothing, since a kit's pieces
+name no line.
 
 ## The beat and the bar line
 
@@ -445,9 +454,10 @@ targets and the loss.
   refresh but before it, whose heads are the first of the run's: every other
   weight carries over and the new head's rows of the output layer start fresh.
   That is what growing is for, since no file from before the refresh starts a
-  run ([below](#parity)). Audio loads a frame model only of `FrameSpec`'s heads
-  exactly ("frame model's heads are [...], want [...]"), so the start's file
-  loads in no audio that knows the new head. With `--probe` a run trains the
+  run ([below](#parity)). Audio loads a frame model whose heads start with
+  `FrameSpec`'s, any after them read by nothing ("frame model's heads are [...],
+  want [...] first"), so the start's file loads in no audio that reads the new
+  head. With `--probe` a run trains the
   beat and downbeat heads' rows of the output layer alone: every other weight
   stays the start's bit for bit, as a notes model's probe holds it
   ([below](#parity)), so the file's other heads say what the start's did and its
@@ -472,6 +482,44 @@ since a weak head can cost the bars. The heads are left out of a rip by a
 `RipFrontEnd` that sets the frames' `Beat` and `Downbeat` nil, in a scratch
 program over audio's `Ripper` and `MatchBars`, or by a file of the same step
 exported with ten heads, which stapes itself then benches; the two rip alike.
+
+## The struck head
+
+A frame model and a notes model each have a struck head, one value a frame: whether
+something of no pitch is struck within it, a drum line's hit, a strike of no line or
+a kit's piece. No decoder reads it yet, and audio from v0.34.0 loads a file with it
+and reads nothing of it; [Rip training](../../doc/rip-training.md) §5 and §8 follow
+the target and the loss.
+
+- **It is asked at every frame of every window**, a recording's too, a guitar's
+  and a voice's where nothing is struck, the frame of a strike and one either side
+  marked as a hit's are. A strike laid by `--over` or spliced into a shuffled
+  window counts where it stands out of what else sounds, of no line as of a line,
+  and is an onset there too.
+- **A kit asks the drums head nothing.** A loop whose label holds a kit, whose
+  pieces name no line, gives that head no term; every other head is asked as on
+  any loop, and a batch with no kit asks every head but this one as before it.
+- **It joins the loss**, a strike weighing 8 as a hit does in the drums head's, but
+  neither the decoders' loss that picks the step nor the heads a pass that carries
+  on reads: until a decoder reads it, a step or a rate chosen by it chooses for
+  nothing a rip hears.
+- **It grows onto a pass's weights** as any head added later does: `--init` from
+  the checkpoint that holds them, with the pass's own shape, starts the head's row
+  of the output layer, or of a notes model's frame layer, fresh and carries every
+  other weight, so every other output is the pass's to the bit and `bench` reads
+  the same lines on both. A pass that carries on grows it so, its optimizer fresh.
+  A notes model grown so is a new file to a judge, which audio refuses beside any
+  notes model but the one it was fitted on.
+- **The lines** give `struck's F1`, or `nothing struck, struck's peaks N a minute`
+  ([reading a run](#reading-a-run)).
+
+A round's pair grown with no step taken, from the checkpoints of the weights it
+exported (its `.best.pt`, or its `.last.pt` for the pair exported from that):
+
+```bash
+python3 tool/rip-train/train.py --corpus "$dir/corpus" --init ripframe.best.pt --steps 0 --out "$dir/root/ripframe.bin"   # the pass's shape flags beside it
+python3 tool/rip-train/train.py --pitchnet --corpus "$dir/corpus" --init ripnotes.best.pt --steps 0 --out "$dir/root/ripnotes.bin"
+```
 
 ## A judge
 
@@ -652,7 +700,7 @@ named right with each name's say taken over its share show one the commonest
 name outvotes.
 
 The trainer's rules for the band frames and their layout, for what plays each
-pitch, for the beat and the bar line, for a list's velocities, for the batches
+pitch, for the beat and the bar line, for what is struck, for a list's velocities, for the batches
 and for `datacheck.py` are tests of their own, with no corpus, on
 the CPU whatever the machine has: `python3 -m unittest discover tool/rip-train`,
 a minute, most of it the 150 steps that teach a model a note at either end of the
@@ -661,7 +709,8 @@ piano's pitches.
 It writes the file's version 6, which states the band frames' layout as a
 constant after the heads (`layout`, `ripmodels.LAYOUT`) and, for `--pitchnet`'s
 cell net, no bins for its regions to pool, and needs audio v0.30.0 (transformer
-v0.7.0). That audio refuses a file of another layout or of none, naming its own,
+v0.7.0), a file with a struck head v0.34.0, which reads nothing of a head after
+its specs'. Audio refuses a file of another layout or of none, naming its own,
 and a file without a head its specs name but a notes model's cents head, which a
 probe's file lacks; the measure is a frame head of one value whose weights are
 zero and whose bias is the measure.

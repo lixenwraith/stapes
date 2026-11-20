@@ -405,15 +405,22 @@ Left open by what landed, each with the option not taken:
 A hit is to be described by what it sounds like, not named. Landed: `corpus ... gen
 kits` plays an arranged loop's drums on a kit of two to ten struck sounds drawn over
 audio's struck genome, each strike labelled with its piece and the loop with each
-piece's genes and band ([Rip training §3](rip-training.md#a-loops-kit)). What
-remains, each read before the next:
+piece's genes and band ([Rip training §3](rip-training.md#a-loops-kit)). And a
+struck head on both models, whether something of no pitch is struck within a frame,
+a line's hit, a strike of no line or a kit's, asked at every frame of every corpus
+and read by a count on every line that reads one; a loop whose label holds a kit
+asks the drums head nothing ([Rip training §5](rip-training.md#5-the-targets)).
+What remains, each read before the next:
 
 - The count of 200 loops with the word, by `corpuscount.py` and `corpusheard.py`,
   and a listening sample of kits of two, five and ten pieces.
 - The places: a grouping of the bands, which the count's share of same-frame strikes
   that share a place, for each count of places, decides.
 - The heads that say a strike's place and genes, and the trainer that reads `piece`
-  and `kit`; the decoder and `tune` reading strikes so.
+  for them; the decoder and `tune` reading strikes so, the struck head's peaks
+  among them. Until a decoder reads it, the head joins neither `DECODERS` nor
+  `READ`: in `DECODERS` its loss would pick the step a run exports, in `READ` a
+  pass's rate would follow it.
 - A recorded kit's labels by piece: E-GMD's hits keep their keys' drums.
 
 Left open by what landed:
@@ -428,11 +435,10 @@ Left open by what landed:
 - A sound's takes are seeded by its name, so the pieces numbered alike share their
   noise and their takes' spread from loop to loop: a seed of the loop's wants audio
   to take one.
-- Until the trainer reads a piece, a corpus rendered with the word gives the
-  three-line drums head no hit, each of its drums a strike of no line: a pass on
-  it teaches that head silence under every drum, `--over` takes each of its loops
-  as having no drums, and `datacheck.py` reads no lag of its strikes. The
-  smallest close meanwhile: the trainer refusing a corpus whose labels hold a kit.
+- Until the trainer reads a piece, a kit's strikes teach the struck head and the
+  onset alone: its loop asks the three-line drums head nothing, so a pass on it
+  teaches that head neither a hit nor silence there, `--over` lays no drums on it,
+  something being struck there, and `datacheck.py` reads no lag of its strikes.
 
 ### Train both models again
 

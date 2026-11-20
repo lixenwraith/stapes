@@ -138,7 +138,8 @@ Over the library's rip (library
   file (`truth <name> <file.mid>`), first every note as one line by pitch and
   onset (`Agreement.All`, the `notes` row), then by line, counting the notes
   heard by level as well (`NoteLevels`); `timed` matches a truth on the
-  recording's own clock (`MatchNotes`' `timed`: no map, no transposition); a
+  recording's own clock, its notes and its hits (`MatchNotes`' and
+  `MatchHits`' `timed`: no map, no transposition); a
   MIDI file's parts past its melody, under and bass count in the melody
   register as one line, or the bass under E3, in an `every part` row. It prints a
   `bars` row for a MIDI file's bars, placed as its notes matched

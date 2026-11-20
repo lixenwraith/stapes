@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """placefit.py <truth root> [write]: place.py's bounds fitted on known takes of VocalSet's exercises (lines.py's
 three `shapes` draws) and checked on another seed and on voices left out; a value is taken only if its gain holds
-over a thousand redraws of the takes. With `write` the bounds go to place.json. ../README.md has the scores."""
-import collections, csv, json, os, sys, time
+over a thousand redraws of the takes. With `write` the bounds go to place.json. placefit.py <truth root> reach
+<corpus dir>...: how far a placed start sits from its known start, into each corpus.json. ../README.md has both."""
+import collections, csv, glob, json, os, sys, time
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vocal, shapes, place
@@ -145,7 +146,42 @@ def report(draw, b, title):
         f'{k} apart {pairs[k, "two to one"]} of {pairs[k, "pairs"]} ({pairs[k, "two to one"] / max(pairs[k, "pairs"], 1):.3f})' for k in ('a semitone', 'a tone', 'further')))
     return dict(placing=round(float(placing(rows[right])), 4), test=round(float(test(rows, right)), 4), right_pass=f'{int(passed[right].sum())} of {int(right.sum())}')
 
-if __name__ == '__main__':
+REACH = .95   # the share of placed starts whose known start the reach holds: a high one, not the worst
+
+def reach(root):
+    """how far a placed start sits from its known start, the REACH quantile over the starts of the right takes that
+    pass on the three draws, placed under place.py's bounds as a label is: in frames, rounded up; and in seconds,
+    of all of them and of each draw, with their count"""
+    each = {}
+    for name in ('fit', 'check', 'out'):
+        d = Draw(root, name)
+        rows, misses = d.labels(place.BOUNDS)
+        each[name] = np.abs([m for i, ms in enumerate(misses) if d.right[i] and rows[i, 5] > 0 for m in ms])
+    every = np.concatenate(list(each.values()))
+    q = float(np.quantile(every, REACH))
+    return int(np.ceil(q / place.FRAME)), q, {k: float(np.quantile(v, REACH)) for k, v in each.items()}, len(every)
+
+def stretches(d, r):
+    """a corpus's placed starts and the stretches they make under reach r, those that touch one (train.py's)"""
+    starts = runs = 0
+    for f in sorted(glob.glob(f'{d}/loop_*.json')):
+        label = json.load(open(f))
+        at = sorted(e['frame'] for e in label['events'] if e['drum'] < 0) if label.get('placed') else []
+        starts, runs = starts + len(at), runs + (1 + sum(b - a > 2 * r + 3 for a, b in zip(at, at[1:])) if at else 0)
+    return starts, runs
+
+if __name__ == '__main__' and sys.argv[2:3] == ['reach']:
+    r, q, by, n = reach(os.path.abspath(sys.argv[1]))
+    print(f'reach {r} frames: {1000 * q:.0f} ms, the {REACH:g} quantile of how far {n} placed starts of the right takes that pass',
+          'sit from their known ones under place.py\'s bounds (' + ', '.join(f'{k} {1000 * v:.0f} ms' for k, v in by.items()) + ')', flush=True)
+    for d in sys.argv[3:]:
+        m = json.load(open(f'{d}/corpus.json'))
+        m['reach'] = r
+        with open(f'{d}/corpus.json.new', 'w') as f:
+            json.dump(m, f, separators=(',', ':'))
+        os.replace(f'{d}/corpus.json.new', f'{d}/corpus.json')
+        print(f'{d}: its %d placed starts make %d stretches; reach {r} written to its corpus.json' % stretches(d, r), flush=True)
+elif __name__ == '__main__':
     root, t0, rng = os.path.abspath(sys.argv[1]), time.time(), np.random.default_rng(1)
     draw = Draw(root, 'fit')
     right = draw.right

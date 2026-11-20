@@ -258,7 +258,8 @@ proves wrong or that a document now states, and link the document instead.
   row and the wide table still count within lines.
 - A truth on the recording's own clock (GuitarSet's) needs no time map, and the
   matcher's costs it. Say `timed`, to `truth` or as a list line's fourth field;
-  a timed truth's drum hits still pass through `MatchHits`' own map.
+  its hits too: a groove matches as well a whole number of beats off, and a
+  search put a drum take's hits two beats off.
 - The voice a model hears for a line is the fit's first seed, no more, so `rip`
   fits every line. The fit's distance favours a sparse, dark voice: a change to
   it wants ears again.
@@ -526,7 +527,9 @@ proves wrong or that a document now states, and link the document instead.
   its labels are the notes its exercise sheet writes for each take, placed on
   the take by an alignment the lab fitted on sound whose notes are known, so
   its list says `placed` in its `starts` column and its notes ask the strike
-  head nothing. Before a corpus trains,
+  head nothing and the onset head a rise within the corpus's `reach`. A
+  `corpus ... from` run writes `corpus.json` afresh, without it: run
+  `placefit.py ... reach` again, as the trainer's refusal says. Before a corpus trains,
   `tool/rip-train/datacheck.py` with `GROUP=1` reads each source's lag from a
   labelled start to the sound's rise: 0 or 1 frame is a label on its sound.
 - A recording's scale says nothing of its labels: `BandFrames` reads it with

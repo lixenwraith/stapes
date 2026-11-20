@@ -23,6 +23,8 @@ proves wrong or that a document now states, and link the document instead.
   also take under a minute, enough to exercise the whole training path.
 - Build the binary from `./cmd/stapes`: `go build -o bin/stapes .` writes the
   library's archive under that name, which then refuses to run.
+- A script fed as `-s /dev/stdin` reads its relative paths from `/dev`: write
+  the script to a file in the folder its paths are meant from.
 - An untyped integer constant divides as an integer: with `sampledSpeak = 6`,
   `math.Pow(10, -sampledSpeak/20)` is `math.Pow(10, 0)`. Write `20.0`, as
   `sampledFloor/20.0` does; nothing warns.
@@ -263,6 +265,25 @@ proves wrong or that a document now states, and link the document instead.
 - The voice a model hears for a line is the fit's first seed, no more, so `rip`
   fits every line. The fit's distance favours a sparse, dark voice: a change to
   it wants ears again.
+- **`fits` holds a line to its label's voice by the genes, at the rip's notes.**
+  A bank voice rebuilt from its genes (`VoiceFromGenes`) renders 0.0000 in mel
+  distance from itself, so `own` is the voice that played; but it plays the
+  notes the rip heard, and a line whose `matched` is far under its `notes`
+  reads the label's voice at notes it never played. The analysis hears no
+  voice, so a container's rows carry no `heard`: a test fills them with a random
+  frame model, whose rips hold a note or two a line.
+- **The right voice reads zero only on a note alone.** A bank voice against its
+  own note in silence reads 0.0000 by `fitDistance`, under 0.012 with the start
+  46 ms off, and the other four read 0.010 to 0.110. On a clean loop of one
+  line, at the label's own notes, the lead reads 0.047 and the bank's bass
+  0.039: a stack's oscillators start a note at phases seeded by its trigger
+  order (audio's `noteSeed`), so `RenderNoteAt` of a unison voice is not the
+  note the loop holds; the piano and the pluck are the nearest bank voice there.
+- **A fit is its seed's on any number of cores, but for its memo's key.** The
+  engine draws every candidate from one stream and scores them side by side;
+  `genomeKey` names a genome to three decimals, so two new candidates of one
+  generation that differ past the third take whichever was scored first. A
+  part read on one core matched the same loops read on four, byte for byte.
 - A miss can be a note the notes model heard, with a strike over `strike` at its
   pitch within four frames: print the strike head at the missed notes before
   training for a miss, and try a rule on every condition before moving it.

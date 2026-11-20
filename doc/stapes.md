@@ -132,7 +132,25 @@ Over the library's rip (library
   `rip <file.mid> <name>` reads a MIDI file as a rip (`MIDIScore.Rip`). For
   each line `rip` searches the voice's genes and wave for the nearest
   (`RenderNoteAt`, `MelDistance`), seeded with the voice the front end heard
-  and every registered one; `fit` runs it again with more generations.
+  and every registered one; `fit` runs it again at the sizes its words name
+  (`fitWords`: `notes`, `pool`, `generations`, `seed`), and `genes` says a
+  voice's wave and genes as a label states them (`VoiceDef.Genes`).
+- `fits` reads that search against voices that are known: each loop of a
+  corpus directory that kept its audio is ripped and fitted as `rip` does it
+  (`Session.ripper`, `fitVoice`), and a row a line (`fitRow`) says whose line
+  it is, the label's voice that plays most of the line's notes that match a
+  labelled note (`lineOwner`, `MatchNotes` timed, a voice a wave and its
+  genes), and four distances by the fit's measure (`fitDistance`) on the
+  notes the fit listened to and on the line's other notes: the voice the
+  front end heard, the best seed, the fit, and the label's own voice, rebuilt
+  from its genes (`VoiceFromGenes`), played at the same notes. The label's
+  own voice nearer than the fit is a search that stopped short; the fit
+  nearer than it is a measure that prefers another voice. A loop is a file
+  under its audio's checksum, so a run keeps what is there and `part k/n`
+  needs no numbering; `fits.json` names the sizes and the weights. The
+  search draws its candidates from one seeded stream and scores them side by
+  side, so a seed's rows are the same on any number of cores
+  ([todo](todo.md#close-the-rips-loop), item 9, for the one way they may not be).
 - `agree` compares two rips of one piece (`MatchNotes`); `truth` scores a rip
   against notes given as text or a tapped rhythm (`ParseTranscript`) or a MIDI
   file (`truth <name> <file.mid>`), first every note as one line by pitch and

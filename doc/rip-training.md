@@ -187,7 +187,9 @@ the same line draws without it:
 - Three in ten of a loop's oscillator voices take a vibrato of 4.5 to 7 Hz, 10 to 80
   cents either way, coming in over up to 0.4 s; a voice that has its own keeps it.
 
-The same seeds render the same frames, byte for byte.
+The same seeds render the same frames, byte for byte, whole or in parts: a corpus is
+its line, the build that ran it and the notes its `sampled` names ([the round's
+corpora](../tool/rip-train/README.md#the-rounds-corpora)).
 
 `corpus.json` names the layout for the whole folder:
 

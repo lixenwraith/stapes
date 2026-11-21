@@ -72,6 +72,7 @@ tool/rip-train/pipeline.sh corpus         # one stage at a time
 tool/rip-train/pipeline.sh train
 tool/rip-train/pipeline.sh bench
 tool/rip-train/pipeline.sh install
+tool/rip-train/pipeline.sh line           # the corpus's script, printed: nothing renders
 ```
 
 | Knob | Default | What it does |
@@ -88,7 +89,9 @@ tool/rip-train/pipeline.sh install
 | `CODEC` | empty | `codec`: a third of the loops through Opus, MP3 or AAC at 64 to 192 kbps and back, by ffmpeg, which the export then needs |
 | `SAMPLED` | empty | a directory of NSynth notes (`family_source_NNN-pitch-velocity.wav`, a partial set too): each tonal part plays on one of its instruments in half the loops, and an overlap draws among them and the engine's voices alike, labelled with no voice and by its instrument's family; empty for the engine's voices alone |
 | `TEMPOS` | the default spread | `80-120` for six tempos over a range, `96,128,160` for a list; the sequencer's range is 80 to 200 |
+| `SEED` | empty | `seed n`: every loop drawn from seed `n`; empty for the verb's own, 1 |
 | `FOCUS` | none | a stapes script run before the corpus renders: the voices and patterns the loops draw from, see below |
+| `STAPES` | empty | a stapes binary every stage runs, such as the build a corpus was rendered by ([the round's corpora](#the-rounds-corpora)); empty for the checkout's |
 | `STEPS`, `BATCH` | 20000, 8 | training steps and windows a step |
 | `DIM`, `HEADS`, `LAYERS`, `FFN` | 256, 8, 4, 1024 | the frame model's width, attention heads, layers and feed-forward width, `train.py`'s `--dim`, `--heads`, `--layers` and `--ffn`; a `CHECKPOINT` or `INIT` of another shape is refused |
 | `CONVS`, `TOWERS` | none | convolutions before the input layer, and towers of layers over it, each computing a run of the heads, `train.py`'s `--convs` and `--towers` |
@@ -105,6 +108,12 @@ tool/rip-train/pipeline.sh install
 | `INIT`, `SHARD` | none, 0 | `shard`: the `.pt` the round starts from, and the worker's stream of windows; it writes `$CORPUS/shard$SHARD.pt` and `.bin` |
 | `MERGE_FILES`, `TRIM` | none, 0 | `merge`: the round's shard checkpoints, blank-separated or a glob, and the share of them dropped at each end of each weight before the mean |
 | `MERGED` | `$CORPUS/merged.pt` | `merge`: the mean as a `.pt`, the next round's `INIT`; its weight file goes to `OUT` |
+
+`corpus` keeps its script in `$CORPUS/corpus.slab`, its line the words the knobs
+set a blank apart, and each part's beside it, the line ending `part k/n`; `line`
+prints the script. The exports run on an empty root and config folder, so no
+model loads and no override of the bank's documents is read: a corpus is its
+line's and its build's alone.
 
 A smoke test of the whole path, under ten minutes on a laptop, with a root of
 its own so that the weights stapes hears with stay as they are:
@@ -268,6 +277,52 @@ the shards stay close. `average.py` refuses files of different shapes, but two
 runs of one shape from different starts look alike to it; only the protocol
 keeps them apart.
 
+## The round's corpora
+
+A corpus is its line, the build that ran it and, under `sampled`, the notes
+folder it names: rendered again from the three, whole or in parts, it is the same
+bytes, so a corpus no pass reads may go once its line is here. The refresh's
+round, `<c>` the folder of its corpora and `<n>` the notes folder:
+
+- `gen-dad4f44`, passes 2 and 3: deleted, its loops 19800 to 19999 kept apart as
+  the round's 200 held-out loops; by v0.36.0 (dad4f44), whose bytes v0.37.0 renders.
+  - `corpus <c>/gen-dad4f44 20000 4 aug gen meters overlaps sampled <n> seed 1`
+- `gen-feaef3e-s<k>`, k from 14 to 31, pass k - 10's own (pass 21 the notes
+  model's alone): deleted but s30, the frozen pair's; by v0.37.0 (feaef3e).
+  - `corpus <c>/gen-feaef3e-s<k> 10000 4 aug gen meters overlaps sampled <n> seed <k>`
+- `clean-feaef3e`, pass 1 alone, then a fifth of every pass's windows: kept; by v0.37.0.
+  - `corpus <c>/clean-feaef3e 8000 4 gen meters overlaps 0.75 sampled <n> seed 3`
+- `engine-dad4f44`, no pass of the chain: kept; by v0.36.0.
+  - `corpus <c>/engine-dad4f44 6000 4 aug gen meters overlaps seed 2`
+- `fit-gen-s1001`, the judge's rows, and `fit-gen-s1002`, the thresholds' search,
+  training nothing: kept; by v0.37.0.
+  - `corpus <c>/fit-gen-s1001 300 4 aug gen meters overlaps sampled <n> seed 1001`
+  - `corpus <c>/fit-gen-s1002 100 4 aug gen meters overlaps sampled <n> seed 1002`
+
+One is rendered again from this checkout:
+
+1. **The notes folder**, for a line with `sampled`: every note of NSynth's training
+   split, 953 instruments in 11 families, 289,205 notes, by
+   [`datasets/nsynth_families.py`](../rip-lab/README.md#datasetsnsynth_familiespy),
+   `<audio>` the split's `audio` folder:
+   `tool/rip-lab/datasets/nsynth_families.py <audio> <n> 1 bass=all brass=all flute=all guitar=all keyboard=all mallet=all organ=all reed=all string=all synth_lead=all vocal=all`.
+2. **The build of its commit**: `git worktree add <tree> <commit>`, then
+   `go -C <tree> build -o <build> ./cmd/stapes`.
+3. **The line in parts**: `STAPES=<build>`, `PARTS=3` and the knobs that write the
+   line, which `line` prints for a look first: `CORPUS`, `LOOPS` and `SEED` as it
+   says, `WAV=`, `SAMPLED=<n>` but for `engine-dad4f44`, and `AUG=` and
+   `OVERLAPS='overlaps 0.75'` for `clean-feaef3e`, the other corpus knobs unset.
+
+```bash
+STAPES=<build> PARTS=3 CORPUS=<c>/gen-feaef3e-s30 LOOPS=10000 WAV= SAMPLED=<n> SEED=30 tool/rip-train/pipeline.sh corpus
+```
+
+A corpus on disk is shown to be its build's bytes in minutes, without its render
+whole: its line naming an empty folder, with `labels` after it, run by the build on
+an empty root and config folder, writes every label, each of which must `cmp` with
+the corpus's; then the line with `part k/40` after it renders one loop in forty
+whole into another, each of its files the corpus's.
+
 ## Turning a run toward your music
 
 The corpus is whatever stapes' session holds when `corpus` runs, so a focus
@@ -374,9 +429,10 @@ The stages are three commands; the script only strings them together.
 
 ```bash
 dir=$HOME/.local/state/stapes/byhand   # outside the checkout: the corpus, the weights, a root to bench in
-mkdir -p "$dir/root"
+mkdir -p "$dir/root" "$dir/bare"
 printf 'corpus corpus 20000 4 aug gen meters overlaps nowav\n' > "$dir/corpus.slab"   # read from the script's folder
-go run ./cmd/stapes -headless -s "$dir/corpus.slab"
+go build -o "$dir/stapes" ./cmd/stapes
+XDG_CONFIG_HOME="$dir/bare" "$dir/stapes" -headless -config-dir "$dir/bare" -s "$dir/corpus.slab"   # no model, the bank alone
 python3 tool/rip-train/train.py --corpus "$dir/corpus" --out "$dir/ripframe.bin" --steps 20000 --batch 8 --every 1000 --holdout 200 --checkpoint "$dir/ripframe.pt"
 printf 'bench 12 4\n' > "$dir/bench.slab"
 cp "$dir/ripframe.bin" "$dir/root/ripframe.bin"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The frame model's training pipeline: corpus, train, bench and install, or all four
-# in order; shard and merge run a training round over several workers. Run from
-# the stapes checkout; every knob is an environment variable, and the README is the
-# guide.
+# in order; shard and merge run a training round over several workers, and line
+# prints the corpus's script. Run from the stapes checkout; every knob is an
+# environment variable, and the README is the guide.
 set -euo pipefail
 
 CORPUS=${CORPUS:-${XDG_STATE_HOME:-$HOME/.local/state}/stapes/corpus}   # where the loops go
@@ -18,7 +18,9 @@ WAV=${WAV-nowav}                     # nowav: frames and labels only; empty to k
 CODEC=${CODEC:-}                     # codec: a third of the loops through a lossy codec and back, by ffmpeg; empty for none
 TEMPOS=${TEMPOS:-}                   # e.g. 80-120 or 96,128,160; empty for the default spread
 SAMPLED=${SAMPLED:-}                 # a directory of NSynth notes half the tonal lines play on; empty for the engine's voices
+SEED=${SEED:-}                       # every loop drawn from this seed; empty for the verb's own, 1
 FOCUS=${FOCUS:-}                     # a .slab run before corpus: voices and patterns to draw from
+STAPES=${STAPES:-}                   # a stapes binary every stage runs, such as a corpus's build; empty for the checkout's
 STEPS=${STEPS:-20000}                # training steps
 BATCH=${BATCH:-8}                    # windows a step
 DIM=${DIM:-256}                      # the model's width, attention heads, layers and feed-forward width
@@ -50,32 +52,45 @@ PYTHON=${PYTHON:-python3}
 here=$(cd "$(dirname "$0")" && pwd)
 stage=${1:-all}
 
-stapes() { go run ./cmd/stapes -headless "$@"; }
+stapes() { if [ -n "$STAPES" ]; then "$STAPES" -headless "$@"; else go run ./cmd/stapes -headless "$@"; fi; }
 
-# corpus_slab writes the export's script to $1, its corpus line ending in $2
+# corpus_slab is the export's script: its corpus line is the words the knobs set, a
+# blank apart, ending in $1, so a line written by hand is written again exactly
 corpus_slab() {
-	{
-		[ -n "$FOCUS" ] && printf 'run %s\n' "$(realpath "$FOCUS")"
-		printf 'corpus %s %s %s %s %s %s %s %s %s %s %s %s %s\n' "$(realpath "$CORPUS")" "$LOOPS" "$BARS" "$AUG" "$GEN" "$METERS" "$OVERLAPS" "$GLIDE" "$WAV" "$CODEC" "${TEMPOS:+tempos $TEMPOS}" "${SAMPLED:+sampled $(realpath "$SAMPLED")}" "${2:-}"
-	} > "$1"
+	local w words=()
+	[ -z "$FOCUS" ] || printf 'run %s\n' "$(realpath -m "$FOCUS")"
+	for w in "$(realpath -m "$CORPUS")" "$LOOPS" "$BARS" "$AUG" "$GEN" "$METERS" "$OVERLAPS" "$GLIDE" "$WAV" "$CODEC" \
+		"${TEMPOS:+tempos $TEMPOS}" "${SAMPLED:+sampled $(realpath -m "$SAMPLED")}" "${SEED:+seed $SEED}" "${1:-}"; do
+		[ -z "$w" ] || words+=("$w")
+	done
+	printf 'corpus %s\n' "${words[*]}"
 }
 
-# The parts render at once; the last export, alone, renders any loop they left
-# and writes corpus.json. Every export keeps the loops on disk, so a stopped
-# corpus run again goes on where it stopped.
+# The parts render at once, a core each; the last export, alone, renders any loop
+# they left and writes corpus.json. Each runs on an empty root and config folder, so
+# no model loads and no override of the bank is read, and the checkout is built
+# first, since go reads its own settings from the config folder. Every export keeps
+# the loops on disk, so a stopped corpus run again goes on where it stopped.
 corpus() {
+	local k STAPES=$STAPES
 	mkdir -p "$CORPUS"
-	local k
-	corpus_slab "$CORPUS/corpus.slab"
-	echo "== corpus: $(cat "$CORPUS/corpus.slab"), in $PARTS part(s)"
+	corpus_slab > "$CORPUS/corpus.slab"
+	echo "== corpus: $(cat "$CORPUS/corpus.slab"), in $PARTS part(s)${STAPES:+ by $STAPES}"
+	bare=$(mktemp -d)
+	trap 'rm -rf -- "$bare"' EXIT
+	mkdir "$bare/root" "$bare/config"
+	if [ -z "$STAPES" ]; then
+		go build -o "$bare/stapes" ./cmd/stapes
+		STAPES=$bare/stapes
+	fi
 	if [ "$PARTS" -gt 1 ]; then
 		for ((k = 0; k < PARTS; k++)); do
-			corpus_slab "$CORPUS/corpus$k.slab" "part $k/$PARTS"
-			stapes -s "$CORPUS/corpus$k.slab" &
+			corpus_slab "part $k/$PARTS" > "$CORPUS/corpus$k.slab"
+			GOMAXPROCS=1 XDG_CONFIG_HOME=$bare/config stapes -config-dir "$bare/root" -s "$CORPUS/corpus$k.slab" &
 		done
 		wait
 	fi
-	stapes -s "$CORPUS/corpus.slab"
+	XDG_CONFIG_HOME=$bare/config stapes -config-dir "$bare/root" -s "$CORPUS/corpus.slab"
 }
 
 train() {
@@ -130,6 +145,7 @@ install() {
 
 case "$stage" in
 corpus | train | shard | merge | bench | install) "$stage" ;;
+line) corpus_slab ;;
 all) corpus; train; bench; install ;;
-*) echo "usage: $0 corpus|train|shard|merge|bench|install|all" >&2; exit 2 ;;
+*) echo "usage: $0 corpus|line|train|shard|merge|bench|install|all" >&2; exit 2 ;;
 esac

@@ -127,7 +127,8 @@ proves wrong or that a document now states, and link the document instead.
 - `-config-dir` names the root alone: the search path still holds vif's audio
   folder under `os.UserConfigDir()`, so a run that must play the bank alone, a
   corpus or a bench to compare, points `XDG_CONFIG_HOME` at an empty directory
-  too.
+  too, as `pipeline.sh corpus` does. Build stapes first: `go run` under that
+  folder reads its `go env` from it (`GOENV`) and writes its telemetry there.
 - **A word is a path by its dot, never by its digits.** `badName` refuses
   dots, so a dotted word is always a path; a bare number is a valid entry name
   (`cp p.track.0 5` makes the pattern `5`). An index argument goes only where no
@@ -463,6 +464,11 @@ proves wrong or that a document now states, and link the document instead.
   out and plays it at its step's velocity, as the engine's voices do. A release
   (from 3 s) falls 20 dB in a median 108 ms, an organ's 40 and a plucked or
   struck one's 65 to 82, which the cut's crossfade follows.
+- NSynth's family is an instrument's name up to its source: `synth_lead` holds an
+  underscore, and a name's first word, `synth`, is no family of the set's. A
+  container holds no NSynth, but the training split's names stream out of its
+  archive in minutes, nothing stored (`curl ... | tar -tvz`): 289,205 notes of
+  128,044 bytes, enough to check a folder `nsynth_families.py` makes by name.
 - A string's greatest rise near a note's annotated start does not say the note
   starts late: 14% of GuitarSet's notes with a clear rise have it over 100 ms
   after the annotation, and for all but 0.8% the string was already sounding (a
@@ -717,11 +723,12 @@ proves wrong or that a document now states, and link the document instead.
 
 ## Training rounds
 
-- A training round runs from its own copy of the tree: `pipeline.sh` runs
-  stapes through `go run` at every stage, so an edit to the checkout while a
+- A training round runs from its own copy of the tree: `pipeline.sh` builds
+  stapes from the checkout at every stage, so an edit to the checkout while a
   round trains changes the corpus or the bench under it. The bench draws its
   loops from the tree's code too, so rounds whose `aug` or `gen` differ bench on
-  different loops: bench one round's weights through the other's stapes.
+  different loops: bench one round's weights through the other's stapes
+  (`STAPES`).
 - A model's decoder thresholds belong to its weights: a new head's scale moves
   them, so tune them (`tune ... truth <list>`) before judging a round, and pin
   them in the root's `rip.toml` beside the weights. Compare rounds on one tree's

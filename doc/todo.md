@@ -742,8 +742,9 @@ What remains:
    comes through the system's picker, copied into the search path's first
    folder or, a `.bin`, the root, and a written file goes back out through it
    ([Stapes §2](stapes.md#paths-on-every-host)). vif's app keeps its own
-   storage, so a document reaches the phone's game only as a file handed over,
-   and vif's app takes no such file yet.
+   storage, so a document reaches the phone's game only as a file handed over
+   until vif's app bundles stapes, long after stapes mobile works ([vif's
+   todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#audio)).
 
 What closes it: the APK opens the TUI with sound, a pattern edited is saved and
 played again, and a picked `.wav` is ripped. Not known until it is built: how

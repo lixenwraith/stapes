@@ -95,12 +95,12 @@ the files overlay (`^O`) browses the same paths. Stapes has no browser host,
 though the audio library writes and reads MIDI there too, from any reader or
 writer.
 
-On Android, where vif's app is to host it in-process
-([vif's todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#bring-stapes-to-android-stapes-mobile)),
-the root and the search path are in the app's own storage, which these paths
-reach as they are. A MIDI file or a recording another app holds, a download or a
-shared file, is a content URI behind the Storage Access Framework, with no path.
-There the host opens the system's picker (`ACTION_OPEN_DOCUMENT`), copies what
+On Android, where stapes mobile, an app of stapes' own, is to run it in-process
+([todo](todo.md#build-stapes-mobile)), the root and the search path are in the
+app's own storage, which these paths reach as they are and vif's app does not.
+A MIDI file or a recording another app holds, a download or a shared file, is
+a content URI behind the Storage Access Framework, with no path. There the app
+opens the system's picker (`ACTION_OPEN_DOCUMENT`), copies what
 was picked into the search path's first folder and runs the verb on the copy; a
 file to hand back is written there and offered through `ACTION_CREATE_DOCUMENT`
 or a share. The verbs stay as they are, and so does every other host.
@@ -242,8 +242,9 @@ Over the library's rip (library
   conducts a song through the live sequencer on its kit (`SetKit`), the
   transport keeping a played song's, or renders one line of it alone, the
   instruments named after the file.
-- `refine` closes the loop: the voices fitted again and the tonal steps'
-  velocities and lengths searched with `Fidelity` as the fitness, a step kept
+- `refine` closes the loop: the voices fitted again and each tonal step
+  swept, its pitch, place and length moved, silenced, and an empty step given
+  the recording's strongest pitch, with `Fidelity` as the fitness, a move kept
   only when it rises, each voice held within a tenth of its tonal floor, the
   fit's own distance from the recording's notes, so the score of the mix does not
   drift a voice into one that fills the mix.

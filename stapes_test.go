@@ -692,6 +692,71 @@ func waitFor(t *testing.T, cond func() bool, msg string) {
 	t.Fatal(msg)
 }
 
+// earSink is a host's speakers in a test: it keeps the stream, so the test reads
+// how far its two ears stand apart
+type earSink struct {
+	mu  sync.Mutex
+	pcm []byte
+}
+
+func (e *earSink) Write(p []byte) (int, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.pcm = append(e.pcm, p...)
+	return len(p), nil
+}
+
+func (e *earSink) Close() error { return nil }
+
+// apart is the furthest the two ears stand apart over the last frames written,
+// in 16-bit steps; -1 before that many are
+func (e *earSink) apart(frames int) int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	at := len(e.pcm) - frames*audio.AudioBytesPerFrame
+	if at < 0 {
+		return -1
+	}
+	far := 0
+	for ; at < len(e.pcm); at += audio.AudioBytesPerFrame {
+		l, r := int(int16(binary.LittleEndian.Uint16(e.pcm[at:]))), int(int16(binary.LittleEndian.Uint16(e.pcm[at+2:])))
+		far = max(far, l-r, r-l)
+	}
+	return far
+}
+
+// TestBinauralLaysABedUnderTheMusicAndTakesItAway: the verb sets the stream's
+// two ears a beat apart while the music plays, says what it laid, refuses a bed
+// the engine would not play as asked, and off brings both ears back to one mix.
+func TestBinauralLaysABedUnderTheMusicAndTakesItAway(t *testing.T) {
+	var out bytes.Buffer
+	ears := &earSink{}
+	s, err := NewSession(Options{Sink: ears, SfxVolume: 0.5, Out: &out})
+	if err != nil || s.startErr != nil {
+		t.Fatalf("a session on a host's speakers: %v, %v", err, s.startErr)
+	}
+	defer teardown(t, s)
+	tenth := audio.AudioSampleRate / 10
+	runOrFatal(t, s, &out, `
+music start
+! binaural 30 10 0.1                 # a carrier under the engine's lowest
+! binaural 220 50 0.1                # a beat over its highest
+! binaural 220 10 0                  # no level: off says that
+! binaural nan 10 0.1
+! binaural 220 10
+binaural 220 10 0.1
+`)
+	waitFor(t, func() bool { return ears.apart(tenth) > 1000 }, "no bed came: the two ears stayed one channel")
+	if !strings.Contains(out.String(), "a beat of 10 Hz on 220, the left ear at 215 Hz and the right at 225") {
+		t.Errorf("the verb does not say the bed it laid:\n%s", out.String())
+	}
+	runOrFatal(t, s, &out, "binaural off\nbinaural")
+	waitFor(t, func() bool { return ears.apart(tenth) == 0 }, "the bed never left: the two ears stayed apart")
+	if !strings.HasSuffix(out.String(), "binaural bed off\nbinaural bed off\n") {
+		t.Errorf("off, and the verb bare after it, do not say the bed is off:\n%s", out.String())
+	}
+}
+
 // TestAutoSlotAssign pins the space-on-pattern flow: unassigned → auto-apply
 // + lowest empty slot + transport start; assigned → transport toggle.
 func TestAutoSlotAssign(t *testing.T) {

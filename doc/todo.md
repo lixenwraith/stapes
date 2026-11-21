@@ -703,19 +703,6 @@ renders the old slots, and a slot's track mutes wait for their pattern to be put
 back. The fix is reset slotting the session's patterns again, or a sequencer
 reset that keeps them.
 
-### Audition the binaural bed
-
-- Priority: P3
-- Affected files: `command.go` (`commands`), `cmd_audio.go`
-- Prerequisite: the library's bed ([its
-  todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#give-the-mix-a-binaural-bed))
-
-The library is to mix a binaural bed under the music (`SetBinaural`: a carrier,
-a beat and a level), which vif offers as a setting ([its
-todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#add-binaural-beats-to-the-music)).
-A verb that sets it over what the session plays lets a carrier, a beat and a
-level be heard before vif's presets are tuned.
-
 ## Android
 
 ### Build stapes mobile

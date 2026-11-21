@@ -79,6 +79,7 @@ type Session struct {
 	// none; ticked says a front end drives conduct, so song play returns at once
 	song   *songPlay
 	tuning float64           // cents off A440 the transport plays at, a rip's or the tuning verb's
+	bed    audio.Binaural    // the binaural bed the binaural verb laid under the music, none at its zero
 	kit    map[string]string // the sound each drum the transport plays, the last song's matched kit
 	base   string            // the running script's directory, its relative paths read from there; empty outside one
 	ticked bool

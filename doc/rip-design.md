@@ -367,8 +367,8 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   `compress`, `song`, `render`, `corpus`, `tune`, `truth` with its bars and
   every-part rows), the documents the results land in, and the files overlay
   (`^O`) that loads, rips and saves them. `live` drives the live rip over a
-  file; its host to come is vif's Android app, over the microphone
-  ([todo](todo.md#show-a-live-rip-as-it-is-made)).
+  file; its host to come is stapes mobile, stapes' own Android app, over the
+  phone's microphone ([todo](todo.md#rip-live-on-android)).
 - `tool/rip-train`: the trainer, Python, beside the Go module.
 
 ## 5. Budgets and determinism
@@ -534,7 +534,7 @@ and the checkpoint earn their keep.
      tempo, meter, phase and key are decided a part at a time, in the stream
      again at every bar until two decisions agree, the bars after the last
      agreed one provisional.
-   - **The live rip in the hands.** stapes in vif's Android app over the
+   - **The live rip in the hands.** stapes mobile over the phone's
      microphone, the stack shown as it works: the spectrum, the planes the
      models are given, the heads, the judge's verdicts, the grid, and the
      bars in a compact lane that a line or a part filters.

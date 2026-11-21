@@ -8,10 +8,9 @@ Priorities: P1 is wanted next, P2 is convenient follow-up, and P3 is an idea.
 
 The audio library's own items are in [its todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md);
 the items here change stapes, and the library with it where they name its
-files. What vif's app does to host stapes on Android, and to give it the
-microphone, is in [vif's
-todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#audio); an item
-here that meets it links there.
+files. Stapes imports nothing of vif, on [Android](#android) too: an item here
+that meets one of [vif's](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#audio)
+links there.
 
 ## The rip
 
@@ -34,47 +33,43 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    in none ([Rip training §3](rip-training.md#arranged-loops)), and puts a
    room, a mix, saturation, a codec and a tuning off A440 behind it; what it
    still lacks is chance steps graded as optional rather than as misses, the
-   generative lead (left out
-   since an offline render plays its first bar as the last render left it and
-   labels every bar with its last: regenerate it at bar 0 and label it as
-   played), and real recordings with their MIDI in the corpus and held out: a
-   loader for a WAV beside a MIDI file (`ReadMIDI` reads the notes; the
-   frames and labels a loop carries are what `corpus` writes) and a few
-   recordings the user plays from public-domain scores, with the scores, so
-   neither a model nor a tuned set learns the synthesizer. Public sets with
-   aligned MIDI (GuitarSet, URMP) fit the same loader; MAESTRO, non-commercial,
-   and a commercial song's transcription or a render of one stay out (AGENTS,
-   Data).
+   generative lead (left out since an offline render plays its first bar as
+   the last render left it and labels every bar with its last: regenerate it
+   at bar 0 and label it as played), and a few recordings the user plays from
+   public-domain scores, with the scores, in the corpus through `corpus <dir>
+   from` and held out, so neither a model nor a tuned set learns the
+   synthesizer. URMP's aligned MIDI fits the same loader; MAESTRO,
+   non-commercial, and a commercial song's transcription or a render of one
+   stay out (AGENTS, Data).
 2. The frame model's pitch: next for it, real recorded notes as voices of the
    corpus, from the sets the [data rule](../AGENTS.md#data) lets train; the
    constants tuned by `tune` against the truths rather than swept by hand.
-   Towers are tried once the heads compete
-   with the strike head. For a rip of live music: a bench of the loops through
-   a phone mic, a room and crowd noise at 20 to 0 dB, the same chain in the
-   corpus, and the live rip in the hands (`RipStream` is the library's; its
-   host is vif's Android app, and a verb over a file in stapes the step before
-   it). Then: real recordings with their notes in the corpus (item 1: `corpus
-   <dir> from` writes E-GMD's, its hits moved onto their sound or the
-   recording left out and a hit that draws no sound left out of its label,
-   `train.py --mix` mixes them in; still lacking a held-out score for a `from`
-   corpus, E-GMD's ET split being the clean one, drum velocity in the labels,
-   its list saying `none` till a kit's law is decided, the lag's and the silent
-   hit's constants read back on E-GMD itself (by drummer and session, whether a
-   performance's kits agree, `left.tsv`'s hits by key and kit), a lag past half the usual
-   gap between strikes, which reads as a nearer one, and a check that drops a
-   render whose hits draw no onset; NSynth's notes play in `corpus ... sampled`, lacking the
-   tempo-synced and multiphonic filters `examples.json` allows and a pipeline
-   bench on the 53 held-out instruments), then more loops, or width 384
-   (`DIM=384 HEADS=12 FFN=1536`, 7 million weights), each measured by `bench`
-   on clean and augmented loops and by the truths on the recordings, and
-   shipped only when it beats the analysis on both; a hundredfold or more
-   needs a GPU to train and would not run in the engine's budget. A vocal line
-   is a line like any other to the rip; a voice has a vibrato and a vowel's
-   formants now (`tool/rip-train/focus/vocal.toml` draws them), neither a
-   gene, so the fit and the models' voice heads do not search them: genes for
-   both once a corpus with them has trained, and a real vocal recording held
-   out. The analysis also leans on a lone oscillator starting every note at
-   phase 0: at random phases two lines on one instrument stop parting
+   Towers are tried once the heads compete with the strike head. For a rip of
+   live music: a bench of the loops through a phone mic, a room and crowd noise
+   at 20 to 0 dB, the same chain in the corpus, and the live rip in the hands
+   ([Rip live on Android](#rip-live-on-android)). Then: real recordings with
+   their notes in the corpus (item 1: `corpus <dir> from` writes E-GMD's, its
+   hits moved onto their sound or the recording left out and a hit that draws no
+   sound left out of its label, `train.py --mix` mixes them in; still lacking a
+   held-out score for a `from` corpus, E-GMD's ET split being the clean one,
+   drum velocity in the labels, its list saying `none` till a kit's law is
+   decided, the lag's and the silent hit's constants read back on E-GMD itself
+   (by drummer and session, whether a performance's kits agree, `left.tsv`'s
+   hits by key and kit), a lag past half the usual gap between strikes, which
+   reads as a nearer one, and a check that drops a render whose hits draw no
+   onset; NSynth's notes play in `corpus ... sampled`, lacking the tempo-synced
+   and multiphonic filters `examples.json` allows and a pipeline bench on the 53
+   held-out instruments), then more loops, or width 384 (`DIM=384 HEADS=12
+   FFN=1536`, 7 million weights), each measured by `bench` on clean and
+   augmented loops and by the truths on the recordings, and shipped only when it
+   beats the analysis on both; a hundredfold or more needs a GPU to train and
+   would not run in the engine's budget. A vocal line is a line like any other
+   to the rip; a voice has a vibrato and a vowel's formants now
+   (`tool/rip-train/focus/vocal.toml` draws them), neither a gene, so the fit
+   and the models' voice heads do not search them: genes for both once a corpus
+   with them has trained, and a real vocal recording held out. The analysis also
+   leans on a lone oscillator starting every note at phase 0: at random phases
+   two lines on one instrument stop parting
    (`TestRipTellsTheLeadByItsCharacter`), as a recording's would. Then the
    weights and a tuned parameter set shipped as data, `DefaultRipParams` kept
    for a recording nothing tuned for.
@@ -531,11 +526,11 @@ training §3](rip-training.md#arranged-loops)). What is left:
 ### A live rip
 
 - Priority: P2
-- Affected files: `cmd_doc.go`, vif's Android app
+- Affected files: `cmd_doc.go`
 
 `live` drives the library's stream (`RipStream`) over a file in blocks and
-measures it against the offline rip of the same recording, the measurement the
-Android app's microphone mode (vif's todo) is judged by ([Rip design
+measures it against the offline rip of the same recording, the measurement a
+[live rip on Android](#rip-live-on-android) is judged by ([Rip design
 §7](rip-design.md#7-plan)). What is left:
 - Tempo, meter and phase are held from the first six bars, so the stream's
   bar grid is not the offline rip's. Not measured since the refresh: how many
@@ -570,11 +565,9 @@ Android app's microphone mode (vif's todo) is judged by ([Rip design
   `cmd_doc.go` (`live`)
 - Guide: [Rip design §7](rip-design.md#7-plan)
 
-vif's Android app is to rip a song as its microphone hears it, through stapes
-run in-process ([vif's
-todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#rip-live-on-android)).
-The library's stream and the reads a view takes from it are in place (`Bars`,
-`Frames`, `Open`, `Strikes`, `Final`, [audio
+Stapes is to rip a song as a microphone hears it, a phone's first ([Rip live
+on Android](#rip-live-on-android)). The library's stream and the reads a view
+takes from it are in place (`Bars`, `Frames`, `Open`, `Strikes`, `Final`, [audio
 §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)).
 What remains here:
 
@@ -599,12 +592,11 @@ dictionary and the song (`compress`, `song`) and the song's score against the
 rip are in place; what remains:
 
 1. The refinement loop (`refine`) searches the voices and sweeps the tonal
-   steps, a semitone or an octave either way or silence per step, judged by
-   `Fidelity` against the recording's own frames; what it does not yet move is
-   a step's position or length or the drum part, and a note the front end
-   never heard it cannot add. Measure its convergence on rendered loops whose
-   truth is known, and whether the notes it inserts are the truth's:
-   `Fidelity` puts no price on a wrong note ([rip design](rip-design.md) §7).
+   steps, judged by `Fidelity` against the recording's own frames; what it
+   does not yet move is the drum part. Measure its convergence on rendered
+   loops whose truth is known, and whether the notes it inserts are the
+   truth's: `Fidelity` puts no price on a wrong note ([rip
+   design](rip-design.md) §7).
 2. Matching by reconstruction: a bar's distance to a member as the rip of the
    member's render against the bar, in place of `BarDistance`, with `Memoize`
    paying for each render once; measure it against the mechanical grouping.
@@ -717,26 +709,78 @@ level be heard before vif's presets are tuned.
 
 ## Android
 
+### Build stapes mobile
+
+- Priority: P1
+- Affected files: a new `android/` module (`go.mod`, the bound package, the
+  Java app, its Gradle build), `go.mod`, `Makefile`, `doc/stapes.md`
+
+Stapes mobile is an Android app of stapes' own: the package run in-process
+over the terminal module's Android view, as vif's app runs the game, and
+nothing of vif imported. `NewSession` takes the speaker as `Options.Sink` and
+`RunTUI` any `terminal.Terminal`, the host posting `EventClosed` to end it.
+What remains:
+
+1. The view: `go.mod` takes `lixenwraith/terminal` v0.7.4, the release vif's
+   app builds on, for `android.View` and `terminal.NewWithHost`; the module
+   builds and its suite passes against it unchanged.
+2. The bound entry, a module of its own as vif's `android/` is, so `go build
+   ./...` never sees gomobile: a `Start` that points `HOME` and
+   `XDG_CONFIG_HOME` into the app's files directory, where `ResolveFiles` finds
+   the root and the search path, opens the session on the speaker and runs
+   `RunTUI` over `NewWithHost` of the view; and the view's calls from the UI
+   thread and the drawer's (size, taps, drags, keys, text, zoom, the keyboard's
+   cover, the frames and the strike's texture).
+3. The Java side, which the terminal module leaves to the application: copied
+   from vif's app, the activity, the view with its taps, keys and pinch, the
+   cell drawer, the speaker on an `AudioTrack` and the Gradle build with its
+   toolchain check.
+4. The system keyboard serves `:` and the prompts, raised from the touch
+   strip ([below](#play-the-screen-by-touch)).
+5. Files: the root and the search path in the app's own storage, which the
+   verbs' paths reach; a `.mid`, a `.wav` or a weight file another app holds
+   comes through the system's picker, copied into the search path's first
+   folder or, a `.bin`, the root, and a written file goes back out through it
+   ([Stapes §2](stapes.md#paths-on-every-host)). vif's app keeps its own
+   storage, so a document reaches the phone's game only as a file handed over,
+   and vif's app takes no such file yet.
+
+What closes it: the APK opens the TUI with sound, a pattern edited is saved and
+played again, and a picked `.wav` is ripped. Not known until it is built: how
+the TUI's ticker and long verbs fare when Android pauses or ends the process,
+the APK's size with the engine, the banks and the transformer, and whether a
+phone's cores carry a rip through the models.
+
 ### Play the screen by touch
 
 - Priority: P1
 - Affected files: `tui.go`, `tui_panes.go`, `tui_editor.go`, `tui_keys.go`,
   `tui_files.go`, `doc/stapes.md`
 
-vif's app is to run stapes in-process on Android, over a `terminal.Terminal` of
-its view with its speaker as the sink, the system keyboard serving `:` and the
-prompts ([vif's
-todo](https://github.com/lixenwraith/vif/blob/main/doc/todo.md#bring-stapes-to-android-stapes-mobile)).
-The host turns taps and drags into `terminal.Event`s, but the TUI reads keys
-alone (`handle`). What remains here:
+On [stapes mobile](#build-stapes-mobile) the view turns taps and drags into
+`terminal.Event`s, but the TUI reads keys alone (`handle`). What remains here:
 
 - Touch: a tap hit-tests what was drawn: a key of the keyboard plays its note, a
   step toggles, a tab or a pane takes the keys, a mixer row mutes its slot, a
   browser row selects. A strip of buttons stands for the keys a phone lacks
-  (record, play, delete, save, new, edit, tempo, Tab, Esc).
+  (record, play, delete, save, new, edit, tempo, Tab, Esc, the keyboard).
 - Size: the views need 60×16 cells. A phone held landscape fits at the default
-  cell; held portrait it needs the host's pinch zoom out, or a keyboard of fewer
-  keys.
+  cell; held portrait it needs the pinch zoom out, or a keyboard of fewer keys.
+
+### Rip live on Android
+
+- Priority: P2
+- Affected files: the bound package and the Java app under `android/`
+- Prerequisite: [Build stapes mobile](#build-stapes-mobile), and the session's
+  source and view ([Show a live rip as it is
+  made](#show-a-live-rip-as-it-is-made))
+
+The app reads the microphone (`AudioRecord`, behind the `RECORD_AUDIO`
+permission asked at first use) and hands its blocks to the session as its
+source, as the speaker is its sink. What closes it: a song ripped as the phone
+hears it, shown as it is made and saved, measured as `live` measures a file
+([A live rip](#a-live-rip)). Not known until it is built: how far behind the
+sound a phone's rip runs, beside the ear's 2.97 s wait.
 
 ## The tests
 
@@ -807,7 +851,7 @@ costs, and what it does not reach:
 ### Carry Go's notice with every binary
 
 - Priority: P1
-- Affected files: `Makefile` (`install`), a notices file; vif's app
+- Affected files: `Makefile` (`install`), a notices file, stapes mobile
 
 A stapes binary links Go's standard library and golang.org/x/sys and x/term,
 whose BSD 3-Clause licence (`$(go env GOROOT)/LICENSE`, the same in each
@@ -816,6 +860,6 @@ Authors' notice, conditions and disclaimer. The other modules in `go.mod`,
 lixenwraith's audio, color, genetic, terminal, toml and transformer, carry
 stapes' own `LICENSE` word for word, which `make install` installs; nothing
 carries Go's. What closes it: a notices file with Go's licence, installed
-beside `LICENSE` and put in every desktop archive, and the About screen of
-vif's app, which hosts the Android build, listing both; each is checked
-against `go list -deps ./...` when `go.mod` changes.
+beside `LICENSE`, put in every desktop archive and packaged in [stapes
+mobile](#build-stapes-mobile) with it; each is checked against `go list -deps
+./...` when `go.mod` changes.

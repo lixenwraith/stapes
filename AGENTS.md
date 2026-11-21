@@ -38,9 +38,10 @@ it there in the same PR.
   in-process; a difference a host forces is documented in `doc/stapes.md`.
 - Terminal hosts: over ssh and on a raw tty, on Ubuntu, Arch and FreeBSD, with
   cgo off. Windows is not a target.
-- Android is to come, run in-process by vif's app with its own screen and
-  speakers: the package takes its sink and its terminal from the host, and only
-  `cmd/stapes` reads flags, signals and the process's terminal.
+- Android is to come, as stapes mobile, an app of stapes' own that runs the
+  package in-process on its screen and speakers: the package takes its sink and
+  its terminal from the host, and only `cmd/stapes` reads flags, signals and the
+  process's terminal.
 
 ## Data
 

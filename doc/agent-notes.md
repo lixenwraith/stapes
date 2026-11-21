@@ -136,6 +136,12 @@ proves wrong or that a document now states, and link the document instead.
   holds the code-owned `melody_gen` first, by its fixed ID, where the bank
   writes it 29th, and only in the bank's order is a seeded document saved
   with no edit the bank's bytes.
+- Nothing checks a doc's links or its verbs. A short script slugs each heading
+  as GitHub does (lowercase, punctuation and `§` dropped, spaces to hyphens)
+  over every `*.md`, the other modules' from a `git clone --depth 1` of their
+  main, which a cloud container reads though they are not its repositories;
+  another looks each usage of `command.go`'s table up in the README, the
+  alternatives split at ` | `.
 - A test of a document stapes made passes with no source at all, so each
   save's source is held by an authored document alone: the patterns' by
   `TestASavedDocumentIsStillItsAuthors`, the sounds' and their `include` by

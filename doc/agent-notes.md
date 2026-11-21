@@ -20,7 +20,11 @@ proves wrong or that a document now states, and link the document instead.
   give before trusting a trained file after any change to either side. A corpus
   loop's frames come from `stapes -s` over a script of `corpus <dir> 2 4`,
   about a minute; `corpus 8 4` plus sixty training steps of a width-32 model
-  also take under a minute, enough to exercise the whole training path.
+  also take under a minute, enough to exercise the whole training path. A grown
+  notes model's file is held so by a test (`TheLongConvolutions`), Go's float32
+  against PyTorch's forward in float64 at the cell net test's bound, 1e-5 and
+  as much again of each value: against PyTorch's float32 forward the two sides'
+  roundings add, and on frames of noise passed that bound by 4.5e-6.
 - Build the binary from `./cmd/stapes`: `go build -o bin/stapes .` writes the
   library's archive under that name, which then refuses to run.
 - A script fed as `-s /dev/stdin` reads its relative paths from `/dev`: write
@@ -985,3 +989,21 @@ proves wrong or that a document now states, and link the document instead.
 - **No decoder reads the voicing head**, from either model: audio's `read` fills
   no plane from it, and `RipParams.Voicing` is a bar on the salience. It weighs
   a half in `DECODERS` all the same, and is in no pass's sum that carries on.
+- **A grown long convolution is read by how far each head moves before a step**,
+  through the start and the grown model over a batch of engine windows, each head
+  as audio reads it; the frame's heads stay to the bit, hearing the wide layer
+  and never the cells. On a checkpoint of 2,000 steps zero weights moved the
+  cells 0.198 in the mean square and the strike head 0.169 at the most, the fit
+  0.031 and 0.054; every weight of the three fitted to the same cells by LBFGS
+  reached 0.029 in 150 evaluations, so the taps across channels and frames buy
+  little. The held-out reading before a step barely parts them: decoders 0.661
+  the checkpoint's, 0.662 fitted, 0.666 at zero.
+- **`start_long` fits a channel at a time.** One LBFGS over every channel's
+  scales and shifts stalled at 0.039 after 200 iterations, one line search for
+  curvatures that differ by channel; each channel's own reached 0.032 within 50
+  and 0.031 within 200, 13 s for 65,536 cells a channel on four CPU cores.
+- A full-shape notes model trains on four CPU cores at 3.5 s a step of 8 windows
+  of 512 frames, 4.2 s with `--dilations 3,9,27`, and at 0.75 s on windows of
+  128: a container's checkpoint to measure against trains on the short windows,
+  2,000 steps in 25 minutes. A run beside it on the same cores slows both many
+  times over: the trainer's tests took 646 s so where they take 80 alone.

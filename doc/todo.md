@@ -110,6 +110,14 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    - A corpus scoop rises over its note's whole length, since a step's bend
      ends with its note: a scoop that settles early, as a singer's does, needs
      audio's step to glide to a share of its length (audio's todo).
+   - A notes model's note heads hear 80 ms either way, in which a sung pitch
+     that leaves its semitone and comes back and a new note that stays are one
+     picture, the likely cause of singing's wrong strikes. `--init` grows the
+     long convolutions, half a second, onto a pass's checkpoint ([Rip training
+     §7](rip-training.md#7-the-models)). Left: that pass, read on VocalSet's
+     held-out singers against the pass before it, the strikes' F1 at placed
+     starts, the strikes over a long tone and the notes with none, and the
+     guitar's reading held.
    - A recorded note is placed where its list's `pitch` column names the
      recording's pitch track
      ([Rip training §3](rip-training.md#a-recordings-pitch-track)), and

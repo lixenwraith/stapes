@@ -434,12 +434,15 @@ def frame_heads(cfg: Config) -> list:
 
 
 def carried(model: nn.Module, had: Config, state: dict) -> dict:
-    """model's weights with those of a model of the shape had, whose heads are the first of model's: every weight
-    they share whole, and of an output layer, or of a notes model's notes convolution, the rows of the heads it had,
-    a new head's rows fresh; ValueError where one does not grow into the other"""
+    """model's weights with those of a model of the shape had, whose heads are the first of model's, and a notes
+    model's long convolutions the first of its: every weight they share whole, and of an output layer, or of a notes
+    model's notes convolution, the rows of the heads it had, a new head's rows and a new long convolution fresh;
+    ValueError where one does not grow into the other"""
     cfg, out = model.cfg, model.state_dict()
     if [tuple(h) for h in had.outputs] != [tuple(h) for h in cfg.outputs[:len(had.outputs)]]:
         raise ValueError(f"heads {'+'.join(k for k, _ in had.outputs)} are not the first of {'+'.join(k for k, _ in cfg.outputs)}")
+    if tuple(had.dilations) != tuple(cfg.dilations[:len(had.dilations)]):  # a kernel's shape does not say its frames apart
+        raise ValueError(f"long convolutions {', '.join(map(str, had.dilations))} frames apart are not the first of {', '.join(map(str, cfg.dilations))}")
     for k, v in state.items():
         if out[k].shape == v.shape:
             out[k] = v
@@ -448,6 +451,47 @@ def carried(model: nn.Module, had: Config, state: dict) -> dict:
         else:
             raise ValueError(f"{k} is {tuple(v.shape)}, this run's {tuple(out[k].shape)}")
     return out
+
+
+LONG_FIT = 1 << 16  # the most of each channel's cells a grown long convolution's start is fitted to
+
+
+def start_long(model: PitchNet, had: int, planes: torch.Tensor, steps: int = 100) -> float:
+    """the long convolutions after the first had started as near handing on the cells the planes give them as their form
+    lets: each adds its input back before a GELU, so a zero start hands on gelu(c). Each kernel's centre reads its own
+    channel at a scale, a shift its bias, every other tap zero, the scales and shifts of a channel fitted together to its
+    cells the heads read, in the mean square; the root-mean-square miss left"""
+    seen = []
+    hook = model.long[had].register_forward_pre_hook(lambda _, args: seen.append(args[0].detach()))
+    with torch.no_grad():
+        model(planes)
+    hook.remove()
+    c = seen[0][..., 1:model.cfg.pitches + 1].transpose(0, 1).flatten(1).double().cpu()  # a row a channel
+    c = c[:, torch.randperm(c.shape[1], generator=torch.Generator().manual_seed(0))[:LONG_FIT]]  # a stride would skip cells
+    new = model.long[had:]
+    a, b = torch.ones(len(new), len(c), dtype=torch.float64), torch.zeros(len(new), len(c), dtype=torch.float64)
+
+    def through(x, a, b) -> torch.Tensor:
+        for k in range(len(new)):
+            x = F.gelu(a[k] * x + b[k])
+        return x
+    for ch, v in enumerate(c):  # a channel at a time, so each line search follows that channel's own curvature
+        s, t = a[:, ch].clone().requires_grad_(), b[:, ch].clone().requires_grad_()
+        fit = torch.optim.LBFGS([s, t], max_iter=steps, line_search_fn="strong_wolfe")
+
+        def miss() -> torch.Tensor:
+            fit.zero_grad()
+            m = (through(v, s, t) - v).square().mean()
+            m.backward()
+            return m
+        fit.step(miss)
+        a[:, ch], b[:, ch] = s.detach(), t.detach()
+    with torch.no_grad():
+        for k, layer in enumerate(new):
+            layer.weight.zero_()
+            layer.weight[:, :, 1, 1] = torch.diag(a[k] - 1).to(layer.weight)  # the residual adds the cell itself
+            layer.bias.copy_(b[k].to(layer.bias))
+    return (through(c, a[..., None], b[..., None]) - c).square().mean().sqrt().item()
 
 
 def planes(cfg: Config) -> int:

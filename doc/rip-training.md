@@ -1199,8 +1199,15 @@ convolutions only, the same weights at every pitch, so 172,246 weights in all, 6
 cents head's and 1,485 those of what plays each pitch. Its file is `ripnotes.bin` (§9).
 `--dilations 3,9,27` adds a residual 3x3 over the cells for each, its frames that far apart:
 each note head then hears half a second either way instead of 80 ms, 199,990 weights, about
-1.5 times the compute. Its per-pitch heads are a table, `CELL_HEADS` in `ripmodels.py`, a row
-a head with the values it reads at a pitch; the cents head reads two, the offset in semitones
+1.5 times the compute. `--init` grows them onto a model of none, or of the first of them, every
+weight it had carried whole and the optimizer fresh, as a head grows. Each adds its cells back
+before its GELU, so one of zero weights would hand on gelu(c), not c: a grown one starts with
+its kernel's centre reading each channel's own cell at a scale, a shift its bias, every other
+tap zero, the scales and shifts of all the grown ones fitted channel by channel to the start's
+cells over the first loops' windows, in the mean square (`start_long`), and the run's line
+gives the miss left. The frame's heads hear the wide layer, not the cells, so they say what
+the start's did. Its per-pitch heads are a table, `CELL_HEADS` in `ripmodels.py`, a row a
+head with the values it reads at a pitch; the cents head reads two, the offset in semitones
 and the log of the error it states, and what plays the pitch is three heads: `pitchfamily`,
 a score for each of the eight names, `pitchwave`, one for each wave, and `pitchvoice`, the 32
 genes. They are heads of their own, read straight off the cell's 32 channels as every other
@@ -1395,10 +1402,10 @@ need.
 `--carry` makes a pass start where the last one ended: from `--init`'s checkpoint it
 takes the weights, the optimizer's state and the rate's, and it reads its held-out loops
 before a step, the start every later reading is judged against. A checkpoint of weights
-alone, or one whose heads grow, starts one with the optimizer fresh; a run resumed reads
-the rate back whole. The step written is picked as above, and the checkpoint the next
-pass starts from is the last step's. Without the word a pass runs the cosine above, its
-lines and its pick as they were, bit for bit.
+alone, or one whose heads or long convolutions grow, starts one with the optimizer fresh; a
+run resumed reads the rate back whole. The step written is picked as above, and the checkpoint
+the next pass starts from is the last step's. Without the word a pass runs the cosine above,
+its lines and its pick as they were, bit for bit.
 
 Such a pass is read by the heads audio reads from its model in a pair (`READ`), each at
 its weight in `decoders`: a notes model's pitch, strike and release, a frame model's

@@ -618,7 +618,11 @@ the refresh starts a run. One from before a setting existed loads with that
 setting's default, and `--init` takes one whose heads are the first of the
 run's, weights trained before a head added later: every weight carries over and
 a new head's rows start fresh ([Rip training
-§7](../../doc/rip-training.md#7-the-models)), though resuming one is refused.
+§7](../../doc/rip-training.md#7-the-models)), though resuming one is refused. A
+notes model's long convolutions grow so under `--dilations` from a model of none
+or of the first of them, each new one started to hand its cells on as near as the
+GELU after it lets, and the run's line says how near (`handing its cells on, 0.031
+off them`, the root-mean-square miss).
 
 A notes model has a cents head: for each pitch, how far its sound sits from the
 cell's centre and the error it states for that, taught where a sound the labels
@@ -701,11 +705,12 @@ named right with each name's say taken over its share show one the commonest
 name outvotes.
 
 The trainer's rules for the band frames and their layout, for what plays each
-pitch, for the beat and the bar line, for what is struck, for a list's velocities, for the batches
-and for `datacheck.py` are tests of their own, with no corpus, on
+pitch, for the beat and the bar line, for what is struck, for a list's velocities, for the batches,
+for growing the long convolutions and for `datacheck.py` are tests of their own, with no corpus, on
 the CPU whatever the machine has: `python3 -m unittest discover tool/rip-train`,
-a minute, most of it the 150 steps that teach a model a note at either end of the
-piano's pitches.
+a minute and a half on four cores, half of it the passes that carry on. One hears
+a grown notes model's file through the transformer module stapes' `go.mod` names,
+which `go` must have (`go mod download`), and holds it to the forward in float64.
 
 It writes the file's version 6, which states the band frames' layout as a
 constant after the heads (`layout`, `ripmodels.LAYOUT`) and, for `--pitchnet`'s

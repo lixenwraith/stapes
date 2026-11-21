@@ -1178,6 +1178,9 @@ class Rate:
         return f"the rate carries fine {self.fine:.1e} on, " + ("a gain kept this pass" if self.gained else self.passes())
 
 
+GROWN_WINDOWS = 8  # the windows of the first loops a grown long convolution's start is fitted on, a batch's at the default
+
+
 def main() -> None:
     global RING, STRIKE_POS, STRIKE_AGAIN, DIP, FAMILY_HOLDOUT, EVEN_GLIDES, PLAYS, FAMILY_UNASKED
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1202,7 +1205,8 @@ def main() -> None:
     ap.add_argument("--again-weight", type=float, default=1.0, help="how much more a strike of a pitch still sounding weighs than another")
     ap.add_argument("--bend", type=float, default=0.0, help="the share of windows read along a tempo that sways, so no grid or steady pulse is there to learn")
     ap.add_argument("--ring", type=float, default=0.0, help="the share of windows with a body's ring at every attack, at one pitch whatever the note")
-    ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way")
+    ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way; "
+                    "from an --init of none or of the first of them, the rest grow, started to hand its cells on as near as the GELU after each lets")
     ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
     ap.add_argument("--family-unasked", action="store_true", help="a frame model's family head grown and asked nothing: no term for it in the loss and its rows of the output layer zero from the start, so every frame's shares are even and the file says nothing there")
     ap.add_argument("--plays", type=float, default=PLAYS, help="the weight of the heads of what plays each pitch in the total, against what plays the frame: a quarter by default")
@@ -1220,7 +1224,8 @@ def main() -> None:
     ap.add_argument("--builders", type=int, default=1, help="processes forked from the run that build its batches beside the device, each at most two batches ahead: batch k is drawn "
                     "from a stream of --seed, --shard-seed and k alone, so the batches are the same whatever builds them and a run resumed at step k draws those the unbroken run drew")
     ap.add_argument("--checkpoint", default="", help="write a .pt every --every steps, and resume from it when present")
-    ap.add_argument("--init", default="", help="start from this .pt's model weights, without its optimizer state (--carry carries it) or step: a training round's common start; a --checkpoint present wins")
+    ap.add_argument("--init", default="", help="start from this .pt's model weights, without its optimizer state (--carry carries it) or step: a training round's common start; a --checkpoint present wins. "
+                    "A model whose heads, and a notes model's long convolutions, are the first of this run's grows, the optimizer fresh")
     ap.add_argument("--carry", action="store_true", help="a pass that carries on from --init's checkpoint, or starts a chain without one: its optimizer's state and its rate's carried as well as its weights "
                     "(a checkpoint of weights alone starts the optimizer fresh), the held-out loops read before a step, and the rate following their readings by doc/rip-training.md §8 rather than "
                     "running a cosine from --lr: fine while the decoders gain, raised to --lr after 3 readings without a gain, fallen back when a raise does not pay")
@@ -1269,14 +1274,16 @@ def main() -> None:
     had = None
     if ck is not None and "cfg" in ck:
         had = ripmodels.shape(ck["cfg"])  # a setting newer than the checkpoint takes the value it was built with
-        had.outputs = [tuple(h) for h in had.outputs]
+        had.outputs, had.dilations = [tuple(h) for h in had.outputs], tuple(had.dilations)
         ck["cfg"] = asdict(had)
-    # a start from a model of the heads before the last added, such as the beat and the downbeat: its weights carry
-    # over, a new head's rows of the output layer fresh
+    # a start from a model of the heads before the last added, such as the beat and the downbeat, or a notes model of
+    # the long convolutions before the last: its weights carry over, a new head's rows fresh, a new long convolution
+    # started to hand its cells on
     grown = False
     if had is not None and not resume and asdict(had) != asdict(cfg):
-        rest = lambda c: {k: v for k, v in asdict(c).items() if k != "outputs"}
-        grown = rest(had) == rest(cfg) and had.outputs == cfg.outputs[:len(had.outputs)]
+        rest = lambda c: {k: v for k, v in asdict(c).items() if k not in ("outputs", "dilations")}
+        longs = cfg.dilations[:len(had.dilations)] if args.pitchnet else cfg.dilations  # a frame model has none
+        grown = rest(had) == rest(cfg) and had.outputs == cfg.outputs[:len(had.outputs)] and had.dilations == longs
     # refused before the corpus loads: load_state_dict names only a tensor's size,
     # and takes another head count or window without a word
     if ck is not None and ck.get("cfg") != asdict(cfg) and not grown:
@@ -1328,9 +1335,15 @@ def main() -> None:
             model.load_state_dict(ripmodels.carried(model, had, ck["model"]))
         except ValueError as err:
             raise SystemExit(f"{start}: {err}")
-        print(f"started from {args.init}, its heads but {', '.join(h for h, _ in cfg.outputs[len(had.outputs):])}, which start fresh")
+        grew = [f"its heads but {', '.join(h for h, _ in cfg.outputs[len(had.outputs):])}, which start fresh"] if cfg.outputs != had.outputs else []
+        if cfg.dilations != had.dilations:
+            frs = validation(loops[:GROWN_WINDOWS], args.window, planes)[0][:GROWN_WINDOWS]
+            miss = ripmodels.start_long(model, len(had.dilations), torch.cat(frs).to(args.device))
+            grew.append(f"its long convolutions but those {', '.join(map(str, cfg.dilations[len(had.dilations):]))} frames apart, "
+                        f"which start handing its cells on, {miss:.3f} off them")
+        print(f"started from {args.init}, " + ", and ".join(grew))
         if rate:
-            print(f"carried on, the optimizer fresh as the heads grew: {rate.load(ck.get('rate'))}")
+            print(f"carried on, the optimizer fresh as the model grew: {rate.load(ck.get('rate'))}")
     elif ck is not None:
         model.load_state_dict(ck["model"])
         print(f"started from {args.init}")

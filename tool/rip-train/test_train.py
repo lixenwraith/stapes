@@ -635,6 +635,191 @@ class ThePitches(unittest.TestCase):
         self.assertLess(max(pitch[:, others].max().item(), strike[:, others].max().item()), 0.5)
 
 
+# a notes model at the shape run() gives, and what lixenwraith/transformer hears of a weight file: the frames, rows of
+# float32, through it, each head named after them written as float32 a frame at a time
+NOTES = dict(inputs=ripmodels.STACK_BINS + 1, channels=ripmodels.STACK_CHANNELS, cell=4, dim=8, heads=2, layers=1, ffn=16, window=4)
+HEARD_GO = """package main
+
+import (
+	"encoding/binary"
+	"math"
+	"os"
+
+	"github.com/lixenwraith/transformer"
+)
+
+func main() {
+	f, err := os.Open(os.Args[1])
+	if err != nil {
+		panic(err)
+	}
+	m, err := transformer.Load(f)
+	if err != nil {
+		panic(err)
+	}
+	raw, err := os.ReadFile(os.Args[2])
+	if err != nil {
+		panic(err)
+	}
+	n := m.Config().Inputs * m.Config().Channels
+	frames := make([][]float32, len(raw)/4/n)
+	for t := range frames {
+		frames[t] = make([]float32, n)
+		for i := range frames[t] {
+			frames[t][i] = math.Float32frombits(binary.LittleEndian.Uint32(raw[4*(t*n+i):]))
+		}
+	}
+	var out []byte
+	for _, y := range m.Forward(frames) {
+		for _, h := range os.Args[4:] {
+			for _, v := range m.Slice(y, h) {
+				out = binary.LittleEndian.AppendUint32(out, math.Float32bits(v))
+			}
+		}
+	}
+	if err := os.WriteFile(os.Args[3], out, 0o644); err != nil {
+		panic(err)
+	}
+}
+"""
+
+
+class TheLongConvolutions(unittest.TestCase):
+    """--init grows a notes model's long convolutions under --dilations from a checkpoint of none or of the first of
+    them, a head with them where one grows"""
+
+    EVENTS = [note(4, 40, 45, "piano"), note(30, 90, 64, "guitar"), note(70, 120, 72, "piano"), note(96, 126, 50, "guitar")]
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.at = lambda name: os.path.join(self.dir.name, name)
+        corpus(self.dir.name, [{"events": self.EVENTS}], 128, lambda lab: sounding(128, lab["events"]))
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def start(self, dilations=(), outputs=ripmodels.PITCHNET_HEADS) -> ripmodels.PitchNet:
+        """a notes model of those long convolutions and heads, saved as a run's checkpoint is, start.pt"""
+        cfg = ripmodels.Config(**NOTES, outputs=list(outputs), dilations=dilations)
+        torch.manual_seed(1)
+        model = ripmodels.PitchNet(cfg).eval()
+        torch.save({"model": model.state_dict(), "layout": ripmodels.LAYOUT, "cfg": asdict(cfg)}, self.at("start.pt"))
+        return model
+
+    def grow(self, name, *flags, steps=1) -> str:
+        """a run from start.pt that grows the long convolutions 3, 9 and 27 frames apart, its checkpoint and file name"""
+        return run("--corpus", self.dir.name, "--pitchnet", "--cell", "4", "--dilations", "3,9,27", "--init", self.at("start.pt"),
+                   "--checkpoint", self.at(name + ".pt"), "--out", self.at(name + ".bin"), *flags, steps=steps)
+
+    def heard(self, model, x) -> tuple:
+        """the cells model's notes convolution reads of the planes x, and its outputs"""
+        seen = []
+        hook = model.notes.register_forward_pre_hook(lambda _, args: seen.append(args[0]))
+        with torch.no_grad():
+            y = model.eval()(x)
+        hook.remove()
+        return seen[0][..., 1:ripmodels.PITCHES + 1], y
+
+    def test_a_start_grows_the_long_convolutions_and_carries_every_weight_it_had(self):
+        """From a notes model of no long convolutions, a head short, or of the first of them, the rest grow: every
+        weight the start had is carried whole, a grown head's rows after its own, the line says what grew, and the
+        frame's heads, which hear no cell, say what the start's did to the bit."""
+        x = torch.from_numpy(ripmodels.features(sounding(128, self.EVENTS), 4))[None]
+        for had, outputs, grew in (((), ripmodels.PITCHNET_HEADS[:-1], "its heads but struck, which start fresh, and its long convolutions but those 3, 9, 27"),
+                                   ((3,), ripmodels.PITCHNET_HEADS, "its long convolutions but those 9, 27")):
+            with self.subTest(had=had):
+                start = self.start(had, outputs)
+                said = self.grow(f"grown{len(had)}", "--lr", "0")
+                self.assertRegex(said, f"started from {re.escape(self.at('start.pt'))}, {grew} frames apart, which start handing its cells on, \\d\\.\\d{{3}} off them\n")
+                ck = torch.load(self.at(f"grown{len(had)}.pt"))
+                for k, v in start.state_dict().items():
+                    self.assertTrue(torch.equal(ck["model"][k][:len(v)] if v.dim() else ck["model"][k], v), k)
+                grown = ripmodels.build(ripmodels.shape(ck["cfg"]))
+                grown.load_state_dict(ck["model"])
+                was, now = (self.heard(m, x)[1] for m in (start, grown))
+                for k in ripmodels.FRAME_HEADS[:-1]:
+                    self.assertTrue(torch.equal(now[..., grown.cfg.slice(k)], was[..., start.cfg.slice(k)]), k)
+
+    def test_a_grown_long_convolution_hands_the_cells_on_nearer_than_one_started_at_zero(self):
+        """Each long convolution adds its cells back before a GELU, so one of zero weights hands on gelu(c), three of
+        them gelu(gelu(gelu(c))); started as each grows, they hand the notes convolution cells under a fifth as far from
+        the start's in the mean square, and the miss the start states is theirs on the frames it was fitted to."""
+        start = self.start()
+        x = torch.from_numpy(ripmodels.features(sounding(128, self.EVENTS), 4))[None]
+        cells = {}
+        for name in ("zero", "started"):
+            grown = ripmodels.PitchNet(ripmodels.Config(**NOTES, outputs=ripmodels.PITCHNET_HEADS, dilations=(3, 9, 27)))
+            grown.load_state_dict(ripmodels.carried(grown, start.cfg, start.state_dict()))
+            with torch.no_grad():
+                for layer in grown.long:
+                    layer.weight.zero_()
+                    layer.bias.zero_()
+            miss = ripmodels.start_long(grown, 0, x) if name == "started" else None
+            cells[name] = self.heard(grown, x)[0]
+        was = self.heard(start, x)[0]
+        off = {k: (c - was).square().mean().sqrt().item() for k, c in cells.items()}
+        self.assertLess(off["started"], off["zero"] / 5, off)
+        self.assertAlmostEqual(miss, off["started"], places=5)
+
+    def test_a_grown_model_trains_and_its_checkpoint_resumes_as_the_unbroken_run(self):
+        """A grown model takes its steps, the taps its long convolutions start at zero among them, and a run of it
+        stopped after its first step and resumed from its checkpoint ends on the weights of the run that was never
+        stopped, to the bit."""
+        self.start()
+        self.grow("whole", "--lr", "0.01", steps=2)
+        self.grow("part", "--lr", "0.01", steps=1)
+        self.assertIn("resumed at step 1", self.grow("part", "--lr", "0.01", steps=2))
+        whole, part = (torch.load(self.at(name + ".pt")) for name in ("whole", "part"))
+        self.assertEqual((whole["step"], part["step"]), (2, 2))
+        for k, v in whole["model"].items():
+            self.assertTrue(torch.equal(part["model"][k], v), k)
+        self.assertTrue(all(bool(whole["model"][f"long.{i}.weight"][:, :, 0].ne(0).all()) for i in range(3)))
+
+    def test_a_grown_models_file_is_heard_in_go_as_python_hears_it(self):
+        """The file a grown model's run writes, its long convolutions moved off their start by a step, is read by
+        lixenwraith/transformer at the version stapes' go.mod names, whose outputs over a corpus's frames of notes are
+        Python's forward in float64 within 1e-5 and as much again of each, as its cell net's own test holds them to its
+        definition."""
+        go = shutil.which("go")
+        if go is None:
+            self.skipTest("no go here to hear the file with")
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+        mod = subprocess.run([go, "list", "-m", "-f", "{{.Version}} {{.Dir}}", "github.com/lixenwraith/transformer"], cwd=root, capture_output=True, text=True)
+        version, _, path = mod.stdout.strip().partition(" ")
+        if mod.returncode != 0 or not path:
+            self.skipTest(f"the transformer module is not here ({mod.stderr.strip()}): go mod download github.com/lixenwraith/transformer")
+        toolchain = subprocess.run([go, "env", "GOVERSION"], cwd=root, capture_output=True, text=True).stdout.strip()
+        self.start()
+        self.grow("grown", "--lr", "0.01")
+        ck = torch.load(self.at("grown.pt"))
+        model = ripmodels.build(ripmodels.shape(ck["cfg"])).eval()
+        model.load_state_dict(ck["model"])
+        x = torch.from_numpy(ripmodels.features(sounding(300, [note(30 * k, 30 * k + 40, 33 + 7 * k, "piano") for k in range(10)]), 4))[None]
+        with torch.no_grad():
+            stacked, y = model.stack(x)[0], model.double()(x.double())[0]
+        heads = [k for k, _ in model.cfg.outputs]
+        prog = self.at("heard")
+        os.mkdir(prog)
+        with open(os.path.join(prog, "go.mod"), "w") as f:
+            f.write(f"module heard\n\ngo {toolchain.removeprefix('go')}\n\nrequire github.com/lixenwraith/transformer {version}\n\n"
+                    f"replace github.com/lixenwraith/transformer => {path}\n")
+        with open(os.path.join(prog, "main.go"), "w") as f:
+            f.write(HEARD_GO)
+        stacked.numpy().astype("<f4").tofile(self.at("frames.raw"))
+        got = subprocess.run([go, "run", ".", self.at("grown.bin"), self.at("frames.raw"), self.at("heard.raw"), *heads], cwd=prog,
+                             capture_output=True, text=True, env={**os.environ, "GOWORK": "off", "GOFLAGS": "-mod=mod"})
+        self.assertEqual(got.returncode, 0, got.stderr)
+        heard = torch.from_numpy(np.fromfile(self.at("heard.raw"), "<f4").reshape(len(y), -1))
+        self.assertEqual(model.long[2].dilation, (27, 1))
+        at = 0
+        for k, size in model.cfg.outputs:
+            with self.subTest(head=k):
+                want = y[:, model.cfg.slice(k)]
+                off = (heard[:, at:at + size].double() - want).abs() - 1e-5 * (1 + want.abs())
+                self.assertLessEqual(off.max().item(), 0.0)
+            at += size
+
+
 class TheBatches(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

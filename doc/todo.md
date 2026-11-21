@@ -165,7 +165,14 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    a corpus label alone, so a recording's want its list's beats in a label
    (`corpus <dir> from`), and a `.jams` truth, beats and no notes, is not read
    yet. It has run on no generated truth of every meter: that run sets the
-   bars' weights audio still holds at the values they were written with. Nor
+   bars' weights audio still holds at the values they were written with. Its
+   bars score counts the lines alone (`MatchBars`' downbeats on a line, given
+   only where the bar is the truth's length), never the tempo, so a 12/8 read
+   as 4/4 over its dotted quarters scores in full: a term for the beats
+   (`MatchBars`' `Beats`) or the tempo within 3% of a label's would let the
+   search move the tempo's prior, combs and cuts. It costs no rip, the rips
+   being made already; it costs breadth, 19 bar genes; and it wants guitar
+   truths that give beats, the sheets' labels in place of their MIDI files. Nor
    on loops cut off the bar line: some fit loops are to start a quarter to
    three quarters of a bar in, their beats and lines given as a recording's
    are, so the bars' weights do not learn a rendered loop's start ([agent

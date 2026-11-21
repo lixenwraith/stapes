@@ -93,7 +93,9 @@ flowchart TD
      of the pulses, a pickup bar where sound leads into the first. Where the
      frames carry the beat and the downbeat head, they are read by their level
      as a plain tracker reads them: the tempo is how the beat head repeats,
-     under the same prior, and the beats are tracked on it; a line falls every
+     under the same prior, cut to the finest beat it marks, its halves or
+     thirds where they stand near its beats' height, and the beats are
+     tracked on it; a line falls every
      bar's beats from the place where the downbeat head, summed over the whole
      clip, stands highest over its mean beat, weighed beside the cues, which
      decide where its margin is small, the head never read at a beat on the

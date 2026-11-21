@@ -41,6 +41,16 @@ proves wrong or that a document now states, and link the document instead.
   they can be computed from the audio branch's tree before the tag and are
   the tag's while a squash merge leaves that tree as it is; compute them
   again when the audio branch changes.
+- Four tests stand on the bank's content rather than the engine's code, so an
+  audio version that moves the bank moves them:
+  `TestARecordedKitsHitsAreMovedOntoTheirSound` fits `lag.go`'s constants on the
+  bank's drums through a room, where their norms alone, a gain, moved the rise a
+  step, and `TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem`,
+  `TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays` and
+  `TestAJudgeBesideTheModelRulesItsRips` rip a loop of the bank's drums and
+  patterns. To tell the bank from the engine, lay the last version's
+  `bank/*.toml` over a copy of the new tree (`git archive`, `git show
+  <tag>:bank/<file>`) and run them through a workspace on that copy.
 - A cloud container holds no PyTorch: `make venv` installs the CPU build in
   two minutes, and `tool/rip-train/.venv/bin/python3` runs the trainer and
   `judge.py` from then on. Where the container cannot resolve
@@ -95,6 +105,10 @@ proves wrong or that a document now states, and link the document instead.
   `SlotPattern` reads silence until then, so a verb that acts on what was just
   slotted reads the session's own `slots`, as `render` does; a test that checks
   the engine's readout waits a tick.
+- A test that hears what the session plays hands `NewSession` its speakers
+  (`Options.Sink`, `earSink`): the mixer writes them a period at a time in real
+  time, so the test waits on what it reads (`waitFor`), never on a count of
+  ticks. The binaural bed is the one thing the stream's two channels differ by.
 - The searches stapes runs are sized by fields a test shrinks
   (`Session.fit`, `Session.compressOpt`), not by constants: the rip test fits two
   notes over one generation of four and still walks every path. Seeds past the

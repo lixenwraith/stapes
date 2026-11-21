@@ -117,6 +117,10 @@ in its first meter, which the transport takes as a song played does (`meter`,
 phrase fill off (`SetAutoFill(false)`), and its mixer mutes slots and tracks and
 solos tracks (library
 [§6](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#6-mixer-buses-mute-and-pause)).
+`binaural` lays the library's binaural bed under what the transport plays
+(`SetBinaural`, the same section), by a carrier, a beat and a level, and takes
+it away: the one thing the stream's two channels differ by, and in no offline
+render, so a corpus and a bench are the bytes they are without it.
 
 ## 4. The rip's verbs
 

@@ -3,6 +3,7 @@ package stapes
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -224,6 +225,44 @@ func cmdTuning(s *Session, a []string) error {
 	s.tuning = f
 	s.eng.SetTuning(f)
 	fmt.Fprintf(s.out, "tuning %+.0f cents off A440\n", f)
+	return nil
+}
+
+// cmdBinaural shows the binaural bed, lays one under the music or takes it away
+func cmdBinaural(s *Session, a []string) error {
+	switch {
+	case len(a) == 1 && a[0] == "off":
+		s.bed = audio.Binaural{}
+	case len(a) == 3:
+		var f [3]float64
+		for i, word := range a {
+			var err error
+			if f[i], err = strconv.ParseFloat(word, 64); err != nil {
+				return fmt.Errorf("binaural %q: not a number", word)
+			}
+		}
+		// written so a NaN fails each bound
+		if !(f[0] >= audio.MinBinauralCarrier && f[0] <= audio.MaxBinauralCarrier && f[1] >= 0 && f[1] <= audio.MaxBinauralBeat && f[2] > 0 && f[2] <= 1) {
+			return fmt.Errorf("binaural: want a carrier of %g to %g Hz, a beat of 0 to %g Hz and a level over 0, to 1",
+				audio.MinBinauralCarrier, audio.MaxBinauralCarrier, audio.MaxBinauralBeat)
+		}
+		s.bed = audio.Binaural{Carrier: f[0], Beat: f[1], Level: f[2]}
+	case len(a) != 0:
+		return fmt.Errorf("usage: %s", commands["binaural"].usage)
+	}
+	if len(a) > 0 {
+		s.eng.SetBinaural(s.bed)
+	}
+	b := s.bed
+	if b.Level == 0 {
+		fmt.Fprintln(s.out, "binaural bed off")
+		return nil
+	}
+	fmt.Fprintf(s.out, "binaural bed: a beat of %g Hz on %g, the left ear at %g Hz and the right at %g, each at %g of full scale (%.1f dB)\n",
+		b.Beat, b.Carrier, b.Carrier-b.Beat/2, b.Carrier+b.Beat/2, b.Level, 20*math.Log10(b.Level))
+	if !s.eng.IsMusicPlaying() {
+		fmt.Fprintln(s.out, "the bed sounds with the music: `music start` to hear it")
+	}
 	return nil
 }
 

@@ -41,16 +41,14 @@ proves wrong or that a document now states, and link the document instead.
   they can be computed from the audio branch's tree before the tag and are
   the tag's while a squash merge leaves that tree as it is; compute them
   again when the audio branch changes.
-- Four tests stand on the bank's content rather than the engine's code, so an
-  audio version that moves the bank moves them:
-  `TestARecordedKitsHitsAreMovedOntoTheirSound` fits `lag.go`'s constants on the
-  bank's drums through a room, where their norms alone, a gain, moved the rise a
-  step, and `TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem`,
-  `TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays` and
-  `TestAJudgeBesideTheModelRulesItsRips` rip a loop of the bank's drums and
-  patterns. To tell the bank from the engine, lay the last version's
-  `bank/*.toml` over a copy of the new tree (`git archive`, `git show
-  <tag>:bank/<file>`) and run them through a workspace on that copy.
+- A test that needs a property of a loop writes the loop or walks a bounded draw
+  for one, failing as no fixture: the bank's music and mix move every render, and
+  a bank loop that held one held it by chance (`truthFixture`'s `holds`, the
+  crescendo of `TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem`). To tell
+  the bank from the engine when a test moves with an audio version, lay the last
+  version's `bank/*.toml` over a copy of the new tree (`git archive`, `git show
+  <tag>:bank/<file>`), a file or a field at a time, and run it through a
+  workspace on that copy.
 - A cloud container holds no PyTorch: `make venv` installs the CPU build in
   two minutes, and `tool/rip-train/.venv/bin/python3` runs the trainer and
   `judge.py` from then on. Where the container cannot resolve
@@ -668,7 +666,20 @@ proves wrong or that a document now states, and link the document instead.
   hit by its length and its tone, which is most of `lagBound`. After a change
   to the measure run `TestARecordedKitsHitsAreMovedOntoTheirSound` with `-v`,
   set the constants it fits and write the documents' figures from its log;
-  two thirds of its seconds are the kits' renders, three a kit.
+  two thirds of its seconds are the kits' renders, three a kit. Its takes are
+  laid at a drawn level before their room: the frames read a take's peak at
+  one, but `degrade`'s soft clip is driven by the level it comes at, and at the
+  bank's own level a cut of every drum's norm to 0.62 moved the rise a step.
+- **No offline render passes the limiter**: `RenderBars` and `RenderMusic`, and
+  so every corpus, bench and test loop, sum the sequencer's slots alone; the
+  mixer's limiter is the live stream's. On the parent bank's levels 85 of 500
+  generated loops of four bars peaked at its 0.9 or over, 34 at full scale; on
+  audio v0.35's none, the loudest at -1.07 dBFS.
+- **The analysis hears a recording's scale.** Its percussive flux is
+  `log1p(100·magnitude)` of the samples as they come, so a gain moves its
+  marginal hits (a steady beat's 60 read 58 at half its level), and so does the
+  16-bit truncation of a WAV written from a float render: a test whose truth is
+  a rip rips the file the count reads, its bytes read back.
 - A hit that draws no sound is told by the rise its own onset reads
   (`onsetRise`, [Rip training §3](rip-training.md#a-hit-that-draws-no-sound)).
   The sharp plane's window is 93 ms, so a hit's rise spreads over about two
@@ -881,6 +892,10 @@ proves wrong or that a document now states, and link the document instead.
   a recording under four seconds is refused. Force the outcome in the fixture:
   a truth the start hears exactly leaves nothing to beat, and a start at
   `strike_hold` 0.3 hears so much that every seed's pool betters it.
+- A drum's loudest onset is often its first stroke, rising from the render's
+  silence: in a bank loop each drum's first alone stood over 0.75 of its
+  loudest, so from `onset_min` at its range's top no near step heard another.
+  A beat whose strokes grow evenly louder holds hits under every step from it.
 - The live rip's notes are the offline rip's and its bars are not: tempo, meter
   and phase hold from the first six bars, whatever the ear waits, and each frame
   runs through each model once, however the ear's half-second steps overlap.

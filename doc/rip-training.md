@@ -793,8 +793,8 @@ reasons (`lagWhy`), read in this order:
 - `no lag that stands clear`: another peak within the reach meets more than 0.97
   of what the best does (`lagClear`), or the score still rises at the reach.
 - `a lag that drifts`: the median onset of the later half of its strikes lies more
-  than a frame, 11.6 ms, from the earlier half's (`lagBound`). A drift that leaves
-  few strikes within a frame of one lag reads as hits that draw no onset.
+  than 10.2 ms from the earlier half's (`lagBound`). A drift that leaves few
+  strikes within a frame of one lag reads as hits that draw no onset.
 
 Such a recording keeps its frames and its label, the hits as its file has them and
 `"skip":"a lag that drifts"` in place of the lag; the run names it (`a.wav: left out
@@ -806,22 +806,29 @@ onset`.
 The five constants are fitted on drums whose answer is known
 (`TestARecordedKitsHitsAreMovedOntoTheirSound`): four bars of the arranger's drums
 on a kit drawn for each, the bank's drums under an eq of five bands 10 dB either
-way, a pitch half an octave and a length an octave either way, with no room and
-through `degrade`, the hits moved by none, by a steady lag up to two frames short of
-the reach either way, by a drift of three to six frames over the recording, or
-replaced by another recording's, and the same hits over silence.
+way, a pitch half an octave and a length an octave either way, each recording at a
+level drawn as a loop's ([a loop's level](#a-loops-level)), a recorded kit's own and
+not the bank's, with no room and through `degrade`, the hits moved by none, by a
+steady lag up to two frames short of the reach either way, by a drift of three to
+six frames over the recording, or replaced by another recording's, and the same
+hits over silence.
 
 - The reach is the widest share of the usual gap, doubling from a quarter, at
   which every recording of a draw of 24 whose hits were moved by none or a steady
   lag is read within a frame of their median: a half. At the whole gap one is read
   120.9 ms off.
 - At a half, over those 96 readings: the median of the lag read less the lag laid
-  is `lagRise`; the furthest from it, 10.2 ms, to the nearest step and one more is
-  `lagBound`; `lagClear` is halfway from the most another lag meets, 0.944, to a
+  is `lagRise`; the furthest from it, 9.1 ms, to the nearest step and one more is
+  `lagBound`; `lagClear` is halfway from the most another lag meets, 0.943, to a
   tie; `lagDrawn` halfway from the least share of strikes that draw an onset,
   0.516, to the most another's hits or silence draw, 0.278. A draw holds only
   where the shares part and no recording's halves lie further apart than the
-  bound: theirs lie 4.3 ms apart at most.
+  bound: theirs lie 5.7 ms apart at most.
+- A level moves only the takes through `degrade`, whose soft clip it drives: laid
+  at one level throughout, the rise reads -3 steps at -32 and -26 dBFS and -4 at
+  -20 and -14, the bound 6 or 7 and the other three as drawn; at -32 one reading
+  lies 10.5 ms from the drawn rise. Drawn, the readings' median lies at -3.51
+  steps, so a drum's norm moved alone by 2 dB moves the rise or the bound a step.
 - On a second draw of 12, each of 48 lags laid up to 133 ms is found within 6.4 ms,
   none left out; of the 12 that drift 7 are left out for a lag that drifts and 5 for
   hits that draw no onset, and all 12 silent and 12 of another's hits for hits that
@@ -857,8 +864,8 @@ The bound is fitted on drums whose strengths are known
 on drawn kits, a fifth of each recording's hits laid silent and the rest at their
 velocity under a gain drawn evenly from none to 40 dB down. Over 24 recordings with
 no room, 23 of them put on their sound, it is halfway in decades, to the nearest
-tenth, between the most nine in ten silent hits read, 8.6e-5, and the least nine in
-ten hits at the engine's strengths (`softest` up) read, 0.0106, each sure to one in
+tenth, between the most nine in ten silent hits read, 8.5e-5, and the least nine in
+ten hits at the engine's strengths (`softest` up) read, 0.0105, each sure to one in
 twenty (`sure`); a silent hit within two frames of a sounding one is left out of the
 fit. Read back on 12 more with no room and through `degrade`, every take put on its
 sound, the share each keeps:

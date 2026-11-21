@@ -55,9 +55,11 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    drum velocity in the labels, its list saying `none` till a kit's law is
    decided, the lag's and the silent hit's constants read back on E-GMD itself
    (by drummer and session, whether a performance's kits agree, `left.tsv`'s
-   hits by key and kit), a lag past half the usual gap between strikes, which
-   reads as a nearer one, and a check that drops a render whose hits draw no
-   onset; NSynth's notes play in `corpus ... sampled`, lacking the tempo-synced
+   hits by key and kit; the fit's rise lies at its rounding edge, -3.51 steps, so
+   a drum's norm moved alone by 2 dB moves it or the bound a step, and a kit's
+   balance drawn as its level is moves the reach to the whole gap and `lagClear`
+   to 1), a lag past half the usual gap between strikes, which reads as a
+   nearer one, and a check that drops a render whose hits draw no onset; NSynth's notes play in `corpus ... sampled`, lacking the tempo-synced
    and multiphonic filters `examples.json` allows and a pipeline bench on the 53
    held-out instruments), then more loops, or width 384 (`DIM=384 HEADS=12
    FFN=1536`, 7 million weights), each measured by `bench` on clean and
@@ -460,7 +462,12 @@ and E-GMD, VocalSet, NSynth and GuitarSet, while MusicNet and vocadito only
 measure ([credits](../CREDITS.md)). The generator writes every key A0 to C8
 ([Rip training §3](rip-training.md#arranged-loops)). What closes it: both models trained from nothing and installed, their
 rounds naming every collection they took, and CREDITS.md crediting exactly
-those.
+those. Before the round: under `aug` a loop meets `degrade` at the level the
+bank's mix renders it at and is laid at its drawn level only after, and the room
+soft-clips every take, at drive one `tanh(y)/tanh(1)` taking 2.4 dB off a
+full-scale peak where its comment says a third clip, so the bank's levels move
+the corpus's bytes; decide whether a loop meets its room at a drawn level, as the
+lag's fit does.
 
 ### Carry a pass's rate further
 
@@ -792,12 +799,14 @@ twenty-five on a CI runner, which the workflow splits over seven jobs, each
 about as long as the heaviest test
 ([agent notes](agent-notes.md#the-race-suite-and-ci)). What is left:
 
-- The three heaviest tests are 37% of it and set the shortest a job can be:
-  the fitted and refined song 129 s, the judge 120 s, `live` 97 s. Each runs
-  what its rule takes at the least. The refinement's every judge renders and
-  hears the whole song; the judge test's time is the rip's accounting
-  (`RipFrames.account`, 72% of it plain), which only audio shortens; `live`
-  hears twelve seconds through two ears, each a stream and two rips.
+- Beside the lag's and the silent hit's fits below, the heaviest set the
+  shortest a job can be: the judge 269 s, the fitted and refined song 129 s,
+  `live` 97 s. Each runs what its rule takes at the least. The refinement's
+  every judge renders and hears the whole song; the judge test's time is the
+  rip's accounting (`RipFrames.account`), which only audio shortens, a third of
+  it plain the walk for a loop the judge and the installed scores rule apart
+  (`truthFixture`'s `holds`); `live` hears twelve seconds through two ears, each
+  a stream and two rips.
 - Two splits were weighed and not taken, since each takes tests from the
   detector. Racing the light tests alone and running every test plain: the 27
   tests that render or hear audio for half a second skip under `-short`, and
@@ -807,7 +816,7 @@ about as long as the heaviest test
   test reaches goes unseen. Or that on a pull request and the whole raced
   suite on main, which shows such a race after its merge.
 - The lag's fit and readback, `TestARecordedKitsHitsAreMovedOntoTheirSound`,
-  is weighed at 207 s, fifteen times its plain 13.8: two thirds of it are
+  takes 212 s raced, fourteen times its plain 15.1: two thirds of it are
   eighteen kits' renders, each drum rendered three times as its eq, its shape
   and its binding are set. The silent hit's,
   `TestAHitThatDrawsNoSoundIsToldByItsRise`, at 384 s, fifteen times its plain

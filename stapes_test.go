@@ -2276,15 +2276,11 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 }
 
 // truthFixture is a rendered loop as loop.wav in a new folder and a model too
-// small to hear well, with the notes its rip of that file holds under p
-func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmodels.FrontEnd, heard func(audio.RipParams) []audio.RipNote, write func(name string, notes []audio.RipNote)) {
+// small to hear well, with the notes its rip of that file holds under p: the
+// corpus's second loop, or with holds the first from it whose file holds, of
+// eight at tempos whose two bars a rip reads; none holding is no fixture
+func truthFixture(t *testing.T, s *Session, seed uint64, holds func(x []float64, rate int, fe *ripmodels.FrontEnd) bool) (dir string, fe *ripmodels.FrontEnd, heard func(audio.RipParams) []audio.RipNote, write func(name string, notes []audio.RipNote)) {
 	t.Helper()
-	loops, err := s.corpus(tuneOptions{loops: 2, bars: 2, seed: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir = t.TempDir()
-	writeWAV(t, filepath.Join(dir, "loop.wav"), loops[1].audio)
 	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, seed)
@@ -2294,14 +2290,27 @@ func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmod
 	if fe, err = ripmodels.New(m, nil); err != nil {
 		t.Fatal(err)
 	}
-	f, err := os.Open(filepath.Join(dir, "loop.wav"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	x, rate, err := audio.ReadWAV(f)
-	if err != nil {
-		t.Fatal(err)
+	dir = t.TempDir()
+	var x []float64
+	var rate, bpm int
+	found := fmt.Errorf("found")
+	err = s.eachLoop(tuneOptions{loops: 8, bars: 2, seed: 1, tempos: []int{112}, skip: func(i int) bool { return i == 0 }}, func(_ int, l tuneLoop) error {
+		var wav bytes.Buffer
+		if werr := audio.WriteWAV(&wav, l.audio); werr != nil {
+			return werr
+		}
+		writeFile(t, filepath.Join(dir, "loop.wav"), wav.String())
+		var rerr error
+		if x, rate, rerr = audio.ReadWAV(bytes.NewReader(wav.Bytes())); rerr != nil {
+			return rerr
+		}
+		if bpm = l.bpm; holds == nil || holds(x, rate, fe) {
+			return found
+		}
+		return nil
+	})
+	if err != found {
+		t.Fatalf("none of the corpus's loops 1 to 7 holds what the test needs (%v): no fixture", err)
 	}
 	heard = func(p audio.RipParams) []audio.RipNote {
 		t.Helper()
@@ -2314,7 +2323,7 @@ func truthFixture(t *testing.T, s *Session, seed uint64) (dir string, fe *ripmod
 	write = func(name string, notes []audio.RipNote) {
 		t.Helper()
 		var b bytes.Buffer
-		if err := audio.WriteMIDI(&b, notes, nil, loops[1].bpm, audio.Meter{}); err != nil {
+		if err := audio.WriteMIDI(&b, notes, nil, bpm, audio.Meter{}); err != nil {
 			t.Fatal(err)
 		}
 		writeFile(t, filepath.Join(dir, name), b.String())
@@ -2330,7 +2339,7 @@ func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	dir, fe, heard, write := truthFixture(t, s, 1)
+	dir, fe, heard, write := truthFixture(t, s, 1, nil)
 	// sure is what the start hears and soft what a lower bar hears beyond it, so
 	// a soft note is gained only as one sure never had
 	s.rip.Strike = 0.7
@@ -2388,13 +2397,51 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	loops, err := s.corpus(tuneOptions{loops: 1, bars: 4, seed: 1})
+	// four bars of a bass line over a beat whose strokes grow evenly louder, each
+	// lane's first at 0.3 of its last: its hits stand at every strength under the
+	// loudest, and none rising from the silence before the loop outweighs the rest
+	const bars, steps = 4, 16
+	beat := &audio.Pattern{Name: "crescendo", Steps: bars * steps, Role: audio.RoleRhythm}
+	for _, d := range []struct {
+		instr       audio.InstrumentType
+		every, from int
+		top         float64
+	}{{audio.InstrKick, 8, 0, 1}, {audio.InstrSnare, 8, 4, 1}, {audio.InstrHihat, 2, 0, 0.8}} {
+		tr, n := audio.Track{Instr: d.instr}, (bars*steps-d.from+d.every-1)/d.every
+		for k := range n {
+			tr.Events = append(tr.Events, audio.Step{Pos: d.from + k*d.every, Vel: d.top * (0.3 + 0.7*float64(k)/float64(n-1))})
+		}
+		beat.Tracks = append(beat.Tracks, tr)
+	}
+	halves := &audio.Pattern{Name: "halves", Steps: bars * steps, Role: audio.RoleBass, Tracks: []audio.Track{{Instr: audio.InstrBass}}}
+	for k := range 2 * bars {
+		halves.Tracks[0].Events = append(halves.Tracks[0].Events, audio.Step{Pos: 8 * k, Vel: 0.8, Deg: 4 * (k % 2), Dur: 8})
+	}
+	var slots [audio.MusicSlots]audio.PatternID
+	for slot, p := range []*audio.Pattern{beat, nil, nil, halves} {
+		if p != nil {
+			id, err := s.eng.DefinePattern(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			slots[slot] = id
+		}
+	}
+	x, err := s.eng.RenderMusic(slots, 120, audio.Meter{}, bars, audio.DefaultRootNote, audio.ScalePhrygian, nil, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	writeWAV(t, filepath.Join(dir, "loop.wav"), loops[0].audio)
-	r, err := audio.Ripper{Params: s.rip, Lead: s.lead}.Samples(loops[0].audio, audio.AudioSampleRate)
+	var wav bytes.Buffer
+	if err := audio.WriteWAV(&wav, x); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "loop.wav"), wav.String())
+	x, rate, err := audio.ReadWAV(bytes.NewReader(wav.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := audio.Ripper{Params: s.rip, Lead: s.lead}.Samples(x, rate)
 	if err != nil || len(r.Notes) == 0 || len(r.Hits()) == 0 || len(r.Bars) < 2 {
 		t.Fatalf("the start's rip: %v, %d notes, %d hits, %d bars: no fixture", err, len(r.Notes), len(r.Hits()), len(r.Bars))
 	}
@@ -2423,9 +2470,21 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	if c, err := takes[0].count(s.rip, s.lead); err != nil || c.notes.f1() != 1 || c.drums.f1() != 1 || c.bars() != 1 {
 		t.Fatalf("a label of the rip's own notes, hits and beats counts %+v (%v), want one on each", c, err)
 	}
-	// a start whose drums' bar is the range's top: every move of it hears more of the hits
+	// a start whose drums' bar is the range's top: every move of it hears more of
+	// the hits, as a step of a near search under it does
 	s.rip.OnsetMin = 0.9
-	start := s.rip
+	start, under := s.rip, s.rip
+	under.OnsetMin -= nearStep * (start.OnsetMin - audio.RipGeneRanges()[geneOf(drumGenes[0])][0])
+	heard := func(p audio.RipParams) int {
+		c, err := takes[0].count(p, s.lead)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c.drums.hits
+	}
+	if top, below := heard(start), heard(under); below <= top {
+		t.Fatalf("onset_min %.2f hears %d of %d hits and %.2f under it %d: no fixture", start.OnsetMin, top, len(r.Hits()), under.OnsetMin, below)
+	}
 	if err := s.tuneTruth(tuneOptions{generations: 2, pool: 8, seed: 1}, list, file, analysisEar{}); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
 	}
@@ -2522,7 +2581,8 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 	}
 	// a beat of one velocity alone, which a higher bar drops little of, and a
 	// loop without its drums; each one's truth is what the range's lowest bar
-	// hears of it, so only fewer hits heard where none plays can better the start
+	// hears of its file, the samples tune truth reads, so only fewer hits heard
+	// where none plays can better the start
 	beat := &audio.Pattern{Name: "steady", Steps: 16, Role: audio.RoleRhythm, Tracks: []audio.Track{
 		{Instr: audio.InstrKick, Events: []audio.Step{{Pos: 0, Vel: 1}, {Pos: 8, Vel: 1}}},
 		{Instr: audio.InstrSnare, Events: []audio.Step{{Pos: 4, Vel: 1}, {Pos: 12, Vel: 1}}},
@@ -2543,7 +2603,16 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		r, err := audio.Ripper{Params: start, Lead: s.lead}.Samples(x, audio.AudioSampleRate)
+		var wav bytes.Buffer
+		if err := audio.WriteWAV(&wav, x); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(dir, name+".wav"), wav.String())
+		x, rate, err := audio.ReadWAV(bytes.NewReader(wav.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := audio.Ripper{Params: start, Lead: s.lead}.Samples(x, rate)
 		if err != nil || len(r.Hits()) == 0 {
 			t.Fatalf("the start's rip of %s: %v, %d hits: no fixture", name, err, len(r.Hits()))
 		}
@@ -2555,7 +2624,6 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 		if err := audio.WriteMIDI(&mid, notes, hits, r.BPM, r.Meter); err != nil {
 			t.Fatal(err)
 		}
-		writeWAV(t, filepath.Join(dir, name+".wav"), x)
 		writeFile(t, filepath.Join(dir, name+".mid"), mid.String())
 	}
 	if err := writeJSON(filepath.Join(dir, "bare.json"), corpusLoop{BPM: l.bpm, Bars: 4}); err != nil {
@@ -2621,7 +2689,7 @@ func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 	}
 	s, out := open(1)
 	// the truth is what the start hears, so nothing beats it and nothing is written
-	dir, _, heard, write := truthFixture(t, s, 1)
+	dir, _, heard, write := truthFixture(t, s, 1, nil)
 	write("loop.mid", heard(s.rip))
 	list, kept := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "frames")
 	writeFile(t, list, "loop.wav\tloop.mid\t\ttimed\n")
@@ -2699,9 +2767,9 @@ func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(root, frameFile), weights.String())
 	sum := binary.LittleEndian.Uint64(weights.Bytes()[weights.Len()-8:])
+	odds := [2]float64{0.9, 0.1} // a judge that keeps every reported note and returns no dropped strike
 	open := func(notes uint64) (*Session, *bytes.Buffer) {
-		// a judge that keeps every reported note and returns no dropped strike
-		writeFile(t, filepath.Join(root, judgeFile), string(judgeBytes(notes, [2]float64{0.9, 0.1})))
+		writeFile(t, filepath.Join(root, judgeFile), string(judgeBytes(notes, odds)))
 		files, err := ResolveFiles(root, "", "")
 		if err != nil {
 			t.Fatal(err)
@@ -2718,7 +2786,19 @@ func TestAJudgeBesideTheModelRulesItsRips(t *testing.T) {
 	if s.judge != nil || s.ripper().Judge != nil || !strings.Contains(out.String(), "judge "+filepath.Join(root, judgeFile)+": ") || !strings.Contains(out.String(), "the installed scores judge") {
 		t.Errorf("a judge fitted on other notes weights loaded %v: %s", s.judge != nil, out)
 	}
-	dir, _, heard, write := truthFixture(t, s, 1)
+	// a loop whose rip through these weights the installed scores rule otherwise
+	// than that judge does, loaded here for the checksum the fixture's model has
+	judge, err := audio.LoadRipJudge(bytes.NewReader(judgeBytes(0, odds)), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, _, heard, write := truthFixture(t, s, 1, func(x []float64, rate int, fe *ripmodels.FrontEnd) bool {
+		r := audio.Ripper{Params: s.rip, FrontEnd: fe, Lead: s.lead}
+		installed, err := r.Samples(x, rate)
+		r.Judge = judge
+		ruled, rerr := r.Samples(x, rate)
+		return err == nil && rerr == nil && len(ruled.Notes) > 0 && len(ruled.Notes) != len(installed.Notes)
+	})
 	installed := heard(s.rip)
 	teardown(t, s)
 	s, out = open(sum)
@@ -2794,7 +2874,7 @@ func TestRowsWritesEachStrikesRowAsTheRipReadIt(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
-	dir, fe, heard, write := truthFixture(t, s, 1)
+	dir, fe, heard, write := truthFixture(t, s, 1, nil)
 	list, to := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rows")
 	runOrFatal(t, s, &out, fmt.Sprintf("! rows %[1]s from %[2]s\n! rows %[1]s %[2]s\n! rows %[1]s from %[2]s part 2/2\n! rows %[1]s from %[2]s frames\n", to, list))
 	if !strings.Contains(out.String(), "no "+frameFile+" is loaded") {

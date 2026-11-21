@@ -165,7 +165,14 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    a corpus label alone, so a recording's want its list's beats in a label
    (`corpus <dir> from`), and a `.jams` truth, beats and no notes, is not read
    yet. It has run on no generated truth of every meter: that run sets the
-   bars' weights audio still holds at the values they were written with. Nor
+   bars' weights audio still holds at the values they were written with. Its
+   bars score counts the lines alone (`MatchBars`' downbeats on a line, given
+   only where the bar is the truth's length), never the tempo, so a 12/8 read
+   as 4/4 over its dotted quarters scores in full: a term for the beats
+   (`MatchBars`' `Beats`) or the tempo within 3% of a label's would let the
+   search move the tempo's prior, combs and cuts. It costs no rip, the rips
+   being made already; it costs breadth, 19 bar genes; and it wants guitar
+   truths that give beats, the sheets' labels in place of their MIDI files. Nor
    on loops cut off the bar line: some fit loops are to start a quarter to
    three quarters of a bar in, their beats and lines given as a recording's
    are, so the bars' weights do not learn a rendered loop's start ([agent
@@ -308,6 +315,16 @@ head beside the cues. What is left is the reading on trained weights:
   - Which note is the beat: no decoder reads a level the head does not state,
     so the meter is to be heard before the beat is, and a model's reach is
     2.97 s either side, a bar or two.
+  - Every beat alike. The decoder reads the head's heights (audio's `finest`),
+    and the first round's head drops them where the decoder needs them: on a
+    solo line with no chord under it, its marks fall on a fifth to a third of
+    the beats, at two thirds or four thirds of their spacing; on the guitar
+    it marks strong beats far above weak ones; in 6/8 and 12/8 the eighths
+    between the dotted quarters stand at a fifth to a third of them. Its F1
+    counts a mark right whatever its height, so it hides all three. A round
+    asks the same marks with more of what lacks them, loops of a line alone
+    in every meter and GuitarSet's solos at the comps' share, and is read by
+    the head's mean at each beat of the bar on the held-out loops beside its F1.
   - A quiet downbeat head is no longer a round's to mend: v0.25.2 weighs its
     sum at a place against its own mean beat, which no scale moves. What the
     drumless loops still want is the first point, and recordings with their

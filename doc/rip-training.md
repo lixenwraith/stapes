@@ -1296,7 +1296,7 @@ it is heard, not placed.
 
 The beat and the downbeat are the onset head's kind of loss with one difference: no
 weight. Audio reads the two by their level, as posteriors: the tempo from how the beat
-head repeats and the beats tracked on it, a bar line where the downbeat head summed by
+head repeats, cut to the finest beat it marks between, and the beats tracked on it, a bar line where the downbeat head summed by
 place stands highest over its mean beat, beside the cues (audio §9), so a weight on
 the marks, which lifts a head most where it is unsure, would move a decode. A frame
 of a mark and a frame outside one weigh the same, and a head that knows nothing says
@@ -1566,6 +1566,36 @@ its own rows and thresholds tuned on its own heads, never through the installed 
 
 A round's PR ends with a table by the four and one of: install, install this part, a
 trade for Lixen, the next round's start.
+
+### A tempo's count
+
+A rip's tempo is right within 3 percent of the true one, counted in quarters in every
+meter: a GuitarSet recording's is in its name, a generated loop's in its label (`bpm`),
+and a 6/8 or 12/8 read on its dotted quarter is two thirds off, its eighths falling
+between the rip's sixteenths. GuitarSet's players the frame model trained on are counted
+apart from those it did not hear: a head that learned a recording marks its beats under
+nearly any decoder.
+
+Audio v0.37.0's cut to the finest beat the head marks, read through the first round's
+frozen frame model on players 00 to 03 (160 recordings in its training, 80 not) and on
+264 arranged loops of the round's generator at a seed no pass drew, before and after:
+
+```
+group               n  before  after      group          n  before  after
+guitar comp       120     108    111      loops 12/8    17       5     11
+guitar solo       120     105    110      loops 2/4     10       8      7
+guitar trained    160     141    152      loops 3/4     39      19     28
+guitar unheard     80      72     69      loops 4/4    124      93     95
+guitar all        240     213    221      loops 5/4     19      16     17
+                                          loops 6/8     32       4     17
+                                          loops 7/8     23      10     11
+                                          loops all    264     155    186
+```
+
+The guitar's gain is all on what the head trained on, fast jazz whose every beat it
+marks; of the 80 it did not hear, five recordings at 98, four of them funk, read at
+196, their eighths marked as high as their beats. A player no round heard and the round's held-out loops
+decide.
 
 ## 12. The scores
 

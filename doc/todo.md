@@ -192,6 +192,11 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    - `rows` knows a recording by its audio's checksum, so a truth corrected
      after its rows were written is not read again: remove the recording's
      `.json`. The smallest close: the truth's checksum beside the rows.
+   - `rows`, `truth` and `tune ... truth` count a note within audio's
+     `matchWindow`, 0.1 s, which knows no reach: on the frame grid it holds 8
+     frames, the reach measured today, so a placed truth's right strike counts
+     wrong only past it, where the lab's check draws hold 3% of starts; a reach
+     measured over 8 counts more of singing's right strikes wrong.
    - A count from rows reads apart from `truth`'s decode (the trainer's README
      says why); audio's own open items are in
      [its todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#close-what-a-judge-leaves-open).
@@ -245,11 +250,15 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
       the set's original, not debleeded, by-string archive would say whether the
       debleeding adds to the stray.
     - A placed end still lights the release head's target where the alignment
-      puts it; a placed start asks a rise within its reach. The head
-      learns the alignment's miss if, on the engine-shapes takes placed as a
-      label is, its peaks agree better with the placed ends than with the known
-      ones, and more so pass on pass; then an end's own reach, measured as a
-      start's is, asks it one rise within it.
+      puts it, and a placed note's velocity is asked about its placed start;
+      its onset and its strike ask a rise within its reach. On the
+      engine-shapes takes placed as a label is, the release head learns the
+      alignment's miss if its peaks agree better with the placed ends than
+      with the known ones, the velocity head if it reads a note's velocity
+      nearer at the placed start than at the known one, where the strike
+      rises and the decoder reads it, each more so pass on pass; then an end's
+      own reach, measured as a start's is, asks the release one rise within
+      it, and a velocity is asked where the strike rises.
     - E-GMD's list says `none`, so its hits are labelled at -1: a kit's law
       is not the engine's. An empty cell would label each hit at its file's
       n/127, the engine's kits' measure; whether the lab's list says so waits

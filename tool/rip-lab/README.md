@@ -75,7 +75,8 @@ A placed start is an aligned score's, not a label to the frame, and the list say
 (`starts` `placed`): on the check draws about 0.82 to 0.84 of starts lie within 50
 ms of the truth and 0.97 within 100 ms. A semitone sung narrow and a wide vibrato
 are where the starts are loosest. The trainer asks the onset head for a rise within
-a start's reach, which `placefit.py ... reach` measures, and the strike head nothing.
+a start's reach, which `placefit.py ... reach` measures, and the strike head for one
+at its pitch.
 
 ## The tools
 
@@ -100,7 +101,7 @@ file sets no program is asked no name. The set states no velocity: every note is
 so the list's `velocity` cell is `measured` (stapes v0.37.0, doc/rip-training.md, "A recording's velocities"): a
 corpus made from it gives each note the velocity heard in its take, -1 where it cannot be told, against a unit its
 singer's takes share, the singer named in `unit`. A take's starts are placed, not heard struck, and its `starts` cell
-says `placed`, so its notes ask the strike head nothing and the onset head a rise within the corpus's reach.
+says `placed`, so its notes ask the onset head, and the strike head at their pitch, a rise within the corpus's reach.
 A recording's duration is its WAV header's. The placing's bounds are place.py's, printed first; vocal-placed.tsv has
 a row a take: its exercise, technique, tonic, standard in cents, whether it is listed or why not, and the voiced
 frames the fold moved an octave. vocadito is not here: it measures at most (stapes' AGENTS, Data), from its own

@@ -3400,7 +3400,7 @@ func TestACorpusFromListOfMeasuredVelocitiesLabelsThemAsHeard(t *testing.T) {
 
 // TestACorpusFromListOfPlacedStartsSaysSo: a list's starts column says placed
 // of a recording whose notes' starts an alignment placed, and its label says so,
-// which asks the strike head nothing of it; an empty cell's notes are heard
+// which asks a rise within the reach of it; an empty cell's notes are heard
 // struck, and a word startsWords has no row for is refused.
 func TestACorpusFromListOfPlacedStartsSaysSo(t *testing.T) {
 	dir := t.TempDir()

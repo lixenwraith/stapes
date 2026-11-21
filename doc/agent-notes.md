@@ -48,6 +48,10 @@ proves wrong or that a document now states, and link the document instead.
   stops at the wheel: the index page lists each file with its sha256, the same
   file is at `https://download.pytorch.org/whl/cpu/<file>`, and `pip install`
   takes it from disk once `sha256sum` agrees, then `requirements.txt`.
+- A task names main's commit as it was written, and main can be rewritten before
+  it runs, a docs commit replaced by its amended self, the one named then on no
+  branch: `git fetch origin main` and branch from that. A cloud clone's `main`
+  and `origin/main` can be days older still.
 
 ## Tests that flake
 
@@ -553,10 +557,12 @@ proves wrong or that a document now states, and link the document instead.
 - A label a tool made carries the tool's offset. VocalSet states no notes:
   its labels are the notes its exercise sheet writes for each take, placed on
   the take by an alignment the lab fitted on sound whose notes are known, so
-  its list says `placed` in its `starts` column and its notes ask the strike
-  head nothing and the onset head a rise within the corpus's `reach`. A
+  its list says `placed` in its `starts` column and its notes ask the onset
+  head, and the strike head at their pitch, a rise within the corpus's `reach`. A
   `corpus ... from` run writes `corpus.json` afresh, without it: run
-  `placefit.py ... reach` again, as the trainer's refusal says. Before a corpus trains,
+  `placefit.py ... reach` again, as the trainer's refusal says. The engine-shapes
+  draws the reach is measured on are rendered at VocalSet's levels
+  (`datasets/logs/vocalset-wavscan.tsv`), so a container renders none. Before a corpus trains,
   `tool/rip-train/datacheck.py` with `GROUP=1` reads each source's lag from a
   labelled start to the sound's rise: 0 or 1 frame is a label on its sound.
 - A recording's scale says nothing of its labels: `BandFrames` reads it with

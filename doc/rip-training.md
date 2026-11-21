@@ -891,10 +891,10 @@ A `from` list's `starts` column says how its notes' starts were found, a row a w
   that its exercise sheet writes and a procedure fitted on known sound lays on the
   take, and such a start can miss its strike by frames. A target a frame wide
   there would teach the alignment's miss, so the label says `placed` (§3): its
-  notes ask the strike head nothing and the onset head for a rise anywhere within
-  the corpus's `reach` of each start (§5). Their frames, velocities and cents are
-  asked as any note's, and the release head at each end, which the same alignment
-  places.
+  notes ask the onset head, and the strike head at their pitch, for a rise
+  anywhere within the corpus's `reach` of each start (§5). Their frames,
+  velocities and cents are asked as any note's, and the release head at each end,
+  which the same alignment places.
 
 Any other word is refused.
 
@@ -985,13 +985,17 @@ glide's pitch target walks the cells it crosses.
   frame of every window.
 - `pitch[p]`: from a note's `frame` until its `end`, at least one frame.
 - `voicing`: any pitch on.
-- `strike[p]`: within one frame of a note's start, and 0 throughout a loop whose
-  starts are `placed` (§3).
-- `placed`: a loop's frames whose starts are placed, which the strike's loss and its
-  F1 leave out (§8), so such a note asks the strike head nothing.
+- `strike[p]`: within one frame of a note's start, but a placed start (§3), which marks
+  `pitchstretch[p]` instead.
+- `pitchstretch[p]`, `pitchstarts[p]`: a placed start's `stretch` and its mark, in the
+  row of the pitch it is struck at, where the strike's loss asks a rise somewhere and
+  its peaks are read against the mark (§8); a pitch's stretches that touch are one,
+  and two pitches' are two.
+- `placed`: a loop's frames whose starts are placed, which the strikes' F1 leaves out
+  (§8).
 - `release[p]`: within one frame of a note's `end`, unless that's past the loop.
-- `velocity[p]`: the note's `vel` on its strike frames, scored only there, and nowhere
-  for a `vel` of -1 (§3).
+- `velocity[p]`: the note's `vel` on its strike frames, a placed note's about its
+  placed start, scored only there, and nowhere for a `vel` of -1 (§3).
 - `wave`, `voice`: those of the highest note sounding with a known voice, scored only
   on frames that have one.
 - `family`: that of the highest event sounding, a hit or a strike at midi 0 on its own
@@ -1098,7 +1102,7 @@ against the loop's, and uncorrelated sounds add in power, so `e = e_loop + gain 
 A strike, a line's hit or one of no line, joins the onset and struck targets, and a hit
 its drum's, only where it can be heard: what it adds, over its best ten bands of the
 sharp plane, must top everything else sounding (`stands_out`), judged after the channel,
-a strike in a placed start's stretch as anywhere, the stretch kept.
+a strike in a placed start's stretch as anywhere, the stretches kept.
 The window is asked no beat and no bar line: the drums laid under it keep
 their own.
 
@@ -1107,8 +1111,8 @@ their own.
 
 **`--shuffle share`** splices a share of the windows from chunks of a second, each two clips
 from random places summed, the second at -6 to +6 dB of the first's power. Notes keep their
-labels, a placed start its stretch where it falls in its chunk, cut by the chunk's edges as by
-a window's, a strike counts where it stands out of the other clip, as a laid one does, a
+labels, a placed start its stretches where they fall in its chunk, cut by the chunk's edges as
+by a window's, a strike counts where it stands out of the other clip, as a laid one does, a
 chunk of a kit's loop asks no drums, and wave, voice,
 family, the beat and the bar line go unasked.
 
@@ -1125,10 +1129,11 @@ about twenty at A0 and one at the top, so a low note's rise counts once.
 to 18% either way and a slow sine of up to 12 frames, the features interpolated and the
 targets taken nearest, so no steady grid or pulse is there to learn, as a pianist's isn't.
 The beat, the bar line and their mask are taken the same way and sway with the hits, and so
-are a placed start's stretches, cut again by the window's edges.
+are a placed start's stretches, the onset's and the strike's, cut again by the window's edges.
 
 **`--strike-weight w`** is a strike's weight against a frame without one, 20 by default.
-**`--again-weight a`** weighs a strike of a pitch still sounding a times more.
+**`--again-weight a`** weighs a strike of a pitch still sounding a times more, a placed start's
+rise too (§8).
 
 Draws from both are by length, since E-GMD's recordings run from seconds to minutes:
 drawn by recording, the short ones would take far more of the windows than of the
@@ -1227,9 +1232,9 @@ unbroken run drew from k on, and two shards draw different batches.
 
 ```
 onset, drums, pitch, voicing, strike, release, struck: binary cross-entropy with a weight
-    on the positive class of 8, 8, 12, 2, 20, 20, 8, the strike's on frames not placed,
-    the drums' on frames of no kit, the rest on every frame; the onset's asks a stretch
-    the window holds whole one term, its highest logit against 1, and no frame inside a
+    on the positive class of 8, 8, 12, 2, 20, 20, 8, the drums' on frames of no kit, the
+    rest on every frame; the onset's and the strike's ask a stretch the window holds whole
+    one term, its highest logit against 1, the strike's at its pitch, and no cell inside a
     stretch but another event's mark
 velocity: squared error, on strike frames with a known velocity
 wave:     cross-entropy, on frames with a known voice
@@ -1250,14 +1255,18 @@ total    = onset + drums + pitch + 0.5 voicing + strike + release + 2 velocity +
 decoders = onset + drums + pitch + 0.5 voicing + strike + release + beat + downbeat
 ```
 
-A placed start's stretch asks the onset head to rise somewhere in it and is
-indifferent to where: a rise at any of its frames costs the same, and none of its
-frames is asked silence, so the head cannot learn where in the reach the alignment
-put the start; stretches that touch ask one rise between them. The onset's loss is
-the mean over the frames and the stretches asked, a stretch one term (`onset_loss`);
-a batch without a stretch asks every frame as the other heads are. A known start
-past its stretch, under one in twenty where the reach was measured, is asked
-silence where it is, as any frame outside one.
+A placed start's stretch asks the onset head to rise somewhere in it, and the strike
+head at the pitch it is struck at, and is indifferent to where: a rise at any of its
+frames costs the same, and none of its frames is asked silence, so neither head can
+learn where in the reach the alignment put the start; stretches that touch ask one
+rise between them, the strike's a pitch at a time. Outside every stretch a placed
+loop's frames are asked what any loop's are. A head's loss is the mean over the
+frames of their cells' (`rise_loss`): a stretch weighs one cell, at the weight its
+start's mark has most, `--again-weight` times more where its pitch still sounds just
+before it; a cell inside one is asked nothing but another event's mark, as a spliced
+clip's strike; a batch without a stretch asks every cell as the other heads are. A
+known start past its stretch, under one in twenty where the reach was measured, is
+asked silence where it is, as any frame outside one.
 
 The struck head says that something was struck, of no line or pitch, both models'.
 It is asked at every frame of every window, a recording's of guitar or voice among
@@ -1317,10 +1326,12 @@ or over a corpus where nothing is struck, as GuitarSet's and VocalSet's, `nothin
 struck, struck's peaks N a minute`, which a head that hears no strike there keeps near 0.
 
 Over loops of placed starts, held out or `--validate`'s, either model's lines then
-give `placed starts' F1 ... within R frames`: the onset head's peaks at a half or
-over (`ONSET_BAR`), a peak right when a placed start lies within the corpus's reach
-R of it, counted as the strikes' are (`peaks`). No loss enters it, so it reads any
-weights alike, whatever loss trained them.
+give `placed starts' F1 ... within R frames, their strikes' ...`: the onset head's
+peaks at a half or over (`ONSET_BAR`), a peak right when a placed start lies within
+the corpus's reach R of it, counted as the strikes' are (`peaks`), then the strike
+head's peaks over the strikes' bars against the same starts at their pitch, within R
+too. No loss enters either, so they read any weights alike, whatever loss trained
+them.
 
 A notes model's lines then say what plays each note, read as audio reads it (§10): a
 note's family, wave and genes are its cells' say over the frames it sounds, each frame

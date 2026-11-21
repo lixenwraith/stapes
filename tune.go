@@ -1340,8 +1340,8 @@ var velocityWords = map[string]struct {
 // startsWords is what a list's starts column may say of its notes' starts: an
 // empty cell that each is heard struck, placed that they are placed on the
 // recording by a fitted alignment, missing by frames, so its labels say so and
-// ask the strike head nothing and the onset head a rise within the corpus's
-// reach (doc/rip-training.md)
+// ask the onset head, and the strike head at their pitch, a rise within the
+// corpus's reach (doc/rip-training.md)
 var startsWords = map[string]bool{"": false, "placed": true}
 
 // corpusFrom writes a corpus of recordings and the MIDI files they were played

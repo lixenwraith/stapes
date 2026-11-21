@@ -28,7 +28,7 @@ import train
 
 # a corpus of the frames the models hear: its manifest states their layout, and its labels hold every note
 MANIFEST = {"layout": ripmodels.LAYOUT, "voice_genes": ripmodels.VOICE_GENES}
-PLACED_STARTS = ("stretch", "starts")  # the targets only a placed start sets
+PLACED_STARTS = ("stretch", "starts", "pitchstretch", "pitchstarts")  # the targets only a placed start sets
 F = {k: i for i, k in enumerate(ripmodels.FAMILIES)}
 LOW = ripmodels.LOW  # the piano's lowest key, a label's first cell
 CFG = ripmodels.Config(inputs=ripmodels.STACK_BINS + 1, channels=ripmodels.STACK_CHANNELS, outputs=ripmodels.PITCHNET_HEADS, cell=4)
@@ -60,10 +60,12 @@ def rendered(events, frames, bars) -> train.Label:
 
 
 class Frames:
-    """a loop's frames in memory, as train.FrameFile gives them"""
+    """a loop's frames in memory, as train.FrameFile gives them, under a path no other takes, as train.power caches by
+    it: an id is taken again once its object is gone"""
+    made = itertools.count()
 
     def __init__(self, n):
-        self.path, self.fr = f"memory{id(self)}", np.zeros((n, ripmodels.VALUES), np.float32)
+        self.path, self.fr = f"memory{next(Frames.made)}", np.zeros((n, ripmodels.VALUES), np.float32)
 
     def __len__(self):
         return len(self.fr)
@@ -698,10 +700,9 @@ class TheBatches(unittest.TestCase):
     def test_without_a_placed_start_every_target_and_loss_is_as_without_reaches(self):
         """A digest of every other target over windows cut anywhere and padded, of labels whose notes hold their pitch
         or move, cents placed or not, two to a cell or outside the pitches, beside drums, is pinned, a placed start's
-        targets unset there and in a run's batches of every kind, whose every loss is bit for bit that of an onset asked
-        at every frame, written out here: a change to how a window is built leaves the digest, and one to what it holds
-        pins it again. With no kit and every strike a hit of a line, what is struck is where a drum is and the kit's
-        mask is empty, so the digest leaves both out."""
+        targets unset there and in a run's batches of every kind, whose every loss is bit for bit an onset's and a
+        strike's asked at every frame, written out here; a change to what a window holds pins it again. With no kit and
+        every strike a line's hit, what is struck is where a drum is and the kit's mask empty, so the digest leaves both."""
         rng, digest = random.Random(5), hashlib.sha1()
         with mock.patch.object(train, "GENES", array.array("f")):
             for _ in range(24):
@@ -727,15 +728,15 @@ class TheBatches(unittest.TestCase):
                         digest.update(f"{k} {t[k].dtype} {t[k].shape}".encode() + np.ascontiguousarray(t[k]).tobytes())
         self.assertEqual(digest.hexdigest(), "82e0bd088a3cc46e95c43dc4d99fac8faab52033")
 
-        def marks(logits, t, valid):  # every valid frame asked its mark, as the other heads are
-            l = torch.nn.functional.binary_cross_entropy_with_logits(logits, t["onset"][..., None], pos_weight=torch.as_tensor(8.0), reduction="none")
+        def marks(logits, marks, stretch, weight, starts, valid):  # every valid frame asked its marks, as the other heads are
+            l = torch.nn.functional.binary_cross_entropy_with_logits(logits, marks, pos_weight=weight, reduction="none")
             return (l.mean(-1) * valid).sum() / valid.sum().clamp(min=1)
         torch.manual_seed(4)
         model = ripmodels.FrameModel(ripmodels.Config(channels=4, dim=8, heads=2, layers=1, ffn=16, window=4))
         for x, t in handed(*self.flags, steps=6):
             self.assertFalse(any(t[k].any() for k in PLACED_STARTS))
             got = train.losses(model, x, t)
-            with mock.patch.object(train, "onset_loss", marks):
+            with mock.patch.object(train, "rise_loss", marks):
                 want = train.losses(model, x, t)
             self.assertEqual(got.keys(), want.keys())
             for k in got:
@@ -1226,22 +1227,25 @@ class TheVelocity(unittest.TestCase):
         self.assertNotEqual(loss(64, -5.0), loss(64, 5.0))
 
 
-def onsets(lab, start, window, rises) -> float:
-    """the onset loss a window of lab's loop asks of a head silent but at the window's frames in rises"""
+def rises(lab, start, window, at, head="onset", struck=()) -> float:
+    """the loss of head a window of lab's loop asks of a model silent but at at's frames of the window, a frame each, or
+    for the strike a frame and its MIDI pitch, with struck's strikes, a frame and a pitch each, another clip's in it"""
     x, t = train.stack([train.sample(Frames(lab.frames), lab, start, window, 2)])
+    for f, midi in struck:
+        t["strike"][0, f - 1:f + 2, midi - LOW] = 1
     model = Heard(window)
-    model.y[0, :, model.cfg.slice("onset")] = -9.0
-    for k in rises:
-        model.y[0, k, model.cfg.slice("onset")] = 9.0
-    return train.losses(model, x, t)["onset"].item()
+    for r in at:
+        k, cell = (r, 0) if head == "onset" else (r[0], r[1] - LOW)
+        model.y[0, k, model.cfg.slice(head).start + cell] = 9.0
+    return train.losses(model, x, t)[head].item()
 
 
 class ThePlacedStart(unittest.TestCase):
-    def test_a_loop_whose_starts_are_placed_asks_the_strike_head_nothing(self):
-        """A loop whose label says its starts are placed, as corpus writes for a list whose starts column says so,
-        gives its notes no strike target and asks the strike head nothing, in its windows and in a shuffled
-        window's chunks of it, while its frames, cents, velocities and releases are taught as a struck loop's are,
-        its starts marked where a struck loop's onsets are."""
+    def test_a_loop_whose_starts_are_placed_marks_each_strike_as_a_stretch_at_its_pitch(self):
+        """A loop whose label says its starts are placed, as corpus writes for a list whose starts column says so, marks
+        no strike: each start's mark lies at its pitch where a struck loop's strike does, its stretch about it, and a
+        shuffled window's chunks of it are placed too, while its frames, cents, velocities and releases are taught as a
+        struck loop's are, its starts marked where a struck loop's onsets are."""
         events = [note(4, 20, 60, "guitar", vel=0.6), note(10, 30, 64, "guitar", vel=0.4, cents=[5.0] * 20)]
         struck, placed = (train.targets(Frames(40), label(events, reach=2, placed=p), 0, 40) for p in (False, True))
         self.assertEqual((int(struck["strike"].sum()) > 0, int(placed["strike"].sum())), (True, 0))
@@ -1249,16 +1253,12 @@ class ThePlacedStart(unittest.TestCase):
         for k in ("pitch", "voicing", "cents", "asked", "velocity", "heard", "release"):
             np.testing.assert_array_equal(placed[k], struck[k], k)
         np.testing.assert_array_equal(placed["starts"], struck["onset"])
-        model = Heard(40)
-
-        def loss(lab, logit):
-            frs, tgs, _ = train.validation([(Frames(40), lab)], 40, 2)
-            model.y[..., model.cfg.slice("strike")] = logit
-            return train.losses(model, frs[0], tgs[0])["strike"].item()
-        self.assertEqual(loss(label(events, reach=2, placed=True), -5.0), loss(label(events, reach=2, placed=True), 5.0))
-        self.assertNotEqual(loss(label(events), -5.0), loss(label(events), 5.0))
-        rng = random.Random(3)
-        _, spliced = train.shuffled(lambda rng: (Frames(200), label(events, 200, reach=2, placed=True)), 256, 2, rng)
+        np.testing.assert_array_equal(placed["pitchstarts"], struck["strike"])
+        stretch = np.zeros((40, ripmodels.PITCHES), np.uint8)
+        stretch[1:8, 60 - LOW] = stretch[7:14, 64 - LOW] = 2  # each start's reach either side and its mark's frame past it
+        np.testing.assert_array_equal(placed["pitchstretch"], stretch)
+        self.assertFalse(struck["pitchstretch"].any() or struck["pitchstarts"].any())
+        _, spliced = train.shuffled(lambda rng: (Frames(200), label(events, 200, reach=2, placed=True)), 256, 2, random.Random(3))
         self.assertEqual(spliced["placed"].min(), 1)
 
     def test_a_placed_start_asks_one_rise_within_its_reach_wherever_it_is(self):
@@ -1267,17 +1267,44 @@ class ThePlacedStart(unittest.TestCase):
         outside, which is asked silent; two starts whose stretches touch ask one rise between them; and a stretch the
         window's edge cuts asks none, its start maybe past the edge, nor its frames anything."""
         lab = label([note(20, 40, 60, "voice"), note(60, 70, 62, "voice"), note(69, 80, 64, "voice")], 100, reach=3, placed=True)
-        within = [onsets(lab, 0, 48, [k]) for k in range(16, 25)]
+        within = [rises(lab, 0, 48, [k]) for k in range(16, 25)]
         self.assertEqual(set(within), {within[0]})
-        none, outside = onsets(lab, 0, 48, []), [onsets(lab, 0, 48, [k]) for k in (15, 25)]
+        none, outside = rises(lab, 0, 48, []), [rises(lab, 0, 48, [k]) for k in (15, 25)]
         self.assertGreater(none, within[0])
         self.assertGreater(min(outside), none)
-        one, two = onsets(lab, 50, 48, [8]), onsets(lab, 50, 48, [8, 19])  # stretches 56 to 64 and 65 to 73, touching
-        self.assertEqual((one, two, onsets(lab, 50, 48, [21])), (one, one, one))
-        self.assertGreater(onsets(lab, 50, 48, []), one)
-        cut = onsets(lab, 18, 20, [])  # from frame 18, in the first stretch: frames 0 to 6 hold its rest
-        self.assertEqual((onsets(lab, 18, 20, [3]), onsets(lab, 18, 20, [0, 6])), (cut, cut))
+        one, two = rises(lab, 50, 48, [8]), rises(lab, 50, 48, [8, 19])  # stretches 56 to 64 and 65 to 73, touching
+        self.assertEqual((one, two, rises(lab, 50, 48, [21])), (one, one, one))
+        self.assertGreater(rises(lab, 50, 48, []), one)
+        cut = rises(lab, 18, 20, [])  # from frame 18, in the first stretch: frames 0 to 6 hold its rest
+        self.assertEqual((rises(lab, 18, 20, [3]), rises(lab, 18, 20, [0, 6])), (cut, cut))
         self.assertAlmostEqual(cut, math.log1p(math.exp(-9.0)), places=6)  # the 13 frames past it, each asked silent
+
+    def test_a_placed_note_asks_one_strike_within_its_reach_at_its_pitch(self):
+        """A placed note asks the strike head, at its pitch, no mark but a rise within its stretch, its reach and its
+        mark's frame either side: the same loss for a rise at any frame of it, more for none, more still for one just
+        outside or at another pitch, each asked silent, and another clip's strike there is asked; a pitch's stretches
+        that touch ask one rise, two pitches' two, and one the window cuts none; a rise weighs as a strike would."""
+        lab = label([note(20, 40, 60, "voice"), note(60, 70, 62, "voice"), note(69, 80, 62, "voice"), note(60, 75, 64, "voice")], 100, reach=3, placed=True)
+        strike = lambda start, window, at, struck=(): rises(lab, start, window, at, "strike", struck)
+        within = [strike(0, 48, [(k, 60)]) for k in range(16, 25)]
+        self.assertEqual(set(within), {within[0]})
+        none, wrong = strike(0, 48, []), [strike(0, 48, [(k, 60)]) for k in (15, 25)] + [strike(0, 48, [(k, 61)]) for k in range(16, 25)]
+        self.assertGreater(none, within[0])
+        n = 48 * ripmodels.PITCHES - 9  # the cells asked silent, all but the stretch's nine: the stretch weighs one
+        self.assertAlmostEqual(none, (n * math.log1p(math.exp(-9.0)) + train.STRIKE_POS * math.log1p(math.exp(9.0))) / (n + 1), places=6)
+        self.assertGreater(min(wrong), none)
+        self.assertAlmostEqual(min(wrong), max(wrong), places=6)  # one strike heard where none is, wherever
+        self.assertGreater(strike(0, 48, [(18, 60)], [(22, 60)]), strike(0, 48, [(22, 60)], [(22, 60)]))
+        both = strike(50, 48, [(8, 62), (8, 64)])  # 62's stretches 56 to 64 and 65 to 73, touching, and 64's 56 to 64
+        self.assertEqual((strike(50, 48, [(8, 62), (19, 62), (8, 64)]), strike(50, 48, [(21, 62), (8, 64)])), (both, both))
+        self.assertGreater(strike(50, 48, [(8, 62)]), both)
+        cut = strike(18, 20, [])  # from frame 18, in the first stretch: frames 0 to 6 hold its rest
+        self.assertEqual((strike(18, 20, [(3, 60)]), strike(18, 20, [(0, 60), (6, 60)])), (cut, cut))
+        self.assertAlmostEqual(cut, math.log1p(math.exp(-9.0)), places=6)  # every cell past it asked silent
+        again = label([note(20, 40, 60, "voice"), note(40, 60, 60, "voice")], 100, reach=3, placed=True)  # struck again as it sounds
+        with mock.patch.object(train, "STRIKE_AGAIN", 3.0):
+            unheard, first, second = (rises(again, 0, 100, at, "strike") for at in ([], [(20, 60)], [(40, 60)]))
+        self.assertAlmostEqual((unheard - second) / (unheard - first), 3.0, places=4)
 
     def test_a_corpus_of_placed_starts_states_its_reach(self):
         """A corpus whose labels' starts are placed is refused where its manifest states no reach, by the line that
@@ -1290,40 +1317,51 @@ class ThePlacedStart(unittest.TestCase):
             corpus(d, [{"placed": True, "events": [note(4, 20, 60, "voice")]}], reach=5)
             self.assertEqual(train.load_corpus(d)[1][0][1].reach, 5)
 
-    def test_a_line_reads_the_onset_heads_peaks_against_the_placed_starts_within_their_reach(self):
+    def test_a_line_reads_the_onset_and_strike_heads_peaks_against_the_placed_starts_within_their_reach(self):
         """Over loops of placed starts a line gives the onset head's F1 at its peaks over a half against them, a peak
-        right within the reach of a start and a start heard with a peak within its reach, and the reach; a line over
-        loops of none gives none."""
+        right within the reach of a start and a start heard with a peak within its reach, the reach, and the strike
+        head's so at their pitch, its peaks over the strikes' bars, 0.9 under E3 and 0.7 from it; a line over loops of
+        none gives none of it."""
         frames = 128
-        lab = label([note(20, 40, 60, "voice"), note(60, 80, 62, "voice"), note(100, 120, 64, "voice")], frames, reach=3, placed=True)
+        lab = label([note(20, 40, 60, "voice"), note(60, 80, 62, "voice"), note(80, 90, 48, "voice"), note(100, 120, 64, "voice")], frames, reach=3, placed=True)
         model = Heard(frames)
-        model.y[0, [22, 56, 101, 115], model.cfg.slice("onset").start] = 9.0  # right, 4 frames off, right, none near
-        model.y[0, 60, model.cfg.slice("onset").start] = -0.4  # under a half
+        onset, strike = model.cfg.slice("onset").start, model.cfg.slice("strike").start - LOW
+        model.y[0, [22, 56, 101, 115], onset] = 9.0  # right, 4 frames off, right, none near
+        model.y[0, 60, onset] = -0.4  # under a half
+        model.y[0, [21, 61, 81, 101], [strike + 60, strike + 61, strike + 48, strike + 64]] = torch.tensor([9.0, 9.0, 1.4, 1.4])  # right, another pitch, under its bar, over it
         v = train.evaluate(model, *train.validation([(Frames(frames), lab)], frames, 2)[:2], "cpu")
-        self.assertAlmostEqual(v["starts"][0], 2 * (2 / 4) * (2 / 3) / (2 / 4 + 2 / 3))
+        self.assertAlmostEqual(v["starts"][0], 2 * (2 / 4) * (2 / 4) / (2 / 4 + 2 / 4))
         self.assertEqual(v["starts"][1], 3)
+        self.assertAlmostEqual(v["starts"][2], 2 * (2 / 3) * (2 / 4) / (2 / 3 + 2 / 4))
         with tempfile.TemporaryDirectory() as d:
             os.mkdir(os.path.join(d, "struck"))
             corpus(d, [{"placed": True, "events": [note(10, 30, 60, "voice")]}] * 2, reach=3)
             corpus(os.path.join(d, "struck"), [{"events": [note(10, 30, 60, "guitar")]}])
             said = run("--corpus", d, "--out", os.path.join(d, "out.bin"), "--holdout", "1", "--validate", os.path.join(d, "struck")).splitlines()
         held, validation = (next(line for line in said if line.startswith(f"step 1 {name} ")) for name in ("held-out", "validation"))
-        self.assertRegex(held, r", placed starts' F1 \d\.\d{3} within 3 frames \(")
+        self.assertRegex(held, r", placed starts' F1 \d\.\d{3} within 3 frames, their strikes' \d\.\d{3} \(")
         self.assertNotIn("placed starts", validation)
 
-    def test_shuffled_windows_and_drums_laid_over_carry_the_reaches(self):
-        """A shuffled window's chunks of a loop of placed starts keep each start's stretch where it falls in the chunk,
-        and drums laid over a window keep its stretches as they were, a hit inside one marked as a hit is anywhere."""
+    def test_shuffled_and_bent_windows_and_drums_laid_over_carry_the_reaches(self):
+        """A shuffled window's chunks of a loop of placed starts keep each start's stretches where they fall in the
+        chunk, a bent window takes them nearest along its curve, cut again by its edges, and drums laid over a window
+        keep them as they were, a hit inside one marked as a hit is anywhere: the onset's and at its pitch the strike's."""
         lab = label([note(40, 60, 60, "voice")], 86, reach=3, placed=True)  # a chunk long: every clip of it is the whole loop
         _, spliced = train.shuffled(lambda rng: (Frames(86), lab), 256, 2, random.Random(1))
         want = np.zeros(256, np.uint8)
         for at in (0, 86, 172):
             want[at + 36:at + 45] = 2
         self.assertEqual(spliced["stretch"].tolist(), want.tolist())
+        _, bent = train.bent(Frames(86), lab, 48, 2, None, random.Random(2), None)
+        self.assertTrue(bent["stretch"].any())
+        for t in (spliced, bent):
+            for k in ("stretch", "starts"):
+                np.testing.assert_array_equal(t["pitch" + k], np.where(np.arange(ripmodels.PITCHES) == 60 - LOW, t[k][:, None], 0), k)
         hits = label([{"frame": f, "end": f, "drum": 0, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"]} for f in (38, 70)], 86)
         _, plain = train.sample(Frames(86), lab, 0, 86, 2)
         _, laid = train.sample(Frames(86), lab, 0, 86, 2, (Frames(86), hits, 0.0), random.Random(1))
-        np.testing.assert_array_equal(laid["stretch"], plain["stretch"])
+        for k in ("stretch", "pitchstretch", "pitchstarts"):
+            np.testing.assert_array_equal(laid[k], plain[k], k)
         self.assertEqual((laid["onset"][37:40].tolist(), int(plain["onset"].sum())), ([1, 1, 1], 0))
 
 

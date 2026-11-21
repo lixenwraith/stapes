@@ -18,7 +18,7 @@ const (
 	lagStep  = audio.RipFrameSec / 8 // the grid a lag is read on
 	lagReach = 0.5                   // the share of the usual gap between strikes a lag is looked for within
 	lagRise  = -4 * lagStep          // where the rise a hit of the engine's draws sits from the hit
-	lagBound = 8 * lagStep           // how far from the lag laid one found lies at most
+	lagBound = 7 * lagStep           // how far from the lag laid one found lies at most
 	lagClear = 0.97                  // the most another lag may meet of what the lag found meets
 	lagDrawn = 0.4                   // the least share of a recording's hits that draw an onset
 )

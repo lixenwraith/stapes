@@ -96,13 +96,15 @@ func hitTimes(hits []audio.RipHit) []float64 {
 	return at
 }
 
-// drawTakes is a draw's n recordings at seed, each with no room and then
-// through degrade
+// drawTakes is a draw's n recordings at seed, each laid at a level drawn as a
+// corpus loop's, a recorded kit's own and not the bank's, then with no room and
+// through degrade, whose soft clip that level drives
 func drawTakes(t *testing.T, s *Session, seed uint64, n int) []kitTake {
 	t.Helper()
 	var out []kitTake
 	for i := range n {
 		x, hits := drawDrums(t, s, seed, i, nil)
+		level(x, rand.New(rand.NewPCG(seed^0x6c65766c, uint64(i)+1)))
 		for _, room := range []*rand.Rand{nil, roomOf(true, seed, uint64(i))} {
 			y := x
 			if room != nil {

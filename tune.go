@@ -2735,8 +2735,8 @@ var modelGenes = []func(*audio.RipParams) *float64{
 
 // drumGenes is what tune truth searches beside them when a truth gives drum
 // hits, the bar a hit rises to against its drum's loudest; barGenes when one
-// gives bars: the tempo's prior and combs, the beats' tightness, the bar lines'
-// weights and the meter's margins
+// gives bars: the tempo's prior, combs and cuts, the beats' tightness, the bar
+// lines' weights and the meter's margins
 var drumGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.OnsetMin },
 }
@@ -2749,6 +2749,8 @@ var barGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.BeatComb2 },
 	func(p *audio.RipParams) *float64 { return &p.BeatComb3 },
 	func(p *audio.RipParams) *float64 { return &p.BeatComb4 },
+	func(p *audio.RipParams) *float64 { return &p.BeatCut2 },
+	func(p *audio.RipParams) *float64 { return &p.BeatCut3 },
 	func(p *audio.RipParams) *float64 { return &p.BarLine },
 	func(p *audio.RipParams) *float64 { return &p.BarBeat },
 	func(p *audio.RipParams) *float64 { return &p.BarAccent },

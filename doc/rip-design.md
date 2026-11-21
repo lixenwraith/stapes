@@ -153,7 +153,7 @@ flowchart TD
      against it (by the list's own hits a minute where a condition gives
      none), and `onset_min` is searched; where a corpus label gives bars,
      its bars (the downbeats given on a bar line, `MatchBars`), and the
-     tempo's prior and combs, `tightness`, the bar lines' weights and the
+     tempo's prior, combs and cuts, `tightness`, the bar lines' weights and the
      meter's margins are searched, which audio holds as parameters. The mean
      is over every score carried, the guard on each, and a parameter no score
      saw move is written as it stood. A set that beats the current one goes

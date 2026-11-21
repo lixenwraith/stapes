@@ -308,6 +308,16 @@ head beside the cues. What is left is the reading on trained weights:
   - Which note is the beat: no decoder reads a level the head does not state,
     so the meter is to be heard before the beat is, and a model's reach is
     2.97 s either side, a bar or two.
+  - Every beat alike. The decoder reads the head's heights (audio's `finest`),
+    and the first round's head drops them where the decoder needs them: on a
+    solo line with no chord under it, its marks fall on a fifth to a third of
+    the beats, at two thirds or four thirds of their spacing; on the guitar
+    it marks strong beats far above weak ones; in 6/8 and 12/8 the eighths
+    between the dotted quarters stand at a fifth to a third of them. Its F1
+    counts a mark right whatever its height, so it hides all three. A round
+    asks the same marks with more of what lacks them, loops of a line alone
+    in every meter and GuitarSet's solos at the comps' share, and is read by
+    the head's mean at each beat of the bar on the held-out loops beside its F1.
   - A quiet downbeat head is no longer a round's to mend: v0.25.2 weighs its
     sum at a place against its own mean beat, which no scale moves. What the
     drumless loops still want is the first point, and recordings with their

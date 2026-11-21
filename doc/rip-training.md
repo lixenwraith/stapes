@@ -1296,7 +1296,7 @@ it is heard, not placed.
 
 The beat and the downbeat are the onset head's kind of loss with one difference: no
 weight. Audio reads the two by their level, as posteriors: the tempo from how the beat
-head repeats and the beats tracked on it, a bar line where the downbeat head summed by
+head repeats, cut to the finest beat it marks between, and the beats tracked on it, a bar line where the downbeat head summed by
 place stands highest over its mean beat, beside the cues (audio §9), so a weight on
 the marks, which lifts a head most where it is unsure, would move a decode. A frame
 of a mark and a frame outside one weigh the same, and a head that knows nothing says

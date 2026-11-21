@@ -39,7 +39,10 @@ own files.
 4. E-GMD: `datasets/egmd.py list <e-gmd-v1.0.0> train <hours>
    <e-gmd-v1.0.0>/egmd-train.csv`, and `... test all <e-gmd-v1.0.0>/egmd-test.csv`
    for the split held out, a corpus each.
-5. A corpus, from a list or from the generator, is counted and read against its
+5. NSynth: `datasets/nsynth_families.py <nsynth-train>/audio <notes dir> 1
+   bass=all ... vocal=all`, every family, the folder a generated corpus's
+   `sampled` names ([the round's corpora](../rip-train/README.md#the-rounds-corpora)).
+6. A corpus, from a list or from the generator, is counted and read against its
    sound before it trains (`audit/corpuscount.py`, `audit/corpusheard.py`), and
    heard on `audit/loop_sheet.py`'s page, or `audit/from_sheet.py`'s where it is
    made from recordings.
@@ -408,6 +411,21 @@ written into <root>, a label's `source` starts with its drummer and session.
   drummer, by style and by quarter of tempo, the kits drawn with the least and the most hours a kit holds, and the
   performances drawn by how many kits each is on.
 egmd.py extract and status are fetch.sh's: one zip member inflated and checked, and the files on disk a batch.
+```
+
+### datasets/nsynth_families.py
+
+```
+nsynth_families.py <audio dir> <out dir> <seed> <family>=<count|all>...: the folder `corpus ... sampled` reads, of
+NSynth's notes by hard link, so on the set's own filesystem. <audio dir> is the `audio` folder of one of NSynth's
+splits, which hold their instruments apart: the training split's for a corpus that trains. A note is named
+family_source_NNN-pitch-velocity.wav, as stapes' sampler reads it, and a family is an instrument's name up to its
+source (bass, brass, flute, guitar, keyboard, mallet, organ, reed, string, synth_lead, vocal). Each family named takes
+all its instruments, or a draw of <count> of them by the seed, one stream over the families in the order named, each
+instrument with every note it has. A family <audio dir> does not hold is refused, naming those it does, before
+anything is linked; a note already in <out dir> is kept. A line a family, then what <out dir> holds. Every family
+`all` of the training split is 953 instruments in 11 families, 289,205 notes: the notes folder of the round's sampled
+corpora (tool/rip-train/README.md, "The round's corpora").
 ```
 
 ### datasets/vocalsing.py

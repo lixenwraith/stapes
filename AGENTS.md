@@ -105,9 +105,9 @@ it there in the same PR.
 
 ## Training
 
-- A round runs from its own copy of the tree: `tool/rip-train/pipeline.sh` runs
-  `go run ./cmd/stapes` at every stage, so an edit to the checkout under a round
-  changes its corpus or its bench.
+- A round runs from its own copy of the tree: `tool/rip-train/pipeline.sh` builds
+  `./cmd/stapes` from the checkout at every stage, so an edit to the checkout under
+  a round changes its corpus or its bench.
 - A change to the corpus or the bench reports the `bench` lines before and after,
   on the same weights, and says whether the corpus bytes change (`corpus <dir> 24
   4 aug gen nowav` before and after, `diff -r`), and so whether a new round is

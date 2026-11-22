@@ -114,6 +114,10 @@ flowchart TD
      pitch never sounds, where it is a stronger strike's partial, within
      `strike_gap` of the pitch's last, or under `strike_again` on a pitch still
      ringing, and the bass line's own path adds notes where no strike sounds.
+     Where the notes model's own onset head hears a start that no strike of
+     its pitch answers, a note begins there at the pitch that rises under it,
+     on the heads' word, and a strike with no start heard near it must clear
+     `strike_alone`, so a sung line the strikes miss is read note by note.
      With the cents head a note's sound is followed frame by frame across
      cells (`glides`): two cells naming one frequency within the errors the
      head states are one sound, a step that lands cuts it, and a glide stays
@@ -561,7 +565,7 @@ and the checkpoint earn their keep.
    first frame scored as mid-song; silence before it and the mirror both
    cost); more width; soups of rounds; rounds of one recipe plus one
    augmentation judged by the mean; a step picked by the validation loss,
-   most of which is a head Go never reads; a `rip.toml` tuned on one
+   most of which is a head Go did not read then; a `rip.toml` tuned on one
    instrument; `strike_again` or `strike_low` moved by hand for a set, each
    read to trade one set for another; a recording's thresholds searched
    against `Fidelity`, which puts no price on a wrong note and ranked a

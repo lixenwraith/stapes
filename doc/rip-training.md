@@ -1381,8 +1381,9 @@ with the best `decoders` score is what gets written, unless `--validate` names a
 `decoders` step is written, the held-out score printed beside it. A notes model is
 picked there by its strikes instead: the strike head's peaks over the decoder's bars
 (0.7, and 0.9 under E3) against the labelled strikes within four frames, as an F1
-over the frames not placed (§5), since its loss holds an onset head no decoder
-reads from it. The wave, voice, velocity and family heads don't choose it,
+over the frames not placed (§5), since its loss holds an onset head that the
+pick leaves out, though audio reads it beside the strikes (todo, "Tune the rip").
+The wave, voice, velocity and family heads don't choose it,
 because they memorize the corpus. A positive
 weight w shifts a head's scale: it scores a posterior p as wp / (wp + 1 - p), which is
 part of why thresholds belong to the weights (§10); the beat and the downbeat carry
@@ -1411,7 +1412,8 @@ its lines and its pick as they were, bit for bit.
 
 Such a pass is read by the heads audio reads from its model in a pair (`READ`), each at
 its weight in `decoders`: a notes model's pitch, strike and release, a frame model's
-onset, drums, beat and downbeat. Their sum is its lines' `decoders`, picks its step
+onset, drums, beat and downbeat; not yet a notes model's onset, which audio reads beside
+its strikes (todo, "Tune the rip"). Their sum is its lines' `decoders`, picks its step
 where the decoders' loss does, and is what the rate (`Rate`) follows over the held-out
 windows; a line before its start names them.
 

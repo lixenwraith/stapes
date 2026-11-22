@@ -162,7 +162,8 @@ hand](#by-hand)), and its steps a second follow what they get.
   noise 0.008`), the validation line the rate, and the pass's last line what it
   carries on. Its `decoders` is the sum of the heads audio reads from its model in
   a pair, which a line before its start names: a notes model's pitch, strike and
-  release, a frame model's onset, drums, beat and downbeat.
+  release, a frame model's onset, drums, beat and downbeat; not yet a notes
+  model's onset, which audio reads beside its strikes.
   A training loss that keeps falling after the held-out loss turns is a
   model learning the corpus by heart; more loops, not more steps, is the cure.
 - `bench` prints four lines: the analysis and the frame model, on clean and on
@@ -612,10 +613,11 @@ python3 tool/rip-train/judge.py --rows "$dir/rows" --leave-out guitar --out "$di
     the count, the row's size, then `float32` rows, little-endian;
   - `<checksum>.json`, its `source`, `condition`, `given` (the truth's notes),
     `unanswered` (those no strike answers) and `strikes`, a row each: `frame`,
-    `midi`, `reported` (its stage), `held` (a held note the accounting keeps
-    unjudged), `right` (a truth note of its pitch starts within the matcher's
-    window of it; a truth note answers one strike, the nearest, a reported
-    note before a dropped strike) and `kept` (the installed verdict);
+    `midi`, `reported` (its stage), `held` (a note the accounting keeps
+    unjudged: one the fit cannot see, or one begun at a start heard where no
+    strike answered), `right` (a truth note of its pitch starts within the
+    matcher's window of it; a truth note answers one strike, the nearest, a
+    reported note before a dropped strike) and `kept` (the installed verdict);
   - `rows.json`, the row's version and size and the notes weights' checksum.
     A directory holds one kind, and `judge.py` refuses directories of two.
 

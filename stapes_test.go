@@ -3141,6 +3141,61 @@ func TestFitsReadTheSameRowsWhateverTheCores(t *testing.T) {
 	}
 }
 
+// TestFitsGivenFitsEachVoiceOnItsOwnNotes: given, fits rips nothing and fits
+// each voice a loop's label states on that voice's notes at the label's
+// tuning, a row a voice under its name, every note its own and no voice heard;
+// a directory of fits through a rip refuses them.
+func TestFitsGivenFitsEachVoiceOnItsOwnNotes(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	dir := t.TempDir()
+	corpus, given, ripped := filepath.Join(dir, "engine"), filepath.Join(dir, "given"), filepath.Join(dir, "ripped")
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %[1]s 2 2 gen\nfits %[2]s from %[1]s given\nfits %[3]s from %[1]s part 0/2\n! fits %[3]s from %[1]s given\n", corpus, given, ripped))
+	var m fitsManifest
+	if data, err := os.ReadFile(filepath.Join(given, fitsFile)); err != nil || json.Unmarshal(data, &m) != nil || !m.Given || m.Weights != "" {
+		t.Errorf("fits.json of fits given reads %+v (%v)", m, err)
+	}
+	var cm corpusManifest
+	data, _ := os.ReadFile(filepath.Join(corpus, "corpus.json"))
+	json.Unmarshal(data, &cm)
+	voiced := 0
+	labels, _ := filepath.Glob(filepath.Join(corpus, "loop_*.json"))
+	for _, label := range labels {
+		var lab corpusLoop
+		data, _ := os.ReadFile(label)
+		if err := json.Unmarshal(data, &lab); err != nil {
+			t.Fatal(err)
+		}
+		for _, v := range labelVoices(lab, cm) {
+			if len(fitSamples(v.notes, 1)) > 0 {
+				voiced++
+			}
+		}
+	}
+	files, _ := filepath.Glob(filepath.Join(given, "*.json"))
+	var rows []fitRow
+	for _, file := range files {
+		if filepath.Base(file) == fitsFile {
+			continue
+		}
+		var loop []fitRow
+		data, _ := os.ReadFile(file)
+		if err := json.Unmarshal(data, &loop); err != nil {
+			t.Fatal(err)
+		}
+		rows = append(rows, loop...)
+	}
+	for _, r := range rows {
+		if r.Line != r.Voice || r.Matched != r.Notes || r.Heard != nil || r.HeardFar != nil || r.Own == nil || r.SeedFar == nil || r.FitFar == nil {
+			t.Errorf("a row of a voice given reads %+v", r)
+		}
+	}
+	if voiced == 0 || len(rows) != voiced || !strings.Contains(out.String(), "each a voice its label states") {
+		t.Errorf("%d row(s) for the %d voice(s) the labels state with a note to fit:\n%s", len(rows), voiced, out.String())
+	}
+}
+
 // TestALabelServesReportedNotesFirstAndATruthNoteOnce: a strike is right when
 // a truth note of its pitch starts within the matcher's window of it; a truth
 // note answers one strike, the nearest, a reported note before a dropped

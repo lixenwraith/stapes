@@ -463,9 +463,9 @@ func cmdGenes(s *Session, a []string) error {
 	return nil
 }
 
-// fitsManifest is a fits directory's fits.json: the sizes its fits ran at and
-// the checksum of the weight files its rips heard through; a directory holds
-// one kind
+// fitsManifest is a fits directory's fits.json: the sizes its fits ran at, the
+// checksum of the weight files its rips heard through, or that it fitted the
+// labels' own notes and ripped nothing; a directory holds one kind
 type fitsManifest struct {
 	Version     int    `json:"version"`
 	Notes       int    `json:"notes"`
@@ -473,6 +473,7 @@ type fitsManifest struct {
 	Generations int    `json:"generations"`
 	Seed        uint64 `json:"seed"`
 	Weights     string `json:"weights"`
+	Given       bool   `json:"given,omitempty"`
 }
 
 const fitsFile = "fits.json"
@@ -502,18 +503,29 @@ type fitRow struct {
 	FitHeld    *float64  `json:"fit_held"`
 	OwnHeld    *float64  `json:"own_held"`
 	HeardGenes []float64 `json:"heard_genes"`
+	SeedGenes  []float64 `json:"seed_genes"`
 	FitGenes   []float64 `json:"fit_genes"`
 	HeardFar   *float64  `json:"heard_far"`
+	SeedFar    *float64  `json:"seed_far"`
 	FitFar     *float64  `json:"fit_far"`
 }
 
 func cmdFits(s *Session, a []string) error {
-	usage := errors.New("want fits <dir> from <corpus dir> [part k/n] [notes <n>] [pool <n>] [generations <n>] [seed <n>]")
-	if a[1] != "from" || len(a)%2 == 0 {
+	usage := errors.New("want fits <dir> from <corpus dir> [given] [part k/n] [notes <n>] [pool <n>] [generations <n>] [seed <n>]")
+	if a[1] != "from" {
 		return usage
 	}
-	o, part, parts := s.fit, 0, 0
+	o, part, parts, given := s.fit, 0, 0, false
 	for w := a[3:]; len(w) > 0; w = w[2:] {
+		if w[0] == "given" {
+			given, w = true, w[1:]
+			if len(w) == 0 {
+				break
+			}
+		}
+		if len(w) < 2 {
+			return usage
+		}
 		var err error
 		if w[0] == "part" {
 			part, parts, err = parsePart(w[1])
@@ -524,15 +536,15 @@ func cmdFits(s *Session, a []string) error {
 			return err
 		}
 	}
-	return s.fits(s.path(a[0]), s.path(a[2]), o, part, parts)
+	return s.fits(s.path(a[0]), s.path(a[2]), o, part, parts, given)
 }
 
 // fits reads the voice fit over a corpus directory's loops that kept their
-// audio: each is ripped and its lines fitted as rip does it, at o's sizes, and
-// a row a line fitted (fitRows) goes to <dir>/<the loop's checksum>.json. A
-// loop on disk is kept, parts taking the loops i%parts == part; the last lines
-// count the rows of every loop the run takes, kept or written.
-func (s *Session) fits(dir, from string, o fitOptions, part, parts int) error {
+// audio: each is ripped and its lines fitted as rip does it, at o's sizes, or
+// given, each voice its label states fitted on its own notes, and a row a line
+// fitted (fitRows) goes to <dir>/<the loop's checksum>.json. A loop on disk is
+// kept, parts taking the loops i%parts == part; the last lines count them all.
+func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bool) error {
 	if info, err := os.Stat(from); err != nil {
 		return err
 	} else if !info.IsDir() {
@@ -562,12 +574,15 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int) error {
 		}
 		return os.Rename(tmp, file)
 	}
-	m := fitsManifest{Version: 1, Notes: o.notes, Pool: o.pool, Generations: o.generations, Seed: o.seed, Weights: s.earSum}
+	m := fitsManifest{Version: 1, Notes: o.notes, Pool: o.pool, Generations: o.generations, Seed: o.seed, Weights: s.earSum, Given: given}
+	if given {
+		m.Weights = "" // nothing is ripped
+	}
 	manifest := filepath.Join(dir, fitsFile)
 	if data, err := os.ReadFile(manifest); err == nil {
 		var was fitsManifest
 		if json.Unmarshal(data, &was) != nil || was != m {
-			return fmt.Errorf("%s holds fits of %d note(s), %d generation(s) of %d, seed %d, through the weights %q, and these are of %d, %d of %d, seed %d, through %q: a directory holds one kind", dir, was.Notes, was.Generations, was.Pool, was.Seed, was.Weights, m.Notes, m.Generations, m.Pool, m.Seed, m.Weights)
+			return fmt.Errorf("%s holds %s, and these are %s: a directory holds one kind", dir, was, m)
 		}
 	} else if err := whole(manifest, m); err != nil {
 		return err
@@ -605,12 +620,24 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int) error {
 			if err != nil {
 				return fmt.Errorf("%s: %w", l.wav, err)
 			}
-			r, err := s.ripper().Samples(x, rate)
-			if err != nil {
-				failed = append(failed, fmt.Sprintf("%s: %v", l.wav, err))
-				continue
+			var lines []fitLine
+			cents := lab.Tuning
+			if given {
+				for _, v := range labelVoices(lab, corpus) {
+					lines = append(lines, fitLine{word: v.name, notes: v.notes, voice: v})
+				}
+			} else {
+				r, err := s.ripper().Samples(x, rate)
+				if err != nil {
+					failed = append(failed, fmt.Sprintf("%s: %v", l.wav, err))
+					continue
+				}
+				for reg, at := range lineVoices(r) {
+					lines = append(lines, fitLine{word: ripLines[reg].word, notes: lineNotes(r, reg), heard: *at})
+				}
+				cents = r.Tuning
 			}
-			loop = s.fitRows(strings.TrimSuffix(l.wav, ".wav"), x, rate, r, lab, corpus, o)
+			loop = s.fitRows(strings.TrimSuffix(l.wav, ".wav"), x, rate, cents, lines, lab, corpus, o)
 			if err := whole(file, loop); err != nil {
 				return err
 			}
@@ -619,6 +646,9 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int) error {
 		taken, rows = taken+1, append(rows, loop...)
 	}
 	what := fmt.Sprintf("fits of %d loop(s) of %s in %s at %d note(s), %d generation(s) of %d, seed %d: %d line(s)", taken, from, dir, o.notes, o.generations, o.pool, o.seed, len(rows))
+	if given {
+		what += ", each a voice its label states, on its notes"
+	}
 	if kept > 0 {
 		what += fmt.Sprintf("; %d loop(s) were there", kept)
 	}
@@ -634,6 +664,15 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int) error {
 	}
 	fitCounts(said, rows, corpus.Waves)
 	return nil
+}
+
+// String names the kind of fits m holds
+func (m fitsManifest) String() string {
+	of := fmt.Sprintf("through the weights %q", m.Weights)
+	if m.Given {
+		of = "on the labels' notes"
+	}
+	return fmt.Sprintf("fits of %d note(s), %d generation(s) of %d, seed %d, %s", m.Notes, m.Generations, m.Pool, m.Seed, of)
 }
 
 // labelVoice is a voice a label's notes state: its instrument's name, its wave
@@ -688,9 +727,18 @@ func lineOwner(notes []audio.RipNote, voices []*labelVoice, given []audio.RipNot
 	return owner, float64(most) / float64(all), audio.MatchNotes(notes, given, true).All.Matched
 }
 
-// fitRows fits each line of a loop's rip as rip does, at o's sizes, and reads
-// it against the loop's label: a row a line fitted
-func (s *Session) fitRows(loop string, x []float64, rate int, r *audio.Rip, lab corpusLoop, m corpusManifest, o fitOptions) []fitRow {
+// fitLine is a line fits fits: a rip's, with the voice its front end heard, or
+// a label's voice and its notes
+type fitLine struct {
+	word  string
+	notes []audio.RipNote
+	heard *audio.VoiceDef
+	voice *labelVoice
+}
+
+// fitRows fits each line as rip does, at o's sizes and the tuning in cents,
+// and reads it against the loop's label: a row a line fitted
+func (s *Session) fitRows(loop string, x []float64, rate int, cents float64, lines []fitLine, lab corpusLoop, m corpusManifest, o fitOptions) []fitRow {
 	finite := func(d float64) *float64 {
 		if math.IsNaN(d) || math.IsInf(d, 0) {
 			return nil
@@ -705,7 +753,7 @@ func (s *Session) fitRows(loop string, x []float64, rate int, r *audio.Rip, lab 
 		if v = voiceFromGenome(voiceGenome(v)); audio.ValidateVoice(v) != nil {
 			return nil
 		}
-		return finite(fitDistance(v, targets, r.Tuning))
+		return finite(fitDistance(v, targets, cents))
 	}
 	apart := func(v *audio.VoiceDef, label []float64) ([]float64, *float64) {
 		if v == nil || label == nil {
@@ -720,24 +768,27 @@ func (s *Session) fitRows(loop string, x []float64, rate int, r *audio.Rip, lab 
 	}
 	voices, given := labelVoices(lab, m), lab.notes()
 	rows := []fitRow{}
-	for reg, at := range lineVoices(r) {
-		notes, heard := lineNotes(r, reg), *at
-		f := s.fitVoice(x, rate, r.Tuning, notes, heard, o)
+	for _, l := range lines {
+		f := s.fitVoice(x, rate, cents, l.notes, l.heard, o)
 		if f == nil {
 			continue
 		}
 		// the fit's own choice of notes, in its order: those it heard, then the rest
-		targets := fitTargets(x, rate, notes, len(notes))
+		targets := fitTargets(x, rate, l.notes, len(l.notes))
 		listened, held := targets[:min(max(o.notes, 1), len(targets))], targets[min(max(o.notes, 1), len(targets)):]
-		row := fitRow{Loop: loop, Line: ripLines[reg].word, Notes: len(notes), Listened: len(listened), Held: len(held), Fitted: cmp.Or(f.voice.Wave, "sine"),
-			Heard: near(heard, listened), Seed: finite(f.from), Fit: finite(f.to),
-			HeardHeld: near(heard, held), SeedHeld: near(f.seed, held), FitHeld: near(f.voice, held)}
-		if owner, share, matched := lineOwner(notes, voices, given); owner != nil {
+		row := fitRow{Loop: loop, Line: l.word, Notes: len(l.notes), Listened: len(listened), Held: len(held), Fitted: cmp.Or(f.voice.Wave, "sine"),
+			Heard: near(l.heard, listened), Seed: finite(f.from), Fit: finite(f.to),
+			HeardHeld: near(l.heard, held), SeedHeld: near(f.seed, held), FitHeld: near(f.voice, held)}
+		if owner, share, matched := lineOwner(l.notes, voices, given); owner != nil {
+			if l.voice != nil { // a voice's own notes are its line, whatever doubles them
+				owner = l.voice
+			}
 			row.Matched, row.Voice, row.Share, row.Family, row.Wave = matched, owner.name, share, owner.family, owner.wave
 			if owner.genes != nil {
 				own := audio.VoiceFromGenes(owner.wave, owner.genes)
 				row.Own, row.OwnHeld = near(own, listened), near(own, held)
-				row.HeardGenes, row.HeardFar = apart(heard, owner.genes)
+				row.HeardGenes, row.HeardFar = apart(l.heard, owner.genes)
+				row.SeedGenes, row.SeedFar = apart(f.seed, owner.genes)
 				row.FitGenes, row.FitFar = apart(f.voice, owner.genes)
 			}
 		}
@@ -750,7 +801,7 @@ func (s *Session) fitRows(loop string, x []float64, rate int, r *audio.Rip, lab 
 // apart, each whole and by its label's wave: how often the fitted wave is the
 // label's, how often the label's own voice and how often the fit is the nearer
 // on the notes listened to and held out, each distance's median, and how often
-// the fit ends nearer the label's genes than the voice the front end heard began
+// the fit ends nearer the label's genes than the voice heard and the best seed
 func fitCounts(w io.Writer, rows []fitRow, waves []string) {
 	of := func(k, n int) string {
 		if n == 0 {
@@ -771,13 +822,13 @@ func fitCounts(w io.Writer, rows []fitRow, waves []string) {
 			unowned++
 		}
 	}
-	fmt.Fprintf(w, "%d line(s) match no labelled note and are left out. right: the fitted wave is the label's; short: the label's own voice is nearer the recording than the fit, the search stopped short; prefers: the fit is nearer than the label's own voice, the measure prefers another; heard, seed, fit, own: the median distance of the voice the front end heard, the best seed, the fit and the label's own voice; nearer: the fit ends nearer the label's genes than the voice heard began\n", unowned)
-	fmt.Fprintf(w, "%-32s | %-47s | %-47s |\n", "", "on the notes the fit listened to", "on the line's notes held out")
-	fmt.Fprintf(w, "%-9s %-6s %5s %9s | %9s %9s %6s %6s %6s %6s | %9s %9s %6s %6s %6s %6s | %9s\n", "lines", "wave", "rows", "right", "short", "prefers", "heard", "seed", "fit", "own", "short", "prefers", "heard", "seed", "fit", "own", "nearer")
+	fmt.Fprintf(w, "%d line(s) match no labelled note and are left out. right: the fitted wave is the label's; short: the label's own voice is nearer the recording than the fit, the search stopped short; prefers: the fit is nearer than the label's own voice, the measure prefers another; heard, seed, fit, own: the median distance of the voice the front end heard, the best seed, the fit and the label's own voice; genes nearer than heard, seed: the fit ends nearer the label's genes than the voice heard or the best seed began\n", unowned)
+	fmt.Fprintf(w, "%-32s | %-47s | %-47s | %-19s\n", "", "on the notes the fit listened to", "on the line's notes held out", "genes nearer than")
+	fmt.Fprintf(w, "%-9s %-6s %5s %9s | %9s %9s %6s %6s %6s %6s | %9s %9s %6s %6s %6s %6s | %9s %9s\n", "lines", "wave", "rows", "right", "short", "prefers", "heard", "seed", "fit", "own", "short", "prefers", "heard", "seed", "fit", "own", "heard", "seed")
 	for _, alone := range [...]bool{true, false} {
 		for _, wave := range append([]string{"all"}, append(slices.Clone(waves), "")...) {
-			var n, right, waved, nearer, both int
-			var short, prefers, owned [2]int
+			var n, right, waved int
+			var short, prefers, owned, nearer, both [2]int
 			var dist [2][4][]float64
 			for _, r := range rows {
 				if r.Matched == 0 || (r.Share == 1) != alone || (wave != "all" && r.Wave != wave) {
@@ -806,9 +857,11 @@ func fitCounts(w io.Writer, rows []fitRow, waves []string) {
 						}
 					}
 				}
-				if r.HeardFar != nil && r.FitFar != nil {
-					if both++; *r.FitFar < *r.HeardFar {
-						nearer++
+				for k, began := range [2]*float64{r.HeardFar, r.SeedFar} {
+					if began != nil && r.FitFar != nil {
+						if both[k]++; *r.FitFar < *began {
+							nearer[k]++
+						}
 					}
 				}
 			}
@@ -826,7 +879,7 @@ func fitCounts(w io.Writer, rows []fitRow, waves []string) {
 					fmt.Fprintf(w, " %6s", median(dist[h][k]))
 				}
 			}
-			fmt.Fprintf(w, " | %9s\n", of(nearer, both))
+			fmt.Fprintf(w, " | %9s %9s\n", of(nearer[0], both[0]), of(nearer[1], both[1]))
 		}
 	}
 }

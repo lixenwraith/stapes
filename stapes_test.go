@@ -2488,7 +2488,7 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	if err := s.tuneTruth(tuneOptions{generations: 2, pool: 8, seed: 1}, list, file, analysisEar{}); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
 	}
-	for _, want := range []string{"loop: F1 ", "loop: drums F1 ", "loop: bars ", fmt.Sprintf("%d hit(s) and %d bar line(s) given", len(r.Hits()), len(lab.Downbeats))} {
+	for _, want := range []string{"loop: F1 ", "loop: drums F1 ", "loop: bars ", fmt.Sprintf("%d hit(s), %d bar line(s) and %d beat(s) given", len(r.Hits()), len(lab.Downbeats), len(lab.Beats))} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("no %q in what tune truth says of a label:\n%s", want, out.String())
 		}
@@ -2500,6 +2500,101 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	p, err := audio.LoadRipParams(data)
 	if err != nil || p.OnsetMin >= start.OnsetMin || p.RepeatMargin != start.RepeatMargin || p.NearMargin != start.NearMargin || p.NearRepeat != start.NearRepeat {
 		t.Errorf("wrote %+v (%v): want onset_min under the start's, and the margins of how a reading repeats, read of no four bars, the start's %+v", p, err, start)
+	}
+}
+
+// builtHeads hears through the analysis with a beat and a downbeat head written
+// by hand: each mark on its frame and a frame either side, 0.01 elsewhere
+type builtHeads struct{ beat, down map[int]float64 }
+
+func (h builtHeads) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFrames, error) {
+	f, err := audio.Ripper{Params: p}.Hear(x, rate)
+	if err != nil {
+		return nil, err
+	}
+	n := len(f.Flux)
+	f.Beat, f.Downbeat = slices.Repeat([]float64{0.01}, n), slices.Repeat([]float64{0.01}, n)
+	for head, marks := range map[*[]float64]map[int]float64{&f.Beat: h.beat, &f.Downbeat: h.down} {
+		for at, v := range marks {
+			for k := max(at-1, 0); k <= at+1 && k < n; k++ {
+				(*head)[k] = max((*head)[k], v)
+			}
+		}
+	}
+	return f, nil
+}
+
+// TestTuneTruthsBarsCountTheBeats: four bars of 12/8 against a label of their
+// eighths and lines, heard with every twelfth eighth marked a line, read 12/8 and
+// score in full where the beat head marks the eighths; where it marks the dotted
+// quarters alone they read 4/4 over them, every line on a downbeat of a bar the
+// label's length, and score the beats a third
+func TestTuneTruthsBarsCountTheBeats(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	const bars, bpm = 4, 96
+	twelve := audio.Meter{Num: 12, Den: 8}
+	tracks := []audio.Track{{Instr: audio.InstrKick, Events: []audio.Step{{Pos: 0, Vel: 1}, {Pos: 12, Vel: 0.8}}},
+		{Instr: audio.InstrSnare, Events: []audio.Step{{Pos: 6, Vel: 0.9}, {Pos: 18, Vel: 0.9}}}, {Instr: audio.InstrHihat}}
+	for pos := 0; pos < twelve.Steps(); pos += 2 {
+		tracks[2].Events = append(tracks[2].Events, audio.Step{Pos: pos, Vel: 0.5})
+	}
+	id, err := s.eng.DefinePattern(&audio.Pattern{Name: "twelve", Steps: twelve.Steps(), Meter: twelve, Role: audio.RoleRhythm, Tracks: tracks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, err := s.eng.RenderMusic([audio.MusicSlots]audio.PatternID{id}, bpm, twelve, bars, audio.DefaultRootNote, audio.ScalePhrygian, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	var wav bytes.Buffer
+	if err := audio.WriteWAV(&wav, x); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "loop.wav"), wav.String())
+	lab := corpusLoop{BPM: bpm, Bars: bars, Meter: twelve.Doc()}
+	eighths, dotted, lines := map[int]float64{}, map[int]float64{}, map[int]float64{}
+	for i := 0; i <= 12*bars; i++ {
+		f := int(math.Round(float64(i) * 30 / bpm / audio.RipFrameSec))
+		lab.Beats, eighths[f] = append(lab.Beats, f), 0.45
+		if i%3 == 0 {
+			eighths[f], dotted[f] = 0.98, 0.98
+		}
+		if i%12 == 0 {
+			lab.Downbeats, lines[f] = append(lab.Downbeats, f), 0.98
+		}
+	}
+	if err := writeJSON(filepath.Join(dir, "loop.json"), lab); err != nil {
+		t.Fatal(err)
+	}
+	list := filepath.Join(dir, "truths.txt")
+	writeFile(t, list, "loop.wav\tloop.json\tloop\ttimed\n")
+	x, rate, err := audio.ReadWAV(bytes.NewReader(wav.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name  string
+		beat  map[int]float64
+		want  audio.Meter
+		beats float64
+	}{{"the eighths", eighths, twelve, 1}, {"the dotted quarters", dotted, audio.Meter{}, 1. / 3}} {
+		ear := builtHeads{c.beat, lines}
+		r, err := audio.Ripper{Params: s.rip, FrontEnd: ear, Lead: s.lead}.Samples(x, rate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		takes, _, err := readTruthList(list, ear, "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err := takes[0].count(s.rip, s.lead)
+		l, b := n.shares()
+		if err != nil || r.Meter != c.want || l != 1 || math.Abs(b-c.beats) > 0.05 || n.bars() != (l+b)/2 {
+			t.Errorf("a beat head on %s: %s at %d, downbeats on a line %.3f, beats on a beat %.3f, bars %.3f (%v); want %s, every line, %.2f of the beats", c.name, r.Meter, r.BPM, l, b, n.bars(), err, c.want, c.beats)
+		}
 	}
 }
 

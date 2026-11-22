@@ -2220,7 +2220,8 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "loop.mid"), mid.String())
 	writeFile(t, list, "loop.wav\tloop.mid\n")
 	// a model too small to hear well, from a start that takes a strike whose
-	// pitch hardly sounds: the sets near it hear fewer notes that were not played
+	// pitch hardly sounds: a pool of eight near it betters it for every seed of
+	// sixteen tried, where one of four wrote nothing for four
 	cfg := ripmodels.FrameSpec()
 	cfg.Dim, cfg.Heads, cfg.Layers, cfg.FFN = 8, 2, 1, 8
 	m, err := transformer.NewRandom(cfg, 1)
@@ -2234,7 +2235,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	ear := &hearCount{RipFrontEnd: fe}
 	s.rip.StrikeHold = 0.3
 	start, file := s.rip, filepath.Join(dir, "rip.toml")
-	if err := s.tuneTruth(tuneOptions{generations: 1, pool: 4, seed: 1}, list, file, ear); err != nil {
+	if err := s.tuneTruth(tuneOptions{generations: 1, pool: 8, seed: 1}, list, file, ear); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
 	}
 	if n := ear.n.Load(); n != 1 {

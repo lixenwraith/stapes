@@ -766,8 +766,11 @@ proves wrong or that a document now states, and link the document instead.
 - With strikes the melody register never reaches the pair decoder, so
   `second_voice` and `cross` move no note on the models' path, while the bass
   line's own path reads `jump`, `switch` and `retrigger`: `modelGenes` is what
-  audio v0.9.0's decoders read; check it against a new decoder. A candidate of
-  `tune ... truth` pays the decoders alone.
+  audio's strike decoder reads, its heard starts' five since v0.39.0; check it
+  against a new decoder. A candidate of `tune ... truth` pays the decoders
+  alone. Frames kept by `frames <dir>` before v0.39.0 hold no starts and decode
+  as if the notes model had no onset head, so the search sees none of those five
+  move.
 - A round that gains on the bench may still lose on the recordings: the bench's
   loops are the corpus's own kind. Judge by the recordings.
 - Towers (`transformer.Tower`, `TOWERS=` in `tool/rip-train`) are not dead code:
@@ -872,8 +875,9 @@ proves wrong or that a document now states, and link the document instead.
 - A run's noise differs by set, so a difference on one set is read against that
   set's own spread. Two runs that differ in anything else are not a repeat.
 - `--validate` picks a notes model by its strike head's peaks at the decoder's
-  bars, not by its loss on recordings, which holds its onset head's, a head Go
-  never reads from it. One instrument's score can trade against another's, so
+  bars, not by its loss on recordings, which holds its onset head's, which the
+  pick leaves out though audio reads it beside the strikes. One instrument's
+  score can trade against another's, so
   validate on every kind of recording at once. A frame model is still picked by
   the decoders' loss there, in a pass that carries on the sum of the heads audio
   reads from it, which can rise as its onset head grows surer while
@@ -926,9 +930,12 @@ proves wrong or that a document now states, and link the document instead.
   takes `near` from the truth search alone.
 - A test of `tune ... truth` cannot count on the pool: a near draw moves a
   gene one time in four, a rip of the tiny model's 4.3 s loop costs 0.1 s, and
-  a recording under four seconds is refused. Force the outcome in the fixture:
-  a truth the start hears exactly leaves nothing to beat, and a start at
-  `strike_hold` 0.3 hears so much that every seed's pool betters it.
+  a recording under four seconds is refused. Force the outcome in the fixture
+  and read it over seeds: a truth the start hears exactly leaves nothing to
+  beat; from `strike_hold` 0.3 the tiny model's loop is bettered by `strike`,
+  `strike_low`, `strike_again` or `voicing` lowered, its `strike_hold` moving
+  nothing, and a pool of four wrote nothing for four seeds of sixteen, one of
+  eight for none. A gene added to the list, however idle, moves every draw.
 - A drum's loudest onset is often its first stroke, rising from the render's
   silence: in a bank loop each drum's first alone stood over 0.75 of its
   loudest, so from `onset_min` at its range's top no near step heard another.

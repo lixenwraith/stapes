@@ -2716,16 +2716,22 @@ func (s *Session) keepRip(file string, p audio.RipParams, score, base float64) e
 	return nil
 }
 
-// modelGenes are the parameters a front end's strikes are decoded by, the bass
-// line's own path among them, which tune truth searches; second_voice and cross
-// part two lines of salience, which such a front end's register never reaches
+// modelGenes are the parameters a front end's strikes and heard starts are
+// decoded by, the bass line's own path among them, which tune truth searches;
+// second_voice and cross part two lines of salience, which such a front end's
+// register never reaches
 var modelGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.Strike },
 	func(p *audio.RipParams) *float64 { return &p.StrikeLow },
 	func(p *audio.RipParams) *float64 { return &p.StrikeHold },
 	func(p *audio.RipParams) *float64 { return &p.StrikeGap },
 	func(p *audio.RipParams) *float64 { return &p.StrikeAgain },
+	func(p *audio.RipParams) *float64 { return &p.StrikeAlone },
 	func(p *audio.RipParams) *float64 { return &p.Release },
+	func(p *audio.RipParams) *float64 { return &p.Start },
+	func(p *audio.RipParams) *float64 { return &p.StartGap },
+	func(p *audio.RipParams) *float64 { return &p.StartWait },
+	func(p *audio.RipParams) *float64 { return &p.StartSpan },
 	func(p *audio.RipParams) *float64 { return &p.Voicing },
 	func(p *audio.RipParams) *float64 { return &p.MinNote },
 	func(p *audio.RipParams) *float64 { return &p.Jump },

@@ -134,11 +134,15 @@ Over the library's rip (library
   pins the tempo alone, `rip ... meter <n/d>` the meter (`Ripper.Meter`),
   `rip ... lead` names the rule that picks the melody (`Ripper.Lead`), and
   `rip <file.mid> <name>` reads a MIDI file as a rip (`MIDIScore.Rip`). For
-  each line `rip` searches the voice's genes and wave for the nearest
-  (`RenderNoteAt`, `MelDistance`), seeded with the voice the front end heard
-  and every registered one; `fit` runs it again at the sizes its words name
-  (`fitWords`: `notes`, `pool`, `generations`, `seed`), and `genes` says a
-  voice's wave and genes as a label states them (`VoiceDef.Genes`).
+  each line `rip` searches the voice's genes and wave for the nearest, seeded
+  with the voice the front end heard and every registered one: around each
+  note it listens to, the recording against the line's notes there on the
+  candidate beside the other lines' on their voices and the drums' hits on
+  the kit, each part at a gain of its own (`fitDistance`, `mixDistance`,
+  [Rip design §2](rip-design.md#2-stages)); `fit` runs it again at the sizes
+  its words name (`fitWords`: `notes`, `pool`, `generations`, `seed`), and
+  `genes` says a voice's wave and genes as a label states them
+  (`VoiceDef.Genes`).
 - `fits` reads that search against voices that are known: each loop of a
   corpus directory that kept its audio is ripped and fitted as `rip` does it
   (`Session.ripper`, `fitVoice`), or with `given` each voice the label states

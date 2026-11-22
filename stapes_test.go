@@ -3196,6 +3196,83 @@ func TestFitsGivenFitsEachVoiceOnItsOwnNotes(t *testing.T) {
 	}
 }
 
+// TestAVoiceIsItsOwnLinesNearest: piano chords over a bass line, rendered as a
+// corpus renders them and read at their notes as a label states them, hold
+// each line's own voice nearer by the fit's measure than any other registered
+// voice and than its genes on any other wave: the line alone, and in the loop
+// beside the other line at the voice presentVoices hears it play.
+func TestAVoiceIsItsOwnLinesNearest(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	const bpm, bars = 110, 2
+	chords, bass := audio.Track{Instr: audio.InstrPiano}, audio.Track{Instr: audio.InstrBass}
+	for pos := 0; pos < 16*bars; pos += 8 {
+		for _, deg := range []int{0, 2, 4} {
+			chords.Events = append(chords.Events, audio.Step{Pos: pos, Deg: deg + pos/8, Oct: 3, Dur: 6, Vel: 0.6})
+		}
+	}
+	for pos := 0; pos < 16*bars; pos += 2 {
+		bass.Events = append(bass.Events, audio.Step{Pos: pos, Deg: 4 * (pos % 4 / 2), Oct: 1, Dur: 2, Vel: 0.8})
+	}
+	id, err := s.eng.DefinePattern(&audio.Pattern{Name: "lines", Steps: 16 * bars, Role: audio.RoleMelody, Tracks: []audio.Track{chords, bass}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	timeline := make([][audio.MusicSlots]audio.PatternID, bars)
+	heads := make([]audio.BarHead, bars)
+	for b := range timeline {
+		timeline[b][1], heads[b] = id, audio.BarHead{BPM: bpm}
+	}
+	render := func(only []audio.InstrumentType) []float64 {
+		x, err := s.eng.RenderLines(timeline, bpm, audio.Meter{}, audio.DefaultRootNote, audio.ScaleMajor, nil, 1, only)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return x
+	}
+	frame := func(at int) float64 {
+		return math.Round(float64(at)/audio.AudioSampleRate/audio.RipFrameSec) * audio.RipFrameSec
+	}
+	instrs := []audio.InstrumentType{audio.InstrPiano, audio.InstrBass}
+	lines := make([]fitPart, len(instrs))
+	for _, e := range audio.ExpectedEvents(timeline, heads, audio.DefaultRootNote, audio.ScaleMajor, nil) {
+		i := slices.Index(instrs, e.Instr)
+		lines[i].notes = append(lines[i].notes, audio.RipNote{Start: frame(e.At), End: frame(e.At + e.For), MIDI: e.MIDI, Vel: e.Vel})
+	}
+	mix := &fitScene{x: render(nil), rate: audio.AudioSampleRate, lines: slices.Clone(lines)}
+	mix.presentVoices(6)
+	for i, in := range instrs {
+		name := audio.InstrumentName(in)
+		own := voiceFromGenome(voiceGenome(audio.VoiceDefByName(name)))
+		others := map[string]*audio.VoiceDef{}
+		for _, v := range audio.RegisteredVoices() {
+			if v.Name != name {
+				others[v.Name] = voiceFromGenome(voiceGenome(v))
+			}
+		}
+		for _, w := range audio.VoiceWaves {
+			if w != own.Wave {
+				others[w+" wave"] = voiceFromGenome(voiceGenome(audio.VoiceFromGenes(w, own.Genes())))
+			}
+		}
+		alone := &fitScene{x: render([]audio.InstrumentType{in}), rate: audio.AudioSampleRate, lines: []fitPart{{notes: lines[i].notes}}}
+		for _, c := range []struct {
+			heard string
+			sc    *fitScene
+			line  int
+		}{{"alone", alone, 0}, {"beside the other line", mix, i}} {
+			targets := c.sc.targets(c.line, 6)
+			d := fitDistance(own, lines[i].notes, targets, 0)
+			for other, v := range others {
+				if o := fitDistance(v, lines[i].notes, targets, 0); o <= d {
+					t.Errorf("the %s line %s reads %.4f from its own voice and %.4f from the %s", name, c.heard, d, o, other)
+				}
+			}
+		}
+	}
+}
+
 // TestALabelServesReportedNotesFirstAndATruthNoteOnce: a strike is right when
 // a truth note of its pitch starts within the matcher's window of it; a truth
 // note answers one strike, the nearest, a reported note before a dropped
@@ -3965,8 +4042,9 @@ save pattern %s
 	// a tonal floor no candidate can keep to leaves every voice in hand: the
 	// refinement picks among voices that sound like the recording's notes
 	var floors [3]tonalFloor
+	sc := s.ripScene(rp.x, rp.rate, rp.rip, s.fit)
 	for reg := range floors {
-		floors[reg].targets = fitTargets(rp.x, rp.rate, lineNotes(rp.rip, reg), 2)
+		floors[reg].notes, floors[reg].targets = sc.lines[reg].notes, sc.targets(reg, 2)
 	}
 	before := fmt.Sprintf("%p %p %p", rp.rip.MelodyVoice, rp.rip.UnderVoice, rp.rip.BassVoice)
 	out.Reset()

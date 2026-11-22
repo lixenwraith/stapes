@@ -162,15 +162,21 @@ flowchart TD
      to `rip.toml`.
 4. **Voices.** `rip` fits each line's voice to the recording, and `fit` again
    at the generations asked: its thirty-two genes and wave, seeded with the
-   voice the front end heard and every registered one, scored by the mel
-   distance between the recording around the line's longest and loudest notes
-   and the candidate playing them at their pitch, loudness and length at the
-   recording's tuning (`RenderNoteAt`, `MelDistance`, `fitDistance`), its level
-   set after to the recording's there. The melody's second line gets one of its
-   own (`Rip.UnderVoice`). The recording around a note holds the other voices
-   too, so the fit is to the mix there: the models propose, the engine
-   disposes. `fits` reads the search against the voices a corpus's labels
-   state, the label's own voice measured at the fit's notes beside the fit
+   voice the front end heard and every registered one. A candidate is scored
+   around the line's longest and loudest notes, each a window from its start
+   to its end and a quarter second (`fitTarget`): the recording there against
+   what the rip says plays there, the line's own notes in it on the candidate
+   (`RenderNoteAt` at the recording's tuning), each other line's on its voice
+   and each drum's hits on the kit, every part at the gain that brings their
+   mix nearest the recording in log-mel bands (`mixDistance`, `fitDistance`),
+   so neither a note's neighbours nor another line's sound is the candidate's
+   to imitate and no part's level counts. A line no voice was heard for plays
+   in the others' windows on the registered voice nearest its notes alone
+   (`presentVoices`), and a fitted line on its fit. The voice's level is set
+   after to the recording's around its notes. The melody's second line gets
+   one of its own (`Rip.UnderVoice`). `fits` reads the search against the
+   voices a corpus's labels state, the label's own voice measured at the fit's
+   notes beside the fit, and on the label's own notes with `given`
    ([Stapes §4](stapes.md#4-the-rips-verbs)).
 5. **Patterns and the dictionary.** Notes and hits fall into bars on the
    sixteenth grid. `rip` writes windows of up to four bars as patterns, the

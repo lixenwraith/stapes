@@ -312,14 +312,23 @@ proves wrong or that a document now states, and link the document instead.
   nearest on 0 of 86 lines, a string or modal wave on 57. The line's notes in
   the window, the others' and the hits beside them, each at a gain of its own,
   put it nearest on 40, most of the rest losing to a voice near its genes.
+- Read so (`fits ... given`, 50 loops of seed 23, 113 lines a reading, the
+  default sizes), the fitted wave is the label's on 109 lines alone, 98 in
+  their loops and 82 with lengths and velocities moved as the analysis's rip
+  moves them, and 104, 90 and 83 under `aug`, where one note at its peak got
+  82, 48, 45 and 78, 56, 47. The best seed is now the label's voice, or the
+  bank voice it was redrawn from, and a fit that beats it does so by a
+  twentieth of its distance, wandering 0.1 to 0.25 from its genes where the
+  measure hears little: the fits nearer the genes than their seed fell.
 - **A unison stack or a string is never its own note again.** Audio seeds a
   stack's start phases and drift and a string's burst by the note's pitch and
   its voice's last trigger (`noteSeed`), and `RenderNoteAt` triggers at 0: at
   the render's own onsets, alone, a modal voice reads 0.0000 from its own
-  voice, the lead 0.007 to 0.025, the pad about 0.01, the pluck up to 0.012.
+  voice, the lead 0.005 to 0.025, the pad up to 0.020, the pluck 0.003 to
+  0.019, and a voice within 0.02 of its genes is as near as often as not.
 - A label's and a rip's onsets sit on the frame grid, up to 5.8 ms off the
-  sound: alone at the labels' frames a voice reads 0.003 where at its render's
-  own onsets it reads 0.0000.
+  sound: alone at the labels' frames a modal voice reads up to 0.003 from its
+  own where at its render's own onsets it reads 0.0000.
 - A loop's line alone, as the corpus plays it, is `RenderBars` with that
   instrument alone, carried through the loop's room by `room`'s second return
   and laid at the loop's gain: with the drums' the lines sum to the loop.

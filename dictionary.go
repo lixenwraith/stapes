@@ -697,10 +697,12 @@ func (s *Session) refine(name string, rp *ripped, d *audio.SongDef, rounds int, 
 	}
 	// each voice's tonal floor, taken once so the rounds do not compound it
 	var floors [3]tonalFloor
+	sc := s.ripScene(rp.x, rp.rate, rp.rip, s.fit)
 	for reg, at := range lineVoices(rp.rip) {
 		if *at != nil {
-			floors[reg].targets = fitTargets(rp.x, rp.rate, lineNotes(rp.rip, reg), s.fit.notes)
-			floors[reg].distance = fitDistance(*at, floors[reg].targets, rp.rip.Tuning)
+			fl := &floors[reg]
+			fl.notes, fl.targets = sc.lines[reg].notes, sc.targets(reg, s.fit.notes)
+			fl.distance = fitDistance(*at, fl.notes, fl.targets, rp.rip.Tuning)
 		}
 	}
 	for round := 1; round <= rounds; round++ {
@@ -729,6 +731,7 @@ func (s *Session) refine(name string, rp *ripped, d *audio.SongDef, rounds int, 
 // tonalFloor is a voice's distance from the recording's notes when a refinement
 // starts, on the notes the fit would sample, which the refined voice holds to
 type tonalFloor struct {
+	notes    []audio.RipNote
 	targets  []fitTarget
 	distance float64
 }
@@ -757,7 +760,7 @@ func (s *Session) refineVoices(name string, rp *ripped, d *audio.SongDef, base f
 			if audio.ValidateVoice(v) != nil {
 				return math.Inf(-1)
 			}
-			if fl := floors[reg]; len(fl.targets) > 0 && fitDistance(v, fl.targets, rp.rip.Tuning) > fl.distance*(1+refineDrift) {
+			if fl := floors[reg]; len(fl.targets) > 0 && fitDistance(v, fl.notes, fl.targets, rp.rip.Tuning) > fl.distance*(1+refineDrift) {
 				return math.Inf(-1)
 			}
 			if err := define(v); err != nil {
@@ -823,7 +826,7 @@ func (s *Session) refineVoices(name string, rp *ripped, d *audio.SongDef, base f
 		named := v.Clone()
 		named.Name = vname
 		s.voices.put(named, false)
-		fmt.Fprintf(s.out, "%s voice: %s, %.2f -> %.2f, %.3f from the notes against a floor of %.3f\n", word, cmp.Or(v.Wave, "sine"), base, pool.Members[0].Score, fitDistance(v, floors[reg].targets, rp.rip.Tuning), floors[reg].distance)
+		fmt.Fprintf(s.out, "%s voice: %s, %.2f -> %.2f, %.3f from the notes against a floor of %.3f\n", word, cmp.Or(v.Wave, "sine"), base, pool.Members[0].Score, fitDistance(v, floors[reg].notes, floors[reg].targets, rp.rip.Tuning), floors[reg].distance)
 		base = pool.Members[0].Score
 	}
 	return base, nil

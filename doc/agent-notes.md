@@ -295,22 +295,43 @@ proves wrong or that a document now states, and link the document instead.
   its hits too: a groove matches as well a whole number of beats off, and a
   search put a drum take's hits two beats off.
 - The voice a model hears for a line is the fit's first seed, no more, so `rip`
-  fits every line. The fit's distance favours a sparse, dark voice: a change to
-  it wants ears again.
+  fits every line. A change to the fit's measure is read apart from the rip
+  first, `fits ... given` on loops whose lines are each rendered alone and on
+  their whole loops, then on ripped notes.
 - **`fits` holds a line to its label's voice by the genes, at the rip's notes.**
   A bank voice rebuilt from its genes (`VoiceFromGenes`) renders 0.0000 in mel
   distance from itself, so `own` is the voice that played; but it plays the
   notes the rip heard, and a line whose `matched` is far under its `notes`
-  reads the label's voice at notes it never played. The analysis hears no
-  voice, so a container's rows carry no `heard`: a test fills them with a random
-  frame model, whose rips hold a note or two a line.
-- **The right voice reads zero only on a note alone.** A bank voice against its
-  own note in silence reads 0.0000 by `fitDistance`, under 0.012 with the start
-  46 ms off, and the other four read 0.010 to 0.110. On a clean loop of one
-  line, at the label's own notes, the lead reads 0.047 and the bank's bass
-  0.039: a stack's oscillators start a note at phases seeded by its trigger
-  order (audio's `noteSeed`), so `RenderNoteAt` of a unison voice is not the
-  note the loop holds; the piano and the pluck are the nearest bank voice there.
+  reads the label's voice at notes it never played, which `given` does not.
+  The analysis hears no voice, so a container's rows carry no `heard`: a test
+  fills them with a random frame model, whose rips hold a note or two a line.
+- **A window is heard as the mix of what plays in it.** Set against one note
+  rendered alone at its peak, the recording around it holds the line's other
+  notes, the other lines and the drums, and a voice whose attack or ring fills
+  them wins: on 40 clean loops at the labels' own notes the label's voice was
+  nearest on 0 of 86 lines, a string or modal wave on 57. The line's notes in
+  the window, the others' and the hits beside them, each at a gain of its own,
+  put it nearest on 40, most of the rest losing to a voice near its genes.
+- Read so (`fits ... given`, 50 loops of seed 23, 113 lines a reading, the
+  default sizes), the fitted wave is the label's on 109 lines alone, 98 in
+  their loops and 82 with lengths and velocities moved as the analysis's rip
+  moves them, and 104, 90 and 83 under `aug`, where one note at its peak got
+  82, 48, 45 and 78, 56, 47. The best seed is now the label's voice, or the
+  bank voice it was redrawn from, and a fit that beats it does so by a
+  twentieth of its distance, wandering 0.1 to 0.25 from its genes where the
+  measure hears little: the fits nearer the genes than their seed fell.
+- **A unison stack or a string is never its own note again.** Audio seeds a
+  stack's start phases and drift and a string's burst by the note's pitch and
+  its voice's last trigger (`noteSeed`), and `RenderNoteAt` triggers at 0: at
+  the render's own onsets, alone, a modal voice reads 0.0000 from its own
+  voice, the lead 0.005 to 0.025, the pad up to 0.020, the pluck 0.003 to
+  0.019, and a voice within 0.02 of its genes is as near as often as not.
+- A label's and a rip's onsets sit on the frame grid, up to 5.8 ms off the
+  sound: alone at the labels' frames a modal voice reads up to 0.003 from its
+  own where at its render's own onsets it reads 0.0000.
+- A loop's line alone, as the corpus plays it, is `RenderBars` with that
+  instrument alone, carried through the loop's room by `room`'s second return
+  and laid at the loop's gain: with the drums' the lines sum to the loop.
 - **A fit is its seed's on any number of cores, but for its memo's key.** The
   engine draws every candidate from one stream and scores them side by side;
   `genomeKey` names a genome to three decimals, so two new candidates of one

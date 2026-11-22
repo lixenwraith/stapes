@@ -63,7 +63,7 @@ func (o *fitOptions) size(word, number string) error {
 	return fmt.Errorf("%q: want notes, pool, generations or seed, each before its number", word)
 }
 
-// fitTail is how long past a note's end its sample runs, for the release
+// fitTail is how long past a note's end its window runs, for the release
 const fitTail = 0.25
 
 // ripped is a recording ripped this session: what was heard, and the samples it
@@ -236,18 +236,19 @@ func lineVoices(r *audio.Rip) [3]**audio.VoiceDef {
 // fitVoices fits a voice to each line of a rip, a voice the front end heard
 // for it held as a seed, and says how far the fit came
 func (s *Session) fitVoices(rp *ripped, o fitOptions) {
+	sc := s.ripScene(rp.x, rp.rate, rp.rip, o)
 	for reg, at := range lineVoices(rp.rip) {
-		notes := lineNotes(rp.rip, reg)
+		notes := sc.lines[reg].notes
 		if len(notes) == 0 {
 			continue
 		}
 		word := ripLines[reg].word
 		fmt.Fprintf(s.out, "fitting the %s voice over %d note(s), %d generation(s) of %d...\n", word, min(len(notes), o.notes), o.generations, o.pool)
-		f := s.fitVoice(rp.x, rp.rate, rp.rip.Tuning, notes, *at, o)
+		f := s.fitVoice(sc, reg, *at, o)
 		if f == nil {
 			continue
 		}
-		*at = f.voice
+		*at, sc.lines[reg].voice = f.voice, f.voice
 		fmt.Fprintf(s.out, "%s voice: %s, distance %.3f from the best seed's %.3f\n", word, cmp.Or(f.voice.Wave, "sine"), f.to, f.from)
 	}
 }
@@ -315,38 +316,334 @@ func lineNotes(r *audio.Rip, reg int) []audio.RipNote {
 	return notes
 }
 
-// fitTarget is one note of the recording a voice is fitted on: its seconds, the
-// mel frames of the recording around it and the note the voice plays to match
-type fitTarget struct {
-	start, end float64
-	mel        [][]float32
-	midi       int
-	vel, dur   float64
+// fitPart is a line as the fit hears it: its notes and the voice it plays
+// them with
+type fitPart struct {
+	notes []audio.RipNote
+	voice *audio.VoiceDef
 }
 
-// fitTargets picks a register's sample notes, n of them, and hears the recording
-// around each
-func fitTargets(x []float64, rate int, notes []audio.RipNote, n int) []fitTarget {
-	samples := fitSamples(notes, max(n, 1))
+// fitScene is a recording as the fit hears it: its samples and tuning, the
+// lines played in it, each with its voice, and the drums' hits with the sound
+// each drum is heard on
+type fitScene struct {
+	x     []float64
+	rate  int
+	cents float64
+	lines []fitPart
+	hits  []audio.RipHit
+	drums map[audio.InstrumentType][]float64 // each drum's take struck at full velocity
+}
+
+// ripScene is a rip's recording, its three lines and its hits, each line's voice
+// the one the front end heard or, where it heard none, the one presentVoices
+// gives it
+func (s *Session) ripScene(x []float64, rate int, r *audio.Rip, o fitOptions) *fitScene {
+	sc := s.scene(x, rate, r.Tuning, r.Hits())
+	for reg, at := range lineVoices(r) {
+		sc.lines = append(sc.lines, fitPart{notes: lineNotes(r, reg), voice: *at})
+	}
+	sc.presentVoices(o.notes)
+	return sc
+}
+
+// scene is a recording at its tuning with its hits, each drum heard on the
+// sound the transport's kit plays it with
+func (s *Session) scene(x []float64, rate int, cents float64, hits []audio.RipHit) *fitScene {
+	sc := &fitScene{x: x, rate: rate, cents: cents, hits: hits, drums: map[audio.InstrumentType][]float64{}}
+	for _, d := range fitDrums {
+		name := audio.InstrumentName(d)
+		if sd := audio.SoundDefByName(cmp.Or(s.kit[name], name)); sd != nil {
+			if take, err := audio.RenderHit(sd, audio.SoundShape{}, 1, 0); err == nil {
+				sc.drums[d] = take
+			}
+		}
+	}
+	return sc
+}
+
+// fitDrums are the drums a rip hears hits of
+var fitDrums = [...]audio.InstrumentType{audio.InstrKick, audio.InstrSnare, audio.InstrHihat}
+
+// presentVoices gives each line that has no voice the registered voice nearest
+// its own notes with the drums alone beside them, so each window hears every
+// line that plays in it
+func (sc *fitScene) presentVoices(n int) {
+	alone := &fitScene{x: sc.x, rate: sc.rate, cents: sc.cents, hits: sc.hits, drums: sc.drums}
+	for i, p := range sc.lines {
+		if p.voice != nil || len(p.notes) == 0 {
+			continue
+		}
+		alone.lines = []fitPart{{notes: p.notes}}
+		targets := alone.targets(0, n)
+		best := math.Inf(1)
+		for _, v := range audio.RegisteredVoices() {
+			if d := fitDistance(v, p.notes, targets, sc.cents); d < best {
+				best, sc.lines[i].voice = d, v
+			}
+		}
+	}
+}
+
+// fitTarget is one of a line's notes the fit listens to: the note, the window
+// from its start to its end and fitTail, the recording there as mel frames and
+// the mel energy of what else is heard playing there, each other line's notes
+// with its voice and each drum's hits, all frames by RipMelBands
+type fitTarget struct {
+	start, end, to float64
+	midi           int
+	vel, dur       float64
+	mel            []float64
+	beside         [][]float64
+}
+
+// targets picks n of line's notes and hears the recording in each one's
+// window, beside what every other line and drum plays there
+func (sc *fitScene) targets(line, n int) []fitTarget {
+	samples := fitSamples(sc.lines[line].notes, max(n, 1))
 	targets := make([]fitTarget, len(samples))
-	for i, n := range samples {
-		lo := min(int(n.Start*float64(rate)), len(x))
-		hi := min(int((n.End+fitTail)*float64(rate)), len(x))
-		targets[i] = fitTarget{start: n.Start, end: n.End, mel: audio.MelFrames(x[lo:hi], rate), midi: n.MIDI, vel: n.Vel, dur: n.End - n.Start}
+	for i, note := range samples {
+		lo := min(int(note.Start*float64(sc.rate)), len(sc.x))
+		hi := min(int((note.End+fitTail)*float64(sc.rate)), len(sc.x))
+		mel := audio.MelFrames(sc.x[lo:hi], sc.rate)
+		t := fitTarget{start: note.Start, end: note.End, to: note.Start + float64(hi-lo)/float64(sc.rate), midi: note.MIDI, vel: note.Vel, dur: note.End - note.Start, mel: make([]float64, len(mel)*audio.RipMelBands)}
+		for f, bands := range mel {
+			for b, v := range bands {
+				t.mel[f*audio.RipMelBands+b] = float64(v)
+			}
+		}
+		heard := func(x []float64) {
+			if slices.ContainsFunc(x, func(v float64) bool { return v != 0 }) {
+				t.beside = append(t.beside, melEnergy(x, len(t.mel)))
+			}
+		}
+		for j, p := range sc.lines {
+			if j != line && p.voice != nil {
+				heard(sounding(p.voice, p.notes, sc.cents, t.start, t.to))
+			}
+		}
+		for _, d := range fitDrums {
+			heard(sc.struck(d, t.start, t.to))
+		}
+		targets[i] = t
 	}
 	return targets
 }
 
-// fitDistance is how far a voice's renders of the targets' notes, at the
-// recording's tuning, sound from the recording around them: the fit's measure,
-// which the refinement holds a voice to
-func fitDistance(v *audio.VoiceDef, targets []fitTarget, cents float64) float64 {
+// struck is what drum d's hits sound from from to to seconds, each its take at
+// its velocity
+func (sc *fitScene) struck(d audio.InstrumentType, from, to float64) []float64 {
+	const sr = audio.AudioSampleRate
+	lo, take := int(from*sr), sc.drums[d]
+	out := make([]float64, max(int(to*sr)-lo, 0))
+	for _, h := range sc.hits {
+		if h.Drum != d || h.Start >= to {
+			continue
+		}
+		k := int(h.Start*sr) - lo
+		for i := max(-k, 0); i < len(take) && k+i < len(out); i++ {
+			out[k+i] += take[i] * h.Vel
+		}
+	}
+	return out
+}
+
+// sounding is what notes sound with v at cents from from to to seconds, each
+// rendered from its start; a note let go before from by more than v's release
+// is silent there, and where a note ends past to is no part of it
+func sounding(v *audio.VoiceDef, notes []audio.RipNote, cents, from, to float64) []float64 {
+	const sr = audio.AudioSampleRate
+	lo := int(from * sr)
+	out := make([]float64, max(int(to*sr)-lo, 0))
+	for _, n := range notes {
+		if n.Start >= to || n.End+v.Release < from {
+			continue
+		}
+		x := audio.RenderNoteAt(v, n.MIDI, cents, n.Vel, min(n.End, to)-n.Start, max(to-n.End, 0))
+		k := int(n.Start*sr) - lo
+		for i := max(-k, 0); i < len(x) && k+i < len(out); i++ {
+			out[k+i] += x[i]
+		}
+	}
+	return out
+}
+
+// melEnergy is the engine's render x as mel frames before MelFrames' logarithm,
+// at x's own scale, laid out as cells values a frame's bands after another's:
+// MelFrames(x) is log1p(100 e / p²) of these, p the loudest sample
+func melEnergy(x []float64, cells int) []float64 {
+	m := audio.NewMelStream()
+	y := audio.Resample(x, audio.AudioSampleRate, audio.RipRate)
+	out := make([]float64, cells)
+	for f, bands := range append(m.Write(y), m.Close()...) {
+		copy(out[min(f*audio.RipMelBands, cells):], bands)
+	}
+	return out
+}
+
+// fitDistance is how far the recording in the targets' windows is from v
+// playing the line's notes there beside what else is heard: each window's
+// mixDistance, the line and every other part at a gain of its own, the mean
+// over the windows; the fit's measure, which a refinement holds a voice to
+func fitDistance(v *audio.VoiceDef, notes []audio.RipNote, targets []fitTarget, cents float64) float64 {
+	// a note sounds alike up to any window's end it is rendered to, so each is
+	// rendered once, to the last window it sounds in
+	until := make([]float64, len(notes))
+	for _, t := range targets {
+		for k, n := range notes {
+			if n.Start < t.to && n.End+v.Release >= t.start {
+				until[k] = max(until[k], t.to)
+			}
+		}
+	}
+	played := make([][]float64, len(notes))
+	for k, n := range notes {
+		if to := until[k]; to > 0 {
+			played[k] = audio.RenderNoteAt(v, n.MIDI, cents, n.Vel, min(n.End, to)-n.Start, max(to-n.End, 0))
+		}
+	}
+	const sr = audio.AudioSampleRate
 	var sum float64
 	for _, t := range targets {
-		note := audio.RenderNoteAt(v, t.midi, cents, t.vel, t.dur, fitTail)
-		sum += audio.MelDistance(audio.MelFrames(note, audio.AudioSampleRate), t.mel)
+		lo := int(t.start * sr)
+		x := make([]float64, max(int(t.to*sr)-lo, 0))
+		for k, n := range notes {
+			if n.Start >= t.to || n.End+v.Release < t.start {
+				continue
+			}
+			at := int(n.Start*sr) - lo
+			for i := max(-at, 0); i < len(played[k]) && at+i < len(x); i++ {
+				x[at+i] += played[k][i]
+			}
+		}
+		sum += mixDistance(append([][]float64{melEnergy(x, len(t.mel))}, t.beside...), t.mel)
 	}
 	return sum / float64(max(len(targets), 1))
+}
+
+// mixDistance is how far y, a window's mel frames, stands from the nearest mix
+// of the parts, each part's mel energy at a gain of its own: the mean square of
+// log1p(100 Σ g c) less y over the window's frames and bands, as MelDistance
+// counts, the gains found by Levenberg-Marquardt over their logs
+func mixDistance(parts [][]float64, y []float64) float64 {
+	k := len(parts)
+	g := make([]float64, k)
+	cost := func(theta []float64) float64 {
+		for i := range k {
+			g[i] = math.Exp(theta[i])
+		}
+		var sum float64
+		for j, want := range y {
+			var m float64
+			for i, c := range parts {
+				m += g[i] * c[j]
+			}
+			r := math.Log1p(100*m) - want
+			sum += r * r
+		}
+		return sum / float64(max(len(y), 1))
+	}
+	var heard, have float64
+	for j, want := range y {
+		heard += math.Expm1(want)
+		for _, c := range parts {
+			have += c[j]
+		}
+	}
+	theta := make([]float64, k)
+	if heard <= 0 || have <= 0 {
+		return cost(theta) // silence on either side: no gain brings them nearer
+	}
+	for i := range theta {
+		theta[i] = math.Log(heard / 100 / have) // every part at the gain that matches the energy heard
+	}
+	now, lambda := cost(theta), 1e-3
+	jtj, jtr, step, next := make([]float64, k*k), make([]float64, k), make([]float64, k), make([]float64, k)
+	for range mixSteps {
+		clear(jtj)
+		clear(jtr)
+		for i := range k {
+			g[i] = math.Exp(theta[i])
+		}
+		for j, want := range y {
+			var m float64
+			for i, c := range parts {
+				m += g[i] * c[j]
+			}
+			r, d := math.Log1p(100*m)-want, 100/(1+100*m)
+			for i, c := range parts {
+				ji := d * g[i] * c[j]
+				jtr[i] += ji * r
+				for l := i; l < k; l++ {
+					jtj[i*k+l] += ji * d * g[l] * parts[l][j]
+				}
+			}
+		}
+		moved := false
+		for range mixSteps {
+			if dampedSolve(jtj, jtr, lambda, step) {
+				for i := range k {
+					next[i] = theta[i] - step[i]
+				}
+				if d := cost(next); d < now {
+					moved = d < now*(1-1e-6)
+					copy(theta, next)
+					now, lambda = d, lambda/4
+					break
+				}
+			}
+			lambda *= 8
+		}
+		if !moved {
+			break
+		}
+	}
+	return now
+}
+
+// mixSteps bounds a gain fit's steps and each step's tries at its damping
+const mixSteps = 30
+
+// dampedSolve sets x to the solution of (A + lambda diag(A)) x = b by Cholesky,
+// A symmetric and given by its upper triangle; false where that is not
+// positive definite
+func dampedSolve(a, b []float64, lambda float64, x []float64) bool {
+	k := len(b)
+	l := make([]float64, k*k)
+	for i := range k {
+		for j := 0; j <= i; j++ {
+			sum := a[j*k+i]
+			if i == j {
+				sum += lambda*a[i*k+i] + 1e-12
+			}
+			for m := range j {
+				sum -= l[i*k+m] * l[j*k+m]
+			}
+			switch {
+			case i != j:
+				l[i*k+j] = sum / l[j*k+j]
+			case sum <= 0:
+				return false
+			default:
+				l[i*k+i] = math.Sqrt(sum)
+			}
+		}
+	}
+	for i := range k {
+		sum := b[i]
+		for m := range i {
+			sum -= l[i*k+m] * x[m]
+		}
+		x[i] = sum / l[i*k+i]
+	}
+	for i := k - 1; i >= 0; i-- {
+		sum := x[i]
+		for m := i + 1; m < k; m++ {
+			sum -= l[m*k+i] * x[m]
+		}
+		x[i] = sum / l[i*k+i]
+	}
+	return true
 }
 
 // fitted is a fit's outcome: the voice, its level set, the seed the measure put
@@ -356,16 +653,17 @@ type fitted struct {
 	to, from    float64
 }
 
-// fitVoice searches for the voice whose engine-rendered notes sound most like a
-// register's notes in the recording: a genome of genes and wave, seeded with every
-// registered voice and the one given, scored by mel distance from the recording
-// around each sample note to the voice playing it; nil when the register has no
-// note long enough.
-func (s *Session) fitVoice(x []float64, rate int, cents float64, notes []audio.RipNote, prior *audio.VoiceDef, o fitOptions) *fitted {
-	targets := fitTargets(x, rate, notes, o.notes)
+// fitVoice searches for the voice whose engine-rendered notes sound most like
+// a line's notes in the recording: a genome of genes and wave, seeded with
+// every registered voice and the one given, scored by fitDistance around each
+// sample note, the other lines playing beside it with their voices; nil when
+// the line has no note long enough.
+func (s *Session) fitVoice(sc *fitScene, line int, prior *audio.VoiceDef, o fitOptions) *fitted {
+	targets := sc.targets(line, o.notes)
 	if len(targets) == 0 {
 		return nil
 	}
+	x, rate, cents, notes := sc.x, sc.rate, sc.cents, sc.lines[line].notes
 	genes := audio.VoiceGeneCount
 	decode, encode := voiceFromGenome, voiceGenome
 	eval := genetic.Memoize(genomeKey, func(g []float64) float64 {
@@ -373,7 +671,7 @@ func (s *Session) fitVoice(x []float64, rate int, cents float64, notes []audio.R
 		if audio.ValidateVoice(v) != nil {
 			return math.Inf(-1)
 		}
-		return -fitDistance(v, targets, cents)
+		return -fitDistance(v, notes, targets, cents)
 	})
 	var seeds [][]float64
 	if prior != nil {
@@ -418,9 +716,9 @@ func (s *Session) fitVoice(x []float64, rate int, cents float64, notes []audio.R
 	if err != nil || len(pool.Members) == 0 {
 		return nil
 	}
-	// MelFrames hears every sample at its peak, so the level is the search's
-	// blind spot: set it so the voice's notes carry the loudness the recording
-	// has around them
+	// the measure fits each part's gain, so the level is the search's blind
+	// spot: set it so the voice's notes carry the loudness the recording has
+	// around them
 	v := decode(pool.Members[0].Data)
 	var want, have float64
 	for _, t := range targets {
@@ -463,9 +761,9 @@ func cmdGenes(s *Session, a []string) error {
 	return nil
 }
 
-// fitsManifest is a fits directory's fits.json: the sizes its fits ran at and
-// the checksum of the weight files its rips heard through; a directory holds
-// one kind
+// fitsManifest is a fits directory's fits.json: the sizes its fits ran at, the
+// checksum of the weight files its rips heard through, or that it fitted the
+// labels' own notes and ripped nothing; a directory holds one kind
 type fitsManifest struct {
 	Version     int    `json:"version"`
 	Notes       int    `json:"notes"`
@@ -473,6 +771,7 @@ type fitsManifest struct {
 	Generations int    `json:"generations"`
 	Seed        uint64 `json:"seed"`
 	Weights     string `json:"weights"`
+	Given       bool   `json:"given,omitempty"`
 }
 
 const fitsFile = "fits.json"
@@ -502,18 +801,29 @@ type fitRow struct {
 	FitHeld    *float64  `json:"fit_held"`
 	OwnHeld    *float64  `json:"own_held"`
 	HeardGenes []float64 `json:"heard_genes"`
+	SeedGenes  []float64 `json:"seed_genes"`
 	FitGenes   []float64 `json:"fit_genes"`
 	HeardFar   *float64  `json:"heard_far"`
+	SeedFar    *float64  `json:"seed_far"`
 	FitFar     *float64  `json:"fit_far"`
 }
 
 func cmdFits(s *Session, a []string) error {
-	usage := errors.New("want fits <dir> from <corpus dir> [part k/n] [notes <n>] [pool <n>] [generations <n>] [seed <n>]")
-	if a[1] != "from" || len(a)%2 == 0 {
+	usage := errors.New("want fits <dir> from <corpus dir> [given] [part k/n] [notes <n>] [pool <n>] [generations <n>] [seed <n>]")
+	if a[1] != "from" {
 		return usage
 	}
-	o, part, parts := s.fit, 0, 0
+	o, part, parts, given := s.fit, 0, 0, false
 	for w := a[3:]; len(w) > 0; w = w[2:] {
+		if w[0] == "given" {
+			given, w = true, w[1:]
+			if len(w) == 0 {
+				break
+			}
+		}
+		if len(w) < 2 {
+			return usage
+		}
 		var err error
 		if w[0] == "part" {
 			part, parts, err = parsePart(w[1])
@@ -524,15 +834,15 @@ func cmdFits(s *Session, a []string) error {
 			return err
 		}
 	}
-	return s.fits(s.path(a[0]), s.path(a[2]), o, part, parts)
+	return s.fits(s.path(a[0]), s.path(a[2]), o, part, parts, given)
 }
 
 // fits reads the voice fit over a corpus directory's loops that kept their
-// audio: each is ripped and its lines fitted as rip does it, at o's sizes, and
-// a row a line fitted (fitRows) goes to <dir>/<the loop's checksum>.json. A
-// loop on disk is kept, parts taking the loops i%parts == part; the last lines
-// count the rows of every loop the run takes, kept or written.
-func (s *Session) fits(dir, from string, o fitOptions, part, parts int) error {
+// audio: each is ripped and its lines fitted as rip does it, at o's sizes, or
+// given, each voice its label states fitted on its own notes, and a row a line
+// fitted (fitRows) goes to <dir>/<the loop's checksum>.json. A loop on disk is
+// kept, parts taking the loops i%parts == part; the last lines count them all.
+func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bool) error {
 	if info, err := os.Stat(from); err != nil {
 		return err
 	} else if !info.IsDir() {
@@ -562,12 +872,15 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int) error {
 		}
 		return os.Rename(tmp, file)
 	}
-	m := fitsManifest{Version: 1, Notes: o.notes, Pool: o.pool, Generations: o.generations, Seed: o.seed, Weights: s.earSum}
+	m := fitsManifest{Version: 2, Notes: o.notes, Pool: o.pool, Generations: o.generations, Seed: o.seed, Weights: s.earSum, Given: given}
+	if given {
+		m.Weights = "" // nothing is ripped
+	}
 	manifest := filepath.Join(dir, fitsFile)
 	if data, err := os.ReadFile(manifest); err == nil {
 		var was fitsManifest
 		if json.Unmarshal(data, &was) != nil || was != m {
-			return fmt.Errorf("%s holds fits of %d note(s), %d generation(s) of %d, seed %d, through the weights %q, and these are of %d, %d of %d, seed %d, through %q: a directory holds one kind", dir, was.Notes, was.Generations, was.Pool, was.Seed, was.Weights, m.Notes, m.Generations, m.Pool, m.Seed, m.Weights)
+			return fmt.Errorf("%s holds %s, and these are %s: a directory holds one kind", dir, was, m)
 		}
 	} else if err := whole(manifest, m); err != nil {
 		return err
@@ -605,12 +918,26 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int) error {
 			if err != nil {
 				return fmt.Errorf("%s: %w", l.wav, err)
 			}
-			r, err := s.ripper().Samples(x, rate)
-			if err != nil {
-				failed = append(failed, fmt.Sprintf("%s: %v", l.wav, err))
-				continue
+			var lines []fitLine
+			var sc *fitScene
+			if given {
+				sc = s.scene(x, rate, lab.Tuning, lab.hits())
+				for _, v := range labelVoices(lab, corpus) {
+					lines, sc.lines = append(lines, fitLine{word: v.name, voice: v}), append(sc.lines, fitPart{notes: v.notes})
+				}
+				sc.presentVoices(o.notes)
+			} else {
+				r, err := s.ripper().Samples(x, rate)
+				if err != nil {
+					failed = append(failed, fmt.Sprintf("%s: %v", l.wav, err))
+					continue
+				}
+				for reg, at := range lineVoices(r) {
+					lines = append(lines, fitLine{word: ripLines[reg].word, heard: *at})
+				}
+				sc = s.ripScene(x, rate, r, o)
 			}
-			loop = s.fitRows(strings.TrimSuffix(l.wav, ".wav"), x, rate, r, lab, corpus, o)
+			loop = s.fitRows(strings.TrimSuffix(l.wav, ".wav"), sc, lines, lab, corpus, o)
 			if err := whole(file, loop); err != nil {
 				return err
 			}
@@ -619,6 +946,9 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int) error {
 		taken, rows = taken+1, append(rows, loop...)
 	}
 	what := fmt.Sprintf("fits of %d loop(s) of %s in %s at %d note(s), %d generation(s) of %d, seed %d: %d line(s)", taken, from, dir, o.notes, o.generations, o.pool, o.seed, len(rows))
+	if given {
+		what += ", each a voice its label states, on its notes"
+	}
 	if kept > 0 {
 		what += fmt.Sprintf("; %d loop(s) were there", kept)
 	}
@@ -634,6 +964,15 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int) error {
 	}
 	fitCounts(said, rows, corpus.Waves)
 	return nil
+}
+
+// String names the kind of fits m holds
+func (m fitsManifest) String() string {
+	of := fmt.Sprintf("through the weights %q", m.Weights)
+	if m.Given {
+		of = "on the labels' notes"
+	}
+	return fmt.Sprintf("fits of %d note(s), %d generation(s) of %d, seed %d, %s", m.Notes, m.Generations, m.Pool, m.Seed, of)
 }
 
 // labelVoice is a voice a label's notes state: its instrument's name, its wave
@@ -688,9 +1027,17 @@ func lineOwner(notes []audio.RipNote, voices []*labelVoice, given []audio.RipNot
 	return owner, float64(most) / float64(all), audio.MatchNotes(notes, given, true).All.Matched
 }
 
-// fitRows fits each line of a loop's rip as rip does, at o's sizes, and reads
-// it against the loop's label: a row a line fitted
-func (s *Session) fitRows(loop string, x []float64, rate int, r *audio.Rip, lab corpusLoop, m corpusManifest, o fitOptions) []fitRow {
+// fitLine is a line of a scene fits fits: a rip's, with the voice its front
+// end heard, or a voice its label states
+type fitLine struct {
+	word  string
+	heard *audio.VoiceDef
+	voice *labelVoice
+}
+
+// fitRows fits each of the scene's lines in turn as rip does, at o's sizes,
+// and reads it against the loop's label: a row a line fitted
+func (s *Session) fitRows(loop string, sc *fitScene, lines []fitLine, lab corpusLoop, m corpusManifest, o fitOptions) []fitRow {
 	finite := func(d float64) *float64 {
 		if math.IsNaN(d) || math.IsInf(d, 0) {
 			return nil
@@ -698,14 +1045,14 @@ func (s *Session) fitRows(loop string, x []float64, rate int, r *audio.Rip, lab 
 		return &d
 	}
 	// a voice's distance as the search scores a seed, through its genome
-	near := func(v *audio.VoiceDef, targets []fitTarget) *float64 {
+	near := func(v *audio.VoiceDef, notes []audio.RipNote, targets []fitTarget) *float64 {
 		if v == nil || len(targets) == 0 {
 			return nil
 		}
 		if v = voiceFromGenome(voiceGenome(v)); audio.ValidateVoice(v) != nil {
 			return nil
 		}
-		return finite(fitDistance(v, targets, r.Tuning))
+		return finite(fitDistance(v, notes, targets, sc.cents))
 	}
 	apart := func(v *audio.VoiceDef, label []float64) ([]float64, *float64) {
 		if v == nil || label == nil {
@@ -720,24 +1067,29 @@ func (s *Session) fitRows(loop string, x []float64, rate int, r *audio.Rip, lab 
 	}
 	voices, given := labelVoices(lab, m), lab.notes()
 	rows := []fitRow{}
-	for reg, at := range lineVoices(r) {
-		notes, heard := lineNotes(r, reg), *at
-		f := s.fitVoice(x, rate, r.Tuning, notes, heard, o)
+	for i, l := range lines {
+		notes := sc.lines[i].notes
+		f := s.fitVoice(sc, i, l.heard, o)
 		if f == nil {
 			continue
 		}
 		// the fit's own choice of notes, in its order: those it heard, then the rest
-		targets := fitTargets(x, rate, notes, len(notes))
+		targets := sc.targets(i, len(notes))
+		sc.lines[i].voice = f.voice // the lines after hear this one as fitted
 		listened, held := targets[:min(max(o.notes, 1), len(targets))], targets[min(max(o.notes, 1), len(targets)):]
-		row := fitRow{Loop: loop, Line: ripLines[reg].word, Notes: len(notes), Listened: len(listened), Held: len(held), Fitted: cmp.Or(f.voice.Wave, "sine"),
-			Heard: near(heard, listened), Seed: finite(f.from), Fit: finite(f.to),
-			HeardHeld: near(heard, held), SeedHeld: near(f.seed, held), FitHeld: near(f.voice, held)}
+		row := fitRow{Loop: loop, Line: l.word, Notes: len(notes), Listened: len(listened), Held: len(held), Fitted: cmp.Or(f.voice.Wave, "sine"),
+			Heard: near(l.heard, notes, listened), Seed: finite(f.from), Fit: finite(f.to),
+			HeardHeld: near(l.heard, notes, held), SeedHeld: near(f.seed, notes, held), FitHeld: near(f.voice, notes, held)}
 		if owner, share, matched := lineOwner(notes, voices, given); owner != nil {
+			if l.voice != nil { // a voice's own notes are its line, whatever doubles them
+				owner = l.voice
+			}
 			row.Matched, row.Voice, row.Share, row.Family, row.Wave = matched, owner.name, share, owner.family, owner.wave
 			if owner.genes != nil {
 				own := audio.VoiceFromGenes(owner.wave, owner.genes)
-				row.Own, row.OwnHeld = near(own, listened), near(own, held)
-				row.HeardGenes, row.HeardFar = apart(heard, owner.genes)
+				row.Own, row.OwnHeld = near(own, notes, listened), near(own, notes, held)
+				row.HeardGenes, row.HeardFar = apart(l.heard, owner.genes)
+				row.SeedGenes, row.SeedFar = apart(f.seed, owner.genes)
 				row.FitGenes, row.FitFar = apart(f.voice, owner.genes)
 			}
 		}
@@ -750,7 +1102,7 @@ func (s *Session) fitRows(loop string, x []float64, rate int, r *audio.Rip, lab 
 // apart, each whole and by its label's wave: how often the fitted wave is the
 // label's, how often the label's own voice and how often the fit is the nearer
 // on the notes listened to and held out, each distance's median, and how often
-// the fit ends nearer the label's genes than the voice the front end heard began
+// the fit ends nearer the label's genes than the voice heard and the best seed
 func fitCounts(w io.Writer, rows []fitRow, waves []string) {
 	of := func(k, n int) string {
 		if n == 0 {
@@ -771,13 +1123,13 @@ func fitCounts(w io.Writer, rows []fitRow, waves []string) {
 			unowned++
 		}
 	}
-	fmt.Fprintf(w, "%d line(s) match no labelled note and are left out. right: the fitted wave is the label's; short: the label's own voice is nearer the recording than the fit, the search stopped short; prefers: the fit is nearer than the label's own voice, the measure prefers another; heard, seed, fit, own: the median distance of the voice the front end heard, the best seed, the fit and the label's own voice; nearer: the fit ends nearer the label's genes than the voice heard began\n", unowned)
-	fmt.Fprintf(w, "%-32s | %-47s | %-47s |\n", "", "on the notes the fit listened to", "on the line's notes held out")
-	fmt.Fprintf(w, "%-9s %-6s %5s %9s | %9s %9s %6s %6s %6s %6s | %9s %9s %6s %6s %6s %6s | %9s\n", "lines", "wave", "rows", "right", "short", "prefers", "heard", "seed", "fit", "own", "short", "prefers", "heard", "seed", "fit", "own", "nearer")
+	fmt.Fprintf(w, "%d line(s) match no labelled note and are left out. right: the fitted wave is the label's; short: the label's own voice is nearer the recording than the fit, the search stopped short; prefers: the fit is nearer than the label's own voice, the measure prefers another; heard, seed, fit, own: the median distance of the voice the front end heard, the best seed, the fit and the label's own voice; genes nearer than heard, seed: the fit ends nearer the label's genes than the voice heard or the best seed began\n", unowned)
+	fmt.Fprintf(w, "%-32s | %-47s | %-47s | %-19s\n", "", "on the notes the fit listened to", "on the line's notes held out", "genes nearer than")
+	fmt.Fprintf(w, "%-9s %-6s %5s %9s | %9s %9s %6s %6s %6s %6s | %9s %9s %6s %6s %6s %6s | %9s %9s\n", "lines", "wave", "rows", "right", "short", "prefers", "heard", "seed", "fit", "own", "short", "prefers", "heard", "seed", "fit", "own", "heard", "seed")
 	for _, alone := range [...]bool{true, false} {
 		for _, wave := range append([]string{"all"}, append(slices.Clone(waves), "")...) {
-			var n, right, waved, nearer, both int
-			var short, prefers, owned [2]int
+			var n, right, waved int
+			var short, prefers, owned, nearer, both [2]int
 			var dist [2][4][]float64
 			for _, r := range rows {
 				if r.Matched == 0 || (r.Share == 1) != alone || (wave != "all" && r.Wave != wave) {
@@ -806,9 +1158,11 @@ func fitCounts(w io.Writer, rows []fitRow, waves []string) {
 						}
 					}
 				}
-				if r.HeardFar != nil && r.FitFar != nil {
-					if both++; *r.FitFar < *r.HeardFar {
-						nearer++
+				for k, began := range [2]*float64{r.HeardFar, r.SeedFar} {
+					if began != nil && r.FitFar != nil {
+						if both[k]++; *r.FitFar < *began {
+							nearer[k]++
+						}
 					}
 				}
 			}
@@ -826,7 +1180,7 @@ func fitCounts(w io.Writer, rows []fitRow, waves []string) {
 					fmt.Fprintf(w, " %6s", median(dist[h][k]))
 				}
 			}
-			fmt.Fprintf(w, " | %9s\n", of(nearer, both))
+			fmt.Fprintf(w, " | %9s %9s\n", of(nearer[0], both[0]), of(nearer[1], both[1]))
 		}
 	}
 }

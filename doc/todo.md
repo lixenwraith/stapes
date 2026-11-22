@@ -185,14 +185,15 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    pedal: one that holds the notes, with labels that say so, is still to build.
 8. The fit as it fits a real lead: it picks modal voices where the user hears
    a plucked string (a harp or a santur) or a flute. A plucked voice
-   (`string`) with a doubled, beating course, and the fit's samples cleared of
-   the other lines (item 4 of the loop below), measured by the floor the fit
-   reaches. Read against a corpus's own voices through the analysis (`fits`),
-   the fit was nearer the recording than the label's own voice on 73 of 73
-   lines of one voice, so the measure is what is owed, not a longer search.
-   Left: the same reading through the trained weights on loops they did not
-   train on, which alone fills `heard`; then a measure the label's own voice
-   is nearest by, read by `fits`' `prefers` falling.
+   (`string`) with a doubled, beating course. The measure now hears each
+   window as the mix of the line's notes, the other lines' and the drums' hits,
+   each at a gain of its own (`mixDistance`), read on the labels' own notes
+   with `fits ... given`. Left: the reading through the trained weights on
+   ripped loops they did not train on, which alone fills `heard`; a take for
+   `RenderNoteAt`, so a unison stack's or a string's measure averages the
+   phases and bursts its notes are seeded with ([agent
+   notes](agent-notes.md#the-rip-and-its-truths)); and onsets off the frame
+   grid.
 9. The judge as a trained stage ([Rip design](rip-design.md) §7) is built and
    none is fitted on recordings or installed: `rows`, `tool/rip-train`'s
    `judge.py` and the root's `ripjudge.bin`
@@ -664,9 +665,9 @@ rip are in place; what remains:
 
 7. A rip's voice from what was heard: `rip` fits every line, and the heard
    voice is its first seed. What remains is the voice of every note (the
-   instrument model, above) and a distance that does not favour a dark voice,
-   nor part a unison voice from its own note by where its oscillators start
-   ([agent notes](agent-notes.md#the-rip-and-its-truths)).
+   instrument model, above) and a distance that does not part a unison voice
+   from its own note by where its oscillators start ([tune the
+   rip](#tune-the-rip), item 8).
 8. Put off: a second piece of music under the first, which the rip
    transcribes with it; it wants the judge to follow instruments as it
    follows notes.

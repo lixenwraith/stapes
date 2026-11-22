@@ -2827,8 +2827,8 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	score := func(data []float64) float64 {
 		return guarded(scores(conditionCounts(takes, len(conds), params(data), s.lead), sums), before, o.guard)
 	}
-	over := fmt.Sprintf("%d recording(s) of %d condition(s) against %d note(s), %d hit(s) and %d bar line(s) given, a set refused that takes over %g from a score",
-		len(takes), len(conds), all.notes.given, all.drums.given, all.lines, o.guard)
+	over := fmt.Sprintf("%d recording(s) of %d condition(s) against %d note(s), %d hit(s), %d bar line(s) and %d beat(s) given, a set refused that takes over %g from a score",
+		len(takes), len(conds), all.notes.given, all.drums.given, all.lines, all.beats, o.guard)
 	best, base, err := s.search(o, over, bounds, start, true, score)
 	if err != nil {
 		return err
@@ -2852,7 +2852,9 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 			}
 		}
 		if sums[c].lines > 0 {
-			fmt.Fprintf(s.out, "%s: bars %.3f before, %.3f after\n", name, sums[c].bars(), after[c].bars())
+			l, b := sums[c].shares()
+			la, ba := after[c].shares()
+			fmt.Fprintf(s.out, "%s: bars %.3f before, %.3f after: downbeats on a line %.3f, %.3f, beats on a beat %.3f, %.3f\n", name, sums[c].bars(), after[c].bars(), l, la, b, ba)
 		}
 	}
 	return s.keepRip(file, params(best.Data), best.Score, base)
@@ -3080,10 +3082,11 @@ func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([
 
 // count rips the take under p and counts it against its truth: its notes by
 // pitch and onset, its hits within half a step as truth counts them, every hit
-// heard false where the truth knows the drums and gives none, and the downbeats
-// given that fall on a bar line of a bar the given's length (MatchBars)
+// heard false where the truth knows the drums and gives none, the downbeats
+// given that fall on a bar line of a bar the given's length and the beats given
+// that a beat of the rip's falls on (MatchBars)
 func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, error) {
-	missed := truthCount{notes: noteCount{given: t.given.notes.given}, drums: noteCount{given: t.given.drums.given}, lines: t.given.lines}
+	missed := truthCount{notes: noteCount{given: t.given.notes.given}, drums: noteCount{given: t.given.drums.given}, lines: t.given.lines, beats: t.given.beats}
 	if minutes := float64(len(t.x)) / audio.RipRate / 60; len(t.hits) > 0 {
 		missed.drummed = minutes
 	} else if t.drums {
@@ -3099,33 +3102,52 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 	}
 	ag, _ := matchHeard(r, given, t.timed)
 	c := truthCount{notes: everyNote(ag), lines: len(t.lines), drummed: missed.drummed, drumless: missed.drumless}
+	if c.lines > 0 && len(t.beats) > 1 {
+		c.beats = len(t.beats)
+	}
 	if t.drums {
 		for _, l := range audio.MatchHits(r.Hits(), t.hits, 30/float64(r.BPM)/audio.StepsPerBeat, t.timed).Drums {
 			c.drums = c.drums.plus(noteCount{l.Matched, l.B, l.A})
 		}
 	}
 	if c.lines > 0 {
-		c.onLine = audio.MatchBars(r, t.beats, t.lines).Downbeats * float64(c.lines)
+		b := audio.MatchBars(r, t.beats, t.lines)
+		c.onLine, c.onBeat = b.Downbeats*float64(c.lines), b.Beats*float64(c.beats)
 	}
 	return c, nil
 }
 
-// truthCount is a rip against a truth: its notes, its drum hits, and of the
-// downbeats the truth gives those on a bar line of the rip's; with the minutes
-// of the recordings whose truth gives hits and of those it knows play no drum
+// truthCount is a rip against a truth: its notes, its drum hits, of the
+// downbeats the truth gives those on a bar line of the rip's and of its beats
+// those a beat of the rip's falls on; with the minutes of the recordings whose
+// truth gives hits and of those it knows play no drum
 type truthCount struct {
 	notes, drums      noteCount
-	lines             int
-	onLine            float64
+	lines, beats      int
+	onLine, onBeat    float64
 	drummed, drumless float64
 }
 
 func (c truthCount) plus(o truthCount) truthCount {
-	return truthCount{c.notes.plus(o.notes), c.drums.plus(o.drums), c.lines + o.lines, c.onLine + o.onLine, c.drummed + o.drummed, c.drumless + o.drumless}
+	return truthCount{c.notes.plus(o.notes), c.drums.plus(o.drums), c.lines + o.lines, c.beats + o.beats, c.onLine + o.onLine, c.onBeat + o.onBeat, c.drummed + o.drummed, c.drumless + o.drumless}
 }
 
-// bars is the share of the downbeats given that fall on a bar line
-func (c truthCount) bars() float64 { return c.onLine / float64(max(c.lines, 1)) }
+// shares is the share of the downbeats given that fall on a bar line, and of the
+// beats given that a beat falls on
+func (c truthCount) shares() (lines, beats float64) {
+	return c.onLine / float64(max(c.lines, 1)), c.onBeat / float64(max(c.beats, 1))
+}
+
+// bars is the mean of the two shares, the lines' alone where no beat is given:
+// a bar of the given's length whose beats are not the given's, a 12/8 read over
+// its dotted quarters, has every line and a third of the beats
+func (c truthCount) bars() float64 {
+	lines, beats := c.shares()
+	if c.beats == 0 {
+		return lines
+	}
+	return (lines + beats) / 2
+}
 
 // hitRate is the hits a minute the truths give over the recordings with drums,
 // what a hit heard where none plays is weighed against: 0 when none gives any

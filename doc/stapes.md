@@ -208,12 +208,16 @@ Over the library's rip (library
   drawn near the current thresholds (`search`'s `near`). A truth gives notes,
   and may give
   drum hits (a `.mid`'s drum channel, a corpus label's) and bars (a label's
-  alone, its `beats` and `downbeats`, `corpusLoop.grid`; a transcription's
-  `.mid` holds its writer's default signature). Each
+  alone, its `beats` and `downbeats`, `corpusLoop.grid`, a recording's from
+  its list's beats, GuitarSet's its JAMS files' `beat_position`; a
+  transcription's `.mid` holds its writer's default signature). Each
   condition then carries up to three scores (`truthCount`, `scores`): its
   notes' F1 by pitch and onset, its drums' F1 (`MatchHits`, as `truth` counts
-  them) and its bars, the share of the downbeats given on a bar line of a rip
-  whose bar is the given's length (`MatchBars`). A truth knows the drums
+  them) and its bars, the mean of two shares (`MatchBars`): the downbeats
+  given on a bar line of a rip whose bar is the given's length, and the beats
+  given with a beat of the rip's on them, so a bar of the given's length over
+  beats not its own, a 12/8 read over its dotted quarters, scores two thirds.
+  A truth knows the drums
   (`truthTake.drums`) when it is a label, gives hits or its line says
   `drumless`: a hit heard that it does not give is heard and not given, so a
   recording without drums takes from its condition's F1. A condition that
@@ -226,8 +230,8 @@ Over the library's rip (library
   each is a share of one capability, none converts into another, and the
   guard holds each, so a set that takes more than `guard` from any one at the
   start scores under zero (`guarded`) and is never written. With hits
-  `onset_min` is searched too (`drumGenes`), with bars the tempo's prior and
-  combs, `tightness`, the bars' weights and the meter's margins (`barGenes`);
+  `onset_min` is searched too (`drumGenes`), with bars the tempo's prior,
+  combs, cuts, `tightness`, the bars' weights and the meter's margins (`barGenes`);
   and either search's best has each gene whose move the score does not see,
   put back alone, back at the start's (`settled`), since a pool moves genes by
   chance and a search through the analysis, a model without the heads or loops

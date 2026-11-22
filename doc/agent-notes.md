@@ -200,6 +200,11 @@ proves wrong or that a document now states, and link the document instead.
 
 ## The rip and its truths
 
+- **A test of what the heads decide writes them over the analysis's frames.**
+  The analysis carries no head and a test's small random model marks no beat,
+  so a rule the heads settle (a 12/8 read over its eighths or over its dotted
+  quarters) is tested through a front end that hears through the analysis and
+  writes `Beat` and `Downbeat` by hand (`builtHeads`).
 - **`live` keeps the offline rip, and its test compares that, not the
   stream.** `RipStream.Final` rips the samples the stream kept as float32,
   which a 16-bit WAV's are exactly (a 32-bit integer or 64-bit float one's

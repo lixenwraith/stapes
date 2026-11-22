@@ -1597,6 +1597,30 @@ marks; of the 80 it did not hear, five recordings at 98, four of them funk, read
 196, their eighths marked as high as their beats. A player no round heard and the round's held-out loops
 decide.
 
+Audio v0.38.0 sets `beat_cut_2` at 0.7 and reads twelve heard eighths beside 6/8. A bar
+of two of another reading's is read only where the downbeat head stands at its lines
+over the other's along the same stretch, a bar of three or more never. The same sets,
+before and after, a bar right where the bar read lasts the true bar within 3 percent:
+
+```
+                    tempo          bar                      tempo          bar
+group           n  before after  before after   group   n  before after  before after
+guitar trained 160    152   145     148   145   12/8   17     11    11       4    11
+guitar unheard  80     69    72      66    71   2/4    10      7     8       1     0
+guitar all     240    221   217     214   216   3/4    39     28    33      24    27
+                                                4/4   124     95    96      95   100
+                                                5/4    19     17    17       1     1
+                                                6/8    32     17    17      17    14
+                                                7/8    23     11    12       0     0
+                                                loops 264    186   194     142   153
+```
+
+The guitar moves by the cut alone: nine fast jazz recordings the head trained on, at
+187 and 200, and one it did not, at 150, read at half; six at 98 and 100, four of them
+unheard, are no longer doubled. Four 6/8 loops read 12/8, their head marking every other
+line over the rest, and three 4/4 loops read 12/8 at three halves of their tempo, a bar
+as long in seconds and not theirs.
+
 ## 12. The scores
 
 - **`truth <name> <file>`** finds a time map from the longest common subsequence of

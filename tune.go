@@ -53,6 +53,7 @@ type tuneOptions struct {
 	samples                        *sampleSet     // recorded notes some tonal parts play on; none when nil
 	guard                          float64        // the F1 a set tune truth tries may take from any condition's before it is refused
 	frames                         string         // where tune truth keeps each recording's frames between runs; "" hears them every run
+	hold                           float64        // the GB of its recordings' samples and frames tune truth holds between rips
 	weigh                          []string       // the readings tune truth weighs beside the F1s and the bars, by their words
 	heads                          []string       // the heads tune truth reads off each label in the models' place
 	genes                          []string       // the genes tune truth may move, by their keys in rip.toml; all it knows where nil
@@ -91,7 +92,7 @@ const (
 )
 
 func cmdTune(s *Session, a []string) error {
-	o := tuneOptions{loops: 12, bars: 4, generations: 8, pool: 16, seed: 1, guard: 0.01}
+	o := tuneOptions{loops: 12, bars: 4, generations: 8, pool: 16, seed: 1, guard: 0.01, hold: 2}
 	generations := func(w string) error {
 		n, err := strconv.Atoi(w)
 		if err != nil || n < 1 || n > 200 {
@@ -100,7 +101,7 @@ func cmdTune(s *Session, a []string) error {
 		o.generations = n
 		return nil
 	}
-	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list> [guard <x>] [frames <dir>] [weigh <reading,...>] [heads <head,...>] [genes <gene,...>]")
+	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list> [guard <x>] [frames <dir>] [hold <GB>] [weigh <reading,...>] [heads <head,...>] [genes <gene,...>]")
 	if i := slices.Index(a, "truth"); i >= 0 {
 		if i > 2 || i+1 >= len(a) {
 			return usage
@@ -115,6 +116,12 @@ func cmdTune(s *Session, a []string) error {
 				o.guard, w = g, w[2:]
 			case len(w) > 1 && w[0] == "frames":
 				o.frames, w = s.path(w[1]), w[2:]
+			case len(w) > 1 && w[0] == "hold":
+				g, err := strconv.ParseFloat(w[1], 64)
+				if err != nil || !(g >= 0 && g <= 1024) {
+					return fmt.Errorf("hold %q: want 0 to 1024, the GB a search holds of its recordings between rips", w[1])
+				}
+				o.hold, w = g, w[2:]
 			case len(w) > 1 && w[0] == "weigh":
 				for _, r := range strings.Split(w[1], ",") {
 					if !slices.Contains(readingWords(), r) {
@@ -2962,30 +2969,41 @@ func parseGenes(w string) ([]string, error) {
 }
 
 // tuneTruth searches the decoders' parameters against the recordings a list
-// names, each heard once through fe or read back from o.frames: modelGenes,
-// drumGenes where a truth gives hits and barGenes where one gives bars, of them
-// those o.genes names where it names any, the rest held at the session's. A set
-// scores the mean of every score its conditions carry (scores), refused past o.guard.
+// names, each heard once through fe or read back from o.frames, what a rip reads
+// of it held up to o.hold GB and the rest read again: modelGenes, drumGenes where
+// a truth gives hits and barGenes where one gives bars, of them those o.genes
+// names, the rest held. A set scores the mean of its conditions' scores (scores).
 func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontEnd) error {
 	takes, conds, err := readTruthList(list, fe, o.frames, s.earSum)
 	if err != nil {
 		return err
 	}
-	// the current parameters' rips hear every recording and read every transcript
+	// the current parameters' rips hear every recording and read every
+	// transcript, a take at a time, each held after while o.hold has room
 	cur, sums, read := s.rip, make([]truthCount, len(conds)), 0
 	kept, unlabelled := map[string]int{}, 0
+	var sec, inHand float64       // the list's seconds of sound, and those held
+	var held int                  // the bytes held
+	var letGo, planes, heard bool // of the takes let go: any, one with its label's heads, one its ear heard
 	for _, t := range takes {
 		t.judge = s.judge
 		t.read(o.heads)
+		snd, err := t.sound()
+		if err != nil {
+			return err
+		}
 		switch {
-		case o.heads != nil && t.heads == nil:
+		case o.heads != nil && snd.heads == nil:
 			unlabelled++
-		case t.heads != nil:
-			for _, h := range t.heads.kept {
+		case snd.heads != nil:
+			for _, h := range snd.heads.kept {
 				kept[h]++
 			}
 		}
-		c, err := t.count(cur, s.lead)
+		c, err := t.count(snd, cur, s.lead)
+		if kerr := snd.ear.keep(); err == nil {
+			err = kerr
+		}
 		if err != nil {
 			return err
 		}
@@ -2993,8 +3011,15 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 			return fmt.Errorf("%s: no notes, hits or bars given", t.truthFile)
 		}
 		t.given, sums[t.cond] = c, sums[t.cond].plus(c)
-		if t.ear.read {
+		if snd.ear.read {
 			read++
+		}
+		d := float64(len(snd.x)) / audio.RipRate
+		sec += d
+		if b := snd.bytes(); held+b <= int(o.hold*1e9) {
+			t.held, held, inHand = snd, held+b, inHand+d
+		} else {
+			letGo, planes, heard = true, planes || snd.heads != nil, heard || snd.ear.f != nil
 		}
 	}
 	var all truthCount
@@ -3049,6 +3074,20 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	if o.frames != "" {
 		fmt.Fprintf(s.out, "%d recording(s) heard and their frames kept in %s, %d read back from it\n", len(takes)-read, o.frames, read)
 	}
+	rest := "all held"
+	if letGo {
+		rest = "the rest read again as each is ripped from its recording"
+		if planes {
+			rest += ", its label's heads built again"
+		}
+		switch {
+		case heard && o.frames != "":
+			rest += ", its frames read back from " + o.frames
+		case heard:
+			rest += ", its frames heard again"
+		}
+	}
+	fmt.Fprintf(s.out, "%.0f s of sound in %d recording(s), %.0f s of it held between rips in %.2f GB of hold's %g; %s\n", sec, len(takes), inHand, float64(held)/1e9, o.hold, rest)
 	if len(kept) > 0 {
 		fmt.Fprintf(s.out, "the front end's heads kept where a take's label states none, by head: %s\n", countWords(kept))
 	}
@@ -3066,8 +3105,19 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	}
 	fmt.Fprintf(s.out, "the genes free: %s; the rest held at the current parameters\n", strings.Join(free, ", "))
 	before := scores(sums, sums, o.weigh)
+	// a take let go that cannot be read again refuses every set after it and
+	// ends the search, which writes nothing
+	var mu sync.Mutex
+	var lost error
 	score := func(data []float64) float64 {
-		return guarded(scores(conditionCounts(takes, len(conds), params(data), s.lead), sums, o.weigh), before, o.guard)
+		counts, err := conditionCounts(takes, len(conds), params(data), s.lead)
+		if err != nil {
+			mu.Lock()
+			lost = cmp.Or(lost, err)
+			mu.Unlock()
+			return math.Inf(-1)
+		}
+		return guarded(scores(counts, sums, o.weigh), before, o.guard)
 	}
 	over := fmt.Sprintf("%d recording(s) of %d condition(s) against %d note(s), %d hit(s), %d bar line(s) and %d beat(s) given, a set refused that takes over %g from a score",
 		len(takes), len(conds), all.notes.given, all.drums.given, all.lines, all.beats, o.guard)
@@ -3075,12 +3125,14 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 		over += ", weighing its " + strings.Join(o.weigh, ", ")
 	}
 	best, base, err := s.search(o, over, bounds, start, true, score)
-	if err != nil {
+	if err = cmp.Or(err, lost); err != nil {
 		return err
 	}
 	after := sums
 	if best.Score > base {
-		after = conditionCounts(takes, len(conds), params(best.Data), s.lead)
+		if after, err = conditionCounts(takes, len(conds), params(best.Data), s.lead); err != nil {
+			return err
+		}
 	}
 	rate := all.hitRate()
 	for c, name := range conds {
@@ -3158,9 +3210,9 @@ func guarded(got, start []float64, guard float64) float64 {
 	return sum / float64(len(got))
 }
 
-// heardOnce hears one recording once, or reads the frames a run before kept in
-// file: valid while the front end it wraps ignores the parameters, as the model
-// does, so a search over the decoders pays them alone
+// heardOnce hears one recording once, or reads the frames kept in file: valid
+// while the front end it wraps ignores the parameters, as the model does, so a
+// search over the decoders pays them alone
 type heardOnce struct {
 	fe   audio.RipFrontEnd
 	file string // where the frames are kept between runs, "" for nowhere
@@ -3174,11 +3226,20 @@ func (h *heardOnce) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFr
 	h.once.Do(func() {
 		if h.f = readFrames(h.file); h.f != nil {
 			h.read = true
-		} else if h.f, h.err = (audio.Ripper{Params: p, FrontEnd: h.fe}).Hear(x, rate); h.err == nil && h.file != "" {
-			h.err = writeFrames(h.file, h.f)
+		} else {
+			h.f, h.err = (audio.Ripper{Params: p, FrontEnd: h.fe}).Hear(x, rate)
 		}
 	})
 	return h.f, h.err
+}
+
+// keep writes what h heard to its file, where it has one and the frames did
+// not come from it: a take's first rip keeps them, one read again never writes
+func (h *heardOnce) keep() error {
+	if h.file == "" || h.read || h.f == nil {
+		return nil
+	}
+	return writeFrames(h.file, h.f)
 }
 
 // readFrames is the frames a file keeps, nil when it holds none whole
@@ -3220,13 +3281,15 @@ func writeFrames(file string, fr *audio.RipFrames) error {
 	return os.Rename(tmp.Name(), file)
 }
 
-// truthTake is a recording a truth list names, kept at the rate the rip reads it
-// at, so no candidate resamples it, its condition, and its truth: a MIDI file's
-// notes, or a transcript read against each rip as truth reads it
+// truthTake is a recording a truth list names, its condition, and its truth: a
+// MIDI file's notes, or a transcript read against each rip as truth reads it;
+// what a rip of it reads is held between rips or read again for each (sound)
 type truthTake struct {
 	wav, truthFile string
-	x              []float64
-	ear            *heardOnce
+	path, file     string            // its recording, and where its frames are kept, "" for nowhere
+	fe             audio.RipFrontEnd // what hears it
+	held           *takeSound        // what a rip of it reads, nil where each rip reads it again
+	named          []string          // the heads its label stands in for, nil for its ear alone
 	truth          func(*audio.Rip) ([]audio.RipNote, error)
 	hits           []audio.RipHit  // the drum hits its truth gives, nil for none
 	drums          bool            // its truth knows the drums, so a hit heard that it does not give is false
@@ -3237,22 +3300,84 @@ type truthTake struct {
 	judge          *audio.RipJudge // what rules its rip's strikes, nil for the installed scores
 	said           *labelSaid      // a label's key and chords, nil for a truth that is no label
 	lab            *corpusLoop     // its truth as a label, nil for none
-	heads          *labelHeads     // its ear with the heads its label stands in for, nil for the ear alone
+}
+
+// takeSound is what a rip of a take reads: its samples at the rip's rate, so no
+// candidate resamples them, its ear, and its ear with the heads its label stands
+// in for, nil for none
+type takeSound struct {
+	x     []float64
+	ear   *heardOnce
+	heads *labelHeads
 }
 
 // front is what a take is ripped through: its ear, with the heads its label
 // stands in for where it has them
-func (t *truthTake) front() audio.RipFrontEnd {
-	if t.heads == nil {
-		return t.ear
+func (s *takeSound) front() audio.RipFrontEnd {
+	if s.heads == nil {
+		return s.ear
 	}
-	return t.heads
+	return s.heads
+}
+
+// bytes is what holding s costs: its samples, the frames its ear heard and its
+// label's planes, each slice by its capacity
+func (s *takeSound) bytes() int {
+	n := weight(reflect.ValueOf(s.x)) + weight(reflect.ValueOf(s.ear.f))
+	if s.heads != nil {
+		n += weight(reflect.ValueOf(s.heads.l))
+	}
+	return n
+}
+
+// weight is the bytes v's slices hold, through its pointers, structs and arrays
+func weight(v reflect.Value) int {
+	n := 0
+	switch v.Kind() {
+	case reflect.Pointer:
+		if !v.IsNil() {
+			n = weight(v.Elem())
+		}
+	case reflect.Struct:
+		for i := range v.NumField() {
+			n += weight(v.Field(i))
+		}
+	case reflect.Array:
+		for i := range v.Len() {
+			n += weight(v.Index(i))
+		}
+	case reflect.Slice:
+		n = v.Cap() * int(v.Type().Elem().Size())
+	}
+	return n
+}
+
+// sound is what a rip of t reads: the one it holds, or else its recording read
+// and resampled again, its frames read back from file or heard again and its
+// label's planes built again, the same to the bit
+func (t *truthTake) sound() (*takeSound, error) {
+	if t.held != nil {
+		return t.held, nil
+	}
+	recording, err := os.ReadFile(t.path)
+	if err != nil {
+		return nil, err
+	}
+	x, rate, err := audio.ReadWAV(bytes.NewReader(recording))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", t.wav, err)
+	}
+	s := &takeSound{x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: t.fe, file: t.file}}
+	if t.named != nil {
+		s.heads = newLabelHeads(s.ear, t.lab, t.named)
+	}
+	return s, nil
 }
 
 // read has the take ripped with heads its label's, where its truth is a label
 func (t *truthTake) read(heads []string) {
-	if t.heads = nil; heads != nil && t.lab != nil {
-		t.heads = newLabelHeads(t.ear, t.lab, heads)
+	if t.named = nil; heads != nil && t.lab != nil {
+		t.named = heads
 	}
 }
 
@@ -3308,21 +3433,17 @@ func readTruthLines(list string) ([]truthLine, error) {
 	return lines, nil
 }
 
-// take is a line's recording, its bytes and their checksum given, at the rate
-// the rip reads it at, and its truth; with frames, its frames are kept there
-// under the checksums of its file and of the weight files
-func (l truthLine) take(recording []byte, sum [sha256.Size]byte, fe audio.RipFrontEnd, frames, weights string) (*truthTake, error) {
-	x, rate, err := audio.ReadWAV(bytes.NewReader(recording))
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", l.wav, err)
-	}
+// take is a line's recording, heard through fe, and its truth, its recording's
+// checksum given; with frames, its frames are kept there under the checksums of
+// its file and of the weight files
+func (l truthLine) take(sum [sha256.Size]byte, fe audio.RipFrontEnd, frames, weights string) (*truthTake, error) {
 	given, err := os.ReadFile(l.at(l.truth))
 	if err != nil {
 		return nil, err
 	}
-	t := &truthTake{wav: l.wav, truthFile: l.truth, x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: fe}, timed: l.timed, drums: l.drumless}
+	t := &truthTake{wav: l.wav, truthFile: l.truth, path: l.at(l.wav), fe: fe, timed: l.timed, drums: l.drumless}
 	if frames != "" {
-		t.ear.file = filepath.Join(frames, fmt.Sprintf("%x-%.16s.frames", sum[:8], weights))
+		t.file = filepath.Join(frames, fmt.Sprintf("%x-%.16s.frames", sum[:8], weights))
 	}
 	switch {
 	case strings.EqualFold(filepath.Ext(l.truth), ".json"): // a corpus loop's label
@@ -3352,8 +3473,9 @@ func (l truthLine) take(recording []byte, sum [sha256.Size]byte, fe audio.RipFro
 	return t, nil
 }
 
-// readTruthList reads a truth list's recordings and the conditions in the list's
-// order; with frames, each recording's are kept there
+// readTruthList reads a truth list's takes, each recording read for its checksum
+// alone, and the conditions in the list's order; with frames, each recording's
+// are kept there
 func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([]*truthTake, []string, error) {
 	lines, err := readTruthLines(list)
 	if err != nil {
@@ -3371,7 +3493,7 @@ func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([
 		if err != nil {
 			return nil, nil, err
 		}
-		t, err := l.take(recording, sha256.Sum256(recording), fe, frames, weights)
+		t, err := l.take(sha256.Sum256(recording), fe, frames, weights)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -3383,22 +3505,22 @@ func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([
 	return takes, conds, nil
 }
 
-// count rips the take under p and counts it against its truth: its notes by
-// pitch and onset, its hits within half a step as truth counts them, every hit
-// heard false where the truth knows the drums and gives none, the downbeats
-// given that fall on a bar line of a bar the given's length and the beats given
-// that a beat of the rip's falls on (MatchBars)
-func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, error) {
+// count rips the take's sound under p and counts it against its truth: its
+// notes by pitch and onset, its hits within half a step as truth counts them,
+// every hit heard false where the truth knows the drums and gives none, the
+// downbeats given that fall on a bar line of a bar the given's length and the
+// beats given that a beat of the rip's falls on (MatchBars)
+func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule) (truthCount, error) {
 	missed := truthCount{notes: noteCount{given: t.given.notes.given}, drums: noteCount{given: t.given.drums.given}, lines: t.given.lines, beats: t.given.beats}
 	if t.said != nil { // a rip that fails names no key and no chord
 		missed.stated, missed.keys.given, missed.chords = t.said.stated, t.said.stated.keys, audio.MatchChords(&audio.Rip{}, t.said.chords)
 	}
-	if minutes := float64(len(t.x)) / audio.RipRate / 60; len(t.hits) > 0 {
+	if minutes := float64(len(snd.x)) / audio.RipRate / 60; len(t.hits) > 0 {
 		missed.drummed = minutes
 	} else if t.drums {
 		missed.drumless = minutes
 	}
-	r, err := audio.Ripper{Params: p, FrontEnd: t.front(), Lead: lead, Judge: t.judge, Stages: true}.Samples(t.x, audio.RipRate)
+	r, err := audio.Ripper{Params: p, FrontEnd: snd.front(), Lead: lead, Judge: t.judge, Stages: true}.Samples(snd.x, audio.RipRate)
 	if err != nil {
 		return missed, fmt.Errorf("%s: %w", t.wav, err)
 	}
@@ -3599,12 +3721,17 @@ func (c noteCount) plus(o noteCount) noteCount {
 func (c noteCount) f1() float64 { return 2 * float64(c.hits) / float64(max(c.given+c.heard, 1)) }
 
 // conditionCounts is each of n conditions' count under p, its recordings' as
-// one; a rip that fails hears none of what its truth gives
-func conditionCounts(takes []*truthTake, n int, p audio.RipParams, lead audio.LeadRule) []truthCount {
+// one, a take at a time: a rip that fails hears none of what its truth gives,
+// and a take let go that cannot be read again is the count's error
+func conditionCounts(takes []*truthTake, n int, p audio.RipParams, lead audio.LeadRule) ([]truthCount, error) {
 	sums := make([]truthCount, n)
 	for _, t := range takes {
-		c, _ := t.count(p, lead)
+		snd, err := t.sound()
+		if err != nil {
+			return nil, err
+		}
+		c, _ := t.count(snd, p, lead)
 		sums[t.cond] = sums[t.cond].plus(c)
 	}
-	return sums
+	return sums, nil
 }

@@ -408,7 +408,7 @@ func (s *Session) hear(file string, tempo int, meter *audio.Meter) (*ripped, err
 	if err != nil {
 		return nil, err
 	}
-	return &ripped{rip: r, x: x, rate: rate, file: file}, nil
+	return &ripped{rip: r, x: x, rate: rate, file: file, by: ripper}, nil
 }
 
 // The block live feeds a stream when none is named, a device's period, and the
@@ -509,7 +509,7 @@ func cmdLive(s *Session, a []string) error {
 		return err
 	}
 	offlineCPU := cpuTime() - cpu
-	if err := s.takeRip(a[0], name, &ripped{rip: final, x: x, rate: rate, file: a[0]}, audio.MaxPatternLen/audio.StepsPerBar, false); err != nil {
+	if err := s.takeRip(a[0], name, &ripped{rip: final, x: x, rate: rate, file: a[0], by: s.ripper()}, audio.MaxPatternLen/audio.StepsPerBar, false); err != nil {
 		return err
 	}
 	paced := ""

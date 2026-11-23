@@ -10,6 +10,7 @@
 162 TestLiveKeepsTheRipRipMakes
 152 TestRipFitsVoicesAndCompressesToASong
 137 TestFitsGivenFitsEachVoiceOnItsOwnNotes
+98 TestTuneTruthsBarsCountTheBeats
 94 TestEveryPieceOfADrawnKitPlays
 87 TestALoopsLevelIsDrawnWhateverItsParts
 84 TestARedrawnNoteIsAsLoudAsItsVelocitySays

@@ -54,6 +54,7 @@ type tuneOptions struct {
 	guard                          float64        // the F1 a set tune truth tries may take from any condition's before it is refused
 	frames                         string         // where tune truth keeps each recording's frames between runs; "" hears them every run
 	weigh                          []string       // the readings tune truth weighs beside the F1s and the bars, by their words
+	heads                          bool           // tune truth reads each label's beats and bar lines in place of the beat and downbeat heads
 }
 
 // tuneLoop is one loop, rendered unless an export writes labels alone: what
@@ -98,21 +99,21 @@ func cmdTune(s *Session, a []string) error {
 		o.generations = n
 		return nil
 	}
-	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list> [guard <x>] [frames <dir>] [weigh <reading,...>]")
+	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list> [guard <x>] [frames <dir>] [weigh <reading,...>] [heads]")
 	if i := slices.Index(a, "truth"); i >= 0 {
 		if i > 2 || i+1 >= len(a) {
 			return usage
 		}
-		for w := a[i+2:]; len(w) > 0; w = w[2:] {
+		for w := a[i+2:]; len(w) > 0; {
 			switch {
 			case len(w) > 1 && w[0] == "guard":
 				g, err := strconv.ParseFloat(w[1], 64)
 				if err != nil || !(g >= 0 && g <= 1) {
 					return fmt.Errorf("guard %q: want 0 to 1, the F1 a set may take from a condition", w[1])
 				}
-				o.guard = g
+				o.guard, w = g, w[2:]
 			case len(w) > 1 && w[0] == "frames":
-				o.frames = s.path(w[1])
+				o.frames, w = s.path(w[1]), w[2:]
 			case len(w) > 1 && w[0] == "weigh":
 				for _, r := range strings.Split(w[1], ",") {
 					if !slices.Contains(readingWords(), r) {
@@ -120,6 +121,9 @@ func cmdTune(s *Session, a []string) error {
 					}
 					o.weigh = append(o.weigh, r)
 				}
+				w = w[2:]
+			case w[0] == "heads":
+				o.heads, w = true, w[1:]
 			default:
 				return usage
 			}
@@ -136,10 +140,14 @@ func cmdTune(s *Session, a []string) error {
 				return err
 			}
 		}
-		if s.frontEnd == nil {
+		var fe audio.RipFrontEnd // the analysis, where the labels stand in for the heads
+		switch {
+		case s.frontEnd != nil:
+			fe = s.frontEnd
+		case !o.heads:
 			return fmt.Errorf("tune truth tunes the models' decoders, and no %s is loaded", frameFile)
 		}
-		return s.tuneTruth(o, s.path(a[i+1]), "", s.frontEnd)
+		return s.tuneTruth(o, s.path(a[i+1]), "", fe)
 	}
 	if len(a) > 2 {
 		return usage
@@ -2803,7 +2811,7 @@ var modelGenes = []func(*audio.RipParams) *float64{
 // drumGenes is what tune truth searches beside them when a truth gives drum
 // hits, the bar a hit rises to against its drum's loudest; barGenes when one
 // gives bars: the tempo's prior, combs and cuts, the beats' tightness, the bar
-// lines' weights and the meter's margins
+// lines' weights and the meter's margins, and the joint path's costs and levels
 var drumGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.OnsetMin },
 }
@@ -2828,6 +2836,10 @@ var barGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.RepeatMargin },
 	func(p *audio.RipParams) *float64 { return &p.NearMargin },
 	func(p *audio.RipParams) *float64 { return &p.NearRepeat },
+	func(p *audio.RipParams) *float64 { return &p.JointMove },
+	func(p *audio.RipParams) *float64 { return &p.JointBeat },
+	func(p *audio.RipParams) *float64 { return &p.JointLine },
+	func(p *audio.RipParams) *float64 { return &p.JointMargin },
 }
 
 // geneOf is where a parameter stands in Genes' order, which names none
@@ -2850,7 +2862,7 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	// the current parameters' rips hear every recording and read every transcript
 	cur, sums, read := s.rip, make([]truthCount, len(conds)), 0
 	for _, t := range takes {
-		t.judge = s.judge
+		t.judge, t.heads = s.judge, o.heads
 		c, err := t.count(cur, s.lead)
 		if err != nil {
 			return err
@@ -2972,11 +2984,46 @@ func (h *heardOnce) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFr
 	h.once.Do(func() {
 		if h.f = readFrames(h.file); h.f != nil {
 			h.read = true
-		} else if h.f, h.err = h.fe.Hear(x, rate, p); h.err == nil && h.file != "" {
+		} else if h.f, h.err = (audio.Ripper{Params: p, FrontEnd: h.fe}).Hear(x, rate); h.err == nil && h.file != "" {
 			h.err = writeFrames(h.file, h.f)
 		}
 	})
 	return h.f, h.err
+}
+
+// labelHeads hears through fe, the analysis where nil, with the beat and
+// downbeat heads a label's beats and bar lines, in frames, each marked on its
+// frame and a frame either side as the trainer's targets mark them: a decoder
+// read apart from the model that feeds it
+type labelHeads struct {
+	fe           audio.RipFrontEnd
+	beats, lines []int
+}
+
+func (h labelHeads) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFrames, error) {
+	f, err := audio.Ripper{Params: p, FrontEnd: h.fe}.Hear(x, rate)
+	if err != nil {
+		return nil, err
+	}
+	g := *f // the frames a heardOnce keeps stay its front end's
+	g.Beat, g.Downbeat = make([]float64, len(g.Flux)), make([]float64, len(g.Flux))
+	for head, marks := range map[*[]float64][]int{&g.Beat: h.beats, &g.Downbeat: h.lines} {
+		for _, at := range marks {
+			for k := max(at-1, 0); k <= at+1 && k < len(*head); k++ {
+				(*head)[k] = 1
+			}
+		}
+	}
+	return &g, nil
+}
+
+// frames is each of seconds on the rip's frame grid
+func frames(seconds []float64) []int {
+	out := make([]int, len(seconds))
+	for i, sec := range seconds {
+		out[i] = int(math.Round(sec / audio.RipFrameSec))
+	}
+	return out
 }
 
 // readFrames is the frames a file keeps, nil when it holds none whole
@@ -3034,6 +3081,16 @@ type truthTake struct {
 	timed          bool            // the truth's seconds are the recording's
 	judge          *audio.RipJudge // what rules its rip's strikes, nil for the installed scores
 	said           *labelSaid      // a label's key and chords, nil for a truth that is no label
+	heads          bool            // its label's beats and bar lines stand in for the heads, where it gives them
+}
+
+// front is what a take is ripped through: its ear, its label's beats and bar
+// lines its heads where it asks it and the label gives them
+func (t *truthTake) front() audio.RipFrontEnd {
+	if !t.heads || len(t.lines) == 0 {
+		return t.ear
+	}
+	return labelHeads{fe: t.ear, beats: frames(t.beats), lines: frames(t.lines)}
 }
 
 // truthLine is a truth list's line: a recording and its truth, relative paths
@@ -3178,7 +3235,7 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 	} else if t.drums {
 		missed.drumless = minutes
 	}
-	r, err := audio.Ripper{Params: p, FrontEnd: t.ear, Lead: lead, Judge: t.judge}.Samples(t.x, audio.RipRate)
+	r, err := audio.Ripper{Params: p, FrontEnd: t.front(), Lead: lead, Judge: t.judge}.Samples(t.x, audio.RipRate)
 	if err != nil {
 		return missed, fmt.Errorf("%s: %w", t.wav, err)
 	}

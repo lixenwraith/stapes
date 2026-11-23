@@ -184,7 +184,11 @@ Over the library's rip (library
   theirs (`corpusLoop.notes`), its key where its root is over MIDI 0, as no
   recording's or overlap's is, and its chords each to the next one's frame, the
   last to the loop's end (`corpusLoop.said`); a velocity of -1 and a note in no
-  part give none, and a last line names what the label gives none of. `notes`
+  part give none, and a last line names what the label gives none of. `heads`
+  reads a decoder apart from the model that feeds it: the recording is ripped
+  again as it was (`ripped.by`), the label's beats and bar lines in the beat
+  and downbeat heads' place, each a frame either side at one as the trainer's
+  targets are (`labelHeads`), and that rip is scored. `notes`
   lists a transcript, each note's brightness with the unmeasured counted, and
   `notes <name> <file.mid>` writes one (`WriteMIDI`) to correct in a sequencer.
   `corpus <dir> from` labels a file's other drum strikes (`MIDIScore.Struck`)
@@ -263,14 +267,17 @@ Over the library's rip (library
   and the loudness, and `strike_low`, `voicing` and `start` moved onsets within
   the window and the loudness: those F1 sees elsewhere, as notes come and go.
   With hits `onset_min` is searched too (`drumGenes`), with bars the tempo's
-  prior, combs, cuts, `tightness`, the bars' weights and the meter's margins
-  (`barGenes`);
+  prior, combs, cuts, `tightness`, the bars' weights, the meter's margins and
+  the joint path's costs and levels (`barGenes`); `heads` rips each recording
+  whose truth is a label with its beats and bar lines as the heads, as
+  `truth`'s does (`truthTake.front`), through the analysis where no model is
+  loaded;
   and either search's best has each gene whose move the score does not see,
   put back alone, back at the start's (`settled`), since a pool moves genes by
   chance and a search through the analysis, a model without the heads or loops
-  under six bars sees only some of them. The front end's `Hear` ignores `RipParams`, so
-  each recording is heard once (`heardOnce`) and a candidate pays the decoders
-  alone; `frames <dir>` keeps what was heard between runs, a gob of the
+  under six bars sees only some of them. The front end's `Hear` ignores the
+  parameters searched, so each recording is heard once (`heardOnce`) and a
+  candidate pays the decoders alone; `frames <dir>` keeps what was heard between runs, a gob of the
   `RipFrames` named by the checksums of the recording and of the weight files
   (`Session.earSum`).
 - `compress` gives a first bar that starts partway the beat of the bar most

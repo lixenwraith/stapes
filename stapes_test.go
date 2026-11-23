@@ -2552,7 +2552,9 @@ func (h builtHeads) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFr
 // eighths and lines, heard with every twelfth eighth marked a line, read 12/8 and
 // score in full where the beat head marks the eighths; where it marks the dotted
 // quarters alone they read 4/4 over them, every line on a downbeat of a bar the
-// label's length, and score the beats a third
+// label's length, and score the beats a third. The label's own beats and bar
+// lines read in the heads' place over the analysis read 12/8 in full too, by
+// truth and by tune truth with no model, where the analysis alone does not.
 func TestTuneTruthsBarsCountTheBeats(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
@@ -2618,6 +2620,25 @@ func TestTuneTruthsBarsCountTheBeats(t *testing.T) {
 		l, b := n.shares()
 		if err != nil || r.Meter != c.want || l != 1 || math.Abs(b-c.beats) > 0.05 || n.bars() != (l+b)/2 {
 			t.Errorf("a beat head on %s: %s at %d, downbeats on a line %.3f, beats on a beat %.3f, bars %.3f (%v); want %s, every line, %.2f of the beats", c.name, r.Meter, r.BPM, l, b, n.bars(), err, c.want, c.beats)
+		}
+	}
+	takes, _, err := readTruthList(list, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, heads := range []bool{false, true} {
+		takes[0].heads = heads
+		r, err := audio.Ripper{Params: s.rip, FrontEnd: takes[0].front(), Lead: s.lead}.Samples(takes[0].x, audio.RipRate)
+		n, cerr := takes[0].count(s.rip, s.lead)
+		if full := err == nil && cerr == nil && r.Meter == twelve && n.bars() == 1; full != heads {
+			t.Errorf("the analysis with the label's heads %v: %s, bars %.3f (%v, %v); want 12/8 in full only with them", heads, r.Meter, n.bars(), err, cerr)
+		}
+	}
+	runOrFatal(t, s, &out, fmt.Sprintf("rip %s loop\n! truth loop %s heads\ntruth loop %s timed heads\ntune 2 1 truth %s heads\n",
+		filepath.Join(dir, "loop.wav"), filepath.Join(dir, "loop.wav"), filepath.Join(dir, "loop.json"), list))
+	for _, want := range []string{"ripped again with the label's 49 beat(s) and 5 bar line(s) as its heads: 96 bpm 12/8", "1.00 of 5 downbeat(s) given on a bar line", "loop: bars 1.000 before"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("no %q in what truth and tune truth say with the label's heads:\n%s", want, out.String())
 		}
 	}
 }

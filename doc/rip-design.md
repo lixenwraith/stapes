@@ -90,7 +90,8 @@ flowchart TD
      dynamic programming over the onsets, the bar lines by a path over the
      pulses scored on the cues (the kick, the snare on the backbeats, the key's
      root in the bass, the chroma's change), the meter a choice among readings
-     of the pulses, a pickup bar where sound leads into the first. Where the
+     of the pulses, a pickup bar where sound leads into the first, what the
+     recording starts with on its nearest step, stated at the start. Where the
      frames carry the beat and the downbeat head, they are read by their level
      as a plain tracker reads them: the tempo is how the beat head repeats,
      under the same prior, cut to the finest beat it marks, its halves or

@@ -3,6 +3,7 @@
 # It only balances the jobs: a test not named here weighs a second and runs
 # all the same. doc/agent-notes.md says how it is measured.
 384 TestAHitThatDrawsNoSoundIsToldByItsRise
+300 TestTheBandsArePlacedInTheRunsThatKeepTheMostStrikesApart
 269 TestAJudgeBesideTheModelRulesItsRips
 212 TestARecordedKitsHitsAreMovedOntoTheirSound
 207 TestAKitOfFourOrFewerSoundsTheSameInOnePassAsInSeveral
@@ -10,6 +11,7 @@
 162 TestLiveKeepsTheRipRipMakes
 152 TestRipFitsVoicesAndCompressesToASong
 137 TestFitsGivenFitsEachVoiceOnItsOwnNotes
+128 TestARecordedKitsStrikesAreItsPiecesByTheirKeys
 98 TestTuneTruthsBarsCountTheBeats
 94 TestEveryPieceOfADrawnKitPlays
 87 TestALoopsLevelIsDrawnWhateverItsParts

@@ -29,9 +29,15 @@ VOICE_GENES = 32
 FAMILIES = ("piano", "guitar", "voice", "bass", "strings", "winds", "synth", "drums", "unknown")  # RipFamilies, in its order
 NAMES = len(FAMILIES) - 1  # the families a note may be named: unknown is the absence of a name, the last
 
-# the frame model's heads, each added after the last; struck says that something was struck, of no line or pitch
+# what is struck at each place: stapes' kitPlaces even runs of the bands from the lowest, and a struck sound's genes
+# (lixenwraith/audio's StruckGeneCount), a corpus manifest's places and struck_genes
+PLACES, STRUCK_GENES = 3, 13
+
+# the frame model's heads, each added after the last; struck says that something was struck, of no line or pitch, and the
+# three after it what is struck at each place: something, its genes and then the log of the error stated for each, how hard
 HEADS = [("onset", 1), ("drums", DRUMS), ("pitch", PITCHES), ("voicing", 1), ("wave", WAVES), ("voice", VOICE_GENES), ("strike", PITCHES),
-         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1), ("struck", 1)]
+         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1), ("struck", 1),
+         ("places", PLACES), ("genes", 2 * PLACES * STRUCK_GENES), ("loudness", PLACES)]
 
 
 def refused(what: str, layout) -> str:

@@ -505,6 +505,21 @@ Left open by what landed:
   `velocity` cell is empty: E-GMD's says `none`, so its lines say no loudness until the
   lab sets it ([Rip training §3](rip-training.md#a-recordings-velocities)).
 
+### Read each head off the label on trained weights
+
+- Priority: P1
+- Affected files: none: readings
+
+`heads <head>` reads one head off the label and the rest through the loaded pair
+([Rip training §11](rip-training.md#the-decoder-alone)), where `heads all` reads
+the decoders alone. Left: on the installed pair, one head at a time, on
+generated loops at a seed no round drew and on the recorded sets' held-out
+lists, each beside the pair alone and `heads all`, by its readings and the
+stages `tune ... truth` prints: `strike` first, which holds the notes' F1 the
+decoders give, then `pitch` for the ends, the key and the chords, `start` and
+`cents` on singing, `release` for the ends; `velocity` waits on `dynamics`
+([audio's todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#keep-what-perfect-heads-say)).
+
 ### Train both models again
 
 - Priority: P1

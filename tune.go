@@ -54,7 +54,7 @@ type tuneOptions struct {
 	guard                          float64        // the F1 a set tune truth tries may take from any condition's before it is refused
 	frames                         string         // where tune truth keeps each recording's frames between runs; "" hears them every run
 	weigh                          []string       // the readings tune truth weighs beside the F1s and the bars, by their words
-	heads                          bool           // tune truth reads each label's beats and bar lines in place of the beat and downbeat heads
+	heads                          []string       // the heads tune truth reads off each label in the models' place
 }
 
 // tuneLoop is one loop, rendered unless an export writes labels alone: what
@@ -99,7 +99,7 @@ func cmdTune(s *Session, a []string) error {
 		o.generations = n
 		return nil
 	}
-	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list> [guard <x>] [frames <dir>] [weigh <reading,...>] [heads]")
+	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list> [guard <x>] [frames <dir>] [weigh <reading,...>] [heads <head,...>]")
 	if i := slices.Index(a, "truth"); i >= 0 {
 		if i > 2 || i+1 >= len(a) {
 			return usage
@@ -122,8 +122,12 @@ func cmdTune(s *Session, a []string) error {
 					o.weigh = append(o.weigh, r)
 				}
 				w = w[2:]
-			case w[0] == "heads":
-				o.heads, w = true, w[1:]
+			case len(w) > 1 && w[0] == "heads":
+				h, err := parseHeads(w[1])
+				if err != nil {
+					return err
+				}
+				o.heads, w = h, w[2:]
 			default:
 				return usage
 			}
@@ -144,7 +148,7 @@ func cmdTune(s *Session, a []string) error {
 		switch {
 		case s.frontEnd != nil:
 			fe = s.frontEnd
-		case !o.heads:
+		case o.heads == nil:
 			return fmt.Errorf("tune truth tunes the models' decoders, and no %s is loaded", frameFile)
 		}
 		return s.tuneTruth(o, s.path(a[i+1]), "", fe)
@@ -2897,8 +2901,18 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	}
 	// the current parameters' rips hear every recording and read every transcript
 	cur, sums, read := s.rip, make([]truthCount, len(conds)), 0
+	kept, unlabelled := map[string]int{}, 0
 	for _, t := range takes {
-		t.judge, t.heads = s.judge, o.heads
+		t.judge = s.judge
+		t.read(o.heads)
+		switch {
+		case o.heads != nil && t.heads == nil:
+			unlabelled++
+		case t.heads != nil:
+			for _, h := range t.heads.kept {
+				kept[h]++
+			}
+		}
 		c, err := t.count(cur, s.lead)
 		if err != nil {
 			return err
@@ -2937,6 +2951,12 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	}
 	if o.frames != "" {
 		fmt.Fprintf(s.out, "%d recording(s) heard and their frames kept in %s, %d read back from it\n", len(takes)-read, o.frames, read)
+	}
+	if len(kept) > 0 {
+		fmt.Fprintf(s.out, "the front end's heads kept where a take's label states none, by head: %s\n", countWords(kept))
+	}
+	if unlabelled > 0 {
+		fmt.Fprintf(s.out, "%d take(s) whose truth is no label kept every head the front end's\n", unlabelled)
 	}
 	before := scores(sums, sums, o.weigh)
 	score := func(data []float64) float64 {
@@ -2986,6 +3006,14 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 		if len(lacks) > 0 {
 			fmt.Fprintf(s.out, "%s: no %s given\n", name, strings.Join(lacks, ", "))
 		}
+		was, now := stageLines(sums[c].stages), stageLines(after[c].stages)
+		for i, l := range was {
+			if i < len(now) && l == now[i] {
+				fmt.Fprintf(s.out, "%s: %s %s, before and after\n", name, l[0], l[1])
+			} else if i < len(now) {
+				fmt.Fprintf(s.out, "%s: %s %s before; %s after\n", name, l[0], l[1], now[i][1])
+			}
+		}
 	}
 	return s.keepRip(file, params(best.Data), best.Score, base)
 }
@@ -3025,41 +3053,6 @@ func (h *heardOnce) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFr
 		}
 	})
 	return h.f, h.err
-}
-
-// labelHeads hears through fe, the analysis where nil, with the beat and
-// downbeat heads a label's beats and bar lines, in frames, each marked on its
-// frame and a frame either side as the trainer's targets mark them: a decoder
-// read apart from the model that feeds it
-type labelHeads struct {
-	fe           audio.RipFrontEnd
-	beats, lines []int
-}
-
-func (h labelHeads) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFrames, error) {
-	f, err := audio.Ripper{Params: p, FrontEnd: h.fe}.Hear(x, rate)
-	if err != nil {
-		return nil, err
-	}
-	g := *f // the frames a heardOnce keeps stay its front end's
-	g.Beat, g.Downbeat = make([]float64, len(g.Flux)), make([]float64, len(g.Flux))
-	for head, marks := range map[*[]float64][]int{&g.Beat: h.beats, &g.Downbeat: h.lines} {
-		for _, at := range marks {
-			for k := max(at-1, 0); k <= at+1 && k < len(*head); k++ {
-				(*head)[k] = 1
-			}
-		}
-	}
-	return &g, nil
-}
-
-// frames is each of seconds on the rip's frame grid
-func frames(seconds []float64) []int {
-	out := make([]int, len(seconds))
-	for i, sec := range seconds {
-		out[i] = int(math.Round(sec / audio.RipFrameSec))
-	}
-	return out
 }
 
 // readFrames is the frames a file keeps, nil when it holds none whole
@@ -3117,16 +3110,24 @@ type truthTake struct {
 	timed          bool            // the truth's seconds are the recording's
 	judge          *audio.RipJudge // what rules its rip's strikes, nil for the installed scores
 	said           *labelSaid      // a label's key and chords, nil for a truth that is no label
-	heads          bool            // its label's beats and bar lines stand in for the heads, where it gives them
+	lab            *corpusLoop     // its truth as a label, nil for none
+	heads          *labelHeads     // its ear with the heads its label stands in for, nil for the ear alone
 }
 
-// front is what a take is ripped through: its ear, its label's beats and bar
-// lines its heads where it asks it and the label gives them
+// front is what a take is ripped through: its ear, with the heads its label
+// stands in for where it has them
 func (t *truthTake) front() audio.RipFrontEnd {
-	if !t.heads || len(t.lines) == 0 {
+	if t.heads == nil {
 		return t.ear
 	}
-	return labelHeads{fe: t.ear, beats: frames(t.beats), lines: frames(t.lines)}
+	return t.heads
+}
+
+// read has the take ripped with heads its label's, where its truth is a label
+func (t *truthTake) read(heads []string) {
+	if t.heads = nil; heads != nil && t.lab != nil {
+		t.heads = newLabelHeads(t.ear, t.lab, heads)
+	}
 }
 
 // truthLine is a truth list's line: a recording and its truth, relative paths
@@ -3205,7 +3206,7 @@ func (l truthLine) take(recording []byte, sum [sha256.Size]byte, fe audio.RipFro
 		}
 		beats, downbeats := lab.grid()
 		notes := lab.notes()
-		t.truth, t.hits, t.beats, t.lines, t.said = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }, lab.hits(), beats, downbeats, lab.said()
+		t.truth, t.hits, t.beats, t.lines, t.said, t.lab = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }, lab.hits(), beats, downbeats, lab.said(), &lab
 		t.drums = true // a label holds every event of its loop, so no hit there is none played
 	case isMIDI(l.truth):
 		score, err := audio.ReadMIDI(bytes.NewReader(given))
@@ -3271,7 +3272,7 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 	} else if t.drums {
 		missed.drumless = minutes
 	}
-	r, err := audio.Ripper{Params: p, FrontEnd: t.front(), Lead: lead, Judge: t.judge}.Samples(t.x, audio.RipRate)
+	r, err := audio.Ripper{Params: p, FrontEnd: t.front(), Lead: lead, Judge: t.judge, Stages: true}.Samples(t.x, audio.RipRate)
 	if err != nil {
 		return missed, fmt.Errorf("%s: %w", t.wav, err)
 	}
@@ -3285,12 +3286,14 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 		c.beats = len(t.beats)
 	}
 	var hg *audio.HitsAgreement
+	tol := 30 / float64(r.BPM) / audio.StepsPerBeat
 	if t.drums {
-		hg = new(audio.MatchHits(r.Hits(), t.hits, 30/float64(r.BPM)/audio.StepsPerBeat, t.timed))
+		hg = new(audio.MatchHits(r.Hits(), t.hits, tol, t.timed))
 		for _, l := range hg.Drums {
 			c.drums = c.drums.plus(noteCount{l.Matched, l.B, l.A})
 		}
 	}
+	c.stages = audio.ReadStages(r, ag, hg, tol)
 	if t.said != nil {
 		c.read(r, ag, hg, t.said)
 	}
@@ -3317,6 +3320,7 @@ type truthCount struct {
 	keys              keyCount
 	chords            audio.ChordReading
 	stated            statedCount
+	stages            audio.StageReading // what each stage of the decoders lost and added
 }
 
 // keyCount is of the recordings whose truth names a key those whose rip names
@@ -3333,7 +3337,26 @@ func (c truthCount) plus(o truthCount) truthCount {
 		audio.PartReading{Given: c.parts.Given + o.parts.Given, InPart: c.parts.InPart + o.parts.InPart, OnLine: c.parts.OnLine + o.parts.OnLine},
 		keyCount{c.keys.given + o.keys.given, c.keys.tonic + o.keys.tonic, c.keys.scale + o.keys.scale, c.keys.both + o.keys.both},
 		audio.ChordReading{Given: c.chords.Given + o.chords.Given, Right: c.chords.Right + o.chords.Right},
-		statedCount{c.stated.ends + o.stated.ends, c.stated.loud + o.stated.loud, c.stated.hitLoud + o.stated.hitLoud, c.stated.parts + o.stated.parts, c.stated.keys + o.stated.keys, c.stated.chords + o.stated.chords}}
+		statedCount{c.stated.ends + o.stated.ends, c.stated.loud + o.stated.loud, c.stated.hitLoud + o.stated.hitLoud, c.stated.parts + o.stated.parts, c.stated.keys + o.stated.keys, c.stated.chords + o.stated.chords},
+		addStages(c.stages, o.stages)}
+}
+
+// addStages is two stage readings counted as one, nil where neither has any
+func addStages(a, b audio.StageReading) audio.StageReading {
+	add := func(x, y audio.StageCount) audio.StageCount {
+		if x == nil && y == nil {
+			return nil
+		}
+		out := audio.StageCount{}
+		for _, c := range []audio.StageCount{x, y} {
+			for k, v := range c {
+				out[k] += v
+			}
+		}
+		return out
+	}
+	return audio.StageReading{Lost: add(a.Lost, b.Lost), Refused: add(a.Refused, b.Refused), Added: add(a.Added, b.Added), Ends: add(a.Ends, b.Ends),
+		HitsLost: add(a.HitsLost, b.HitsLost), HitsAdded: add(a.HitsAdded, b.HitsAdded)}
 }
 
 // shares is the share of the downbeats given that fall on a bar line, and of the

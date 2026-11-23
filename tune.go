@@ -3529,7 +3529,7 @@ func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule
 		return missed, fmt.Errorf("%s: %w", t.truthFile, err)
 	}
 	ag, _ := matchHeard(r, given, t.timed)
-	ag = ag.Until(float64(len(t.x)) / audio.RipRate) // nothing heard ends past the recording
+	ag = ag.Until(float64(len(snd.x)) / audio.RipRate) // nothing heard ends past the recording
 	c := truthCount{notes: everyNote(ag), lines: len(t.lines), drummed: missed.drummed, drumless: missed.drumless}
 	if c.lines > 0 && len(t.beats) > 1 {
 		c.beats = len(t.beats)

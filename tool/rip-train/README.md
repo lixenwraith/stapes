@@ -591,7 +591,8 @@ training](../../doc/rip-training.md) §3, §5 and §8).
   or a recording's by piece, and one of a corpus of kits where nothing is struck.
   A strike marks its piece's place as the struck head is marked; where it alone
   marks a frame there, it is asked its piece's genes where they are stated and its
-  velocity where known. A corpus of no kit asks them nothing, its every other loss
+  velocity where known. A recorded piece at no place, unread or unsure, asks none
+  about its strikes. A corpus of no kit asks them nothing, its every other loss
   a model's without them to the bit.
 - **The genes state their error** as the cents head does, a Laplace's scale fitted
   to the miss held fixed; a recording's strikes, of no genes stated, teach the

@@ -773,6 +773,13 @@ proves wrong or that a document now states, and link the document instead.
   strikes at no place.
 - `WriteMIDI` writes only a line's keys; a test of a key of no line writes its own
   track (`drumTrack`).
+- **`bandsRows` yields one buffer, read again each frame**: `slices.Collect` of it is
+  every frame the last one, and a reading over them finds nothing anywhere. Clone a
+  row to keep it, as `pieceRises` does.
+- What tells a recorded piece's place right is its strikes agreeing on it, not how much
+  of its energy stands in one place: on drawn kits a piece's top share kept its tenth of
+  the strikes right 0.69 of the time, its strikes' agreement 1.00. Two halves of the
+  count's draws, even and odd, fit the bound and read it back without a second render.
 - `Label.window`'s `of` reads `one` when it is called, so a new mask named alike after
   it changes what the names, waves and voices are asked; name a window's new
   arrays apart, as `genes` the module's function was too.

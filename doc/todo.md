@@ -489,11 +489,16 @@ Left open by what landed:
   noise and their takes' spread from loop to loop: a seed of the loop's wants audio
   to take one.
 - A place is a piece's, not a strike's: a third of the generated strikes alone sound
-  most at another place than their piece's, a soft layer lower, and a recording's own
-  read places a generated piece right for 0.60 of its strikes. A place by each strike's
-  own take wants the engine to say which take a strike plays.
-- A piece no strike of which lies alone or beside read pieces has no place, its
-  strikes asking none: 0.023 of E-GMD's strikes in the draw.
+  most at another place than their piece's, a soft layer lower. A place by each
+  strike's own take wants the engine to say which take a strike plays.
+- A recorded piece is placed only where its strikes agree (`pieceSure`): on the
+  genome's kits that keeps a quarter of the strikes read, 0.94 of them right, and on
+  E-GMD's draw 0.553 of its strikes, 662 of its 2,383 pieces; the rest ask no place.
+  More would be kept by reading the takes of one kit together, a list's column naming
+  a take's kit as `unit` names a velocity's recordings, each piece's lone strikes then
+  counted over every take; or by a head that keeps a frame's strikes apart by what
+  they sound like, a set of slots matched to the labelled strikes by their
+  description, for which no place is measured at all.
 - `datacheck.py` reads no lag of a drawn kit's strikes, and the `--over` drums are
   laid only where nothing is struck.
 - The loudness of a recorded strike is its MIDI velocity only where its list's

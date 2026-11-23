@@ -121,8 +121,9 @@ A label is UTF-8 JSON with no whitespace. The loop's fields:
   number's order as `{"genes":[g,...],"band":b,"place":p}`, its thirteen genes in the
   manifest's `struck_genes` order, the band its hit rises most in and its place (a loop's
   kit, below); in a recording of hits, a piece each key its file strikes, in the keys'
-  order, as `{"key":k,"band":b,"place":p}`, both read from the recording, -1 where its
-  strikes cannot tell them (a recording's kit, below).
+  order, as `{"key":k,"band":b,"place":p,"sure":s}`, read from the recording with how sure
+  the place is, -1 and `"why"` where its strikes cannot tell it or it is unsure (a
+  recording's kit, below).
 - `events`: in no time order; the trainer sorts them.
 
 An event's fields:
@@ -209,9 +210,9 @@ corpora](../tool/rip-train/README.md#the-rounds-corpora)).
 
 Under `kits` it adds `struck_genes`, the names of a piece's thirteen genes in their
 order (audio's `StruckGeneNames`), and `places`, how many places a piece is placed in, as
-a corpus of recordings whose hits make a kit does: the trainer refuses a corpus of other
-places, or one whose labels hold a kit and whose manifest states none, by how to write its
-labels again. A corpus of placed starts adds `reach`, in frames,
+a corpus of recordings whose hits make a kit does, with `unplaced`, its pieces at no place
+by why: the trainer refuses a corpus of other places, or one whose labels hold a kit and
+whose manifest states none, by how to write its labels again. A corpus of placed starts adds `reach`, in frames,
 how far a placed start's known start may lie from it (a recording's starts, below):
 the trainer refuses one without it and says how to give it one. `loops` counts the files `loop_000` onward; the number grows past three digits as
 needed (`loop_39999`). `layout` is the frames' (§2): the trainer refuses a corpus of
@@ -444,9 +445,36 @@ unheard         0.595  0.511  0.490  0.521  0.567  0.521  0.584  0.634  0.662
 One place is the frame alone. More places part more strikes and hold fewer sounds at
 their piece's place: a struck sound's takes and layers move its highest band a median of
 11 bands, the genome's broad noises spread over neighbouring places, and a soft layer
-rises lower. Three cost a third of the strikes alone sounding most outside their piece's
-place, which the head is taught all the same; the curve is flat from two to six, and a
-draw of 24 moved its least between three and four.
+rises lower. The curve is flat from two to six, and a draw of 24 moved its least between
+three and four.
+
+Read as a recording's are, each piece's place its own strikes' (`pieceRises`, below), the
+same draws and the draw of E-GMD give, a strike read sharing a frame and a place with
+another, and a lone strike off the place its piece's other lone strikes give
+(`measuredTable`, `TestARecordingsPiecesArePlacedAlikeInTakesOfOneKit`):
+
+```
+places                      2      3      4      6
+drawn kits  share a place 0.165  0.132  0.101  0.079    2,406 strikes read
+            off its place 0.218  0.254  0.399  0.435      818 lone
+E-GMD       share a place 0.131  0.087  0.074  0.053   19,904 strikes read
+            off its place 0.088  0.137  0.142  0.162    9,534 lone
+```
+
+A read place keeps a piece struck with others off their places, so its shares under-count
+what the drawn table's true places count. On recorded drums the two errors trade evenly:
+either one, a share plus the rest's other, is 0.207, 0.212, 0.205 and 0.206 of the strikes
+at two to six places, where its counts' standard error alone is 0.004, so the recordings
+choose no count; on the genome's kits four and over cost the lone strikes most, a place
+cutting their broad noises again. Three stays: the least on the drawn kits, within its
+noise of the least on E-GMD's, and a recording's strikes agree with their piece more
+often at fewer places, which its sureness reads (below). The errors are not alike: two strikes at one place are one report, a strike off
+its place is still found, so weighing a merge over a misplacement favours four to six on
+recordings and not on the genome. The count is a constant of the weight file, its three
+heads a place's rows each: another count starts them fresh where `--init` grows none of
+another size, every corpus of kits and of recordings by piece is labelled again (`corpus
+... labels`, the drawn pieces' hits rendered again, the recordings' read again from their
+frames), `pieceSure` is fitted again, and audio reads it from the file as it is.
 
 ### A recording's kit
 
@@ -461,19 +489,38 @@ the frames a strike is read on, as a drawn piece's is:
   either way, so such a strike reads none of another's;
 - of a piece none of whose strikes lies so alone, summed over those whose every other
   strike within the reach is of a piece read so, outside those pieces' places;
-- `-1` for the band and the place of a piece of neither, whose strikes ask no place (§5).
+- its sureness the share of those strikes that rise most at its place, the agreeing ones
+  plus one over all plus the places (`pieceRead.sure`): the mean an even prior over the
+  places and its strikes give, so a place few strikes read is held near even odds. How
+  much of a piece's energy stands in one place tells right from wrong little: of the
+  count's draws, the tenth of the strikes read whose pieces stand most in one place are
+  right 0.69 of the time, the tenth whose pieces' strikes agree most 1.00;
+- `-1` for the band and the place, with why (`placeWhy`), of a piece of neither, `no
+  strike read`, or under `pieceSure`, `a place unsure`; its strikes ask no place (§5),
+  and the manifest's `unplaced` and the run's last line count such pieces by why.
 
-Its band is that energy's highest. On the count's draws at three places, a recording's own
-read gives 0.910 of the strikes a place and 0.604 of those their piece's own, where the
-commonest place holds 0.454. A draw of
-344 short takes of E-GMD's train split, eight a kit over its 43, 319 of them put on their
-sound, 20,369 strikes, reads 0.413 of them within a frame of another and 0.085 sharing a
-frame and a place with one, a fifth of those within a frame, and 0.023 of pieces at no
-place told; the kick (36) at the lowest place in 254 of 283 recordings, the snare (38) at
-the middle one in 192 of 301 and at the lowest in 101, the hats (42, 22) and the ride (51)
-mostly at the highest. That is a check on a small draw; `tool/rip-lab/audit/corpuscount.py`
-reads a corpus of recordings so. `labels` after the line writes the pieces into a corpus
-already exported, from its frames on disk.
+`pieceSure` is the least sureness at which the pieces of the count's even draws that pass
+it are right nine times in ten, by their strikes (0.7143, held at 0.71): there it keeps
+0.166 of the strikes read, 0.927 of them right, and on the odd draws 0.267, 0.938 right,
+where with no bound 0.606 are. The odd draws by bound, the strikes read kept and right:
+
+```
+bound       0.5    0.6    0.7    0.8
+kept      0.893  0.535  0.267  0.122
+right     0.627  0.740  0.938  1.000
+```
+
+A label states a recorded piece's `sure` and, at no place, its `why`. Its band is that
+energy's highest. A draw of 344 short takes of E-GMD's train split, eight a kit over its 43,
+a fifth of its performances apart, 319 put on their sound, 20,369 strikes and 2,383 pieces,
+keeps 662 pieces at a place, 0.553 of the strikes: a piece struck often agrees with
+itself. Of the pieces kept, a kit's takes give a key the place most of them give 0.958 of
+the time, where the commonest place holds 0.565: the kick (36) in 145 of 160, the snare
+(38) 175 of 177, the toms (43, 45, 48) 117 of 121, the hats (22, 42) 44 of 44. That is a
+check on a small draw. With `PLACECORPUS` naming corpora of recordings by piece and
+`PLACELIST` their lists, path lists alike, the test reads a set so; `corpuscount.py` counts
+a corpus's places and pieces at none by why. `labels` after the line writes the pieces into a
+corpus already exported, from its frames on disk.
 
 ### A loop's level
 
@@ -1066,7 +1113,7 @@ glide's pitch target walks the cells it crosses.
 - `places[k]`: the same as the struck head, for the strikes of a kit's pieces at place k,
   asked at every frame and place of a loop whose label holds a kit and of a loop of a
   corpus of kits where nothing is struck (`placeask`), but at the frames a strike of a piece
-  at no place told marks, where only the places known there are asked.
+  at no place, unread or unsure, marks, where only the places known there are asked.
 - `genes[k]`, `loudness[k]`: a strike's piece's genes and its `vel`, at its frames and place
   where it alone marks them, asked where the label states them (`geneask`, `loudask`): a
   recorded piece states no genes, and a `vel` of -1 nothing.

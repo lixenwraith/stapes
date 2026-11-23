@@ -2855,6 +2855,14 @@ var modelGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.Retrigger },
 }
 
+// modelCounts are the integer parameters tune truth searches beside them, each
+// moved as a float that rip.toml rounds: twins, a pitch's notes two at once, and
+// ring_on, a kept note sounding on through a dropped one
+var modelCounts = []func(*audio.RipParams) *int{
+	func(p *audio.RipParams) *int { return &p.Twins },
+	func(p *audio.RipParams) *int { return &p.RingOn },
+}
+
 // drumGenes is what tune truth searches beside them when a truth gives drum
 // hits, the bar a hit rises to against its drum's loudest; barGenes when one
 // gives bars: the tempo's prior, combs and cuts, the beats' tightness, the bar
@@ -2889,21 +2897,33 @@ var barGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.JointMargin },
 }
 
+// field copies a parameter from one set to another
+func field[T float64 | int](at func(*audio.RipParams) *T) func(to, from *audio.RipParams) {
+	return func(to, from *audio.RipParams) { *at(to) = *at(from) }
+}
+
 // geneOf is where a parameter stands in Genes' order, which names none
-func geneOf(at func(*audio.RipParams) *float64) int {
+func geneOf[T float64 | int](at func(*audio.RipParams) *T) int {
 	var p audio.RipParams
 	*at(&p) = 1
 	return slices.Index(p.Genes(), 1)
 }
 
-// geneParts are the parts tune truth's genes word names, each for its genes
-var geneParts = []struct {
-	name  string
-	genes []func(*audio.RipParams) *float64
-}{{"notes", modelGenes}, {"drums", drumGenes}, {"bars", barGenes}}
+// genePart is a part tune truth's genes word names, with its genes
+type genePart struct {
+	name   string
+	genes  []func(*audio.RipParams) *float64
+	counts []func(*audio.RipParams) *int
+}
+
+// names is a part's genes as rip.toml names them, its integers' last
+func (p genePart) names() []string { return slices.Concat(geneNames(p.genes), geneNames(p.counts)) }
+
+// geneParts are the parts tune truth's genes word names
+var geneParts = []genePart{{"notes", modelGenes, modelCounts}, {"drums", drumGenes, nil}, {"bars", barGenes, nil}}
 
 // geneNames is each parameter's key in rip.toml, which the genes word takes
-func geneNames(genes []func(*audio.RipParams) *float64) []string {
+func geneNames[T float64 | int](genes []func(*audio.RipParams) *T) []string {
 	var p audio.RipParams
 	v, out := reflect.ValueOf(&p).Elem(), make([]string, len(genes))
 	for k, at := range genes {
@@ -2922,7 +2942,7 @@ func parseGenes(w string) ([]string, error) {
 	for _, name := range strings.Split(w, ",") {
 		n := len(out)
 		for _, p := range geneParts {
-			for _, g := range geneNames(p.genes) {
+			for _, g := range p.names() {
 				if name == p.name || name == g {
 					out = append(out, g)
 				}
@@ -2931,7 +2951,7 @@ func parseGenes(w string) ([]string, error) {
 		if len(out) == n {
 			known := make([]string, len(geneParts))
 			for i, p := range geneParts {
-				known[i] = p.name + " (" + strings.Join(geneNames(p.genes), ", ") + ")"
+				known[i] = p.name + " (" + strings.Join(p.names(), ", ") + ")"
 			}
 			return nil, fmt.Errorf("genes %q: want parts or their genes as rip.toml names them, by commas: %s", name, strings.Join(known, ", "))
 		}
@@ -2979,35 +2999,48 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	for _, c := range sums {
 		all = all.plus(c)
 	}
-	genes := slices.Clone(modelGenes)
+	parts := []genePart{geneParts[0]}
 	if all.drums.given > 0 {
-		genes = append(genes, drumGenes...)
+		parts = append(parts, geneParts[1])
 	}
 	if all.lines > 0 {
-		genes = append(genes, barGenes...)
+		parts = append(parts, geneParts[2])
 	}
-	if o.genes != nil {
-		var told []func(*audio.RipParams) *float64
-		for k, g := range geneNames(genes) {
-			if slices.Contains(o.genes, g) {
-				told = append(told, genes[k])
+	// the genes free, by name, by their place in Genes' order, so an integer's
+	// is moved as a float and read back rounded, and by their fields
+	var names []string
+	var at []int
+	var fields []func(to, from *audio.RipParams)
+	for _, p := range parts {
+		for k, g := range p.names() {
+			if o.genes != nil && !slices.Contains(o.genes, g) {
+				continue
+			}
+			if names = append(names, g); k < len(p.genes) {
+				at, fields = append(at, geneOf(p.genes[k])), append(fields, field(p.genes[k]))
+			} else {
+				at, fields = append(at, geneOf(p.counts[k-len(p.genes)])), append(fields, field(p.counts[k-len(p.genes)]))
 			}
 		}
-		if genes = told; len(genes) == 0 {
-			return errors.New("genes: none named is searched here, the drums' only where a truth gives hits and the bars' where one gives bars")
-		}
 	}
-	names := geneNames(genes)
-	ranges := audio.RipGeneRanges()
-	bounds, start := make([]genetic.ParameterBounds, len(genes)), make([]float64, len(genes))
-	for k, at := range genes {
-		r := ranges[geneOf(at)]
-		bounds[k], start[k] = genetic.ParameterBounds{Min: r[0], Max: r[1]}, *at(&cur)
+	if len(at) == 0 {
+		return errors.New("genes: none named is searched here, the drums' only where a truth gives hits and the bars' where one gives bars")
 	}
+	ranges, now := audio.RipGeneRanges(), cur.Genes()
+	bounds, start := make([]genetic.ParameterBounds, len(at)), make([]float64, len(at))
+	for k, i := range at {
+		bounds[k], start[k] = genetic.ParameterBounds{Min: ranges[i][0], Max: ranges[i][1]}, now[i]
+	}
+	// a candidate is the current set with its free genes read back as rip.toml
+	// holds them; a held gene stays as the current holds it, in its range or not
 	params := func(data []float64) audio.RipParams {
-		p := cur
-		for k, at := range genes {
-			*at(&p) = data[k]
+		g := cur.Genes()
+		for k, i := range at {
+			g[i] = data[k]
+		}
+		read, p := audio.RipParamsFromGenes(g), cur
+		for _, f := range fields {
+			f(&p, &read)
 		}
 		return p
 	}
@@ -3022,7 +3055,7 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	}
 	var free []string
 	for _, p := range geneParts {
-		own := geneNames(p.genes)
+		own := p.names()
 		in := slices.DeleteFunc(slices.Clone(own), func(g string) bool { return !slices.Contains(names, g) })
 		if len(in) == len(own) {
 			in = []string{p.name} // a part whole by its name
@@ -3098,9 +3131,10 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	if err := s.keepRip(file, params(best.Data), best.Score, base); err != nil || best.Score <= base {
 		return err
 	}
+	moved := params(best.Data).Genes()
 	for k, g := range names {
-		if best.Data[k] != start[k] {
-			fmt.Fprintf(s.out, "%s moved from %v to %v\n", g, start[k], best.Data[k]) // as rip.toml writes them
+		if i := at[k]; moved[i] != now[i] {
+			fmt.Fprintf(s.out, "%s moved from %v to %v\n", g, now[i], moved[i]) // as rip.toml writes them
 		}
 	}
 	return nil

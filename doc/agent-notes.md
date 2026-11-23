@@ -217,6 +217,18 @@ proves wrong or that a document now states, and link the document instead.
   least, and a set its search finds is written into the root's `rip.toml`, so
   each reading takes a root of its own. A list whose third column is one word
   gives the all row; a root whose `rip.toml` sets `joint = 1` the joint path's.
+- **§11's figures with every head given are `timed`**, the list's fourth field:
+  a label is on its recording's clock, and untimed the matcher fits a map from
+  the notes, which a change to the notes moves (twins put a loop's at 0.906 x
+  +0.41 s and lost its first and last chords). The corpus line's 600 loops hold
+  20 under four seconds, which `tune ... truth` refuses: list by the WAV's length.
+- **The decoder alone counts in ninety seconds outside the verb.** `tune 2 1
+  truth` settles each gene it moved over every loop, an hour for 580; a scratch
+  test in the package over `readTruthLines`, `take` and `count`'s path on four
+  goroutines gives its figures to the note, and can spoil the heads, which the
+  verb cannot: a front end over `labelHeads` dropping or adding marks, seeded.
+  The verb itself takes minutes where `genes` names one gene the path read never
+  moves (`joint_margin` under `joint` 0): its before figures are the same.
 - **Every head given, the decoder still reads the recording**: the bass's
   own-pitch and steady-rise rules, `dynamics`, the accounting, `bright` and the
   drums' tones, and a model's front end states no tuning, nor a label's pitch

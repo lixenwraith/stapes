@@ -1826,7 +1826,8 @@ all` a list by its conditions, here a meter each, before its search. On the 600 
 of `corpus <dir> 600 4 gen glide meters overlaps seed 5`, and of the same line with
 `aug`, the same music through a room, a mix, redrawn voices and a tuning off A440, 580
 of them of 4 s or more, on the present path (`joint` 0), the key and the chords as audio
-v0.44.0 names the key ([below](#the-key)):
+v0.44.0 names the key ([below](#the-key)), at the defaults (`twins` 0, `ring_on` 1,
+every rip audio v0.44.0's), the last row `twins` 1's:
 
 ```
                               plain                                     aug
@@ -1840,6 +1841,7 @@ cond      n notes  ends  loud  hits parts   key chords   notes  ends  loud parts
 7/8      34 0.901 0.903 0.946 0.883 0.668 0.647  0.602   0.847 0.892 0.750 0.695 0.588  0.559
 overlap 169 0.913 0.735 0.663     - 0.480     -      -   0.886 0.742 0.634 0.483     -      -
 all     580 0.895 0.887 0.895 0.896 0.637 0.608  0.707   0.852 0.883 0.769 0.647 0.586  0.698
+twins 1 580 0.896 0.889 0.896 0.895 0.633 0.611  0.707   0.853 0.882 0.769 0.644 0.589  0.698
 ```
 
 The hits read 0.894 through `aug` and the drums' loudness 0.746 on both. The bars under
@@ -1864,50 +1866,76 @@ all    411      0.752  1.000     0.793  0.975     0.896  0.956    0.707  0.851
 note of its pitch starts within 100 ms of it, to a twin where one stood there to the end
 and matched another; a note added is the stage's that last made it, an end wrong the
 first stage's that left it so, a hit lost what became of the hit picked nearest it. The
-notes' rows are the same under both decoders:
+notes' rows are the same under both decoders, at (`twins`, `ring_on`) 0 and 1, the
+defaults, every rip audio v0.44.0's, and at 1 and 1, 1 and 0, and 0 and 0, by the verb:
 
 ```
-                                     plain     aug
-heard as given, of 35,724           29,039  26,766
-lost at the accounting               4,816   6,883
-lost to a twin                       1,249   1,123
-lost at the bass's own-pitch rule      432     372
-lost at the strikes                    169     447
-  its pitch silent within min_note      51     290
-  within strike_gap                     49      49
-  its note under min_note               40      33
-  no strike near                         0      46
-  its register unheard                  29      29
-lost at the glides                      18     128
-lost at the steady rise                  1       5
-added                                  131     337
-  begun                                126     239
-  by the glides                          5      53
-  by the strikes                         0      41
-  by the accounting                      0       4
-ends wrong, of those heard           3,294   3,142
-  strikes early                      2,467   2,243
-  accounting late                      679     734
-  strikes late                          80      69
-  accounting early                      49      64
-  glides late                           19      31
-  glides early                           0       1
+                                            plain                           aug
+(twins, ring_on)                     0,1    1,1    1,0    0,0      0,1    1,1    1,0    0,0
+notes                              0.895  0.896  0.896  0.895    0.852  0.853  0.853  0.852
+ends right                         0.887  0.889  0.912  0.908    0.883  0.882  0.909  0.908
+heard as given, of 35,724         29,039 29,085 29,091 29,045   26,766 26,813 26,818 26,772
+lost at the accounting             4,816  4,922  4,922  4,816    6,883  6,965  6,965  6,883
+lost to a twin                     1,249  1,161  1,161  1,249    1,123  1,050  1,050  1,123
+lost at the bass's own-pitch rule    432    438    432    426      372    385    380    368
+lost at the strikes                  169     99     99    169      447    382    382    445
+  its pitch silent within min_note    51     51     51     51      290    290    290    290
+  within strike_gap                   49      0      0     49       49      0      0     49
+  its note under min_note             40     19     19     40       33     17     17     31
+  no strike near                       0      0      0      0       46     46     46     46
+  its register unheard                29     29     29     29       29     29     29     29
+lost at the glides                    18     18     18     18      128    124    124    128
+lost at the steady rise                1      1      1      1        5      5      5      5
+added                                131    128    128    131      337    330    330    337
+  begun                              126    123    123    126      239    236    236    239
+  by the glides                        5      5      5      5       53     49     49     53
+  by the strikes                       0      0      0      0       41     41     41     41
+  by the accounting                    0      0      0      0        4      4      4      4
+ends wrong, of those heard         3,294  3,234  2,556  2,662    3,142  3,174  2,435  2,466
+  strikes early                    2,467  1,757  1,821  2,519    2,243  1,630  1,686  2,297
+  accounting late                    679    732      1      2      734    788      2      4
+  strikes late                        80    681    670     73       69    669    660     67
+  accounting early                    49     45     45     49       64     56     56     66
+  glides late                         19     19     19     19       31     31     31     31
+  glides early                         0      0      0      0        1      0      0      1
 ```
+
+The ring-on holds the ends under `twins` 1 at 0.889 and 0.882, a kept note taking the
+end of a dropped one of its pitch struck while it sounded or as it ended. With heads spoiled as a guess at trained
+ones, a tenth of the strikes' marks dropped, a fifth of the releases', and a sure strike
+added in a tenth of the stretches a pitch sounds 0.25 s or more (strikes' F1 0.928,
+releases' 0.889), `twins` 1 hears 27,297 as given plain where the defaults hear 27,248,
+adds 729 where they add 730 and reads 0.869 of the ends where they read 0.867, and
+with `ring_on` 0 27,301, 729 and 0.877; through `aug` 25,230, 938 and 0.865 where they
+read 25,209, 939 and 0.864, and 25,234, 939 and 0.877. The verb spoils no head:
+these are tune's count over the same lists through a scratch wrapper of `labelHeads`.
 
 Of 8,828 hits, plain, the present path loses 1,620, 1,518 outside the bars, 58 a step
-off, 33 none picked, 6 on a step another holds and 5 to a twin, and the joint path 683,
-573, 71, 1, 1 and 37; the picks add 58 and 71. `aug`'s present path loses 20 more
+off, 33 none picked, 6 on a step another holds and 5 to a twin, and the joint path
+683, 573, 71, 1, 1 and 37; the picks add 58 and 71. `aug`'s present path loses 20 more
 outside its bars.
 
 What each stage costs, largest first:
 
 - **The accounting** keeps a note by the installed scores, which weigh its strike and
   salience against the fit's share and span of its sound, so a chord's tones and an
-  octave double whose partials a lower note's fit accounts for go, and a kept note
-  rings on through a dropped one, 679 ends late.
-- **One note a pitch at a time**: two parts on one pitch are one note, 1,249 lost to a
-  twin, and a strike's note ends at its pitch's first release or renewing strike, or
-  where its cell falls silent, 2,467 ends early.
+  octave double whose partials a lower note's fit accounts for go. Under `ring_on` a
+  kept note sounds on to the end of a dropped one of its pitch, made for heads that
+  strike falsely inside a ring, 679 ends late, 732 under `twins` 1; a twin neither
+  rings on nor is rung on. The scores were fitted on notes cut at their pitch's next
+  strike: under `twins` 1 a note sounding on to its own end beside a twin reads less
+  of its span its own, and a strike dropped on a pitch still sounding stays dropped,
+  106 lost more (82 through `aug`, 65 of the plain's in the overlaps).
+- **One note a pitch at a time** (`twins` 0): two parts on one pitch are one note,
+  1,249 lost to a twin, and a strike's note ends at its pitch's first release or
+  renewing strike, or where its cell falls silent, 2,467 ends early. `twins` 1 holds a
+  pitch as many notes as it is let go, a release ending the earliest struck; a sure
+  strike on a sounding pitch starts one beside it where the releases until the pitch
+  falls silent hold both, else ends it, and a strike within `strike_gap` of the last,
+  let go twice, holds a second from there: two parts struck within a mark of each other
+  are still one strike let go twice, as a restrike the head missed is, 1,161 lost to a
+  twin; a short note over a held one of its pitch takes the held one's end, 681 late;
+  1,757 early.
 - **The present path's bars** are laid on the beats it hears, so a loop's last bar,
   closed by its end, lies outside them with its hits and its chords, and it reads no
   2/4, 5/4 or 7/8 line and a fifth of 6/8's and 12/8's. The joint path reads every
@@ -1930,11 +1958,11 @@ What each stage costs, largest first:
   the heads only the places' loudness states a strike's, and no decoder reads it yet.
 
 Of those, a threshold's or a setting's: the accounting's bar and weights, `ripOwnPitch`,
-`strike_gap`, `min_note`, `joint` for the bars and `key_bars` to `key_bar` for the key.
-The shape's, which no setting writes down: a note a pitch at a time, three lines, one
-chord a bar, one key a recording, the
-drums' loudness, `dynamics` on a head that hears level, the A440 a model's front end
-states, and a plateau's peak read on its last frame.
+`strike_gap`, `min_note`, `twins`, `ring_on`, `joint` for the bars and `key_bars` to
+`key_bar` for the key. The shape's, which no setting writes down: a release to its
+pitch's earliest note, three lines, one chord a bar, one key a recording, the drums'
+loudness, `dynamics` on a head that hears level, the A440 a model's front end states,
+and a plateau's peak read on its last frame.
 
 ### The key
 

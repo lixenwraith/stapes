@@ -111,10 +111,11 @@ flowchart TD
    - **The notes.** Where the front end hears each pitch struck, both
      registers' notes start where a strike peaks over `strike` (`strike_low`
      under E3), as hard as it was struck, and last while the pitch sounds or
-     until it is let go, any number at once; a strike starts none where its
-     pitch never sounds, where it is a stronger strike's partial, within
-     `strike_gap` of the pitch's last, or under `strike_again` on a pitch still
-     ringing, and the bass line's own path adds notes where no strike sounds.
+     until it is let go, any number at once, a pitch as many as it is let go;
+     a strike starts none where its pitch never sounds, where it is a stronger
+     strike's partial, within `strike_gap` of the pitch's last, or under
+     `strike_again` on a pitch still ringing, and the bass line's own path adds
+     notes where no strike sounds.
      Where the notes model's own onset head hears a start that no strike of
      its pitch answers, a note begins there at the pitch that rises under it,
      on the heads' word, and a strike with no start heard near it must clear

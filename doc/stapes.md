@@ -237,8 +237,8 @@ Over the library's rip (library
   engine, the current set seeding the pool, and writes a set that beats it
   ([todo](todo.md#tune-the-rip) for what the corpus still lacks). `tune ...
   truth <list>` searches instead the thresholds the loaded models' decoders
-  read (`modelGenes`) and `twins` (`modelCounts`, an integer it moves as a float
-  and reads rounded), the rest held, against recordings, a line
+  read (`modelGenes`) and `twins` and `ring_on` (`modelCounts`, integers it moves
+  as floats and reads rounded), the rest held, against recordings, a line
   `wav<TAB>truth[<TAB>condition[<TAB>[timed] [drumless]]]` each, from a pool
   drawn near the current thresholds (`search`'s `near`). A truth gives notes,
   and may give

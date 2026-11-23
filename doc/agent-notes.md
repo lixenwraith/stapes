@@ -227,6 +227,8 @@ proves wrong or that a document now states, and link the document instead.
   test in the package over `readTruthLines`, `take` and `count`'s path on four
   goroutines gives its figures to the note, and can spoil the heads, which the
   verb cannot: a front end over `labelHeads` dropping or adding marks, seeded.
+  The verb itself takes minutes where `genes` names one gene the path read never
+  moves (`joint_margin` under `joint` 0): its before figures are the same.
 - **Every head given, the decoder still reads the recording**: the bass's
   own-pitch and steady-rise rules, `dynamics`, the accounting, `bright` and the
   drums' tones, and a model's front end states no tuning, nor a label's pitch

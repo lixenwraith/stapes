@@ -242,7 +242,18 @@ proves wrong or that a document now states, and link the document instead.
   no beat, so under `heads all` it is ripped over the analysis's frames.
 - **A label's ends can lie past its loop**: an overlap's notes ring on past
   its last frame (an event's `end` past the label's `frames`), which the trainer
-  clamps, and `truth`'s ends count them wrong.
+  clamps; `truth` reads such an end at the recording's (audio's
+  `Agreement.Until`) and says how many there were and were wrong as given.
+- **A reading's search can cost more than the reading.** `tune ... truth` scores a
+  set before its search and then puts each gene the best set moved back alone, a
+  pass over every loop a gene: with every notes', bars' and key's gene free that
+  was tens of passes over 580 loops after the before was printed. `genes strike`
+  holds the search to one gene where only the before is wanted.
+- **A new count's before is the change put back beside the count.** The beats a
+  grid lacks at its edges are counted by a verb that came with the change, so
+  main cannot say them: a scratch build of the branch with `pickup`, `closing`
+  and `at` as main has them, which matched main's figures on 24 loops line for
+  line, gave the before.
 - **Four bars of a short meter can be under four seconds**: a 2/4 loop of
   `corpus ... 4 ... meters` at 128 or more, and a 3/4 or 6/8 at 176 that
   quickens, gives no rip, 26 of 600 loops.

@@ -2,12 +2,16 @@ package stapes
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
+	"fmt"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -61,8 +65,8 @@ func TestAKitsPiecesTakeRolesByTheOrderOfTheirBands(t *testing.T) {
 // TestAPiecesBandIsWhereItsStrikeRisesMost: a piece that is a tone alone, its
 // body unbent with no noise, click or drive, reads the band of the pitch its
 // take sounds within a band, higher for a higher tone; and every drawn piece's
-// hit reads the same band laid on a later frame, so strikeAt's silence before
-// it is enough
+// hit reads the same band and place laid on a later frame, so strikeAt's
+// silence before it is enough
 func TestAPiecesBandIsWhereItsStrikeRisesMost(t *testing.T) {
 	gene := func(v, lo, hi float64) float64 { return math.Log(v/lo) / math.Log(hi/lo) }
 	last := -1
@@ -93,8 +97,10 @@ func TestAPiecesBandIsWhereItsStrikeRisesMost(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if at, later := riseBand(x, strikeAt), riseBand(x, 2*strikeAt); at != later {
-			t.Errorf("piece %d reads band %d laid on frame %d and %d on frame %d", i, at, strikeAt, later, 2*strikeAt)
+		band, rose := riseBand(x, strikeAt)
+		later, there := riseBand(x, 2*strikeAt)
+		if place := risePlace(rose, kitPlaces); band != later || place != risePlace(there, kitPlaces) {
+			t.Errorf("piece %d reads band %d and place %d laid on frame %d, %d and %d on frame %d", i, band, place, strikeAt, later, risePlace(there, kitPlaces), 2*strikeAt)
 		}
 	}
 }
@@ -254,4 +260,308 @@ func TestAKitsLabelSaysWhatWasStruck(t *testing.T) {
 		}
 		out.Reset()
 	}
+}
+
+// kitStrike is a strike of a drawn kit as its recording holds it: its frame,
+// its piece's number and its velocity
+type kitStrike struct {
+	frame, piece int
+	vel          float64
+}
+
+// kitDrums is draw i at seed: bars of the arranger's drums alone on a kit drawn
+// for them, struck, played and dealt as a corpus loop's, as its samples, its
+// strikes and its kit, each piece two strokes a velocity layer to keep a draw's
+// cost down; nil where the drums strike nothing
+func kitDrums(t *testing.T, s *Session, seed uint64, i, bars int) ([]float64, []kitStrike, *loopKit) {
+	t.Helper()
+	stream := func(salt uint64) *rand.Rand { return rand.New(rand.NewPCG(seed^salt, uint64(i)+1)) }
+	a := newArranger(stream(0x5a5a5a5a), stream(0x3e7e3e7e), bars, tuneTempos[i%len(tuneTempos)], true, false)
+	krng := stream(kitSalt)
+	k, err := newKit(krng)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pc := range k.pieces {
+		pc.sound.Variants = 2
+	}
+	a.kit, a.krng = k, krng
+	for _, d := range []audio.InstrumentType{audio.InstrKick, audio.InstrSnare, audio.InstrHihat} {
+		a.parts = append(a.parts, &part{kind: &partKinds[0], instr: d})
+	}
+	writeDrums(a, a.parts)
+	keep := func() {
+		for _, p := range a.parts {
+			p.notes = slices.DeleteFunc(p.notes, func(n note) bool { return n.at < a.from || n.at >= a.to })
+			slices.SortStableFunc(p.notes, func(x, y note) int { return cmp.Compare(x.at, y.at) })
+		}
+	}
+	keep()
+	a.strike()
+	a.perform()
+	keep()
+	if a.deal(); a.kit == nil {
+		return nil, nil, nil
+	}
+	if err := a.kit.placed(a.parts); err != nil {
+		t.Fatal(err)
+	}
+	m, err := a.music(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, err := s.renderKit(m, m.timeline, int64(i+1), kitPass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var strikes []kitStrike
+	for _, e := range audio.ExpectedEvents(m.timeline, m.heads, m.root, m.scale, m.prog) {
+		if e.At >= m.from && e.At < m.to {
+			f := int(float64(e.At-m.from)/audio.AudioSampleRate/audio.RipFrameSec + 0.5)
+			strikes = append(strikes, kitStrike{f, m.parts[e.Slot][e.Track].piece.n, e.Vel})
+		}
+	}
+	return slices.Clip(x[m.from:m.to]), strikes, m.kit
+}
+
+// placeTake is a recording of drawn drums as the place's count reads it: its
+// strikes, the rise of each piece's hit alone as its loop strikes it (placed)
+// and its band frames
+type placeTake struct {
+	strikes []kitStrike
+	alone   [][]float64
+	rows    [][]float32
+}
+
+// placeTakes is a draw's n recordings of two bars at seed, each at a level drawn
+// as a loop's, with no room and through degrade, as the lag's fit lays its takes
+func placeTakes(t *testing.T, s *Session, seed uint64, n int) []placeTake {
+	t.Helper()
+	var out []placeTake
+	for i := range n {
+		x, strikes, k := kitDrums(t, s, seed, i, 2)
+		if k == nil {
+			continue
+		}
+		alone := make([][]float64, len(k.pieces))
+		for p, pc := range k.pieces {
+			alone[p] = pc.rose
+		}
+		level(x, rand.New(rand.NewPCG(seed^0x6c65766c, uint64(i)+1)))
+		for _, room := range []*rand.Rand{nil, roomOf(true, seed, uint64(i))} {
+			y := x
+			if room != nil {
+				y = degrade(slices.Clone(x), room)
+			}
+			out = append(out, placeTake{strikes, alone, audio.BandFrames(y, audio.AudioSampleRate)})
+		}
+	}
+	return out
+}
+
+// placeCount is what a count of places leaves a draw's strikes: the share of
+// them another strike within a frame shares its piece's place with, the share
+// of those alone (pieceAlone) whose own rise is most at another place, and the
+// share either leaves unheard at their place, the second standing for every
+// strike's sound
+type placeCount struct{ shared, elsewhere, unheard float64 }
+
+// countPlaces counts a draw's strikes at places of even runs
+func countPlaces(takes []placeTake, places int) placeCount {
+	var all, shared, lone, elsewhere int
+	for _, k := range takes {
+		for i, st := range k.strikes {
+			own := risePlace(k.alone[st.piece], places)
+			with, near := false, false
+			for j, o := range k.strikes {
+				with = with || j != i && abs(o.frame-st.frame) <= 1 && risePlace(k.alone[o.piece], places) == own
+				near = near || j != i && abs(o.frame-st.frame) < pieceAlone
+			}
+			all, shared = all+1, shared+b2i(with)
+			if near || st.frame < 2 || st.frame+1 >= len(k.rows) {
+				continue
+			}
+			up := make([]float64, audio.RipBands)
+			for u := st.frame - 1; u <= st.frame+1; u++ {
+				adds(up, k.rows[u][audio.RipBands:], k.rows[u-1][audio.RipBands:])
+			}
+			lone, elsewhere = lone+1, elsewhere+b2i(risePlace(up, places) != own)
+		}
+	}
+	c := placeCount{shared: float64(shared) / float64(all), elsewhere: float64(elsewhere) / float64(max(lone, 1))}
+	c.unheard = c.shared + (1-c.shared)*c.elsewhere
+	return c
+}
+
+// TestTheBandsArePlacedInTheRunsThatKeepTheMostStrikesApart: drawn kits' drums
+// alone, no room and through degrade. A strike is unheard where another within
+// a frame shares its piece's place or its sound rises most elsewhere: over
+// PLACEDRAWS draws, 48 for the fit, kitPlaces leaves the fewest; a recording's
+// own read of a place (pieceRises) is right more often than the commonest place
+func TestTheBandsArePlacedInTheRunsThatKeepTheMostStrikesApart(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	draws := 12 // the flat curve wants 48 to decide: the suite reads the rest
+	if n, err := strconv.Atoi(os.Getenv("PLACEDRAWS")); err == nil {
+		draws = n
+	}
+	takes := placeTakes(t, s, 31, draws)
+	var rows strings.Builder
+	fit, places := placeCount{unheard: 2}, 0
+	for n := 1; n <= 16; n++ {
+		c := countPlaces(takes, n)
+		fmt.Fprintf(&rows, "\n  %2d places: %.3f share a frame and a place, %.3f alone rise most elsewhere, %.3f unheard", n, c.shared, c.elsewhere, c.unheard)
+		if c.unheard < fit.unheard {
+			fit, places = c, n
+		}
+	}
+	var all, read, right int
+	at := map[int]int{}
+	for _, k := range takes {
+		frames, keys := make([]int, len(k.strikes)), make([]int, len(k.strikes))
+		for i, st := range k.strikes {
+			frames[i], keys[i] = st.frame, st.piece
+		}
+		order, piece, rose := pieceRises(slices.Values(k.rows), frames, keys, pieceAlone, kitPlaces)
+		for i := range k.strikes {
+			all++
+			if p := piece[i]; rose[p] != nil {
+				own := risePlace(k.alone[order[p]], kitPlaces)
+				read, right, at[own] = read+1, right+b2i(risePlace(rose[p], kitPlaces) == own), at[own]+1
+			}
+		}
+	}
+	commonest := slices.Max(slices.Collect(maps.Values(at)))
+	t.Logf("%d recordings, %d strikes:%s\n  at %d places, a recording's own read of a piece's place: %.3f of the strikes read, %.3f of those right, the commonest place %.3f",
+		len(takes), all, rows.String(), kitPlaces, float64(read)/float64(all), float64(right)/float64(read), float64(commonest)/float64(read))
+	if draws >= 48 && places != kitPlaces || right <= commonest {
+		t.Errorf("over %d draws the fewest strikes are unheard at %d places, kit.go's %d; read from the recordings %d strikes of %d at their place, the commonest place holds %d", draws, places, kitPlaces, right, read, commonest)
+	}
+}
+
+// TestARecordedKitsStrikesAreItsPiecesByTheirKeys: a recording of drawn drums
+// whose file strikes each piece on a key of its own is labelled by piece, the
+// kit a piece a key in the keys' order with its place, each strike its key's
+// piece and its line's drum where its key has one, no names but the keys; the
+// manifest states the places
+func TestARecordedKitsStrikesAreItsPiecesByTheirKeys(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	dir := t.TempDir()
+	at := func(name string) string { return filepath.Join(dir, name) }
+	keys := []int{36, 38, 42, 45, 47, 49, 51, 41, 43, 46} // a piece's: of a line, or of none
+	var x []float64
+	var strikes []kitStrike
+	for i := 0; len(strikes) == 0 || len(slices.Compact(slices.Sorted(slices.Values(piecesOf(strikes))))) < 5; i++ { // some of no line
+		if i == 12 {
+			t.Fatal("no kit of five pieces or more in twelve draws at seed 41")
+		}
+		x, strikes, _ = kitDrums(t, s, 41, i, 4)
+	}
+	struck := map[int][]int{} // the keys each frame's strikes are struck on
+	for _, st := range strikes {
+		struck[st.frame] = append(struck[st.frame], keys[st.piece])
+	}
+	writeFile(t, at("a.mid"), string(drumTrack(strikes, keys)))
+	writeWAV(t, at("a.wav"), x)
+	writeFile(t, at("list.csv"), "audio_filename,midi_filename,velocity\na.wav,a.mid,none\n")
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %s from %s\n", at("corpus"), at("list.csv")))
+	var l corpusLoop
+	var man corpusManifest
+	for file, v := range map[string]any{"loop_000.json": &l, "corpus.json": &man} {
+		data, err := os.ReadFile(filepath.Join(at("corpus"), file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(data, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if l.Lag == nil {
+		t.Fatalf("its hits left out for %q", l.Skip)
+	}
+	lag := *l.Lag
+	var listed []int
+	for _, pc := range l.Kit {
+		if pc.Key == nil || pc.Genes != nil || pc.Place < -1 || pc.Place >= kitPlaces {
+			t.Errorf("a recorded piece %+v", pc)
+			continue
+		}
+		listed = append(listed, *pc.Key)
+	}
+	if !slices.IsSorted(listed) || len(slices.Compact(slices.Clone(listed))) != len(listed) {
+		t.Errorf("the kit's keys %v: each once, in order", listed)
+	}
+	score, err := audio.ReadMIDI(bytes.NewReader(drumTrack(strikes, keys)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := map[int]int{} // each key's line as the file reads it, -1 none
+	for _, h := range score.Hits {
+		lines[h.Key] = int(h.Drum)
+	}
+	for _, e := range l.Events {
+		if e.Piece == nil || *e.Piece < 0 || *e.Piece >= len(l.Kit) {
+			t.Fatalf("a strike %+v of a kit of %d", e, len(l.Kit))
+		}
+		key := *l.Kit[*e.Piece].Key
+		drum, ok := lines[key]
+		if !ok {
+			drum = -1
+		}
+		near := false
+		for f := range struck { // the file's frame, moved by the lag that puts it on its sound
+			near = near || slices.Contains(struck[f], key) && abs(int(math.Floor(float64(f)+lag/audio.RipFrameSec+0.5))-e.Frame) <= 1
+		}
+		if !near || e.Drum != drum || e.Instr != "" {
+			t.Errorf("a strike at frame %d of key %d labelled drum %d, instr %q: its file strikes %v there", e.Frame, key, e.Drum, e.Instr, struck[e.Frame])
+		}
+	}
+	if man.Places != kitPlaces {
+		t.Errorf("the manifest states %d places, want %d", man.Places, kitPlaces)
+	}
+
+}
+
+// piecesOf is the pieces strikes strike, a strike each
+func piecesOf(strikes []kitStrike) []int {
+	out := make([]int, len(strikes))
+	for i, st := range strikes {
+		out[i] = st.piece
+	}
+	return out
+}
+
+// drumTrack is a MIDI file of one track on the drums' channel at 120 a minute,
+// each strike its piece's key at its frame's seconds, a sixteenth long
+func drumTrack(strikes []kitStrike, keys []int) []byte {
+	const division = 480 // ticks a quarter; at 120 a minute a second is 960
+	type at struct {
+		tick int
+		ev   []byte
+	}
+	var evs []at
+	for _, st := range strikes {
+		on := int(math.Round(float64(st.frame) * audio.RipFrameSec * 2 * division))
+		evs = append(evs, at{on, []byte{0x99, byte(keys[st.piece]), 100}}, at{on + division/4, []byte{0x89, byte(keys[st.piece]), 0}})
+	}
+	slices.SortStableFunc(evs, func(x, y at) int { return cmp.Compare(x.tick, y.tick) })
+	body := []byte{0, 0xff, 0x51, 3, 0x07, 0xa1, 0x20} // a quarter of 500,000 us
+	last := 0
+	for _, e := range evs {
+		d := e.tick - last
+		vlq := []byte{byte(d & 0x7f)}
+		for d >>= 7; d > 0; d >>= 7 {
+			vlq = append([]byte{byte(d&0x7f | 0x80)}, vlq...)
+		}
+		body, last = append(append(body, vlq...), e.ev...), e.tick
+	}
+	body = append(body, 0, 0xff, 0x2f, 0)
+	out := []byte("MThd\x00\x00\x00\x06\x00\x00\x00\x01")
+	out = append(out, byte(division>>8), byte(division&0xff))
+	out = append(out, "MTrk"...)
+	out = append(out, byte(len(body)>>24), byte(len(body)>>16), byte(len(body)>>8), byte(len(body)))
+	return append(out, body...)
 }

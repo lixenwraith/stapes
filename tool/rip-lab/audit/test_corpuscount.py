@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """test_corpuscount.py: corpuscount.py run on corpora this test writes by hand, with no code of stapes: two loops of
 recordings, of frames and no WAV, their events at velocity -1, one stating its lag and a hit it leaves out, held in
-left.tsv, and one left out and named in skip.txt; and two arranged loops on kits, their strikes by piece. Run with
+left.tsv, and one left out and named in skip.txt; and two arranged loops on kits and a recording by piece, their strikes
+by piece and place. Run with
 `python3 -m unittest discover tool/rip-lab/audit`."""
 import json, os, struct, subprocess, sys, tempfile, unittest
 
@@ -40,31 +41,35 @@ class ACorpusOfRecordings(unittest.TestCase):
             self.assertIn("MAY NOT BE, left.tsv's rows that are not the hits its labels leave out: 1", run.stdout)
 
     def test_b_kits_are_counted_by_piece_and_place(self):
-        """A kit's strikes are counted by piece and by kit size, its genes by tenths of their range and its pairs of
-        pieces struck on one frame by whether their bands share a place: two pieces in bands 10 and 150 share one of
-        two places and none of three, so a frame they strike together counts in the first and not the second. A piece
-        that strikes nothing, and a strike that names a drum, may not be."""
+        """A kit's strikes are counted by piece and by kit size, its genes by tenths of their range, and its strikes
+        within a frame of another by whether they share its place: two pieces of places 0 and 1 struck on one frame
+        share none, and a recorded kit's two pieces at one place on one frame do, its pieces counted by key. A piece
+        that strikes nothing, and a drawn piece's strike that names a drum, may not be."""
         head = {'bpm': 120, 'root': 0, 'scale': 0, 'bars': 1, 'tuning': 0, 'frames': 40, 'kind': 'arranged', 'beats': [0, 10, 20, 30], 'downbeats': [0]}
-        strike = lambda f, n: {'frame': f, 'end': f, 'drum': -1, 'midi': 0, 'vel': 0.8, 'wave': -1, 'family': 7, 'part': 'drums', 'piece': n}
-        piece = lambda g, b: {'genes': [g] * 13, 'band': b}
-        labels = [dict(head, events=[strike(0, 0), strike(0, 1), strike(10, 1), strike(20, 1)], kit=[piece(0.05, 10), piece(0.95, 150)]),
-                  dict(head, events=[strike(0, 0), strike(5, 1), strike(30, 2)], kit=[piece(0.5, 300), piece(0.25, 301), piece(0.75, 20)])]
+        strike = lambda f, n, drum=-1: {'frame': f, 'end': f, 'drum': drum, 'midi': 0, 'vel': 0.8, 'wave': -1, 'family': 7, 'part': 'drums', 'piece': n}
+        piece = lambda g, b, p: {'genes': [g] * 13, 'band': b, 'place': p}
+        labels = [dict(head, events=[strike(0, 0), strike(0, 1), strike(10, 1), strike(20, 1)], kit=[piece(0.05, 10, 0), piece(0.95, 150, 1)]),
+                  dict(head, events=[strike(0, 0), strike(5, 1), strike(30, 2)], kit=[piece(0.5, 300, 2), piece(0.25, 301, 2), piece(0.75, 20, 0)]),
+                  {'frames': 40, 'source': 'a.wav', 'lag': 0.0, 'kit': [{'key': 36, 'band': 10, 'place': 0}, {'key': 45, 'band': 30, 'place': 0}, {'key': 49, 'band': -1, 'place': -1}],
+                   'events': [strike(4, 0, 0), strike(4, 1), strike(20, 2)]}]
         with tempfile.TemporaryDirectory() as d:
-            with open(f'{d}/corpus.json', 'w') as f: json.dump({'loops': 2, 'struck_genes': [f'g{k}' for k in range(13)]}, f)
+            with open(f'{d}/corpus.json', 'w') as f: json.dump({'loops': 3, 'struck_genes': [f'g{k}' for k in range(13)], 'places': 3}, f)
             for i, l in enumerate(labels):
                 with open(f'{d}/loop_{i:03d}.json', 'w') as f: json.dump(l, f)
             run = subprocess.run([sys.executable, SCRIPT, d, 'nowav'], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             for said in ('kits: 2 loops, by size: 2 1, 3 1; 5 pieces, 7 strikes; strikes a piece: fewest 1, median 1, most 3; pieces of one strike: 4',
                          'strikes a piece by kit size, the median and the fewest: 2: 2, 1, 3: 1, 1', 'g0 0 to 1 (0.05 to 0.95)',
-                         '1 frames, 1 pairs of pieces', '2 100%, 3 0%', 'nothing that may not be'):
+                         "drawn kits' strikes: 7, 2 (28.6%) within a frame of another, 0 (0.0%) of them at its place too, of 3 places",
+                         "recorded kits' strikes: 3, 2 (66.7%) within a frame of another, 2 (66.7%) of them at its place too",
+                         'recorded kits by piece: 3 pieces, each key\'s by place (-1 none told): 36 0:1; 45 0:1; 49 -1:1', 'nothing that may not be'):
                 self.assertIn(said, run.stdout)
             labels[1]['events'] = [dict(strike(0, 0), drum=2), strike(5, 1)]
             with open(f'{d}/loop_001.json', 'w') as f: json.dump(labels[1], f)
             run = subprocess.run([sys.executable, SCRIPT, d, 'nowav'], capture_output=True, text=True)
             self.assertEqual(run.returncode, 1, run.stdout + run.stderr)
             self.assertIn('MAY NOT BE, a piece of a kit that strikes nothing: 1; first: loop 1 piece 2', run.stdout)
-            self.assertIn('MAY NOT BE, a strike that names a drum, a key or an instrument: 1', run.stdout)
+            self.assertIn("MAY NOT BE, a strike that names a key or an instrument, or a drawn piece's a drum: 1", run.stdout)
 
 
 if __name__ == '__main__':

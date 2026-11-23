@@ -69,7 +69,10 @@ hand: a first training wants few wrong labels more than it wants hours.
   ([Rip training §3](../../doc/rip-training.md#a-recordings-lag)), and a hit
   that draws no sound out of its label, by its reason and key, in the label's
   `left` and the corpus's `left.tsv`
-  ([§3](../../doc/rip-training.md#a-hit-that-draws-no-sound)).
+  ([§3](../../doc/rip-training.md#a-hit-that-draws-no-sound)). It labels the
+  rest by piece, a piece each key, placed by the recording's own strikes, `-1`
+  where they cannot tell
+  ([§3](../../doc/rip-training.md#a-recordings-kit)).
 - As ruled, of 2,978 takes tried 2,532 are listed, 26,142 notes in 5.73 hours:
   241 are refused for a note off its key, 111 for a squeezed note, 50 for a
   note under three frames and 44 for a silence inside a note.

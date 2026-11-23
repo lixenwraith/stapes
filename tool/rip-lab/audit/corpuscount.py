@@ -2,13 +2,13 @@
 """corpuscount.py <corpus dir> [nowav]: a corpus counted from its labels, its WAV files and its frames' headers
 alone, with no code of stapes or of the trainer: its loops by kind and meter, the notes each key starts, the overlaps'
 instruments, intervals and velocities, a kit's strikes by piece, its genes' cover and its places, a recording's hits,
-lag and the hits its label leaves out, and each WAV's level against the level a loop is laid at. Exits 1 on what may
-not be; the README says what it counts and what may not be."""
+lag, the hits its label leaves out and its pieces' places by key, and each WAV's level against the level a loop is
+laid at. Exits 1 on what may not be; the README says what it counts and what may not be."""
 import collections, glob, json, math, os, struct, sys, wave
 import numpy as np
 D = sys.argv[1].rstrip('/'); WAVS = 'nowav' not in sys.argv[2:]
 QUIET, LOUD, PEAK, HOP = -32.0, -14.0, -1.0, 256 / 22050
-BANDS, PLACES = 315, range(2, 33)   # the frames' bands, and the counts of places they are cut into evenly
+BANDS = 315   # the frames' bands
 labs = {int(os.path.basename(p)[5:-5]): json.load(open(p)) for p in sorted(glob.glob(D + '/loop_*.json'))}
 bad = collections.defaultdict(list)
 kinds = collections.Counter(l.get('kind', 'recorded' if l.get('source') else '?') for l in labs.values())
@@ -18,7 +18,9 @@ table = [r.split('\t') for r in open(D + '/left.tsv').read().split('\n')[1:] if 
 keys = collections.Counter(); regs = collections.Counter(); low = high = total = 0; fam = collections.Counter(); recorded = engine = 0; vels = []
 meters = collections.Counter(); pickup = 0; parts = collections.Counter(); insts = collections.Counter(); most = collections.Counter(); soft = again = ov_notes = 0; rel = collections.Counter()
 man = json.load(open(D + '/corpus.json')) if os.path.exists(D + '/corpus.json') else None
-sizes = collections.Counter(); struck = []; by_size = collections.defaultdict(list); genes = []; bands = []; crowded = pairs = 0; shared = collections.Counter()
+sizes = collections.Counter(); struck = []; by_size = collections.defaultdict(list); genes = []; bands = []
+PLACES = (man or {}).get('places', 0)   # the places a corpus's pieces are placed in
+near = {k: [0, 0, 0] for k in ('drawn', 'recorded')}; keyed = collections.defaultdict(collections.Counter)  # strikes, of those within a frame of another, of those at one place
 for i, l in labs.items():
     ev = l['events']; notes = [e for e in ev if e['drum'] < 0 and e.get('midi', 0) > 0]
     for e in ev:
@@ -43,26 +45,33 @@ for i, l in labs.items():
         if not 0 < e['vel'] <= 1 and e['vel'] != -1: bad['a velocity outside (0, 1] that is not -1, which asks nothing'].append(f'loop {i}')
     kit, strikes = l.get('kit') or [], [e for e in ev if 'piece' in e]
     if strikes and not kit: bad['a strike of a loop with no kit'].append(f'loop {i}')
-    if kit:  # a kit drawn from the struck genome: each piece's genes and band once, each strike its piece's number
-        sizes[len(kit)] += 1; count = collections.Counter(e['piece'] for e in strikes); at = collections.defaultdict(set)
+    if kit and not PLACES: bad['a kit of a corpus whose manifest states no places'].append(f'loop {i}')
+    of_keys = any('key' in p for p in kit)  # a recording's, a piece each key its file strikes, or one drawn from the struck genome
+    if kit and not of_keys:  # each piece's genes, band and place once, each strike its piece's number
+        sizes[len(kit)] += 1; count = collections.Counter(e['piece'] for e in strikes)
         if not 2 <= len(kit) <= 10: bad['a kit of fewer than two pieces or more than ten'].append(f'loop {i}')
         for p in kit:
             genes.append(p['genes']); bands.append(p['band'])
-            if len(p['genes']) != len((man or {}).get('struck_genes') or p['genes']) or not all(0 <= g <= 1 for g in p['genes']) or not 0 <= p['band'] < BANDS:
-                bad['a piece whose genes are not the manifest\'s, each in [0, 1], or whose band is not one of the 315'].append(f'loop {i}')
-        for e in strikes:
-            if not 0 <= e['piece'] < len(kit): bad['a strike of a piece its kit lacks'].append(f'loop {i} piece {e["piece"]}'); continue
-            if e['drum'] != -1 or e.get('midi', 0) != 0 or e.get('instr'): bad['a strike that names a drum, a key or an instrument'].append(f'loop {i}')
-            at[e['frame']].add(e['piece'])
+            if len(p['genes']) != len((man or {}).get('struck_genes') or p['genes']) or not all(0 <= g <= 1 for g in p['genes']) or not 0 <= p['band'] < BANDS or not 0 <= p.get('place', -1) < PLACES:
+                bad['a drawn piece whose genes are not the manifest\'s, each in [0, 1], whose band is not one of the 315 or whose place not one of the manifest\'s'].append(f'loop {i}')
         for n in range(len(kit)):
             struck.append(count[n]); by_size[len(kit)].append(count[n])
             if not count[n]: bad['a piece of a kit that strikes nothing'].append(f'loop {i} piece {n}')
-        for ps in at.values():  # every two pieces struck on one frame: whether their bands fall in one place
-            crowded += len(ps) > 1; ps = sorted(ps)
-            for a in range(len(ps)):
-                for b in ps[a + 1:]:
-                    pairs += 1
-                    for n in PLACES: shared[n] += kit[ps[a]]['band'] * n // BANDS == kit[b]['band'] * n // BANDS
+    if kit and of_keys:  # each key once, in order, at a place or none (-1)
+        kit_keys = [p.get('key') for p in kit]
+        if kit_keys != sorted(set(kit_keys)) or any(not -1 <= p['place'] < PLACES or not -1 <= p['band'] < BANDS or 'genes' in p for p in kit):
+            bad['a recorded kit whose keys are not each once in order, or a piece of genes, or of no place or band of the manifest\'s nor -1'].append(f'loop {i}')
+        for p in kit: keyed[p['key']][p['place']] += 1
+    at = collections.defaultdict(list)
+    for e in strikes:
+        if not 0 <= e['piece'] < len(kit): bad['a strike of a piece its kit lacks'].append(f'loop {i} piece {e["piece"]}'); continue
+        if e.get('midi', 0) != 0 or e.get('instr') or not of_keys and e['drum'] != -1: bad['a strike that names a key or an instrument, or a drawn piece\'s a drum'].append(f'loop {i}')
+        at[e['frame']].append(kit[e['piece']].get('place', -1))
+    for e in strikes:  # a strike within a frame of another, and of those one at its place
+        if not 0 <= e['piece'] < len(kit): continue
+        others = at[e['frame'] - 1] + at[e['frame']] + at[e['frame'] + 1]; place = kit[e['piece']].get('place', -1)
+        c = near['recorded' if of_keys else 'drawn']; c[0] += 1
+        if len(others) > 1: c[1] += 1; c[2] += place >= 0 and others.count(place) > 1
     if l.get('kind') == 'overlap':
         if l.get('beats') or l.get('downbeats') or l.get('chords') or l.get('bpm'): bad['an overlap with a beat, a bar, a chord or a tempo'].append(f'loop {i}')
         insts[len({e['instr'] for e in notes})] += 1; ov_notes += len(notes); soft += sum(e['vel'] <= 10 ** (-15 / 20) for e in notes)
@@ -99,8 +108,10 @@ if sizes:
     print(f'each gene over its range, its {len(g)} pieces by tenths, the fewest and the most a tenth holds, and the least and most value: ' + '; '.join(
         f'{names[k]} {tenths(g[:, k]).min()} to {tenths(g[:, k]).max()} ({g[:, k].min():.2f} to {g[:, k].max():.2f})' for k in range(g.shape[1])))
     print('bands by tenths of the 315: ' + ' '.join(str(c) for c in np.histogram(bands, 10, (0, BANDS))[0]))
-    print(f'strikes of two pieces or more on one frame: {crowded} frames, {pairs} pairs of pieces; of the pairs, the share whose pieces\' bands fall in one place, the 315 cut evenly into n places: '
-          + ', '.join(f'{n} {100 * shared[n] / max(pairs, 1):.0f}%' for n in PLACES))
+for kind, (n, within, one) in near.items():
+    if n: print(f'{kind} kits\' strikes: {n}, {within} ({100 * within / n:.1f}%) within a frame of another, {one} ({100 * one / n:.1f}%) of them at its place too, of {PLACES} places')
+if keyed:
+    print(f'recorded kits by piece: {sum(sum(c.values()) for c in keyed.values())} pieces, each key\'s by place (-1 none told): ' + '; '.join(f'{k} ' + ' '.join(f'{p}:{n}' for p, n in sorted(c.items())) for k, c in sorted(keyed.items())))
 if kinds['recorded']:
     print(f'recorded: {frames * HOP / 3600:.2f} hours; hits: ' + (', '.join(f'{n} {k}' for k, n in sorted(hits.items())) or 'none') + f'; events of velocity -1, which ask nothing: {unasked}')
     print(f'hits put on their sound in {len(lags)} loops' + (f', by a lag from {1000 * min(lags):+.1f} to {1000 * max(lags):+.1f} ms, median {1000 * float(np.median(lags)):+.1f}' if lags else '') + f'; left out: {sum(left.values())}' + ''.join(f', {n} for {k}' for k, n in sorted(left.items())) + f'; skip.txt names {len(skip)} loops')

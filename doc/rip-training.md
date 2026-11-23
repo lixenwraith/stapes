@@ -1917,27 +1917,42 @@ and the picks add 71 and 73; `aug`'s alike.
 
 Audio v0.46.0 lays what is heard at either end of the grid in a bar, with its beats
 (audio §9), and reads a label's end past the recording at the recording's end. Before
-and after, plain, every figure that moved (`aug` moves alike), the before main's by the
-verb; the beats before the first downbeat (251) and after the last (1,491) the rip lacks
-are the bars row's, their before through a build of the branch with main's grid:
+and after, plain, every figure that moved (`aug`'s present path moves alike), the before
+main's by the verb; the beats before the first downbeat (251) and after the last (1,491)
+the rip lacks are the bars row's, their before through a build of the branch with main's
+grid:
 
 ```
                                present             joint
                             before   after     before   after
 hits                         0.896   0.989      0.956   0.989
   lost, of 8,828             1,620     126        683     112
-beats on a beat              0.793   0.898      0.975   1.000
-  lost before the first         51      22         37       0
-  lost after the last        1,008     173        177       0
+    outside the bars         1,518       0        573       0
+    a step off                  58      70         71      73
+    to a twin                    5      39         37      38
+    on a step another holds      6      17          1       1
+    at the picks                33       0          1       0
+  added by the picks            58      71         71      73
+bars                         0.773   0.825      0.988   1.000
+  beats on a beat            0.793   0.898      0.975   1.000
+    lost before the first       51      22         37       0
+    lost after the last      1,008     173        177       0
 chords                       0.707   0.846      0.851   0.882
+key                          0.608   0.611      0.611   0.620
+  tonics right, of 411         291     288        290     293
+  scales right                 259     261        260     264
 drums' loudness              0.746   0.728      0.735   0.726
+  hits matched               7,208   8,702      8,145   8,716
 ends                         0.887   0.904      0.887   0.904
   wrong                      3,294   2,795      3,294   2,795
+    strikes early            2,467   1,994      2,467   1,994
+    accounting early            49      23         49      23
 ```
 
 Of the 3,294 wrong ends, 649 were a label's end past the recording's, of 1,207 such
-ends, read at it now; through `aug` 591 of 3,142, of 1,109. The drums' loudness falls as
-more hits are matched, 8,702 for 7,208. On the 158 loops of 4 s or more of `corpus <dir>
+ends, read at it now; through `aug` 591 of 3,142, of 1,109. A hit laid in a bar now can
+be lost a step off, to a twin or on a step another holds, and the drums' loudness falls
+as more hits are matched. On the 158 loops of 4 s or more of `corpus <dir>
 600 4 gen meters seed 7` that begin part-way into a bar, 387 beats before their first
 downbeat and 248 after their last, under `heads beat,downbeat` (the analysis hearing the
 rest) and `heads all`:
@@ -1952,10 +1967,11 @@ drums F1             0.533 → 0.548  0.918 → 0.989  0.520 → 0.542  0.915 �
 chords               0.658 → 0.766  0.694 → 0.806  0.707 → 0.817  0.745 → 0.863
 ```
 
-With `cents_tuning` 1, through `aug` the notes read 0.874 for 0.852, the accounting
-drops 5,452 for 6,883, the own-pitch rule 509 for 372 and twins 1,214 for 1,123, the
-parts read 0.642 for 0.647 and the loudness 0.772 for 0.769; the 46 struck in the next
-cell stay.
+With `cents_tuning` 1, through `aug` the notes read 0.874 for 0.852, 27,974 heard as
+given for 26,766: the accounting drops 5,452 for 6,883, the own-pitch rule 509 for 372,
+twins 1,214 for 1,123 and the glides 124 for 128, and 335 are added for 337; the parts
+read 0.642 for 0.647, the loudness 0.772 for 0.769, the key 0.591 for 0.589 and the
+ends 0.900 as before, 2,792 wrong for 2,680; the 46 struck in the next cell stay.
 
 What each stage costs, largest first:
 

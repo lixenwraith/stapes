@@ -454,23 +454,27 @@ Left open by what landed, each with the option not taken:
 A hit is to be described by what it sounds like, not named. Landed: `corpus ... gen
 kits` plays an arranged loop's drums on a kit of two to ten struck sounds drawn over
 audio's struck genome, each strike labelled with its piece and the loop with each
-piece's genes and band ([Rip training §3](rip-training.md#a-loops-kit)). And a
-struck head on both models, whether something of no pitch is struck within a frame,
-a line's hit, a strike of no line or a kit's, asked at every frame of every corpus
-and read by a count on every line that reads one; a loop whose label holds a kit
-asks the drums head nothing ([Rip training §5](rip-training.md#5-the-targets)).
-What remains, each read before the next:
+piece's genes, band and place ([Rip training §3](rip-training.md#a-loops-kit)); the
+places, three even runs of the bands by a count ([§3](rip-training.md#a-kits-places));
+a recording's hits labelled by piece, a piece each key, placed by its own strikes
+([§3](rip-training.md#a-recordings-kit)); a struck head on both models, asked at every
+frame of every corpus; and on the frame model, at each place, whether something is
+struck there, its genes with the error the head states for each and how hard, grown on
+the weights that stand, a recording's genes taught by its pieces' strikes told alike
+and apart, and read by audio into the frames ([Rip training §5](rip-training.md#5-the-targets),
+[§8](rip-training.md#8-a-training-step)). What remains, each read before the next:
 
 - The count of 200 loops with the word, by `corpuscount.py` and `corpusheard.py`,
-  and a listening sample of kits of two, five and ten pieces.
-- The places: a grouping of the bands, which the count's share of same-frame strikes
-  that share a place, for each count of places, decides.
-- The heads that say a strike's place and genes, and the trainer that reads `piece`
-  for them; the decoder and `tune` reading strikes so, the struck head's peaks
-  among them. Until a decoder reads it, the head joins neither `DECODERS` nor
-  `READ`: in `DECODERS` its loss would pick the step a run exports, in `READ` a
-  pass's rate would follow it.
-- A recorded kit's labels by piece: E-GMD's hits keep their keys' drums.
+  and a listening sample of kits of two, five and ten pieces; E-GMD's labels made
+  again by piece (`corpus ... from ... labels`) and counted by key.
+- A pass that trains the places' heads on the kits' corpus and E-GMD, read by its
+  lines: the places' F1, the genes' miss beside the error stated, the loudness' miss,
+  and one piece's strikes nearer than two pieces'.
+- The decoder making hits from those heads, and `tune` reading strikes so, the struck
+  head's peaks among them; then the grouping of a track's hits into its kit. Until a
+  decoder reads them, the heads join neither `DECODERS` nor `READ`: in `DECODERS` their
+  loss would pick the step a run exports, in `READ` a pass's rate would follow it.
+- Scores that count hits without names.
 
 Left open by what landed:
 
@@ -484,10 +488,17 @@ Left open by what landed:
 - A sound's takes are seeded by its name, so the pieces numbered alike share their
   noise and their takes' spread from loop to loop: a seed of the loop's wants audio
   to take one.
-- Until the trainer reads a piece, a kit's strikes teach the struck head and the
-  onset alone: its loop asks the three-line drums head nothing, so a pass on it
-  teaches that head neither a hit nor silence there, `--over` lays no drums on it,
-  something being struck there, and `datacheck.py` reads no lag of its strikes.
+- A place is a piece's, not a strike's: a third of the generated strikes alone sound
+  most at another place than their piece's, a soft layer lower, and a recording's own
+  read places a generated piece right for 0.60 of its strikes. A place by each strike's
+  own take wants the engine to say which take a strike plays.
+- A piece no strike of which lies alone or beside read pieces has no place, its
+  strikes asking none: 0.023 of E-GMD's strikes in the draw.
+- `datacheck.py` reads no lag of a drawn kit's strikes, and the `--over` drums are
+  laid only where nothing is struck.
+- The loudness of a recorded strike is its MIDI velocity only where its list's
+  `velocity` cell is empty: E-GMD's says `none`, so its lines say no loudness until the
+  lab sets it ([Rip training §3](rip-training.md#a-recordings-velocities)).
 
 ### Train both models again
 

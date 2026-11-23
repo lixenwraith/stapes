@@ -751,6 +751,31 @@ proves wrong or that a document now states, and link the document instead.
   (`offlineTakes`), so a piece never plays on the last one's takes. Binding a
   piece (`SetKit`) renders its 18 takes, 0.3 s, most of a kit loop's render;
   its band renders one hit more, 20 ms, which a labels pass pays too.
+- **A piece's place is read in the energy its hit adds, not in the frames' log
+  rise.** log1p(100 e) reads a hit alone at its own peak in the log's range and a
+  soft one in a loop in its straight one, so a rise's shape moved with the level: a
+  lone hat in its loop read a place lower than alone. A piece's highest band moves a
+  median of 11 bands over its 18 takes; the energy summed over a place held a loud
+  take in its piece's place 0.95 of the time at four. Divide by `sharpCounts`, or
+  the sharp plane's shared low bins (about twenty at A0) put every piece low.
+- **The count of places is flat from two to six**: over 24 drawn kits its least moved
+  between three and four with the seed, over 48 it holds at three. A kit's cost is
+  its pieces' renders, `SetKit`'s takes and each long decay's seven times its decay,
+  not its bars: two bars cost what four did. The suite draws 12, `PLACEDRAWS=48` the
+  fit, 20 and 67 s plain.
+- **E-GMD's archive is read a take at a time by range.** Its central directory, 13 MB
+  at the end of the ZIP64, lists 91,108 members with their offsets: a member is its
+  local header and its deflated bytes after it, as `fetch.sh`'s `egmd_file` reads
+  one, and the `e-gmd-v1.0.0.csv` inside is the lab's own by its MD5.
+- A recorded kit's pieces are its keys, and the kick is the one most often never
+  struck alone: of 80 takes 32 had no kick four frames from every other strike. A
+  piece read beside pieces read alone, outside their places, left 0.023 of a draw's
+  strikes at no place.
+- `WriteMIDI` writes only a line's keys; a test of a key of no line writes its own
+  track (`drumTrack`).
+- `Label.window`'s `of` reads `one` when it is called, so a new mask named alike after
+  it changes what the names, waves and voices are asked; name a window's new
+  arrays apart, as `genes` the module's function was too.
 - Passes of a kit sum to the loop whole because no arranged step draws: the
   engine's `Prob` and `Humanize` draw from one stream for every track, so a
   pass that empties a track would move the others'. The arranger sets neither.

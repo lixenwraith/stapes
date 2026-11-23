@@ -23,7 +23,8 @@ Where each part stands:
   heads, a `from` list's `beats` and `velocity` columns, `corpus ... gen`'s arranged
   loops, `corpus ... meters`, `corpus ... overlaps`, a loop's level and air, and a label's
   `kind`, `chords`, an event's `part` and `instr`, a rendered loop's `beats` and
-  `downbeats`, and the struck head.
+  `downbeats`, the struck head, a kit's places, a recording's kit by piece and the heads of what
+  is struck at each place.
 
 ## 1. The path
 
@@ -31,9 +32,9 @@ Where each part stands:
 2. Each training step draws 8 windows of 512 frames, 5.9 s each (§7).
 3. A window's frames may be changed in place, as §6 lists, then become the input
    planes (§4).
-4. A window's events and its loop's beats become per-frame targets for the 13 heads,
+4. A window's events and its loop's beats become per-frame targets for the 16 heads,
    and a notes model's cents head (§5).
-5. The frame model turns frames into 406 numbers a frame, and the losses train it (§7, §8).
+5. The frame model turns frames into 490 numbers a frame, and the losses train it (§7, §8).
 6. The best step is written as a weight file (§9).
 7. At a rip, Go computes the same planes, runs the file and hands the heads to the
    decoders (§10).
@@ -117,8 +118,11 @@ A label is UTF-8 JSON with no whitespace. The loop's fields:
   from C with its root's first; a chord the bar before already holds is not listed
   again. `truth` reads them, each to the next one's frame, the last to `frames`.
 - `kit`: under `kits`, the kit an arranged loop's drums play, each piece in its
-  number's order as `{"genes":[g,...],"band":b}`, its thirteen genes in the manifest's
-  `struck_genes` order and the band its hit rises most in (a loop's kit, below).
+  number's order as `{"genes":[g,...],"band":b,"place":p}`, its thirteen genes in the
+  manifest's `struck_genes` order, the band its hit rises most in and its place (a loop's
+  kit, below); in a recording of hits, a piece each key its file strikes, in the keys'
+  order, as `{"key":k,"band":b,"place":p}`, both read from the recording, -1 where its
+  strikes cannot tell them (a recording's kit, below).
 - `events`: in no time order; the trainer sorts them.
 
 An event's fields:
@@ -162,8 +166,9 @@ An event's fields:
   an overlap's instruments share their part's name.
 - `instr`: a rendered loop's, what it sounds on: the engine's instrument (`piano`,
   `kick`), or the recorded instrument's name in NSynth (`guitar_acoustic_002`).
-- `piece`: a strike of a loop's kit, its piece's number in the loop's `kit`; it names
-  no `instr`, the drum it sounded on being no part of what was struck.
+- `piece`: a strike of a loop's kit, its piece's number in the loop's `kit`; a drawn
+  one names no `instr` and no `drum`, the drum it sounded on being no part of what was
+  struck, and a recording's keeps its line's `drum`.
 - `cents`: on a note that moves, where it sits at each frame from `frame` to `end`, one
   frame at least, in cents from `midi`'s cell centre to a tenth, the tuning in it: its
   step's bend and its voice's vibrato as the engine played them (audio's
@@ -203,7 +208,10 @@ corpora](../tool/rip-train/README.md#the-rounds-corpora)).
 ```
 
 Under `kits` it adds `struck_genes`, the names of a piece's thirteen genes in their
-order (audio's `StruckGeneNames`). A corpus of placed starts adds `reach`, in frames,
+order (audio's `StruckGeneNames`), and `places`, how many places a piece is placed in, as
+a corpus of recordings whose hits make a kit does: the trainer refuses a corpus of other
+places, or one whose labels hold a kit and whose manifest states none, by how to write its
+labels again. A corpus of placed starts adds `reach`, in frames,
 how far a placed start's known start may lie from it (a recording's starts, below):
 the trainer refuses one without it and says how to give it one. `loops` counts the files `loop_000` onward; the number grows past three digits as
 needed (`loop_39999`). `layout` is the frames' (§2): the trainer refuses a corpus of
@@ -231,7 +239,8 @@ of corpus:
 - **E-GMD:** `corpus <dir> from <list.csv> split train codec`. Each loop is one
   recording, with its hits from the MIDI file. Its keys are mapped by
   `midiInstruments`: edges, ride, tambourine and shaker read as hihat, cross-stick as
-  snare, and other keys as strikes of no line. The list is a draw of the recordings
+  snare, and other keys as strikes of no line; each hit is its key's piece (a recording's
+  kit, below). The list is a draw of the recordings
   on disk, by hours, spread over drummers, kits, styles and tempos, the test split in
   a list of its own ([rip-lab](../tool/rip-lab/README.md#datasetsegmdpy)): a
   recording's frames take 781 MB an hour, so a corpus is a share of the set. The
@@ -398,14 +407,73 @@ without the word is what it was. A loop whose texture has no drums draws none.
    draws everything before the passes, so every pass plays the same loop: its test
    renders kits of four and five in one pass a piece and whole, the same to 1e-9 of
    their peak.
+6. **Its place.** Once the loop is arranged, a piece is placed in one of `kitPlaces`
+   even runs of the 315 bands from the lowest, three of 105: the run that takes the
+   most of the energy its hit adds to the sharp plane on frames 3 to 5, each band's
+   energy over the times that plane counts a tone there (`sharpCounts`, the trainer's
+   `sharp_counts`), its hit take 0 at the median of the velocities its loop strikes it
+   at (`placed`, `risePlace`). Energy and not the frames' log1p(100 e): a hit alone at
+   its own peak reads in the log's range and a soft one in a loop in its straight one,
+   which moves where it rises.
 
 A strike is labelled as a strike of no line in the `drums` part, with its frame, its
-velocity and its `piece`; the loop's `kit` lists each piece's genes and band once.
-A band says where a piece sits, not which drum it is: any grouping of the 315 bands
-into places can be read from the labels later. `tool/rip-lab/audit` reads a corpus
-of kits ([its README](../tool/rip-lab/audit/README.md)). The trainer reads no piece
-and no gene: a kit's strike is struck as any, and a loop that holds a kit asks the
-drums head nothing (§5).
+velocity and its `piece`; the loop's `kit` lists each piece's genes, band and place once.
+A band says where a piece sits, not which drum it is. `tool/rip-lab/audit` reads a corpus
+of kits ([its README](../tool/rip-lab/audit/README.md)). A loop that holds a kit drawn
+from the genome asks the drums head nothing, and a loop of pieces asks what is struck at
+each place (§5).
+
+### A kit's places
+
+Strikes that share a frame are kept apart by where each rises most, so how many places
+the bands are cut into is a count (`TestTheBandsArePlacedInTheRunsThatKeepTheMostStrikesApart`).
+On 48 draws of two bars of the arranger's drums alone on drawn kits, with no room and through
+`degrade` at a loop's level, 2,644 strikes (`PLACEDRAWS=48`; the suite draws 12): a strike is
+unheard at its place where another strike within a frame shares its piece's place, or where
+its own sound rises most at another place, read on the strikes that lie `pieceAlone` frames
+from any other and standing for all. `kitPlaces` is the count of even runs that leaves the
+fewest unheard:
+
+```
+places            1      2      3      4      5      6      8     12     16
+share a place   0.595  0.302  0.243  0.156  0.147  0.103  0.092  0.072  0.062
+rise elsewhere  0.000  0.300  0.327  0.432  0.492  0.466  0.542  0.606  0.640
+unheard         0.595  0.511  0.490  0.521  0.567  0.521  0.584  0.634  0.662
+```
+
+One place is the frame alone. More places part more strikes and hold fewer sounds at
+their piece's place: a struck sound's takes and layers move its highest band a median of
+11 bands, the genome's broad noises spread over neighbouring places, and a soft layer
+rises lower. Three cost a third of the strikes alone sounding most outside their piece's
+place, which the head is taught all the same; the curve is flat from two to six, and a
+draw of 24 moved its least between three and four.
+
+### A recording's kit
+
+A recording's hits, put on their sound (a recording's lag, below), are its pieces by their
+keys, the set's own and no table of names: a piece each key its file strikes, in the keys'
+order, each hit keeping its line's `drum` for the drums head. A piece's place is read from
+the recording (`recordedKit`, `pieceRises`), by the energy each of its strikes adds over
+the frames a strike is read on, as a drawn piece's is:
+
+- summed over its strikes that lie `pieceAlone` frames or more from every other, four: a
+  rise spreads two frames either way under the sharp plane's window and is read a frame
+  either way, so such a strike reads none of another's;
+- of a piece none of whose strikes lies so alone, summed over those whose every other
+  strike within the reach is of a piece read so, outside those pieces' places;
+- `-1` for the band and the place of a piece of neither, whose strikes ask no place (§5).
+
+Its band is that energy's highest. On the count's draws at three places, a recording's own
+read gives 0.910 of the strikes a place and 0.604 of those their piece's own, where the
+commonest place holds 0.454. A draw of
+344 short takes of E-GMD's train split, eight a kit over its 43, 319 of them put on their
+sound, 20,369 strikes, reads 0.413 of them within a frame of another and 0.085 sharing a
+frame and a place with one, a fifth of those within a frame, and 0.023 of pieces at no
+place told; the kick (36) at the lowest place in 254 of 283 recordings, the snare (38) at
+the middle one in 192 of 301 and at the lowest in 101, the hats (42, 22) and the ride (51)
+mostly at the highest. That is a check on a small draw; `tool/rip-lab/audit/corpuscount.py`
+reads a corpus of recordings so. `labels` after the line writes the pieces into a corpus
+already exported, from its frames on disk.
 
 ### A loop's level
 
@@ -991,10 +1059,20 @@ glide's pitch target walks the cells it crosses.
 - `starts`: a placed start's mark, asked nothing: the onset head's peaks are read
   against it within the reach (§8).
 - `drums[d]`: the same as the onset, for that drum's hits; asked nothing on a loop whose
-  label holds a kit (`kit`, its frames' mask), whose pieces name no line.
+  label holds a kit drawn from the genome (`kit`, its frames' mask), whose pieces name no line.
 - `struck`: the same, for anything struck of no pitch: a hit of a line, a strike of no
   line and a kit's strike, every event at `midi` 0 (`Label.struck`). Asked at every
   frame of every window.
+- `places[k]`: the same as the struck head, for the strikes of a kit's pieces at place k,
+  asked at every frame and place of a loop whose label holds a kit and of a loop of a
+  corpus of kits where nothing is struck (`placeask`), but at the frames a strike of a piece
+  at no place told marks, where only the places known there are asked.
+- `genes[k]`, `loudness[k]`: a strike's piece's genes and its `vel`, at its frames and place
+  where it alone marks them, asked where the label states them (`geneask`, `loudask`): a
+  recorded piece states no genes, and a `vel` of -1 nothing.
+- `pieces[k]`: a strike's piece at its own frame and place where it alone marks them, -1
+  elsewhere, for one piece's strikes of a loop to be told alike and two pieces' apart where
+  no genes are stated (§8).
 - `pitch[p]`: from a note's `frame` until its `end`, at least one frame.
 - `voicing`: any pitch on.
 - `strike[p]`: within one frame of a note's start, but a placed start (§3), which marks
@@ -1111,10 +1189,11 @@ A corpus's own noise sits 40 to 65 dB under the loop, a phone's far nearer the m
 a loop where nothing is struck, then a recording from a corpus of drums alone, placed
 at random. Its level is -12 to +6 dB of its mean power
 against the loop's, and uncorrelated sounds add in power, so `e = e_loop + gain x e_drums`.
-A strike, a line's hit or one of no line, joins the onset and struck targets, and a hit
-its drum's, only where it can be heard: what it adds, over its best ten bands of the
+A strike, a line's hit or one of no line, joins the onset and struck targets, a hit
+its drum's and a piece's its place, only where it can be heard: what it adds, over its best ten bands of the
 sharp plane, must top everything else sounding (`stands_out`), judged after the channel,
-a strike in a placed start's stretch as anywhere, the stretches kept.
+a strike in a placed start's stretch as anywhere, the stretches kept. Every place is asked where
+the drums' label holds a kit, and no genes, loudness or piece.
 The window is asked no beat and no bar line: the drums laid under it keep
 their own.
 
@@ -1126,7 +1205,7 @@ from random places summed, the second at -6 to +6 dB of the first's power. Notes
 labels, a placed start its stretches where they fall in its chunk, cut by the chunk's edges as
 by a window's, a strike counts where it stands out of the other clip, as a laid one does, a
 chunk of a kit's loop asks no drums, and wave, voice,
-family, the beat and the bar line go unasked.
+family, the beat, the bar line and what is struck at each place go unasked.
 
 **`--sung dir:share`** draws that share of the chunks from a corpus of solo singing.
 
@@ -1172,12 +1251,13 @@ Attention has 8 heads and looks 64 frames (0.74 s) either side, in every block. 
 are no position embeddings: each head subtracts a slope of `2^(-8(h+1)/8)` per frame of
 distance from its scores (ALiBi), so a window of any length works.
 
-The 3,918,870 weights: 592 + 2,320 + 4,640 in the convolutions, 647,424 in the input
-layer, 789,760 in each block, 512 in the final norm, 104,342 in the output layer, 2,313
-of them the family head's, 514 the beat's and the downbeat's and 257 the struck head's.
+The 3,940,458 weights: 592 + 2,320 + 4,640 in the convolutions, 647,424 in the input
+layer, 789,760 in each block, 512 in the final norm, 125,930 in the output layer, 2,313
+of them the family head's, 514 the beat's and the downbeat's, 257 the struck head's and
+21,588 those of what is struck at each place.
 A model of the two dB planes has 288 fewer, all in `convs.0.weight`.
 
-The 406 outputs, in the order the file lists the heads:
+The 490 outputs, in the order the file lists the heads:
 
 ```
 offset    size  head       read as
@@ -1194,6 +1274,9 @@ offset    size  head       read as
 403         1   beat       sigmoid: a beat of the meter within a frame
 404         1   downbeat   sigmoid: a bar line within a frame
 405         1   struck     sigmoid: something struck within a frame, of no line or pitch
+406..408    3   places     sigmoid: something struck within a frame at each place
+409..486   78   genes      sigmoid: each place's 13 struck genes, then the log of each one's error stated
+487..489    3   loudness   sigmoid: how hard what is struck at each place was struck, a velocity
 ```
 
 Every model's pitches are the piano's 88 keys, MIDI 21 to 108. A file has every head;
@@ -1267,10 +1350,15 @@ pitchfamily, pitchwave: cross-entropy over the eight names and over the waves, a
 pitchvoice: squared error over the genes, at the cells asked
 spread:   miss / e + log e where asked, e the error the head states and miss the
           offset's absolute error held fixed: a Laplace's scale fitted to it
+places:   binary cross-entropy with a weight on a strike of 8, as struck's, at the frames and places asked
+genes, genespread: the struck genes' absolute error and its spread, as the cents' and theirs, where asked
+loudness: squared error, where asked
+pieces:   cross-entropy of a strike named among its window's pieces, where no genes are stated (below)
 
 total    = onset + drums + pitch + 0.5 voicing + strike + release + 2 velocity + 0.5 wave + 2 voice
            + 0.5 family + beat + downbeat + 2 cents + 0.2 spread
            + 0.25 (0.5 pitchfamily + 0.5 pitchwave + 2 pitchvoice) + struck
+           + places + 2 genes + 0.2 genespread + 2 loudness + 0.5 pieces
 decoders = onset + drums + pitch + 0.5 voicing + strike + release + beat + downbeat
 ```
 
@@ -1296,6 +1384,19 @@ a strike is as likely as not. A loop whose label holds a kit asks the drums head
 nothing: its pieces name no line, and the head would be taught silence under them.
 A strike in a loop of placed starts marks the onset where it is, as a drum hit does:
 it is heard, not placed.
+
+What is struck at each place is the frame model's, beside the drums head whose hits it
+describes: whether something is struck there, its genes with the head's own stated error for
+each, and how hard. Each weighs as its like does, and none joins `decoders` or `READ`, which no
+decoder reading them yet would let pick a step or follow a rate. The struck head stands as it
+was, the one word on something struck that every corpus asks, recordings of guitar and voice
+among them, where the places are asked of pieces alone. A corpus of no kit asks them nothing:
+every other head's loss and the total are a model's without them, bit for bit. Where no genes
+are stated, a recording's, a strike's genes are taught by the strikes of its loop: each strike
+of a piece struck again in a window of two pieces or more is named among the window's pieces
+by a Laplace's log-likelihood of its genes about each piece's mean, its own's taken without
+it, at the scale of its errors stated plus that piece's mean error stated, no factor on
+either (`told_apart`); the errors are taught on drawn kits alone, and the term moves none.
 
 The beat and the downbeat are the onset head's kind of loss with one difference: no
 weight. Audio reads the two by their level, as posteriors: the tempo from how the beat
@@ -1343,6 +1444,15 @@ Every line of a model with a struck head then gives `struck's F1`: the head's pe
 `STRUCK_BAR` or over against what its corpus strikes within four frames, counted so,
 or over a corpus where nothing is struck, as GuitarSet's and VocalSet's, `nothing
 struck, struck's peaks N a minute`, which a head that hears no strike there keeps near 0.
+
+A frame model's lines then say what is struck at each place over loops of pieces, or `no
+place asked`: `places' F1` pooled and each place's (`-` where nothing is struck there), the
+places head's peaks at `STRUCK_BAR` counted so at the frames asked; the genes' median miss,
+the median error stated and the share of readings within it (63% is a head that states its
+mean miss), or `no genes stated` over recordings; the loudness' median miss, or `no loudness
+stated`; and the share of pairs of one piece's strikes in a loop lying nearer than pairs of
+two pieces', a pair's distance its genes' mean miss over the errors stated for both, a tie a
+half (`nearer`), over the loops that hold both.
 
 Over loops of placed starts, held out or `--validate`'s, either model's lines then
 give `placed starts' F1 ... within R frames, their strikes' ...`: the onset head's
@@ -1501,12 +1611,14 @@ is the contract. All numbers are little-endian. An FNV-1a 64 of every byte befor
 ends the file. The checksum catches damage, not tampering. A file only ever holds
 numbers, and `Load` checks its shape against its tensors. The trainer writes version 6:
 a `kind` word
-after the version, 0 for the frame model, thirteen heads, `beat`, `downbeat` and `struck`
-of one value each after `family`, an `out.weight` of 406 x 256, and after the heads the
+after the version, 0 for the frame model, sixteen heads, `beat`, `downbeat` and `struck`
+of one value each after `family` and `places`, `genes` and `loudness` of 3, 78 and 3 after
+them, an `out.weight` of 490 x 256, and after the heads the
 constants it states, a count and for each a name and a float32: one, `layout`, the layout
 of the frames it hears, 1 (audio's `ripmodels.Layout`, §2). Audio refuses a file of another
 layout, or of none, by name, and so do the trainer's `--init` and `average.py`; it loads a
-frame model whose heads start with `FrameSpec`'s and reads nothing of `struck` after them.
+frame model whose heads start with `FrameSpec`'s, reads nothing of `struck` after them, and
+from v0.42.0 reads the three of what is struck at each place.
 
 `--pitchnet` writes the same version, whose `kind` word, 1, makes the notes model
 transformer's cell net. Its sizes follow, from `bins` to the frame path's dilation and
@@ -1539,6 +1651,8 @@ beat and downbeat heads fill `RipFrames.Beat` and `Downbeat`, and where the fram
 both, the tempo and the beats are read from the beat head and the bar lines from the
 downbeat head beside the cues' rules ([audio
 §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)).
+Its heads of what is struck at each place fill `RipFrames.Places`, `Struck`, `StruckGenes`,
+`StruckGenesError` and `StruckLoudness`, which no decoder reads yet.
 
 The decoders then read the frames: hits by peak picking, the bass by one hidden path,
 the melody register by strike peaks. `strike` and `strike_again` are the thresholds

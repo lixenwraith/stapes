@@ -1029,7 +1029,9 @@ proves wrong or that a document now states, and link the document instead.
   `tune 2 1 truth <list> heads all` over 419, 1,667 and 4,994 s of loops
   peaked at 1.15, 1.02 and 1.02 MB a second resident and 0.49, 0.46 and 0.45
   MB live: the collector lets the heap reach twice what is live, and a
-  recording read at 44.1 kHz is garbage beside it.
+  recording read at 44.1 kHz is garbage beside it. At `hold 2` the 4,994 s
+  reading peaked at 4.92 GB resident, under `GOMEMLIMIT=3GiB` at 3.14 in as
+  many seconds; at `hold 0` it held 0.17 GB live and 0.32 resident.
 - **A take read again costs its resample.** A second of sound read again for a
   rip takes 4.7 ms of a core: 4.1 the resample from 44.1 kHz to the rip's rate,
   which low-passes every sample though it keeps every other, 0.5 `ReadWAV` and

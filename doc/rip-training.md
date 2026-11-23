@@ -1626,6 +1626,36 @@ unheard, are no longer doubled. Four 6/8 loops read 12/8, their head marking eve
 line over the rest, and three 4/4 loops read 12/8 at three halves of their tempo, a bar
 as long in seconds and not theirs.
 
+Audio v0.41.0's joint path (`joint` 1) decides the tempo, the bar line and the meter as
+one path over the heads, in the corpus's seven meters. Read with no model, the cues the
+analysis's, on the 574 loops of 4 s or more of `corpus <dir> 600 4 aug gen meters seed
+5`: with the labels as the heads (`truth ... heads`), and with heads spoiled to the
+trained F1s, 0.778 and 0.839 (beats missed, thrice as often in the first second, weak
+beats and a compound bar's inner eighths lower, a simple bar's eighths at half and some
+over a half, false peaks, the half bar marked as a line, a 6/8's every other line low,
+its first line missed). A tempo against the label's `bpm` and against the bars' median
+(played), a bar within 3 percent:
+
+```
+               labels as heads                    spoiled heads
+           present          joint            present          joint
+meter   n  tempo played bar  tempo played bar  tempo played bar  tempo played bar
+4/4   239    214    239 239    213    239 239    205    231 229    213    238 235
+3/4    81     76     81  81     75     81  81     65     70  66     74     80  80
+6/8    65     51     61  48     56     65  65     51     58  35     56     64  57
+12/8   64     45     54  48     55     64  64     42     51  38     54     64  57
+2/4    22     21     22   0     21     22  22     21     22   1     17     20  18
+5/4    51     44     51   0     43     51  51     40     47   0     40     51  50
+7/8    52     27     30   0     45     52  52     32     39   0     45     52  51
+all   574    478    538 416    508    574 574    456    518 369    499    569 548
+```
+
+A label's `bpm` is its loop's first bar's, and seven loops in ten drift, so perfect heads
+miss it where the tempo the loop plays is read. Perfect heads cost the readings every
+2/4, 5/4 and 7/8 bar and a quarter of 6/8's and 12/8's (read 4/4 or 3/4); the joint
+path's errors on spoiled heads are the heads' own, 6/8 and 12/8 read as each other (14)
+and 2/4 and 4/4 (7).
+
 ## 12. The scores
 
 - **`truth <name> <file>`** finds a time map from the longest common subsequence of

@@ -75,6 +75,7 @@ type ripped struct {
 	rate  int
 	file  string
 	sound *audio.RipSound // the recording as Fidelity hears it, heard on first use
+	by    audio.Ripper    // what ripped it, the tempo and meter it was read at with it
 }
 
 // errScore refuses a verb that hears the recording a score lacks

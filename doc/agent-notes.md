@@ -200,6 +200,17 @@ proves wrong or that a document now states, and link the document instead.
 
 ## The rip and its truths
 
+- **A bars decoder is read apart from its model by the labels as heads**:
+  `truth <name> <label.json> heads` and `tune ... truth <list> heads` mark a
+  label's beats and bar lines as the trainer's targets are over the frames its
+  front end hears, the analysis's in a container with no model. Heads spoiled
+  to a trained F1 for a count scale each kind of error the notes record by one
+  severity, bisected until the trainer's peaks (over a half, highest within two
+  frames, right within four of a mark) give that F1; the mix of kinds is the
+  count's assumption, so state it beside the figures.
+- **Four bars of a short meter can be under four seconds**: a 2/4 loop of
+  `corpus ... 4 ... meters` at 128 or more, and a 3/4 or 6/8 at 176 that
+  quickens, gives no rip, 26 of 600 loops.
 - **A test of what the heads decide writes them over the analysis's frames.**
   The analysis carries no head and a test's small random model marks no beat,
   so a rule the heads settle (a 12/8 read over its eighths or over its dotted

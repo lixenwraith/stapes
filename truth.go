@@ -38,14 +38,27 @@ func cmdAgree(s *Session, a []string) error {
 // line, and the hits; a MIDI file's bars, a label's and a JAMS file's beats, a
 // truth of beats alone, score its bar lines, and a label's readings what it says
 // past them. Timed, the truth's seconds are the recording's: no map is fitted.
+// With heads, the recording is ripped again with a label's beats and bar lines
+// in the heads' place, and that rip is scored.
 func cmdTruth(s *Session, a []string) error {
 	rp, ok := s.rips[a[0]]
 	if !ok {
 		return fmt.Errorf("%q: nothing ripped under that name this session (rip first)", a[0])
 	}
-	timed := len(a) > 2
-	if timed && a[2] != "timed" {
-		return fmt.Errorf("%q: want timed, for a truth whose seconds are the recording's, or nothing", a[2])
+	var timed, heads bool
+	for _, w := range a[2:] {
+		switch w {
+		case "timed":
+			timed = true
+		case "heads":
+			heads = true
+		default:
+			return fmt.Errorf("%q: want timed, for a truth whose seconds are the recording's, heads, for a label's beats and bar lines in the heads' place, or nothing", w)
+		}
+	}
+	label := strings.EqualFold(filepath.Ext(a[1]), ".json")
+	if heads && !label {
+		return fmt.Errorf("%s: heads reads a corpus loop's label (.json), whose beats and bar lines stand in for the heads", a[1])
 	}
 	data, err := os.ReadFile(s.path(a[1]))
 	if err != nil {
@@ -60,7 +73,7 @@ func cmdTruth(s *Session, a []string) error {
 		if score, err = audio.ReadMIDI(bytes.NewReader(data)); err == nil {
 			truth, hits = score.Notes, score.Hits
 		}
-	case strings.EqualFold(filepath.Ext(a[1]), ".json"):
+	case label:
 		lab = new(corpusLoop)
 		if err = json.Unmarshal(data, lab); err == nil {
 			truth, hits = lab.notes(), lab.hits()
@@ -77,6 +90,25 @@ func cmdTruth(s *Session, a []string) error {
 	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", a[1], err)
+	}
+	if heads {
+		beats, downbeats := lab.grid()
+		if rp.x == nil {
+			return errScore(rp)
+		}
+		if len(downbeats) == 0 {
+			return fmt.Errorf("%s: no bar line listed to stand in for the downbeat head", a[1])
+		}
+		by := rp.by
+		by.FrontEnd = labelHeads{fe: by.FrontEnd, beats: frames(beats), lines: frames(downbeats)}
+		r, err := by.Samples(rp.x, rp.rate)
+		if err != nil {
+			return err
+		}
+		again := *rp
+		again.rip, again.sound = r, nil
+		rp = &again
+		fmt.Fprintf(s.out, "%s ripped again with the label's %d beat(s) and %d bar line(s) as its heads: %d bpm %s\n", a[0], len(beats), len(downbeats), r.BPM, r.Meter)
 	}
 	// a score's bars are placed on the recording as its notes matched, or with
 	// none as its hits did

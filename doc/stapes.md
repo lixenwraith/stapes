@@ -269,8 +269,10 @@ Over the library's rip (library
   follower: no F1, drums' or bars' score sees it, save where the installed
   scores' rows read a kept note's ends, and the ends reading does, as the parts
   reading does where a note's length moves the parting, which holds no two notes
-  at once on a line. The key moves with no gene (the frames alone say it), the
-  chords with the bars' genes alone, which the bars' score sees, and the hits'
+  at once on a line. The key moves with its own genes (audio's `key_bars`,
+  `key_open`, `key_close`, `key_bar`), which no search here moves, and with the
+  bars it is read over, the chords with the bars' genes and the key, which the
+  bars' score sees, and the hits'
   loudness with `onset_min` and the bars, which the drums' F1 sees. Through
   audio's `struck` over two loops, with and without a start plane, F1's counts
   also held while `min_note`, and `strike_hold` without starts, moved the ends

@@ -215,8 +215,8 @@ proves wrong or that a document now states, and link the document instead.
   `Rip.Stages`, which the session's rips and every take keep). §11's reading
   is `tune 2 1 truth <list> heads all`, its figures before: a pool of 2 is the
   least, and a set its search finds is written into the root's `rip.toml`, so
-  each reading takes a root of its own. On 24 loops the record counted what a
-  scratch replay of `Ripper.events` a stage at a time had, stage by stage.
+  each reading takes a root of its own. A list whose third column is one word
+  gives the all row; a root whose `rip.toml` sets `joint = 1` the joint path's.
 - **Every head given, the decoder still reads the recording**: the bass's
   own-pitch and steady-rise rules, `dynamics`, the accounting, `bright` and the
   drums' tones, and a model's front end states no tuning, nor a label's pitch
@@ -229,8 +229,8 @@ proves wrong or that a document now states, and link the document instead.
   its ear's and the stream's, and a label's pitch clears it. An overlap states
   no beat, so under `heads all` it is ripped over the analysis's frames.
 - **A label's ends can lie past its loop**: an overlap's notes ring on past
-  its last frame, which the trainer clamps, and `truth`'s ends count them wrong
-  (558 of 3,142 wrong ends on 600 `aug` loops).
+  its last frame (an event's `end` past the label's `frames`), which the trainer
+  clamps, and `truth`'s ends count them wrong.
 - **Four bars of a short meter can be under four seconds**: a 2/4 loop of
   `corpus ... 4 ... meters` at 128 or more, and a 3/4 or 6/8 at 176 that
   quickens, gives no rip, 26 of 600 loops.

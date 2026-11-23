@@ -2411,18 +2411,15 @@ func (analysisEar) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFra
 	return audio.Ripper{Params: p}.Hear(x, rate)
 }
 
-// TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem: a label gives its loop's
-// hits and the bars it lists beside its notes; one written from a rip's own
-// scores one on each, tune truth says the three apart and searches the drums'
-// and the bars' genes, and those no score of so short a loop sees are written
-// as the start's
-func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	// four bars of a bass line over a beat whose strokes grow evenly louder, each
-	// lane's first at 0.3 of its last: its hits stand at every strength under the
-	// loudest, and none rising from the silence before the loop outweighs the rest
+// crescendoTruth is loop.wav in a new folder, four bars of a bass line over a
+// beat whose strokes grow evenly louder, and a list of it against a label of its
+// rip's own notes, hits and beats, which scores one on each; s's onset_min is
+// then the range's top, from which every near step down hears more of the hits
+func crescendoTruth(t *testing.T, s *Session) (list string, r *audio.Rip, lab corpusLoop) {
+	t.Helper()
+	// each lane's first stroke at 0.3 of its last: its hits stand at every
+	// strength under the loudest, and none rising from the silence before the
+	// loop outweighs the rest
 	const bars, steps = 4, 16
 	beat := &audio.Pattern{Name: "crescendo", Steps: bars * steps, Role: audio.RoleRhythm}
 	for _, d := range []struct {
@@ -2464,12 +2461,12 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := audio.Ripper{Params: s.rip, Lead: s.lead}.Samples(x, rate)
+	r, err = audio.Ripper{Params: s.rip, Lead: s.lead}.Samples(x, rate)
 	if err != nil || len(r.Notes) == 0 || len(r.Hits()) == 0 || len(r.Bars) < 2 {
 		t.Fatalf("the start's rip: %v, %d notes, %d hits, %d bars: no fixture", err, len(r.Notes), len(r.Hits()), len(r.Bars))
 	}
 	frame := func(sec float64) int { return int(math.Round(sec / audio.RipFrameSec)) }
-	lab := corpusLoop{BPM: r.BPM, Bars: len(r.Bars)}
+	lab = corpusLoop{BPM: r.BPM, Bars: len(r.Bars)}
 	for _, n := range r.Notes {
 		lab.Events = append(lab.Events, corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: n.Vel})
 	}
@@ -2484,7 +2481,7 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	if err := writeJSON(filepath.Join(dir, "loop.json"), lab); err != nil {
 		t.Fatal(err)
 	}
-	list, file := filepath.Join(dir, "truths.txt"), filepath.Join(dir, "rip.toml")
+	list = filepath.Join(dir, "truths.txt")
 	writeFile(t, list, "loop.wav\tloop.json\tloop\ttimed\n")
 	takes, _, err := readTruthList(list, analysisEar{}, "", "")
 	if err != nil {
@@ -2508,6 +2505,20 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	if top, below := heard(start), heard(under); below <= top {
 		t.Fatalf("onset_min %.2f hears %d of %d hits and %.2f under it %d: no fixture", start.OnsetMin, top, len(r.Hits()), under.OnsetMin, below)
 	}
+	return list, r, lab
+}
+
+// TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem: a label gives its loop's
+// hits and the bars it lists beside its notes; one written from a rip's own
+// scores one on each, tune truth says the three apart and searches the drums'
+// and the bars' genes, and those no score of so short a loop sees are written
+// as the start's
+func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	list, r, lab := crescendoTruth(t, s)
+	start, file := s.rip, filepath.Join(filepath.Dir(list), "rip.toml")
 	if err := s.tuneTruth(tuneOptions{generations: 2, pool: 8, seed: 1}, list, file, analysisEar{}); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
 	}
@@ -2524,6 +2535,72 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	p, err := audio.LoadRipParams(data)
 	if err != nil || p.OnsetMin >= start.OnsetMin || p.RepeatMargin != start.RepeatMargin || p.NearMargin != start.NearMargin || p.NearRepeat != start.NearRepeat {
 		t.Errorf("wrote %+v (%v): want onset_min under the start's, and the margins of how a reading repeats, read of no four bars, the start's %+v", p, err, start)
+	}
+}
+
+// TestTuneTruthMovesOnlyTheGenesItIsTold: genes names the genes tune truth may
+// move, as rip.toml names them or a part for its own, and refuses a name it does
+// not know with those it knows; told the notes a search holds the drums' bar that
+// one told onset_min moves, and told every part it is the untold search, each
+// saying the genes free and then those moved, from and to.
+func TestTuneTruthMovesOnlyTheGenesItIsTold(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	runOrFatal(t, s, &out, "! tune truth truths.txt genes strike,kick_share\n")
+	for _, want := range []string{`genes "kick_share": want parts or their genes`, "notes (strike, strike_low, ", "drums (onset_min), bars (tempo_prior, "} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("no %q refusing a gene tune truth does not search:\n%s", want, out.String())
+		}
+	}
+	list, _, _ := crescendoTruth(t, s)
+	start, file, all := s.rip, filepath.Join(filepath.Dir(list), "rip.toml"), slices.Concat(modelGenes, drumGenes, barGenes)
+	// search is what tune truth told genes says from the start, and the set it
+	// ends with, which moved none but the free genes and whose moves end what it said
+	search := func(genes string, free ...func(*audio.RipParams) *float64) (string, audio.RipParams) {
+		t.Helper()
+		s.rip = start
+		out.Reset()
+		os.Remove(file)
+		o := tuneOptions{generations: 1, pool: 4, seed: 1}
+		if genes != "" {
+			var err error
+			if o.genes, err = parseGenes(genes); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := s.tuneTruth(o, list, file, analysisEar{}); err != nil {
+			t.Fatalf("tune truth told %q: %v\n%s", genes, err, out.String())
+		}
+		held := s.rip
+		for _, at := range free {
+			*at(&held) = *at(&start)
+		}
+		if held != start {
+			t.Errorf("told %q, the search moved another gene: %+v from %+v", genes, s.rip, start)
+		}
+		var moved []string
+		for k, g := range geneNames(all) {
+			if from, to := *all[k](&start), *all[k](&s.rip); from != to {
+				moved = append(moved, fmt.Sprintf("%s moved from %v to %v\n", g, from, to))
+			}
+		}
+		if _, last, _ := strings.Cut(out.String(), "rip listens with it from now on\n"); last != strings.Join(moved, "") {
+			t.Errorf("told %q, the search ends %q, want %q", genes, last, moved)
+		}
+		return out.String(), s.rip
+	}
+	freed := func(said, parts string) bool {
+		return strings.Contains(said, "the genes free: "+parts+"; the rest held at the current parameters\n")
+	}
+	notes, _ := search("notes", modelGenes...)
+	drums, p := search("strike,onset_min", modelGenes[0], drumGenes[0])
+	if !freed(notes, "notes") || !freed(drums, "strike, drums") || p.OnsetMin >= start.OnsetMin {
+		t.Errorf("told the notes and then strike and onset_min, want each said free and onset_min moved under the start's %g by the second:\n%s\n%s", start.OnsetMin, notes, drums)
+	}
+	untold, _ := search("", all...)
+	if told, _ := search("bars,drums,notes", all...); told != untold || !freed(untold, "notes, drums, bars") {
+		t.Errorf("untold, want every part free, the search told them all:\n%s\n%s", untold, told)
 	}
 }
 

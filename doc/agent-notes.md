@@ -1009,6 +1009,11 @@ proves wrong or that a document now states, and link the document instead.
   `strike_low`, `strike_again` or `voicing` lowered, its `strike_hold` moving
   nothing, and a pool of four wrote nothing for four seeds of sixteen, one of
   eight for none. A gene added to the list, however idle, moves every draw.
+  Fewer genes free make a gain surer: from `onset_min` 0.9 on the crescendo
+  (`crescendoTruth`) a pool of four over one generation at guard 0 moved it
+  for sixteen seeds of sixteen told `genes strike,onset_min` and for eight
+  untold, a draw moving each free gene one time in four and the guard refusing
+  one whose other moves cost a score.
 - A drum's loudest onset is often its first stroke, rising from the render's
   silence: in a bank loop each drum's first alone stood over 0.75 of its
   loudest, so from `onset_min` at its range's top no near step heard another.

@@ -277,11 +277,18 @@ Over the library's rip (library
   the window and the loudness: those F1 sees elsewhere, as notes come and go.
   With hits `onset_min` is searched too (`drumGenes`), with bars the tempo's
   prior, combs, cuts, `tightness`, the bars' weights, the meter's margins and
-  the joint path's costs and levels (`barGenes`); `heads` rips each recording
-  whose truth is a label with the heads it names the label's, as `truth`'s does
-  (`truthTake.read`), the rest through the analysis where no model is loaded,
-  and counts by head the takes whose label states one not; each condition's
-  stages follow its readings (`truthCount.stages`);
+  the joint path's costs and levels (`barGenes`). `genes` frees of these those
+  it names alone (`parseGenes`), a gene by its key in `rip.toml` or a part,
+  `notes`, `drums` or `bars`, by its genes (`geneParts`), every other held at
+  the current set, so a part is searched apart; a name it does not know is
+  refused with those it knows, and a word that leaves none free. A search that
+  names every part draws what one without the word draws. It says the genes
+  free before it starts, a whole part by its name, and last, once it writes a
+  set, each gene that moved, from and to as `rip.toml` writes them. `heads`
+  rips each recording whose truth is a label with the heads it names the
+  label's, as `truth`'s does (`truthTake.read`), the rest through the analysis
+  where no model is loaded, and counts by head the takes whose label states one
+  not; each condition's stages follow its readings (`truthCount.stages`);
   and either search's best has each gene whose move the score does not see,
   put back alone, back at the start's (`settled`), since a pool moves genes by
   chance and a search through the analysis, a model without the heads or loops

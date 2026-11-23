@@ -42,8 +42,8 @@ help:
 	@echo "  test      Run the Go tests with the race detector"
 	@echo "  verify    Run test, vet, gofmt and the FreeBSD and Android builds"
 	@echo "  venv      Make the trainer's Python in $(VENV), with a CPU PyTorch"
-	@echo "  smoke     Run the training path end to end at smoke scale in a temporary folder,"
-	@echo "            its own root included, with PYTHON ($(VENV) by default)"
+	@echo "  smoke     Run the round end to end at smoke scale in a temporary folder, from a corpus"
+	@echo "            to an installed pair and its judge, with PYTHON ($(VENV) by default)"
 	@echo "  clean     Remove build artifacts"
 
 check-go:
@@ -148,8 +148,11 @@ venv:
 smoke: check-go
 	@command -v '$(PYTHON)' >/dev/null || { echo "no Python at $(PYTHON): make venv, or name one with PYTHON=" >&2; exit 1; }
 	@set -eu; dir=$$(mktemp -d "$${TMPDIR:-/tmp}/stapes-smoke.XXXXXX"); echo "== smoke in $$dir"; \
-	LOOPS=200 STEPS=300 HOLDOUT=20 EVERY=100 BENCH_LOOPS=4 CORPUS="$$dir/corpus" ROOT="$$dir/root" \
-		PYTHON='$(PYTHON)' tool/rip-train/pipeline.sh all
+	export PYTHON='$(PYTHON)' STEPS=300 HOLDOUT=20 EVERY=100 BENCH_LOOPS=4 ROOT="$$dir/root" NOTES="$$dir/corpus/ripnotes.bin"; \
+	LOOPS=200 CORPUS="$$dir/corpus" tool/rip-train/pipeline.sh corpus train notes bench; \
+	LOOPS=24 WAV= CORPUS="$$dir/heard" tool/rip-train/pipeline.sh corpus; \
+	CORPUS="$$dir/corpus" ROWS="$$dir/heard" TRUTH="$$dir/heard" READBACK="$$dir/heard" POOL=2 GENERATIONS=1 WEIGHTS="$$dir/weights" \
+		JUDGE="$$dir/corpus/fit/root/ripjudge.bin" tool/rip-train/pipeline.sh rows judge fit readback table keep install
 
 clean:
 	rm -rf $(BIN_DIR)

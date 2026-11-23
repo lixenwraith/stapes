@@ -1223,3 +1223,12 @@ proves wrong or that a document now states, and link the document instead.
   a mix.** On singers and a guitarist it never trained on it names `voice` for
   0.99 of the notes and `guitar` for 0.98; on held-out generated mixes 0.55 of
   the notes, a sung one 0.08. No decoder reads the name.
+- **`tune 2 1 truth` is the smallest reading, and it writes.** A pool is two at
+  least and a search one generation: the figures `before` are the root's own
+  set's, and a set that beats it lands in the root's `rip.toml`. So a read-back
+  and a search each run in a copy of the fit's root (`pipeline.sh`'s `reading`
+  and `fit`), and a table takes the figures before.
+- **A truth list refuses a loop under four seconds**, as `rip` does
+  (`audio`'s `Samples`); `rows ... from <corpus dir>` passes such loops by
+  itself. `pipeline.sh` leaves them out where it lists a corpus directory
+  (`listed`), by the WAV's own byte rate.

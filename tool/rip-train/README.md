@@ -62,17 +62,21 @@ Everything below runs from the stapes checkout's root.
 
 ## The pipeline
 
-`pipeline.sh` runs the four stages with every knob an environment variable,
-and two more, `shard` and `merge`, that spread a run over several machines
-([Training in parallel](#training-in-parallel)):
+`pipeline.sh` runs a stage a word, several in a row, with every knob an
+environment variable: the four that make a frame model, `notes` for the notes
+model, the six that fit a pair and say where the rip stands ([the fit of a
+pair](#the-fit-of-a-pair)), and `shard` and `merge`, which spread a run over
+several machines ([Training in parallel](#training-in-parallel)):
 
 ```bash
 tool/rip-train/pipeline.sh all            # corpus, train, bench, install, with the defaults below
 tool/rip-train/pipeline.sh corpus         # one stage at a time
 tool/rip-train/pipeline.sh train
+tool/rip-train/pipeline.sh notes          # the notes model, into NOTES
 tool/rip-train/pipeline.sh bench
 tool/rip-train/pipeline.sh install
 tool/rip-train/pipeline.sh line           # the corpus's script, printed: nothing renders
+tool/rip-train/pipeline.sh rows judge fit readback table keep   # the fit of a pair
 ```
 
 | Knob | Default | What it does |
@@ -103,9 +107,12 @@ tool/rip-train/pipeline.sh line           # the corpus's script, printed: nothin
 | `VALIDATE` | empty | a corpus of recordings, `corpus <dir> from`'s, cut into fixed windows and scored every `EVERY` steps beside the held-out loops: its best score picks the step `OUT` gets, the decoders' loss or, for a notes model, its strikes' F1 at the decoder's bars, the held-out loss printed beside it, `train.py`'s `--validate`; empty for the held-out loops' pick |
 | `OUT`, `CHECKPOINT` | `$CORPUS/ripframe.bin`, `$CORPUS/ripframe.pt` | the weight file, and the checkpoint a stopped run resumes from |
 | `ROOT` | `~/.config/stapes` | the stapes root, under `$XDG_CONFIG_HOME` when that is set: `install` copies the weights into it as `ripframe.bin`, and `bench` hears with its `rip.toml` |
-| `NOTES` | empty | a notes model's weight file, a `--pitchnet` run's `OUT`, which `bench` and `install` put beside `OUT` as `ripnotes.bin` |
+| `NOTES` | empty | a notes model's weight file: `notes` trains it by `train`'s knobs with `--pitchnet`, its checkpoint beside it as `.pt`, and `bench`, `install` and the fit put it beside `OUT` as `ripnotes.bin` |
+| `DILATIONS` | empty | `notes`: the notes model's long convolutions, their frames apart, `train.py`'s `--dilations` |
+| `LR`, `EXTRA`, `CARRY` | empty | `train.py`'s `--lr`; `--extra`, more corpora and the share of windows each draws, `dir:share` by commas, such as the recorded sets; and `carry` for `--carry`, a pass that carries on from `INIT` |
+| `JUDGE`, `SET` | empty | `install`: a judge's file and a `rip.toml`, one of the fit's sets, put in the root as `ripjudge.bin` and `rip.toml` |
 | `BENCH_LOOPS`, `BENCH_BARS` | 12, 4 | the fresh loops `bench` grades on |
-| `INIT`, `SHARD` | none, 0 | `shard`: the `.pt` the round starts from, and the worker's stream of windows; it writes `$CORPUS/shard$SHARD.pt` and `.bin` |
+| `INIT`, `SHARD` | none, 0 | the `.pt` a training starts from, `train.py`'s `--init`: a shard's round, or a pass's, the pass before it; and `shard`'s stream of windows, which writes `$CORPUS/shard$SHARD.pt` and `.bin` |
 | `MERGE_FILES`, `TRIM` | none, 0 | `merge`: the round's shard checkpoints, blank-separated or a glob, and the share of them dropped at each end of each weight before the mean |
 | `MERGED` | `$CORPUS/merged.pt` | `merge`: the mean as a `.pt`, the next round's `INIT`; its weight file goes to `OUT` |
 
@@ -122,12 +129,74 @@ its own so that the weights stapes hears with stay as they are:
 LOOPS=200 STEPS=300 HOLDOUT=20 EVERY=100 BENCH_LOOPS=4 CORPUS=/tmp/smoke ROOT=/tmp/smoke/root tool/rip-train/pipeline.sh all
 ```
 
-`make smoke` runs the same in a fresh temporary folder, which it names and keeps.
+`make smoke` runs the round whole in a fresh temporary folder, which it names
+and keeps: the two models, then 24 loops rendered with their audio and heard,
+their rows and judge, a search, the read-back, its table, the files kept and
+the pair installed with its judge.
 
 Each stage shares the cores with anything else the machine does, a run most
 of all: its batches are
 built on the cores beside the device, a core a builder (`--builders`, [by
 hand](#by-hand)), and its steps a second follow what they get.
+
+## The fit of a pair
+
+A pair of weights is fitted and read by six stages, each going on from what it
+left, in `FIT`: a judge of its strikes, its thresholds a kind of sound at a
+time, and one table of every set on recordings no fit saw, which is where the
+rip stands. Nothing here trains a model.
+
+```bash
+export OUT=ripframe.bin NOTES=ripnotes.bin FIT=fit                    # the pair, and where its fit goes
+export ROWS="judge-guitar.tsv judge-voice.tsv corpus-kept-with-audio"  # what the judge is fitted on
+export TRUTH=search.tsv READBACK=readback.tsv START=rip.toml           # the search's list, the read-back's, the set in use
+tool/rip-train/pipeline.sh rows judge fit readback table keep
+```
+
+- `rows` writes each of `ROWS` through the pair as `rows <dir> from` does,
+  into `$FIT/rows`, and `judge` fits [a judge](#a-judge) on them, into
+  `$FIT/root`; one that stands there is kept.
+- `fit` searches each kind apart: a kind is a condition of `TRUTH`'s lines
+  (`wav<TAB>truth<TAB>condition<TAB>words`, `tune ... truth`'s), and its search
+  is `tune POOL GENERATIONS truth` over its lines from `START`, weighing `WEIGH`
+  (the ends, so a search of the notes cannot move them blind). The set it
+  leaves is `$FIT/sets/<kind>.toml`, empty where nothing beat the built-in
+  thresholds. A set stands while what it was searched from does (the root,
+  the start, the kind's lines, the search's words), and is searched again
+  when one of them changes.
+- `readback` reads `READBACK` under the models alone, under their judge,
+  under `START`, and under each kind's set that is not the start's own:
+  `tune 2 1 truth`, the smallest search, whose figures before are the set's.
+  A reading stands while its root and the list do, and one whose set is gone
+  leaves the logs.
+- `table` writes `$FIT/table.txt` from those logs (`table.py`): a kind a
+  block and a set a row, notes, ends (their share and the notes whose end is
+  right), loudness, drums, bars, parts, key and chords, and before the rows
+  each fitted set's falls of more than 0.005 against the start, or the judge
+  where no start is named.
+- `keep` copies the pair, its checkpoints, the judge, the sets and the table
+  under `$WEIGHTS/$NAME`, a file not there yet or changed, each with its line
+  in `$WEIGHTS/MANIFEST.txt`. `install` takes `JUDGE` and `SET` by name:
+  which set a root hears with is a decision, not a stage's.
+
+A list's paths are absolute, since `fit` cuts it a kind into `FIT`. `TRUTH`
+and `READBACK` may name a corpus directory that kept its audio: its loops of
+four seconds or more are listed against their labels under the folder's name.
+A new pair takes a new `FIT`: a judge and the kept frames are their pair's.
+
+| Knob | Default | What it does |
+|---|---|---|
+| `FIT` | `$CORPUS/fit` | where a pair's fit goes: its root, rows, lists, sets, logs and table |
+| `ROWS` | empty | `rows`: truth lists and corpus directories that kept their audio, blank-separated |
+| `LEAVE_OUT` | empty | `judge`: conditions its fit leaves out and counts, `judge.py`'s `--leave-out` |
+| `TRUTH`, `READBACK` | empty | the list `fit` searches on, a kind of sound a condition, and the list `readback` reads every set on |
+| `FRAMES` | `$FIT/frames` | what the models heard of each recording, kept between runs |
+| `START` | empty | the `rip.toml` every search starts from and the read-back reads beside the sets; empty for the built-in thresholds |
+| `POOL`, `GENERATIONS` | 12, 5 | a search's sets a generation and its generations |
+| `GUARD`, `HOLD` | the verb's | the score a set may take from a condition, and the GB of recordings held between rips |
+| `WEIGH` | `ends` | the readings a search weighs beside the notes, by commas; empty for the notes alone |
+| `GENES` | empty | the genes a search moves, by commas; empty for all the list can score |
+| `WEIGHTS`, `NAME` | empty, `CORPUS`'s name | `keep`: the folder the round's files go under, and the round's folder in it |
 
 ## Reading a run
 
@@ -200,11 +269,13 @@ unless named:
 ```bash
 . tool/rip-train/.venv/bin/activate   # the setup's PyTorch
 export CORPUS=$HOME/corpus LOOPS=40000 STEPS=40000 HOLDOUT=400 EVERY=1000 PARTS=4
-tool/rip-train/round.sh               # corpus, train, bench, logging to $CORPUS/round.log, resumable
+tool/rip-train/round.sh               # corpus, the models, the bench and the fit, logging to $CORPUS/round.log, resumable
 ```
 
 `round.sh` renders the corpus unless its `corpus.json`, which the export
-writes last, is there, then trains and benches, every line appended to
+writes last, is there, then trains and benches, the notes model too where
+`NOTES` names one, and runs [the fit](#the-fit-of-a-pair)'s stages whose lists
+are named (`ROWS`, `TRUTH`, `READBACK`, `WEIGHTS`), every line appended to
 `$CORPUS/round.log`. Run it again after a stop and it goes on: the corpus from
 the loops on disk, whose randomness the export draws all the same, and the
 training from `CHECKPOINT`, which carries the best held-out step, drawing from
@@ -221,7 +292,8 @@ guide, and the run is done when it stops falling.
 
 **What to bring back.** `$CORPUS/ripframe.bin` (the weights), `$CORPUS/ripframe.pt`
 (the checkpoint, to resume or to start a round from), the training log with
-its held-out lines, the bench's two summary lines, and, if the recordings are
+its held-out lines, the bench's two summary lines, the fit's `table.txt`
+where its lists were named, and, if the recordings are
 to hand, `stapes -headless -config-dir <root> -s <recipe>` for each recording
 in `lixenwraith/scratch` with the weights installed in `<root>/ripframe.bin`,
 whose `truth` lines against the rhythm are the number that matters.
@@ -618,6 +690,9 @@ It is fitted on the rows one notes model gives, needs no round, and audio
 refuses it beside any other notes model. None ships yet: one is installed on
 its readings with a collection left out ([Rip design](../../doc/rip-design.md)
 §7).
+
+`pipeline.sh rows judge` runs the two for a pair ([the fit of a
+pair](#the-fit-of-a-pair)); by hand:
 
 ```bash
 printf 'rows rows from truths.txt frames frames\nrows rows from corpus\n' > "$dir/rows.slab"   # read from the script's folder

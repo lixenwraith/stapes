@@ -3071,6 +3071,14 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 			switch {
 			case rd.given(sums[c]):
 				fmt.Fprintf(s.out, "%s: %s %.3f before, %.3f after, of %s\n", name, rd.name, rd.score(sums[c]), rd.score(after[c]), rd.of(sums[c]))
+				if rd.beside == nil {
+					break
+				}
+				if was, now := rd.beside(sums[c]), rd.beside(after[c]); was == now {
+					fmt.Fprintf(s.out, "%s: %s %s, before and after\n", name, rd.name, was)
+				} else {
+					fmt.Fprintf(s.out, "%s: %s %s before; %s after\n", name, rd.name, was, now)
+				}
 			case rd.over(sums[c]):
 				lacks = append(lacks, rd.name)
 			}
@@ -3404,8 +3412,20 @@ type truthCount struct {
 }
 
 // keyCount is of the recordings whose truth names a key those whose rip names
-// its tonic, its scale, and both
-type keyCount struct{ given, tonic, scale, both int }
+// its tonic and its scale, and those a rip named by the kind of its miss,
+// KeyRight's both
+type keyCount struct {
+	given, tonic, scale int
+	miss                [audio.KeyMisses]int
+}
+
+func (c keyCount) plus(o keyCount) keyCount {
+	k := keyCount{given: c.given + o.given, tonic: c.tonic + o.tonic, scale: c.scale + o.scale}
+	for i := range k.miss {
+		k.miss[i] = c.miss[i] + o.miss[i]
+	}
+	return k
+}
 
 func (c truthCount) plus(o truthCount) truthCount {
 	levels := func(a, b audio.LevelReading) audio.LevelReading {
@@ -3415,7 +3435,7 @@ func (c truthCount) plus(o truthCount) truthCount {
 		audio.EndReading{Given: c.ends.Given + o.ends.Given, Right: c.ends.Right + o.ends.Right, Off: slices.Concat(c.ends.Off, o.ends.Off)},
 		levels(c.loud, o.loud), levels(c.hitLoud, o.hitLoud),
 		audio.PartReading{Given: c.parts.Given + o.parts.Given, InPart: c.parts.InPart + o.parts.InPart, OnLine: c.parts.OnLine + o.parts.OnLine},
-		keyCount{c.keys.given + o.keys.given, c.keys.tonic + o.keys.tonic, c.keys.scale + o.keys.scale, c.keys.both + o.keys.both},
+		c.keys.plus(o.keys),
 		audio.ChordReading{Given: c.chords.Given + o.chords.Given, Right: c.chords.Right + o.chords.Right},
 		statedCount{c.stated.ends + o.stated.ends, c.stated.loud + o.stated.loud, c.stated.hitLoud + o.stated.hitLoud, c.stated.parts + o.stated.parts, c.stated.keys + o.stated.keys, c.stated.chords + o.stated.chords},
 		addStages(c.stages, o.stages)}

@@ -205,13 +205,14 @@ func total(c map[string]int) (n int) {
 
 // reading is a row of readings: the word tune truth weighs it by, its name,
 // whether a truth gives what it is read over (its notes, its hits or itself),
-// whether a count gives the reading, its score, a share, and what it is of
+// whether a count gives the reading, its score, a share, what it is of and
+// what it says on a line beside, nil for nothing
 type reading struct {
 	word, name string
 	over       func(truthCount) bool
 	given      func(truthCount) bool
 	score      func(truthCount) float64
-	of         func(truthCount) string
+	of, beside func(truthCount) string
 }
 
 // readings are what a label says past pitch and onset as the rip reads it
@@ -222,18 +223,18 @@ var readings = []reading{
 		func(c truthCount) string {
 			return fmt.Sprintf("%d note(s) matched whose end is given, each right within %g of its length or %g ms, the median end %+.2f of a length off",
 				c.ends.Given, audio.EndShare, 1000*audio.EndFloor, median(c.ends.Off))
-		}},
+		}, nil},
 	{"loudness", "loudness", notesGiven, func(c truthCount) bool { return c.stated.loud > 0 }, func(c truthCount) float64 { return share(c.loud.Right, c.loud.Given) },
 		func(c truthCount) string {
 			return fmt.Sprintf("%d note(s) matched whose velocity is given, each right within %g dB once the recording's level is out, the median %.1f dB off",
 				c.loud.Given, audio.LevelBound, medianOff(c.loud.Off))
-		}},
+		}, nil},
 	{"loudness", "drums' loudness", func(c truthCount) bool { return c.drums.given > 0 }, func(c truthCount) bool { return c.stated.hitLoud > 0 },
 		func(c truthCount) float64 { return share(c.hitLoud.Right, c.hitLoud.Given) },
 		func(c truthCount) string {
 			return fmt.Sprintf("%d hit(s) matched whose velocity is given, each right within %g dB once its drum's level is out, the median %.1f dB off",
 				c.hitLoud.Given, audio.LevelBound, medianOff(c.hitLoud.Off))
-		}},
+		}, nil},
 	{"parts", "parts", notesGiven, func(c truthCount) bool { return c.stated.parts > 0 },
 		func(c truthCount) float64 {
 			if c.parts.Given == 0 {
@@ -246,16 +247,36 @@ var readings = []reading{
 			n := float64(max(c.parts.Given, 1))
 			return fmt.Sprintf("%d note(s) matched in a part given, the F1 of %.3f of a line's notes of their part and %.3f of a part's on their line",
 				c.parts.Given, c.parts.InPart/n, c.parts.OnLine/n)
-		}},
-	{"key", "key", func(truthCount) bool { return true }, func(c truthCount) bool { return c.stated.keys > 0 }, func(c truthCount) float64 { return share(c.keys.both, c.keys.given) },
+		}, nil},
+	{"key", "key", func(truthCount) bool { return true }, func(c truthCount) bool { return c.stated.keys > 0 },
+		func(c truthCount) float64 { return share(c.keys.miss[audio.KeyRight], c.keys.given) },
 		func(c truthCount) string {
 			return fmt.Sprintf("%d recording(s) whose key is given, right in both its tonic and its scale: %d tonic(s) right, %d scale(s)", c.keys.given, c.keys.tonic, c.keys.scale)
-		}},
+		}, keyMissed},
 	{"chords", "chords", func(truthCount) bool { return true }, func(c truthCount) bool { return c.stated.chords > 0 },
 		func(c truthCount) float64 { return c.chords.Right / max(c.chords.Given, 1e-9) },
 		func(c truthCount) string {
 			return fmt.Sprintf("%.1f s of chords given, right where a bar of the rip's names the chord's root", c.chords.Given)
-		}},
+		}, nil},
+}
+
+// keyMisses says each kind of a key's miss, by audio's KeyMiss
+var keyMisses = [audio.KeyMisses]string{"", "at the given tonic in a scale holding or held by the given's", "at the given's tones under another tonic", "else"}
+
+// keyMissed is how many keys a count missed, by the kind of each miss, and
+// how many of them no rip named, failing
+func keyMissed(c truthCount) string {
+	unnamed := c.keys.given
+	var kinds []string
+	for k, n := range c.keys.miss {
+		if unnamed -= n; audio.KeyMiss(k) != audio.KeyRight {
+			kinds = append(kinds, fmt.Sprintf("%d %s", n, keyMisses[k]))
+		}
+	}
+	if unnamed > 0 {
+		kinds = append(kinds, fmt.Sprintf("%d named by no rip", unnamed))
+	}
+	return fmt.Sprintf("%d missed: %s", c.keys.given-c.keys.miss[audio.KeyRight], strings.Join(kinds, ", "))
 }
 
 func notesGiven(c truthCount) bool { return c.notes.given > 0 }
@@ -297,8 +318,9 @@ func (c *truthCount) read(r *audio.Rip, ag audio.Agreement, hg *audio.HitsAgreem
 			}
 			return 0
 		}
-		tonic, scale := audio.MatchKey(r, said.key[0], audio.ScaleID(said.key[1]))
-		c.keys = keyCount{1, one(tonic), one(scale), one(tonic && scale)}
+		tonic, scale, miss := audio.MatchKey(r, said.key[0], audio.ScaleID(said.key[1]))
+		c.keys = keyCount{given: 1, tonic: one(tonic), scale: one(scale)}
+		c.keys.miss[miss] = 1
 	}
 	c.chords = audio.MatchChords(r, said.chords)
 }
@@ -311,6 +333,9 @@ func reportReadings(w io.Writer, c truthCount) {
 		switch {
 		case rd.given(c):
 			fmt.Fprintf(w, "%-8s %.3f of %s\n", rd.name, rd.score(c), rd.of(c))
+			if rd.beside != nil {
+				fmt.Fprintf(w, "%-8s %s\n", "", rd.beside(c))
+			}
 		case rd.over(c):
 			lacks = append(lacks, rd.name)
 		}

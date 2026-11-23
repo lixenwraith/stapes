@@ -179,7 +179,8 @@ Over the library's rip (library
   them too, a row a reading it gives (`readings`, `reportReadings`), audio's
   over the notes and hits matched (`Agreement.Ends`, `Levels`, `Parts`,
   `HitsAgreement.Levels`) and against its key and chords (`MatchKey`,
-  `MatchChords`): its notes filed under their track, `part` and `instr` joined,
+  `MatchChords`), a key's miss by its kind on a line beside (`keyMissed`): its
+  notes filed under their track, `part` and `instr` joined,
   as a bank slot's tracks share their part's name and an overlap's instruments
   theirs (`corpusLoop.notes`), its key where its root is over MIDI 0, as no
   recording's or overlap's is, and its chords each to the next one's frame, the

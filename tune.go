@@ -2865,9 +2865,18 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	}
 	// the current parameters' rips hear every recording and read every transcript
 	cur, sums, read := s.rip, make([]truthCount, len(conds)), 0
+	kept, unlabelled := map[string]int{}, 0
 	for _, t := range takes {
 		t.judge = s.judge
 		t.read(o.heads)
+		switch {
+		case o.heads != nil && t.heads == nil:
+			unlabelled++
+		case t.heads != nil:
+			for _, h := range t.heads.kept {
+				kept[h]++
+			}
+		}
 		c, err := t.count(cur, s.lead)
 		if err != nil {
 			return err
@@ -2906,6 +2915,12 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	}
 	if o.frames != "" {
 		fmt.Fprintf(s.out, "%d recording(s) heard and their frames kept in %s, %d read back from it\n", len(takes)-read, o.frames, read)
+	}
+	if len(kept) > 0 {
+		fmt.Fprintf(s.out, "the front end's heads kept where a take's label states none, by head: %s\n", countWords(kept))
+	}
+	if unlabelled > 0 {
+		fmt.Fprintf(s.out, "%d take(s) whose truth is no label kept every head the front end's\n", unlabelled)
 	}
 	before := scores(sums, sums, o.weigh)
 	score := func(data []float64) float64 {
@@ -2954,6 +2969,14 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 		}
 		if len(lacks) > 0 {
 			fmt.Fprintf(s.out, "%s: no %s given\n", name, strings.Join(lacks, ", "))
+		}
+		was, now := stageLines(sums[c].stages), stageLines(after[c].stages)
+		for i, l := range was {
+			if i < len(now) && l == now[i] {
+				fmt.Fprintf(s.out, "%s: %s %s, before and after\n", name, l[0], l[1])
+			} else if i < len(now) {
+				fmt.Fprintf(s.out, "%s: %s %s before; %s after\n", name, l[0], l[1], now[i][1])
+			}
 		}
 	}
 	return s.keepRip(file, params(best.Data), best.Score, base)
@@ -3067,7 +3090,7 @@ func (t *truthTake) front() audio.RipFrontEnd {
 // read has the take ripped with heads its label's, where its truth is a label
 func (t *truthTake) read(heads []string) {
 	if t.heads = nil; heads != nil && t.lab != nil {
-		t.heads = &labelHeads{fe: t.ear, lab: t.lab, heads: heads}
+		t.heads = newLabelHeads(t.ear, t.lab, heads)
 	}
 }
 
@@ -3213,7 +3236,7 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 	} else if t.drums {
 		missed.drumless = minutes
 	}
-	r, err := audio.Ripper{Params: p, FrontEnd: t.front(), Lead: lead, Judge: t.judge}.Samples(t.x, audio.RipRate)
+	r, err := audio.Ripper{Params: p, FrontEnd: t.front(), Lead: lead, Judge: t.judge, Stages: true}.Samples(t.x, audio.RipRate)
 	if err != nil {
 		return missed, fmt.Errorf("%s: %w", t.wav, err)
 	}
@@ -3227,12 +3250,14 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 		c.beats = len(t.beats)
 	}
 	var hg *audio.HitsAgreement
+	tol := 30 / float64(r.BPM) / audio.StepsPerBeat
 	if t.drums {
-		hg = new(audio.MatchHits(r.Hits(), t.hits, 30/float64(r.BPM)/audio.StepsPerBeat, t.timed))
+		hg = new(audio.MatchHits(r.Hits(), t.hits, tol, t.timed))
 		for _, l := range hg.Drums {
 			c.drums = c.drums.plus(noteCount{l.Matched, l.B, l.A})
 		}
 	}
+	c.stages = audio.ReadStages(r, ag, hg, tol)
 	if t.said != nil {
 		c.read(r, ag, hg, t.said)
 	}
@@ -3259,6 +3284,7 @@ type truthCount struct {
 	keys              keyCount
 	chords            audio.ChordReading
 	stated            statedCount
+	stages            audio.StageReading // what each stage of the decoders lost and added
 }
 
 // keyCount is of the recordings whose truth names a key those whose rip names
@@ -3275,7 +3301,26 @@ func (c truthCount) plus(o truthCount) truthCount {
 		audio.PartReading{Given: c.parts.Given + o.parts.Given, InPart: c.parts.InPart + o.parts.InPart, OnLine: c.parts.OnLine + o.parts.OnLine},
 		keyCount{c.keys.given + o.keys.given, c.keys.tonic + o.keys.tonic, c.keys.scale + o.keys.scale, c.keys.both + o.keys.both},
 		audio.ChordReading{Given: c.chords.Given + o.chords.Given, Right: c.chords.Right + o.chords.Right},
-		statedCount{c.stated.ends + o.stated.ends, c.stated.loud + o.stated.loud, c.stated.hitLoud + o.stated.hitLoud, c.stated.parts + o.stated.parts, c.stated.keys + o.stated.keys, c.stated.chords + o.stated.chords}}
+		statedCount{c.stated.ends + o.stated.ends, c.stated.loud + o.stated.loud, c.stated.hitLoud + o.stated.hitLoud, c.stated.parts + o.stated.parts, c.stated.keys + o.stated.keys, c.stated.chords + o.stated.chords},
+		addStages(c.stages, o.stages)}
+}
+
+// addStages is two stage readings counted as one, nil where neither has any
+func addStages(a, b audio.StageReading) audio.StageReading {
+	add := func(x, y audio.StageCount) audio.StageCount {
+		if x == nil && y == nil {
+			return nil
+		}
+		out := audio.StageCount{}
+		for _, c := range []audio.StageCount{x, y} {
+			for k, v := range c {
+				out[k] += v
+			}
+		}
+		return out
+	}
+	return audio.StageReading{Lost: add(a.Lost, b.Lost), Refused: add(a.Refused, b.Refused), Added: add(a.Added, b.Added), Ends: add(a.Ends, b.Ends),
+		HitsLost: add(a.HitsLost, b.HitsLost), HitsAdded: add(a.HitsAdded, b.HitsAdded)}
 }
 
 // shares is the share of the downbeats given that fall on a bar line, and of the

@@ -11,11 +11,13 @@ import (
 	"github.com/lixenwraith/audio"
 )
 
-// labelHead is a head the decoders read, by the word that names it, and the
-// fields of the frames a label's planes fill in its place
+// labelHead is a head the decoders read, by the word that names it, the
+// fields of the frames a label's planes fill in its place, and whether a label
+// states it, as the trainer asks it something there; nil where every label does
 type labelHead struct {
-	word string
-	fill func(f *audio.RipFrames, l *labelPlanes)
+	word   string
+	fill   func(f *audio.RipFrames, l *labelPlanes)
+	stated func(l *corpusLoop) bool
 }
 
 // labelHeadRows are the heads the decoders read: the frame model's onset,
@@ -25,20 +27,36 @@ type labelHead struct {
 // model is loaded. The frame model's wave and family and either's voicing no
 // decoder reads.
 var labelHeadRows = []labelHead{
-	{"onset", func(f *audio.RipFrames, l *labelPlanes) { f.Flux = l.onset }},
-	{"drums", func(f *audio.RipFrames, l *labelPlanes) { f.Onset = l.drums }},
-	{"voice", func(f *audio.RipFrames, l *labelPlanes) { f.Voice = l.voice }},
-	{"beat", func(f *audio.RipFrames, l *labelPlanes) { f.Beat = l.beat }},
-	{"downbeat", func(f *audio.RipFrames, l *labelPlanes) { f.Downbeat = l.downbeat }},
-	{"pitch", func(f *audio.RipFrames, l *labelPlanes) {
-		f.Salience, f.Chroma, f.BassChroma = l.pitch, l.chroma, l.bassChroma
+	{"onset", func(f *audio.RipFrames, l *labelPlanes) { f.Flux = l.onset }, nil},
+	{"drums", func(f *audio.RipFrames, l *labelPlanes) { f.Onset = l.drums }, func(l *corpusLoop) bool { return len(l.Kit) == 0 }},
+	{"voice", func(f *audio.RipFrames, l *labelPlanes) { f.Voice = l.voice }, func(l *corpusLoop) bool {
+		return l.anyNote(func(e corpusEvent) bool { return len(e.Voice) > 0 && e.Wave >= 0 })
 	}},
-	{"strike", func(f *audio.RipFrames, l *labelPlanes) { f.Strike = l.strike }},
-	{"release", func(f *audio.RipFrames, l *labelPlanes) { f.Release = l.release }},
-	{"velocity", func(f *audio.RipFrames, l *labelPlanes) { f.Velocity = l.velocity }},
-	{"cents", func(f *audio.RipFrames, l *labelPlanes) { f.Cents, f.CentsError = l.cents, l.centsError }},
-	{"start", func(f *audio.RipFrames, l *labelPlanes) { f.Start = l.start }},
-	{"plays", func(f *audio.RipFrames, l *labelPlanes) { f.VoiceAt, f.Voices, f.Sure = l.voiceAt, l.voices, labelSure }},
+	{"beat", func(f *audio.RipFrames, l *labelPlanes) { f.Beat = l.beat }, func(l *corpusLoop) bool { return len(l.Beats) > 0 }},
+	{"downbeat", func(f *audio.RipFrames, l *labelPlanes) { f.Downbeat = l.downbeat }, func(l *corpusLoop) bool { return len(l.Downbeats) > 0 }},
+	{"pitch", func(f *audio.RipFrames, l *labelPlanes) { // its cells A440's, its tuning its cents', as a model's
+		f.Salience, f.Chroma, f.BassChroma, f.Tuning = l.pitch, l.chroma, l.bassChroma, 0
+	}, nil},
+	{"strike", func(f *audio.RipFrames, l *labelPlanes) { f.Strike = l.strike }, nil},
+	{"release", func(f *audio.RipFrames, l *labelPlanes) { f.Release = l.release }, nil},
+	{"velocity", func(f *audio.RipFrames, l *labelPlanes) { f.Velocity = l.velocity }, func(l *corpusLoop) bool {
+		return l.anyNote(func(e corpusEvent) bool { return e.Vel >= 0 })
+	}},
+	{"cents", func(f *audio.RipFrames, l *labelPlanes) { f.Cents, f.CentsError = l.cents, l.centsError }, func(l *corpusLoop) bool {
+		return l.anyNote(func(e corpusEvent) bool {
+			return len(e.Voice) > 0 || slices.ContainsFunc(e.Cents, func(c float64) bool { return !math.IsNaN(c) })
+		})
+	}},
+	{"start", func(f *audio.RipFrames, l *labelPlanes) { f.Start = l.start }, nil},
+	{"plays", func(f *audio.RipFrames, l *labelPlanes) { f.VoiceAt, f.Voices, f.Sure = l.voiceAt, l.voices, labelSure }, func(l *corpusLoop) bool {
+		unknown := slices.Index(audio.RipFamilies[:], "unknown")
+		return l.anyNote(func(e corpusEvent) bool { return len(e.Voice) > 0 || e.Family >= 0 && e.Family != unknown })
+	}},
+}
+
+// anyNote is whether any of a label's notes, no hit or kit's strike, is so
+func (l *corpusLoop) anyNote(so func(corpusEvent) bool) bool {
+	return slices.ContainsFunc(l.Events, func(e corpusEvent) bool { return e.Drum < 0 && e.MIDI > 0 && so(e) })
 }
 
 // labelSure is the measure a label's say names a family by: a cell's say is a
@@ -74,20 +92,49 @@ func parseHeads(w string) ([]string, error) {
 	return slices.Compact(out), nil
 }
 
-// labelHeads hears through fe, the analysis where nil, with the heads named its
-// label's, written as the trainer's targets (planes); given every head it
-// hears nothing, its frames the label's alone, as a front end of the models'
-// range that states no tuning
+// labelHeads hears through fe, the analysis where nil, with the heads named
+// that its label states written as the trainer's targets (planes), those it
+// does not state (kept) the front end's; given every head it hears nothing,
+// its frames the label's alone, as a front end of the models' range that
+// states no tuning
 type labelHeads struct {
-	fe    audio.RipFrontEnd
-	lab   *corpusLoop
-	heads []string
-	once  sync.Once
-	l     *labelPlanes // built once, for the frames the first hearing gives
+	fe          audio.RipFrontEnd
+	lab         *corpusLoop
+	heads, kept []string
+	once        sync.Once
+	l           *labelPlanes // built once, for the frames the first hearing gives
+}
+
+// newLabelHeads is fe with the heads named its label's where it states them
+func newLabelHeads(fe audio.RipFrontEnd, lab *corpusLoop, named []string) *labelHeads {
+	h := &labelHeads{fe: fe, lab: lab}
+	for _, r := range labelHeadRows {
+		switch {
+		case !slices.Contains(named, r.word):
+		case r.stated == nil || r.stated(lab):
+			h.heads = append(h.heads, r.word)
+		default:
+			h.kept = append(h.kept, r.word)
+		}
+	}
+	return h
 }
 
 // every is whether the label gives every head the decoders read
 func (h *labelHeads) every() bool { return len(h.heads) == len(labelHeadRows) }
+
+// says is what a rip through h was read with: the label's heads, and those it
+// does not state, kept the front end's
+func (h *labelHeads) says() string {
+	if h.every() {
+		return "every head its label's, no model heard"
+	}
+	with := "the label's " + strings.Join(h.heads, ", ") + " as its heads, the rest its front end's"
+	if len(h.kept) > 0 {
+		with += ", its " + strings.Join(h.kept, ", ") + " too, which the label does not state"
+	}
+	return with
+}
 
 func (h *labelHeads) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFrames, error) {
 	g := audio.RipFrames{Hop: audio.RipFrameSec, Range: audio.RipPiano}

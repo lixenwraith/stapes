@@ -2,9 +2,11 @@ package stapes
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -101,7 +103,7 @@ func cmdTruth(s *Session, a []string) error {
 			return errScore(rp)
 		}
 		by := rp.by
-		lh := &labelHeads{fe: by.FrontEnd, lab: lab, heads: heads}
+		lh := newLabelHeads(by.FrontEnd, lab, heads)
 		by.FrontEnd = lh
 		r, err := by.Samples(rp.x, rp.rate)
 		if err != nil {
@@ -110,11 +112,7 @@ func cmdTruth(s *Session, a []string) error {
 		again := *rp
 		again.rip, again.sound = r, nil
 		rp = &again
-		with := "the label's " + strings.Join(heads, ", ") + " as its heads, the rest its front end's"
-		if lh.every() {
-			with = "every head its label's, no model heard"
-		}
-		fmt.Fprintf(s.out, "%s ripped again with %s: %d bpm %s\n", a[0], with, r.BPM, r.Meter)
+		fmt.Fprintf(s.out, "%s ripped again with %s: %d bpm %s\n", a[0], lh.says(), r.BPM, r.Meter)
 	}
 	// a score's bars are placed on the recording as its notes matched, or with
 	// none as its hits did
@@ -160,7 +158,49 @@ func cmdTruth(s *Session, a []string) error {
 		c.read(rp.rip, ag, hg, lab.said())
 		reportReadings(s.out, c)
 	}
+	for _, l := range stageLines(audio.ReadStages(rp.rip, ag, hg, 30/float64(rp.rip.BPM)/audio.StepsPerBeat)) {
+		fmt.Fprintf(s.out, "%-8s %s\n", l[0], l[1])
+	}
 	return nil
+}
+
+// stageLines is a stage reading as truth says it, a line a kind: the notes
+// given the rip lacks, with why the strikes refused those lost there, the notes
+// it adds, the ends it puts wrong, and the hits lost and added, each by stage,
+// the largest first; none for a rip that kept no stages
+func stageLines(r audio.StageReading) [][2]string {
+	if r.Lost == nil {
+		return nil
+	}
+	lost := fmt.Sprintf("%d of the notes given, by stage: %s", total(r.Lost), countWords(r.Lost))
+	if len(r.Refused) > 0 {
+		lost += "; at the strikes, " + countWords(r.Refused)
+	}
+	return [][2]string{{"lost", lost},
+		{"added", fmt.Sprintf("%d, by stage: %s", total(r.Added), countWords(r.Added))},
+		{"ends", fmt.Sprintf("%d wrong, by stage: %s", total(r.Ends), countWords(r.Ends))},
+		{"hits", fmt.Sprintf("%d lost, by stage: %s; %d added, by stage: %s", total(r.HitsLost), countWords(r.HitsLost), total(r.HitsAdded), countWords(r.HitsAdded))}}
+}
+
+// countWords is a count by name as words, the largest first, "none" for none
+func countWords(c map[string]int) string {
+	names := slices.Collect(maps.Keys(c))
+	slices.SortFunc(names, func(a, b string) int { return cmp.Or(c[b]-c[a], strings.Compare(a, b)) })
+	var out []string
+	for _, n := range names {
+		out = append(out, fmt.Sprintf("%s %d", n, c[n]))
+	}
+	if len(out) == 0 {
+		return "none"
+	}
+	return strings.Join(out, ", ")
+}
+
+func total(c map[string]int) (n int) {
+	for _, v := range c {
+		n += v
+	}
+	return n
 }
 
 // reading is a row of readings: the word tune truth weighs it by, its name,

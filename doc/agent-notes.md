@@ -210,18 +210,24 @@ proves wrong or that a document now states, and link the document instead.
   record by one severity, bisected until the trainer's peaks (over a half,
   highest within two frames, right within four of a mark) give that F1; the
   mix of kinds is the count's assumption, so state it beside the figures.
-- **A stage's loss is read by replaying `Ripper.events` a stage at a time** in
-  a scratch test in audio's package over each loop's label frames, dumped as
-  gob by a scratch test here (`writeFrames` of `labelHeads`), the replay held
-  to `Samples` loop by loop. A labelled note missed is put at the first stage
-  after which no note of its pitch starts within the matcher's window; one
-  present to the end lost a twin of its pitch. Three minutes a 600-loop corpus
-  on a core.
+- **A stage's loss is read off the rip's own record**: `truth` ends with its
+  stages and `tune ... truth` says them a condition (audio's `ReadStages` over
+  `Rip.Stages`, which the session's rips and every take keep). §11's reading
+  is `tune 2 1 truth <list> heads all`, its figures before: a pool of 2 is the
+  least, and a set its search finds is written into the root's `rip.toml`, so
+  each reading takes a root of its own. On 24 loops the record counted what a
+  scratch replay of `Ripper.events` a stage at a time had, stage by stage.
 - **Every head given, the decoder still reads the recording**: the bass's
   own-pitch and steady-rise rules, `dynamics`, the accounting, `bright` and the
-  drums' tones, and a model's front end states no tuning, so the accounting
-  measures at A440. A corpus and its `aug`, which renders the same music, part
-  what the room, the mix and the tuning cost those stages.
+  drums' tones, and a model's front end states no tuning, nor a label's pitch
+  over any front end, so the accounting measures at A440. A corpus and its
+  `aug`, which renders the same music, part what the room, the mix and the
+  tuning cost those stages.
+- **A head a label does not state is heard, the analysis's in a container**,
+  and its frames carry more than that head: of the rest only their tuning
+  reaches the offline decoders, the analysis's bands and drums' loudest being
+  its ear's and the stream's, and a label's pitch clears it. An overlap states
+  no beat, so under `heads all` it is ripped over the analysis's frames.
 - **A label's ends can lie past its loop**: an overlap's notes ring on past
   its last frame, which the trainer clamps, and `truth`'s ends count them wrong
   (558 of 3,142 wrong ends on 600 `aug` loops).

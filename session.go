@@ -406,7 +406,7 @@ func (s *Session) ear() string {
 // ripper is what rip listens with: the parameters, and the model when one
 // loaded, with its judge
 func (s *Session) ripper() audio.Ripper {
-	r := audio.Ripper{Params: s.rip, Lead: s.lead}
+	r := audio.Ripper{Params: s.rip, Lead: s.lead, Stages: true}
 	if s.frontEnd != nil {
 		r.FrontEnd, r.Judge = s.frontEnd, s.judge
 	}

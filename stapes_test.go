@@ -2200,10 +2200,11 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 ! tune 1 truth %s
 ! tune truth %s guard 2
 ! tune truth %s frames
+! tune truth %s hold 2000
 ! tune truth %s weigh ends,tempo
-`, list, list, list, list, list, list))
-	if !strings.Contains(out.String(), "no "+frameFile+" is loaded") || !strings.Contains(out.String(), `weigh "tempo": want readings among ends, loudness, parts, key, chords`) {
-		t.Errorf("no refusal for want of a model, or of a reading weigh does not know:\n%s", out.String())
+`, list, list, list, list, list, list, list))
+	if !strings.Contains(out.String(), "no "+frameFile+" is loaded") || !strings.Contains(out.String(), `weigh "tempo": want readings among ends, loudness, parts, key, chords`) || !strings.Contains(out.String(), `hold "2000": want 0 to 1024`) {
+		t.Errorf("no refusal for want of a model, of a reading weigh does not know, or of a hold past its range:\n%s", out.String())
 	}
 	// a loop the registered patterns render, its notes a MIDI truth
 	const bars = 2
@@ -2236,7 +2237,7 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	ear := &hearCount{RipFrontEnd: fe}
 	s.rip.StrikeHold = 0.3
 	start, file := s.rip, filepath.Join(dir, "rip.toml")
-	if err := s.tuneTruth(tuneOptions{generations: 1, pool: 8, seed: 1}, list, file, ear); err != nil {
+	if err := s.tuneTruth(tuneOptions{generations: 1, pool: 8, seed: 1, hold: 2}, list, file, ear); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
 	}
 	if n := ear.n.Load(); n != 1 {
@@ -2267,11 +2268,15 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	was, err := takes[0].count(start, s.lead)
+	snd, err := takes[0].sound()
 	if err != nil {
 		t.Fatal(err)
 	}
-	now, err := takes[0].count(p, s.lead)
+	was, err := takes[0].count(snd, start, s.lead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now, err := takes[0].count(snd, p, s.lead)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2364,15 +2369,22 @@ func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
 		t.Fatal(err)
 	}
 	const guard = 0.01
-	given := conditionCounts(takes, len(conds), s.rip, s.lead)
-	before, costly := scores(given, given, nil), scores(conditionCounts(takes, len(conds), lower, s.lead), given, nil)
+	given, err := conditionCounts(takes, len(conds), s.rip, s.lead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	low, err := conditionCounts(takes, len(conds), lower, s.lead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, costly := scores(given, given, nil), scores(low, given, nil)
 	if before[0] != 1 || guarded(costly, before, 1) <= guarded(before, before, 1) || before[0]-costly[0] <= guard {
 		t.Fatalf("the lower bar scores %.3f from %.3f: want a gain of the mean that costs sure over %g", costly, before, guard)
 	}
 	if got := guarded(costly, before, guard); got >= 0 {
 		t.Errorf("a set that takes %.3f from sure scores %.3f, want it refused", before[0]-costly[0], got)
 	}
-	if err := s.tuneTruth(tuneOptions{generations: 1, pool: 4, seed: 1, guard: guard}, list, file, fe); err != nil {
+	if err := s.tuneTruth(tuneOptions{generations: 1, pool: 4, seed: 1, guard: guard, hold: 2}, list, file, fe); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
 	}
 	for _, want := range []string{" refused\n", "sure: F1 1.000 before, 1.000 after\n", "soft: F1 0.000 before, 0.000 after\n", "nothing beat the current parameters"} {
@@ -2490,7 +2502,11 @@ func crescendoTruth(t *testing.T, s *Session) (list string, r *audio.Rip, lab co
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c, err := takes[0].count(s.rip, s.lead); err != nil || c.notes.f1() != 1 || c.drums.f1() != 1 || c.bars() != 1 {
+	snd, err := takes[0].sound()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, err := takes[0].count(snd, s.rip, s.lead); err != nil || c.notes.f1() != 1 || c.drums.f1() != 1 || c.bars() != 1 {
 		t.Fatalf("a label of the rip's own notes, hits and beats counts %+v (%v), want one on each", c, err)
 	}
 	// a start whose drums' bar is the range's top: every move of it hears more of
@@ -2499,7 +2515,7 @@ func crescendoTruth(t *testing.T, s *Session) (list string, r *audio.Rip, lab co
 	start, under := s.rip, s.rip
 	under.OnsetMin -= nearStep * (start.OnsetMin - audio.RipGeneRanges()[geneOf(drumGenes[0])][0])
 	heard := func(p audio.RipParams) int {
-		c, err := takes[0].count(p, s.lead)
+		c, err := takes[0].count(snd, p, s.lead)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2522,7 +2538,7 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	defer teardown(t, s)
 	list, r, lab := crescendoTruth(t, s)
 	start, file := s.rip, filepath.Join(filepath.Dir(list), "rip.toml")
-	if err := s.tuneTruth(tuneOptions{generations: 2, pool: 8, seed: 1}, list, file, analysisEar{}); err != nil {
+	if err := s.tuneTruth(tuneOptions{generations: 2, pool: 8, seed: 1, hold: 2}, list, file, analysisEar{}); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
 	}
 	for _, want := range []string{"loop: F1 ", "loop: drums F1 ", "loop: bars ", fmt.Sprintf("%d hit(s), %d bar line(s) and %d beat(s) given", len(r.Hits()), len(lab.Downbeats), len(lab.Beats)),
@@ -2565,7 +2581,7 @@ func TestTuneTruthMovesOnlyTheGenesItIsTold(t *testing.T) {
 		s.rip = start
 		out.Reset()
 		os.Remove(file)
-		o := tuneOptions{generations: 1, pool: 4, seed: 1}
+		o := tuneOptions{generations: 1, pool: 4, seed: 1, hold: 2}
 		if genes != "" {
 			var err error
 			if o.genes, err = parseGenes(genes); err != nil {
@@ -2713,7 +2729,11 @@ func TestTuneTruthsBarsCountTheBeats(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		n, err := takes[0].count(s.rip, s.lead)
+		snd, err := takes[0].sound()
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err := takes[0].count(snd, s.rip, s.lead)
 		l, b := n.shares()
 		if err != nil || r.Meter != c.want || l != 1 || math.Abs(b-c.beats) > 0.05 || n.bars() != (l+b)/2 {
 			t.Errorf("a beat head on %s: %s at %d, downbeats on a line %.3f, beats on a beat %.3f, bars %.3f (%v); want %s, every line, %.2f of the beats", c.name, r.Meter, r.BPM, l, b, n.bars(), err, c.want, c.beats)
@@ -2727,8 +2747,12 @@ func TestTuneTruthsBarsCountTheBeats(t *testing.T) {
 		if takes[0].read(nil); heads {
 			takes[0].read([]string{"beat", "downbeat"})
 		}
-		r, err := audio.Ripper{Params: s.rip, FrontEnd: takes[0].front(), Lead: s.lead}.Samples(takes[0].x, audio.RipRate)
-		n, cerr := takes[0].count(s.rip, s.lead)
+		snd, err := takes[0].sound()
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := audio.Ripper{Params: s.rip, FrontEnd: snd.front(), Lead: s.lead}.Samples(snd.x, audio.RipRate)
+		n, cerr := takes[0].count(snd, s.rip, s.lead)
 		if full := err == nil && cerr == nil && r.Meter == twelve && n.bars() == 1; full != heads {
 			t.Errorf("the analysis with the label's heads %v: %s, bars %.3f (%v, %v); want 12/8 in full only with them", heads, r.Meter, n.bars(), err, cerr)
 		}
@@ -2766,11 +2790,15 @@ func TestTuneTruthCountsATimedTruthsHitsWhereTheyStand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := takes[0].count(s.rip, s.lead)
+	snd, err := takes[0].sound()
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := audio.Ripper{Params: s.rip, FrontEnd: analysisEar{}, Lead: s.lead}.Samples(takes[0].x, audio.RipRate)
+	c, err := takes[0].count(snd, s.rip, s.lead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := audio.Ripper{Params: s.rip, FrontEnd: analysisEar{}, Lead: s.lead}.Samples(snd.x, audio.RipRate)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2880,7 +2908,7 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 		t.Fatalf("a .mid without the word and a label without hits read with %v: want the first to say nothing of drums and the second to know them", err)
 	}
 	writeFile(t, list, "drums.wav\tdrums.mid\tdrums\ttimed\nbare.wav\tbare.mid\tbare\tdrumless timed\n")
-	if err := s.tuneTruth(tuneOptions{generations: 2, pool: 8, seed: 1, guard: 1}, list, file, analysisEar{}); err != nil {
+	if err := s.tuneTruth(tuneOptions{generations: 2, pool: 8, seed: 1, guard: 1, hold: 2}, list, file, analysisEar{}); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
 	}
 	var was, now, before, after, rate float64
@@ -2959,6 +2987,90 @@ func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 	names, _ := filepath.Glob(filepath.Join(kept, "*.frames"))
 	if other != said(1, 0) || len(names) != 2 {
 		t.Errorf("another model said %q over %d file(s) of frames, want the recording heard again and kept beside the first", other, len(names))
+	}
+}
+
+// TestTuneTruthPastItsHoldSearchesAsOneThatHoldsAll: a search that holds none of
+// its takes, each read again as it is ripped from its recording, its label and
+// the frames it kept, says and writes all one holding them as heard does, and a
+// take heard again each rip counts as the one held, field by field: a label
+// whose every head is its own, one whose ear hears the rest, a .mid heard alone
+func TestTuneTruthPastItsHoldSearchesAsOneThatHoldsAll(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	loops, err := s.corpus(tuneOptions{loops: 1, bars: 2, seed: 1, gen: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, r, _ := crescendoTruth(t, s)
+	dir := filepath.Dir(list)
+	writeWAV(t, filepath.Join(dir, "gen.wav"), loops[0].audio)
+	if err := writeJSON(filepath.Join(dir, "gen.json"), loops[0].label); err != nil {
+		t.Fatal(err)
+	}
+	var mid bytes.Buffer
+	if err := audio.WriteMIDI(&mid, r.Notes, r.Hits(), r.BPM, r.Meter); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "loop.mid"), mid.String())
+	writeFile(t, list, "gen.wav\tgen.json\tgen\ttimed\nloop.wav\tloop.json\tloop\ttimed\nloop.wav\tloop.mid\tmid\ttimed\n")
+	all, _ := parseHeads("all")
+	start, file, kept := s.rip, filepath.Join(dir, "rip.toml"), filepath.Join(dir, "frames")
+	// run is what a search holding hold GB says, the lines of what it holds and
+	// of the frames it keeps apart, and what it writes
+	run := func(hold float64, frames string) (said, holds string, wrote []byte) {
+		t.Helper()
+		s.rip = start
+		out.Reset()
+		os.Remove(file)
+		if err := s.tuneTruth(tuneOptions{generations: 1, pool: 4, seed: 1, guard: 1, hold: hold, frames: frames, heads: all}, list, file, nil); err != nil {
+			t.Fatalf("tune truth holding %g GB: %v\n%s", hold, err, out.String())
+		}
+		for _, l := range strings.SplitAfter(out.String(), "\n") {
+			switch {
+			case strings.Contains(l, " of it held between rips "):
+				holds = l
+			case !strings.Contains(l, " recording(s) heard and their frames kept in "):
+				said += l
+			}
+		}
+		wrote, _ = os.ReadFile(file)
+		return said, holds, wrote
+	}
+	whole, holdsAll, wrote := run(2, "")
+	none, holdsNone, again := run(0, kept)
+	if !strings.HasSuffix(holdsAll, "; all held\n") || !strings.HasSuffix(holdsNone, " recording(s), 0 s of it held between rips in 0.00 GB of hold's 0; the rest read again as each is ripped from its recording, its label's heads built again, its frames read back from "+kept+"\n") {
+		t.Errorf("holding all, said %q; holding none, %q", holdsAll, holdsNone)
+	}
+	if none != whole || !bytes.Equal(again, wrote) {
+		t.Errorf("a search holding none says and writes otherwise than one holding all:\n%s\n%s\n%s\n%s", whole, wrote, none, again)
+	}
+	// each condition's count, its takes held as heard and heard again for each
+	// rip, under the set written, or the start where none was
+	p := start
+	if w, err := audio.LoadRipParams(wrote); err == nil {
+		p = w
+	}
+	held, conds, err := readTruthList(list, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone, _, err := readTruthList(list, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range held {
+		held[i].read(all)
+		gone[i].read(all)
+		if held[i].held, err = held[i].sound(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a, aerr := conditionCounts(held, len(conds), p, s.lead)
+	b, berr := conditionCounts(gone, len(conds), p, s.lead)
+	if aerr != nil || berr != nil || !reflect.DeepEqual(a, b) {
+		t.Errorf("under %+v, held: %+v (%v); heard again: %+v (%v)", p, a, aerr, b, berr)
 	}
 }
 

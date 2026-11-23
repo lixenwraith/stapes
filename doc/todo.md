@@ -189,7 +189,11 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    instructed and performed, which its labels do not carry; a `.mid` or a
    transcript gives no reading, its velocities and lengths its writer's;
    E-GMD's hits state no velocity (its list's `none`); and a `release` a
-   weighed search writes is read on recordings before it ships.
+   weighed search writes is read on recordings before it ships. A take past
+   `hold` is read again for each rip, 4.7 ms of a core a second of sound, 4.1
+   of them its resample: samples kept at the rip's rate beside its frames, or
+   a resample at 2:1 that low-passes only the samples it keeps (audio's), would
+   spare most of it.
 7. The pedal: a piano arpeggio under pedal rings three or four notes at once,
    and the analysis's two lines hold two, so the second line's eighths read as
    held notes. A model's strikes start every note struck however many ring;

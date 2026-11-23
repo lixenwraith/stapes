@@ -121,11 +121,18 @@ func (s *Session) rows(dir, from string, o tuneOptions, fe audio.RipFrontEnd, no
 			kept++
 			continue
 		}
-		t, err := l.take(recording, sum, fe, o.frames, s.earSum)
+		t, err := l.take(sum, fe, o.frames, s.earSum)
 		if err != nil {
 			return err
 		}
-		r, err := audio.Ripper{Params: s.rip, FrontEnd: t.ear, Lead: s.lead, Strikes: true, Rows: true}.Samples(t.x, audio.RipRate)
+		snd, err := t.sound()
+		if err != nil {
+			return err
+		}
+		r, err := audio.Ripper{Params: s.rip, FrontEnd: snd.ear, Lead: s.lead, Strikes: true, Rows: true}.Samples(snd.x, audio.RipRate)
+		if kerr := snd.ear.keep(); err == nil {
+			err = kerr
+		}
 		if err != nil {
 			failed = append(failed, fmt.Sprintf("%s: %v", l.wav, err))
 			continue
@@ -155,7 +162,7 @@ func (s *Session) rows(dir, from string, o tuneOptions, fe audio.RipFrontEnd, no
 			return err
 		}
 		written, strikes, given, unanswered = written+1, strikes+len(rows), given+rec.Given, unanswered+rec.Unanswered
-		if t.ear.read {
+		if snd.ear.read {
 			read++
 		}
 	}

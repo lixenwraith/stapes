@@ -86,7 +86,8 @@ A label is UTF-8 JSON with no whitespace. The loop's fields:
   drawn at, its length in bars and its time signature. A drifting loop's beats keep
   tempos of their own about `bpm`, which `beats` places. A recording's and an
   overlap's are 0 and absent.
-- `root`, `scale`: how it was drawn, an overlap's 0. The trainer doesn't read them.
+- `root`, `scale`: how it was drawn, an overlap's 0. The trainer doesn't read them;
+  `truth` reads them as the loop's key where `root` is over 0.
 - `kind`: a rendered loop's, `bank` for the bank's patterns, `arranged` for one the
   arranger wrote (below) and `overlap` for single notes in no meter (below); absent
   from a recording's.
@@ -114,7 +115,7 @@ A label is UTF-8 JSON with no whitespace. The loop's fields:
 - `chords`: an arranged loop's harmony, each chord from the frame its bar starts on
   (0 for the first, a pickup's), as `{"frame":f,"tones":[t,...]}`, its pitch classes
   from C with its root's first; a chord the bar before already holds is not listed
-  again.
+  again. `truth` reads them, each to the next one's frame, the last to `frames`.
 - `kit`: under `kits`, the kit an arranged loop's drums play, each piece in its
   number's order as `{"genes":[g,...],"band":b}`, its thirteen genes in the manifest's
   `struck_genes` order and the band its hit rises most in (a loop's kit, below).
@@ -156,7 +157,9 @@ An event's fields:
 - `voice`: the 32 genes of the voice that played it, absent when unknown.
 - `part`: a rendered loop's, the line it plays in: an arranged loop's `drums`, `bass`,
   `left`, `chords`, `strum`, `pad`, `arpeggio`, `melody`, `double` or `counter`, a bank
-  loop's slot (`rhythm`, `melody`, `fill`, `bass`), an overlap's `single`.
+  loop's slot (`rhythm`, `melody`, `fill`, `bass`), an overlap's `single`. `truth` reads
+  a note's part as its track, `part` and `instr` together, since a slot's tracks and
+  an overlap's instruments share their part's name.
 - `instr`: a rendered loop's, what it sounds on: the engine's instrument (`piano`,
   `kick`), or the recorded instrument's name in NSynth (`guitar_acoustic_002`).
 - `piece`: a strike of a loop's kit, its piece's number in the loop's `kit`; it names

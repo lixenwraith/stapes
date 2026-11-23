@@ -1823,7 +1823,7 @@ validate all
 		strings.Count(out.String(), "only given 0") != 2 || !strings.Contains(out.String(), "melody only given: D8@0.00\n") {
 		t.Errorf("the score did not agree with its file:\n%s", out.String())
 	}
-	if bars := "bars   score's bar 1.00 of the given's, the same length: 1.00 of 2 downbeat(s) given on a bar line, phase +0.00 bar, 1.00 of 8 beat(s) given on a beat\n"; strings.Count(out.String(), bars) != 2 {
+	if bars := "bars   score's bar 1.00 of the given's, the same length: 1.00 of 2 downbeat(s) given on a bar line, phase +0.00 bar, 1.00 of 8 beat(s) given on a beat; of those before the first downbeat 0 of 0 lost, after the last 0 of 3\n"; strings.Count(out.String(), bars) != 2 {
 		t.Errorf("the score's bars against its file's and its beats', want %q twice:\n%s", bars, out.String())
 	}
 }
@@ -4405,8 +4405,9 @@ save pattern %s
 		t.Errorf("a truth a tone up, want every note heard transposed -2 and not on the recording's clock:\n%s", out.String())
 	}
 	// a label of the rip's own notes, each in its line's part, its hits, key and
-	// each bar's chord reads every reading whole and loses no note at any stage;
-	// one stating no velocity, part, key or chord says it gives none of them
+	// each bar's chord reads every reading whole and loses no note at any stage,
+	// the last to end ringing a second past the recording read at its end; one
+	// stating no velocity, part, key or chord says it gives none of them
 	label := func(name string, said bool) string {
 		frame := func(sec float64) int { return int(math.Round(sec / audio.RipFrameSec)) }
 		r, lab := rp.rip, corpusLoop{Frames: frame(rp.rip.Beats[len(rp.rip.Beats)-1])}
@@ -4429,6 +4430,14 @@ save pattern %s
 			}
 			lab.Events = append(lab.Events, e)
 		}
+		if last := 0; said {
+			for i, e := range lab.Events {
+				if e.End > lab.Events[last].End {
+					last = i
+				}
+			}
+			lab.Events[last].End += frame(1)
+		}
 		for _, h := range r.Hits() {
 			lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), Drum: int(h.Drum), Vel: vel(h.Vel)})
 		}
@@ -4448,7 +4457,7 @@ save pattern %s
 	}
 	out.Reset()
 	runOrFatal(t, s, &out, fmt.Sprintf("truth loop %s timed\ntruth loop %s timed\n", label("said.json", true), label("bare.json", false)))
-	for _, want := range []string{every, "ends     1.000 of", "loudness 1.000 of", "drums' loudness 1.000 of", "parts    1.000 of", "key      1.000 of", "chords   1.000 of",
+	for _, want := range []string{every, "ends     1.000 of", "1 given past the recording's end and read at it, 1 of them wrong as given", "loudness 1.000 of", "drums' loudness 1.000 of", "parts    1.000 of", "key      1.000 of", "chords   1.000 of",
 		"         0 missed: 0 at the given tonic in a scale holding or held by the given's, 0 at the given's tones under another tonic, 0 else\n",
 		"the label gives no loudness, drums' loudness, parts, key, chords\n", "lost     0 of the notes given, by stage: none\n"} {
 		if !strings.Contains(out.String(), want) || strings.Count(out.String(), "ends     1.000 of") != 2 {

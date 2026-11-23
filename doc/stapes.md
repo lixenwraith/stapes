@@ -178,9 +178,11 @@ Over the library's rip (library
   `bars` row for a MIDI file's bars, placed as its notes matched
   (`MIDIScore.Beats`), or a JAMS file's beats, a truth of beats
   alone (`truth <name> <file.jams>`, `ReadJAMSBeats`): the rip's bar lines
-  against the downbeats and beats given (`MatchBars`). A label is read past
+  against the downbeats and beats given (`MatchBars`), with the beats before the
+  first downbeat and after the last it lacks (`truthCount.edges`). A label is read past
   them too, a row a reading it gives (`readings`, `reportReadings`), audio's
-  over the notes and hits matched (`Agreement.Ends`, `Levels`, `Parts`,
+  over the notes and hits matched, an end past the recording read at its end
+  (`Agreement.Until`, `Ends`, `Levels`, `Parts`,
   `HitsAgreement.Levels`) and against its key and chords (`MatchKey`,
   `MatchChords`), a key's miss by its kind on a line beside (`keyMissed`): its
   notes filed under their track, `part` and `instr` joined,

@@ -2856,9 +2856,11 @@ var modelGenes = []func(*audio.RipParams) *float64{
 }
 
 // modelCounts are the integer parameters tune truth searches beside them, each
-// moved as a float that rip.toml rounds: twins, a pitch's notes two at once
+// moved as a float that rip.toml rounds: twins, a pitch's notes two at once, and
+// ring_on, a kept note sounding on through a dropped one
 var modelCounts = []func(*audio.RipParams) *int{
 	func(p *audio.RipParams) *int { return &p.Twins },
+	func(p *audio.RipParams) *int { return &p.RingOn },
 }
 
 // drumGenes is what tune truth searches beside them when a truth gives drum

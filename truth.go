@@ -120,6 +120,9 @@ func cmdTruth(s *Session, a []string) error {
 	var ag audio.Agreement
 	if len(truth) > 0 {
 		ag = audio.MatchNotes(rp.rip.Notes, truth, timed)
+		if rp.x != nil { // nothing heard ends past the recording
+			ag = ag.Until(float64(len(rp.x)) / float64(rp.rate))
+		}
 		if timed {
 			fmt.Fprintf(s.out, "%s against %d note(s) given on the recording's own clock: no map fitted, no transposition tried\n", a[0], len(truth))
 		} else {
@@ -221,8 +224,12 @@ type reading struct {
 var readings = []reading{
 	{"ends", "ends", notesGiven, func(c truthCount) bool { return c.stated.ends > 0 }, func(c truthCount) float64 { return share(c.ends.Right, c.ends.Given) },
 		func(c truthCount) string {
-			return fmt.Sprintf("%d note(s) matched whose end is given, each right within %g of its length or %g ms, the median end %+.2f of a length off",
-				c.ends.Given, audio.EndShare, 1000*audio.EndFloor, median(c.ends.Off))
+			var past string
+			if c.ends.Past > 0 {
+				past = fmt.Sprintf(", %d given past the recording's end and read at it, %d of them wrong as given", c.ends.Past, c.ends.PastWrong)
+			}
+			return fmt.Sprintf("%d note(s) matched whose end is given%s, each right within %g of its length or %g ms, the median end %+.2f of a length off",
+				c.ends.Given, past, audio.EndShare, 1000*audio.EndFloor, median(c.ends.Off))
 		}, nil},
 	{"loudness", "loudness", notesGiven, func(c truthCount) bool { return c.stated.loud > 0 }, func(c truthCount) float64 { return share(c.loud.Right, c.loud.Given) },
 		func(c truthCount) string {
@@ -385,8 +392,8 @@ func reportBars(w io.Writer, name string, r *audio.Rip, beats, downbeats []float
 	if !b.Same {
 		same = "not the same length, so no downbeat counts"
 	}
-	fmt.Fprintf(w, "bars   %s's bar %.2f of the given's, %s: %.2f of %d downbeat(s) given on a bar line, phase %+.2f bar, %.2f of %d beat(s) given on a beat\n",
-		name, b.Ratio, same, b.Downbeats, len(downbeats), b.Phase, b.Beats, len(beats))
+	fmt.Fprintf(w, "bars   %s's bar %.2f of the given's, %s: %.2f of %d downbeat(s) given on a bar line, phase %+.2f bar, %.2f of %d beat(s) given on a beat; of those before the first downbeat %d of %d lost, after the last %d of %d\n",
+		name, b.Ratio, same, b.Downbeats, len(downbeats), b.Phase, b.Beats, len(beats), b.BeforeLost, b.Before, b.AfterLost, b.After)
 }
 
 // reportHits prints each drum's count of a rip's hits against the hits given,

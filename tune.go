@@ -2833,9 +2833,9 @@ func (s *Session) keepRip(file string, p audio.RipParams, score, base float64) e
 }
 
 // modelGenes are the parameters a front end's strikes and heard starts are
-// decoded by, the bass line's own path among them, which tune truth searches;
-// second_voice and cross part two lines of salience, which such a front end's
-// register never reaches
+// decoded by, the bass line's own path and own pitch among them, and the share of
+// the tuning its cents head hears, which tune truth searches; second_voice and
+// cross part two lines of salience, which such a front end's register never reaches
 var modelGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.Strike },
 	func(p *audio.RipParams) *float64 { return &p.StrikeLow },
@@ -2853,6 +2853,8 @@ var modelGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.Jump },
 	func(p *audio.RipParams) *float64 { return &p.Switch },
 	func(p *audio.RipParams) *float64 { return &p.Retrigger },
+	func(p *audio.RipParams) *float64 { return &p.OwnPitch },
+	func(p *audio.RipParams) *float64 { return &p.CentsTuning },
 }
 
 // modelCounts are the integer parameters tune truth searches beside them, each
@@ -3097,7 +3099,9 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 		if sums[c].lines > 0 {
 			l, b := sums[c].shares()
 			la, ba := after[c].shares()
-			fmt.Fprintf(s.out, "%s: bars %.3f before, %.3f after: downbeats on a line %.3f, %.3f, beats on a beat %.3f, %.3f\n", name, sums[c].bars(), after[c].bars(), l, la, b, ba)
+			e, ea := sums[c].edges, after[c].edges
+			fmt.Fprintf(s.out, "%s: bars %.3f before, %.3f after: downbeats on a line %.3f, %.3f, beats on a beat %.3f, %.3f; of those before the first downbeat %d, %d of %d lost, after the last %d, %d of %d\n",
+				name, sums[c].bars(), after[c].bars(), l, la, b, ba, e[1], ea[1], e[0], e[3], ea[3], e[2])
 		}
 		var lacks []string
 		for _, rd := range readings {
@@ -3403,6 +3407,7 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 		return missed, fmt.Errorf("%s: %w", t.truthFile, err)
 	}
 	ag, _ := matchHeard(r, given, t.timed)
+	ag = ag.Until(float64(len(t.x)) / audio.RipRate) // nothing heard ends past the recording
 	c := truthCount{notes: everyNote(ag), lines: len(t.lines), drummed: missed.drummed, drumless: missed.drumless}
 	if c.lines > 0 && len(t.beats) > 1 {
 		c.beats = len(t.beats)
@@ -3422,19 +3427,22 @@ func (t *truthTake) count(p audio.RipParams, lead audio.LeadRule) (truthCount, e
 	if c.lines > 0 {
 		b := audio.MatchBars(r, t.beats, t.lines)
 		c.onLine, c.onBeat = b.Downbeats*float64(c.lines), b.Beats*float64(c.beats)
+		c.edges = [4]int{b.Before, b.BeforeLost, b.After, b.AfterLost}
 	}
 	return c, nil
 }
 
 // truthCount is a rip against a truth: its notes, its drum hits, of the
 // downbeats the truth gives those on a bar line of the rip's and of its beats
-// those a beat of the rip's falls on; with the minutes of the recordings whose
-// truth gives hits and of those it knows play no drum; and what a label says
-// past them as the rip reads it (readings)
+// those a beat of the rip's falls on, and those before its first downbeat and
+// after its last with those of them lost (edges); with the minutes of the
+// recordings whose truth gives hits and of those it knows play no drum; and
+// what a label says past them as the rip reads it (readings)
 type truthCount struct {
 	notes, drums      noteCount
 	lines, beats      int
 	onLine, onBeat    float64
+	edges             [4]int
 	drummed, drumless float64
 	ends              audio.EndReading
 	loud, hitLoud     audio.LevelReading
@@ -3465,8 +3473,10 @@ func (c truthCount) plus(o truthCount) truthCount {
 	levels := func(a, b audio.LevelReading) audio.LevelReading {
 		return audio.LevelReading{Given: a.Given + b.Given, Right: a.Right + b.Right, Off: slices.Concat(a.Off, b.Off)}
 	}
-	return truthCount{c.notes.plus(o.notes), c.drums.plus(o.drums), c.lines + o.lines, c.beats + o.beats, c.onLine + o.onLine, c.onBeat + o.onBeat, c.drummed + o.drummed, c.drumless + o.drumless,
-		audio.EndReading{Given: c.ends.Given + o.ends.Given, Right: c.ends.Right + o.ends.Right, Off: slices.Concat(c.ends.Off, o.ends.Off)},
+	return truthCount{c.notes.plus(o.notes), c.drums.plus(o.drums), c.lines + o.lines, c.beats + o.beats, c.onLine + o.onLine, c.onBeat + o.onBeat,
+		[4]int{c.edges[0] + o.edges[0], c.edges[1] + o.edges[1], c.edges[2] + o.edges[2], c.edges[3] + o.edges[3]}, c.drummed + o.drummed, c.drumless + o.drumless,
+		audio.EndReading{Given: c.ends.Given + o.ends.Given, Right: c.ends.Right + o.ends.Right, Past: c.ends.Past + o.ends.Past, PastWrong: c.ends.PastWrong + o.ends.PastWrong,
+			Off: slices.Concat(c.ends.Off, o.ends.Off)},
 		levels(c.loud, o.loud), levels(c.hitLoud, o.hitLoud),
 		audio.PartReading{Given: c.parts.Given + o.parts.Given, InPart: c.parts.InPart + o.parts.InPart, OnLine: c.parts.OnLine + o.parts.OnLine},
 		c.keys.plus(o.keys),

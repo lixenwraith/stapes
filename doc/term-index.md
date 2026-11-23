@@ -10,7 +10,7 @@ terms, the sound, the voice, the sequencer, the rip and the rest, are in the
 audio library's [term index](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md);
 an entry here that names one links there.
 
-[A](#a) · [B](#b) · [C](#c) · [D](#d) · [F](#f) · [G](#g) · [J](#j) · [K](#k) · [L](#l) · [M](#m) · [O](#o) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [V](#v)
+[A](#a) · [B](#b) · [C](#c) · [D](#d) · [F](#f) · [G](#g) · [H](#h) · [J](#j) · [K](#k) · [L](#l) · [M](#m) · [O](#o) · [P](#p) · [R](#r) · [S](#s) · [T](#t) · [V](#v)
 
 ## A
 
@@ -68,13 +68,17 @@ an entry here that names one links there.
 
 **guard** (also: `guard <x>`, refused set) — What a set `tune ... truth` tries may take from any score a **condition** carries, its notes' F1, its drums', its bars or a reading weighed, against that score under the starting thresholds, 0.01 when not given: a set that takes more is refused, scored under every set that passes, so the mean cannot be bought with one kind of recording or one capability. [Stapes §4](stapes.md#4-the-rips-verbs) · `stapes` `guarded`
 
+## H
+
+**hold** (also: `hold <GB>`, a take held, a take let go, `takeSound`) — What a `tune ... truth` search holds of its recordings between rips, 2 GB unless given: what a rip reads of a take, its samples at the rip's rate, the frames its front end heard and its label's planes, is held after the take's first rip in the list's order while it fits, and every other take is read again as each candidate rips it, from its recording, its **kept frames**, or its front end hearing it again, and its label, the same to the bit. [Stapes §4](stapes.md#4-the-rips-verbs) · `stapes` tune.go (`truthTake.held`, `truthTake.sound`, `takeSound`)
+
 ## J
 
 **judge** (also: `ripjudge.bin`, `rows`, rows directory, `rows.json`, `rowStrike`, `rightStrikes`, `judge.py`, `--leave-out`, stage) — What rules which strikes of the notes model are notes, in the place of the accounting's installed scores, the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#j)): a network a stage, the notes the decoder reported and the strikes it dropped, over a strike's row. `rows <dir> from <list|corpus dir>` writes the rows of a **truth** list's recordings or of a corpus's loops that kept their audio, each strike with its stage, its label (a truth note answers one strike, the nearest, a reported note first) and the installed verdict, a note begun at a heard start among the reported, held, which the fit leaves out and keeps; `tool/rip-train/judge.py` fits a judge on them by one stated procedure, counts the **condition**s left out, and exports the file; the **root**'s `ripjudge.bin` then rules `rip`, `truth`, `tune ... truth` and `live`, refused by name beside notes weights it was not fitted on. No fit ships yet. [Stapes §4](stapes.md#4-the-rips-verbs) · [a judge](../tool/rip-train/README.md#a-judge) · [Rip design §2](rip-design.md#2-stages) and [§7](rip-design.md#7-plan) · `stapes` rows.go, `Session.judge`; `tool/rip-train` judge.py
 
 ## K
 
-**kept frames** (also: `frames <dir>`) — What the rip's models heard of a recording, kept by `tune ... truth` between runs as a file named by the checksums of the recording and of the weight files, so a later run reads it back in place of hearing; a change to the models' code under the same weights is not in the name. [Stapes §4](stapes.md#4-the-rips-verbs) · `stapes` `heardOnce`, `Session.earSum`
+**kept frames** (also: `frames <dir>`) — What the rip's models heard of a recording, kept by `tune ... truth` between runs as a file named by the checksums of the recording and of the weight files, so a later run reads it back in place of hearing, as a search does for each rip of a take past its **hold**; a change to the models' code under the same weights is not in the name. [Stapes §4](stapes.md#4-the-rips-verbs) · `stapes` `heardOnce`, `heardOnce.keep`, `Session.earSum`
 
 **kit** (also: `kits`, piece, `piece`, `kit`, `struck_genes`, `kitPiece`, `loopKit`, `kitLevels`, a piece's band, `strikeBand`, `riseBand`, low pulse, backbeat, time, fill, accents, `cast`, pass, `kitPass`, `renderKit`, recorded kit, `recordedKit`, `pieceKit`) — What an arranged loop's drums play on under `corpus ... gen kits`: two to ten pieces, each a **struck sound** of the audio library's ([audio terms](https://github.com/lixenwraith/audio/blob/main/doc/term-index.md#s)) drawn evenly over its thirteen genes, at a level within the bank drums'. A piece's band is where its hit rises most, and its place in the order of the kit's bands is its role: the lowest the low pulse on the kick's line, the highest the time on the hats', the one half the kit up the backbeat on the snare's, those under it the fill and those over it the accents; every piece plays, and is given its **place**. A kit of more than four renders in passes of four, summed under one room and mix. A strike's label names its `piece`, the loop's `kit` each piece's genes, band and place, and `corpus.json`'s `struck_genes` the genes and `places` the places. A recording's hits make its kit by piece, a piece each key its file strikes, each hit keeping its line's drum. A loop whose label holds a kit drawn from the genome asks the drums head nothing. [Rip training §3](rip-training.md#a-loops-kit) and [a recording's kit](rip-training.md#a-recordings-kit) · `stapes` kit.go `newKit`, `strikeBand`, `cast`, `strike`, `deal`, `placed`, `renderKit`, `recordedKit`
 

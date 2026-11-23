@@ -1017,9 +1017,26 @@ proves wrong or that a document now states, and link the document instead.
   (`systemd-run --user -p MemoryMax=...`), where running out stops the unit and
   not the session.
 - `tune ... truth` hears every recording of its list before it weighs a
-  candidate: give it `frames <dir>`, and a later run reads them back. A file's
-  name holds the recording's and the weight files' checksums, not the models'
-  code: clear the folder after a change to `ripmodels` or the transformer.
+  candidate: give it `frames <dir>`, and a later run reads them back, as each
+  rip of a take past `hold` does, where without it a model hears the take
+  again. A file's name holds the recording's and the weight files' checksums,
+  not the models' code: clear the folder after a change to `ripmodels` or the
+  transformer.
+- **A run's memory is its peak resident set beside its live heap.** A
+  container has no `/usr/bin/time`: poll `VmHWM` in `/proc/<pid>/status` while
+  the run lives, and read the heap live after each collection off
+  `GODEBUG=gctrace=1`, the third of its `a->b->c MB`. Holding its whole list,
+  `tune 2 1 truth <list> heads all` over 419, 1,667 and 4,994 s of loops
+  peaked at 1.15, 1.02 and 1.02 MB a second resident and 0.49, 0.46 and 0.45
+  MB live: the collector lets the heap reach twice what is live, and a
+  recording read at 44.1 kHz is garbage beside it.
+- **A take read again costs its resample.** A second of sound read again for a
+  rip takes 4.7 ms of a core: 4.1 the resample from 44.1 kHz to the rip's rate,
+  which low-passes every sample though it keeps every other, 0.5 `ReadWAV` and
+  0.07 the file; a full-size pair's frames read back from their gob take 1.3
+  and a label's planes built again 0.3 to 0.5, where a rip through the label's
+  heads takes some 20. A pair hears it again in 58 ms on four cores, the
+  analysis in 35 on one.
 - A fit over a list of one kind can gain on it at every other's cost: scored
   within lines over a list of guitar alone, a search can silence the bass line
   (`strike_low` near 1). The guard refuses that only for conditions its list

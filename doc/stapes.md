@@ -303,9 +303,20 @@ Over the library's rip (library
   chance and a search through the analysis, a model without the heads or loops
   under six bars sees only some of them. The front end's `Hear` ignores the
   parameters searched, so each recording is heard once (`heardOnce`) and a
-  candidate pays the decoders alone; `frames <dir>` keeps what was heard between runs, a gob of the
-  `RipFrames` named by the checksums of the recording and of the weight files
-  (`Session.earSum`).
+  candidate pays the decoders alone; `frames <dir>` keeps what was heard
+  between runs, a gob of the `RipFrames` named by the checksums of the
+  recording and of the weight files (`Session.earSum`). What a rip reads of a
+  take (`takeSound`), its samples at the rip's rate and its frames or its
+  label's planes, some 450 kB a second of sound, is held after its first rip
+  in the list's order while `hold` has room (`truthTake.held`); every other
+  take is read again as each candidate rips it (`truthTake.sound`), its
+  recording resampled, its frames read back from `frames <dir>` or heard again
+  without it and its label's planes built again, the bits held, so every
+  candidate scores the same. That costs some 5 ms of a core a second of sound
+  where a rip takes some 20, and a model's hearing again many times that; a
+  take that cannot be read again ends the search with its error, writing
+  nothing. The collector lets the heap grow to twice what is live, so a run
+  under a memory cap sets `GOMEMLIMIT` under the cap.
 - `compress` gives a first bar that starts partway the beat of the bar most
   like it (`Rip.MendPickup`), runs the grouping (`Rip.Cluster`) at each part's
   threshold (`compressPercent`), refines the assignment with

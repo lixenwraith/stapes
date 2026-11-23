@@ -3540,7 +3540,7 @@ func TestAHeadNotNamedIsTheFrontEnds(t *testing.T) {
 // that take and is said kept: the beats and bar lines of a label that lists
 // none, the velocity of one whose notes all say -1, the cents of a recording's
 // with no pitch track, the voice and what plays a note of an unnamed one's,
-// and the drums of a kit's
+// and the drums of a kit drawn from the genome's, whose pieces name no line
 func TestAHeadItsLabelDoesNotStateIsTheFrontEnds(t *testing.T) {
 	n, k, genes := 30, audio.RipPiano.Len(), audio.VoiceGeneCount
 	var heard int
@@ -3554,7 +3554,7 @@ func TestAHeadItsLabelDoesNotStateIsTheFrontEnds(t *testing.T) {
 	}
 	recorded := corpusLoop{Frames: n, Events: []corpusEvent{{Frame: 10, End: 20, Drum: -1, MIDI: 60, Vel: -1, Wave: -1, Family: -1}}}
 	kit := recorded
-	kit.Kit = []corpusPiece{{}}
+	kit.Kit = []corpusPiece{{Genes: []float64{0.5}}, {}}
 	for _, c := range []struct {
 		head string
 		lab  corpusLoop

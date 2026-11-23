@@ -28,7 +28,7 @@ type labelHead struct {
 // decoder reads.
 var labelHeadRows = []labelHead{
 	{"onset", func(f *audio.RipFrames, l *labelPlanes) { f.Flux = l.onset }, nil},
-	{"drums", func(f *audio.RipFrames, l *labelPlanes) { f.Onset = l.drums }, func(l *corpusLoop) bool { return len(l.Kit) == 0 }},
+	{"drums", func(f *audio.RipFrames, l *labelPlanes) { f.Onset = l.drums }, func(l *corpusLoop) bool { return !l.drawnKit() }},
 	{"voice", func(f *audio.RipFrames, l *labelPlanes) { f.Voice = l.voice }, func(l *corpusLoop) bool {
 		return l.anyNote(func(e corpusEvent) bool { return len(e.Voice) > 0 && e.Wave >= 0 })
 	}},
@@ -57,6 +57,12 @@ var labelHeadRows = []labelHead{
 // anyNote is whether any of a label's notes, no hit or kit's strike, is so
 func (l *corpusLoop) anyNote(so func(corpusEvent) bool) bool {
 	return slices.ContainsFunc(l.Events, func(e corpusEvent) bool { return e.Drum < 0 && e.MIDI > 0 && so(e) })
+}
+
+// drawnKit is whether a label's kit is drawn from the struck genome, whose
+// pieces name no line, as a recorded kit's keys do
+func (l *corpusLoop) drawnKit() bool {
+	return slices.ContainsFunc(l.Kit, func(p corpusPiece) bool { return len(p.Genes) > 0 })
 }
 
 // labelSure is the measure a label's say names a family by: a cell's say is a
@@ -231,7 +237,7 @@ func (l *corpusLoop) planes(n int) *labelPlanes {
 		mark(out.onset, t)
 		mark(out.start, t)
 		if e.Drum >= 0 || e.MIDI == 0 {
-			if e.Drum >= 0 && e.Drum < len(out.drums) && len(l.Kit) == 0 {
+			if e.Drum >= 0 && e.Drum < len(out.drums) && !l.drawnKit() {
 				mark(out.drums[e.Drum], t)
 			}
 			continue

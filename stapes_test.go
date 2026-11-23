@@ -2609,8 +2609,11 @@ func TestTuneTruthMovesOnlyTheGenesItIsTold(t *testing.T) {
 	freed := func(said, parts string) bool {
 		return strings.Contains(said, "the genes free: "+parts+"; the rest held at the current parameters\n")
 	}
+	margin := start.JointMargin
+	start.JointMargin = 12 // held out of its range, and kept to the bit
 	notes, _ := search("notes", modelGenes...)
 	drums, p := search("strike,onset_min", modelGenes[0], drumGenes[0])
+	start.JointMargin = margin
 	if !freed(notes, "notes") || !freed(drums, "strike, drums") || p.OnsetMin >= start.OnsetMin {
 		t.Errorf("told the notes and then strike and onset_min, want each said free and onset_min moved under the start's %g by the second:\n%s\n%s", start.OnsetMin, notes, drums)
 	}

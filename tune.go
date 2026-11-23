@@ -2897,6 +2897,11 @@ var barGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.JointMargin },
 }
 
+// field copies a parameter from one set to another
+func field[T float64 | int](at func(*audio.RipParams) *T) func(to, from *audio.RipParams) {
+	return func(to, from *audio.RipParams) { *at(to) = *at(from) }
+}
+
 // geneOf is where a parameter stands in Genes' order, which names none
 func geneOf[T float64 | int](at func(*audio.RipParams) *T) int {
 	var p audio.RipParams
@@ -3001,19 +3006,20 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	if all.lines > 0 {
 		parts = append(parts, geneParts[2])
 	}
-	// the genes free, by name and by their place in Genes' order, so an integer's
-	// is moved as a float and read back rounded
+	// the genes free, by name, by their place in Genes' order, so an integer's
+	// is moved as a float and read back rounded, and by their fields
 	var names []string
 	var at []int
+	var fields []func(to, from *audio.RipParams)
 	for _, p := range parts {
 		for k, g := range p.names() {
 			if o.genes != nil && !slices.Contains(o.genes, g) {
 				continue
 			}
 			if names = append(names, g); k < len(p.genes) {
-				at = append(at, geneOf(p.genes[k]))
+				at, fields = append(at, geneOf(p.genes[k])), append(fields, field(p.genes[k]))
 			} else {
-				at = append(at, geneOf(p.counts[k-len(p.genes)]))
+				at, fields = append(at, geneOf(p.counts[k-len(p.genes)])), append(fields, field(p.counts[k-len(p.genes)]))
 			}
 		}
 	}
@@ -3025,12 +3031,18 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	for k, i := range at {
 		bounds[k], start[k] = genetic.ParameterBounds{Min: ranges[i][0], Max: ranges[i][1]}, now[i]
 	}
+	// a candidate is the current set with its free genes read back as rip.toml
+	// holds them; a held gene stays as the current holds it, in its range or not
 	params := func(data []float64) audio.RipParams {
 		g := cur.Genes()
 		for k, i := range at {
 			g[i] = data[k]
 		}
-		return audio.RipParamsFromGenes(g)
+		read, p := audio.RipParamsFromGenes(g), cur
+		for _, f := range fields {
+			f(&p, &read)
+		}
+		return p
 	}
 	if o.frames != "" {
 		fmt.Fprintf(s.out, "%d recording(s) heard and their frames kept in %s, %d read back from it\n", len(takes)-read, o.frames, read)

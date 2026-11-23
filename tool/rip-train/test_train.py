@@ -462,7 +462,7 @@ class TheBeatAndTheBarLine(unittest.TestCase):
             torch.save({"model": before, "layout": ripmodels.LAYOUT, "cfg": asdict(old)}, at("old.pt"))
             said = run("--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--family-unasked", "--lr", "0.01", steps=3)
             after = torch.load(at("new.pt"))["model"]
-        self.assertIn("its heads but family, beat, downbeat, struck, which start fresh", said)
+        self.assertIn(f"its heads but {', '.join(k for k, _ in ripmodels.HEADS[len(old.outputs):])}, which start fresh", said)
         last = next(line for line in said.splitlines() if line.startswith("step 3 loss "))
         self.assertIn(" downbeat ", last)
         self.assertNotIn("family", last)
@@ -476,20 +476,24 @@ def hit(frame, drum=-1, **more) -> dict:
     return {"frame": frame, "end": frame, "drum": drum, "midi": 0, "vel": 0.8, "wave": -1, "family": F["drums"], **more}
 
 
-KIT = [{"genes": [0.5] * 13, "band": 120}, {"genes": [0.25] * 13, "band": 40}]  # a loop's kit, its pieces' genes and bands
+KIT = [{"genes": [0.5] * 13, "band": 120, "place": 1}, {"genes": [0.25] * 13, "band": 40, "place": 0}]  # a loop's kit, its pieces' genes, bands and places
+PLACED = ("places", "genes", "genespread", "loudness", "pieces")  # the losses of what is struck at each place
 
 
 class TheStruckHead(unittest.TestCase):
     def test_a_pass_grows_the_head_and_every_other_output_is_what_it_was(self):
-        """A frame model and a notes model trained before the struck head start a run through --init: each grows the
-        head's row of its output or frame layer, every other weight carries over, and after a step at rate 0 every
-        other output is the start's to the bit; the files list the head after the downbeat, and after the voice."""
+        """A frame model and a notes model trained before the struck head, and a frame model before the heads of what is
+        struck at each place, start a run through --init: each grows the heads' rows of its output or frame layer, every
+        other weight carries over, and after a step at rate 0 every other output is the start's to the bit; the files
+        list struck after the downbeat and the voice, the three after struck."""
         small = dict(dim=8, heads=2, layers=1, ffn=16, window=4)
         notes = ripmodels.Config(inputs=ripmodels.STACK_BINS + 1, channels=ripmodels.STACK_CHANNELS, outputs=ripmodels.PITCHNET_HEADS[:-1], cell=4, **small)
         x = torch.randn(1, 40, ripmodels.STACK_PLANES * ripmodels.INPUTS, generator=torch.Generator().manual_seed(1))
         head = lambda name, size: struct.pack("<H", len(name)) + name.encode() + struct.pack("<I", size)
         layout = struct.pack("<IH", 1, 6) + b"layout" + struct.pack("<f", ripmodels.LAYOUT)
-        for cfg, flags, listed in ((ripmodels.Config(outputs=heads_before("struck"), **small), (), head("downbeat", 1) + head("struck", 1) + layout),
+        placed = b"".join(head(k, n) for k, n in ripmodels.HEADS[len(heads_before("places")):]) + layout
+        for cfg, flags, listed in ((ripmodels.Config(outputs=heads_before("struck"), **small), (), head("downbeat", 1) + head("struck", 1) + placed),
+                                   (ripmodels.Config(outputs=heads_before("places"), **small), (), head("struck", 1) + placed),
                                    (notes, ("--pitchnet", "--cell", "4"), head("voice", ripmodels.VOICE_GENES) + head("struck", 1) + head("sure", 1) + layout)):
             with self.subTest(heads=len(cfg.outputs)):
                 start = ripmodels.build(cfg).eval()
@@ -501,13 +505,13 @@ class TheStruckHead(unittest.TestCase):
                     ck = torch.load(at("grown.pt"))
                     with open(at("grown.bin"), "rb") as f:
                         body = f.read()
-                self.assertIn("its heads but struck, which start fresh", said)
                 grown = ripmodels.build(ripmodels.shape(ck["cfg"])).eval()
+                self.assertIn(f"its heads but {', '.join(k for k, _ in grown.cfg.outputs[len(cfg.outputs):])}, which start fresh", said)
                 grown.load_state_dict(ck["model"])
                 with torch.no_grad():
                     was, now = (m(x[..., :ripmodels.planes(m.cfg) * ripmodels.INPUTS]) for m in (start, grown))
-                self.assertEqual(now.shape[-1], was.shape[-1] + 1)
-                self.assertTrue(torch.equal(now[..., :-1], was))
+                self.assertEqual(now.shape[-1], grown.cfg.out_size)
+                self.assertTrue(torch.equal(now[..., :was.shape[-1]], was))
                 self.assertIn(listed, body)
 
     def test_what_is_struck_is_asked_at_every_frame_of_every_window(self):
@@ -527,23 +531,26 @@ class TheStruckHead(unittest.TestCase):
     def test_a_laid_or_spliced_strike_counts_where_it_stands_out_of_a_line_or_of_none(self):
         """A strike of drums laid over a loop, or spliced beside another clip, is struck and an onset where it stands
         out of what else sounds, a line's hit or a strike of no line alike, and only a line's hit is a drum's; one
-        under the rest is neither."""
+        under the rest is neither. A laid strike of a piece marks its place there, every place asked; a splice asks none."""
         n, e = train.CHUNK, np.zeros((train.CHUNK, ripmodels.VALUES))
         for f, level in ((20, 100.0), (40, 100.0), (60, 1e-3)):
             e[f:f + 2, ripmodels.BANDS + 150:ripmodels.BANDS + 180] = level
         drums, quiet = Frames(n), Frames(n)
         drums.fr[:], quiet.fr[:] = np.log1p(e), 0.01
-        struck, loop = label([hit(20), hit(40, 1), hit(60)], n), label([], n)
+        struck, loop = label([hit(20, piece=0), hit(40, 1, piece=1), hit(60, piece=0)], n, kit=RECORDED), label([], n)
         _, laid = train.sample(quiet, loop, 0, n, 2, (drums, struck, 0.0), random.Random(1))
         turn = itertools.cycle([(drums, struck), (quiet, loop)])
         _, spliced = train.shuffled(lambda rng: next(turn), n, 2, random.Random(1))
         for t in (laid, spliced):
             self.assertEqual([t[k].tolist() for k in ("struck", "onset")], [marks(n, [20, 40])] * 2)
             self.assertEqual(t["drums"].T.tolist(), [[0] * n, marks(n, [40]), [0] * n])
+        self.assertEqual((laid["places"].tolist(), int(laid["placeask"].min())), (cells(n, [(20, 0), (40, 2)]), 1))
+        self.assertEqual(int(spliced["placeask"].sum()), 0)
 
     def test_a_kit_asks_the_drums_head_nothing(self):
-        """A loop whose label holds a kit asks the drums head nothing, plain, bent or spliced, a line's hit there
-        among its strikes, and every other head what the same loop is asked without one."""
+        """A loop whose label holds a kit drawn from the genome asks the drums head nothing, plain, bent or spliced, a
+        line's hit there among its strikes, and every other head but what is struck at each place what the same loop is
+        asked without one."""
         events = [hit(10, 0), hit(30, piece=0), hit(50, piece=1), note(60, 90, 60, "piano", voice(0.1), 1)]
         kit, bare, fr = label(events, 120, kit=KIT), label(events, 120), Frames(120)
         model = Heard(120)
@@ -555,7 +562,7 @@ class TheStruckHead(unittest.TestCase):
         got = [loss(tg) for tg in windows]
         self.assertEqual([g["drums"] for g in got], [0.0, got[1]["drums"], 0.0, 0.0])
         self.assertGreater(got[1]["drums"], 0.0)
-        self.assertEqual({k: v for k, v in got[0].items() if k not in ("drums", "total")}, {k: v for k, v in got[1].items() if k not in ("drums", "total")})
+        self.assertEqual({k: v for k, v in got[0].items() if k not in ("drums", "total", *PLACED)}, {k: v for k, v in got[1].items() if k not in ("drums", "total", *PLACED)})
 
     def test_a_line_reads_the_heads_peaks_against_what_is_struck_or_a_minute_where_nothing_is(self):
         """A held-out or validation line gives the struck head's F1 at its peaks over the score its weight puts at a
@@ -577,8 +584,131 @@ class TheStruckHead(unittest.TestCase):
             corpus(os.path.join(d, "recordings"), [{"source": "a.wav", "events": [note(0, 10, 60, "guitar")]}])
             said = run("--corpus", d, "--out", os.path.join(d, "out.bin"), "--holdout", "1", "--validate", os.path.join(d, "recordings")).splitlines()
         held, validation = (next(line for line in said if line.startswith(f"step 1 {name} ")) for name in ("held-out", "validation"))
-        self.assertRegex(held, r", struck's F1 \d\.\d{3} \(.* struck \d\.\d{3}")
-        self.assertRegex(validation, r", nothing struck, struck's peaks \d+\.\d a minute \(.* struck \d\.\d{3}")
+        self.assertRegex(held, r", struck's F1 \d\.\d{3}[,;( ].*\(.* struck \d\.\d{3}")
+        self.assertRegex(validation, r", nothing struck, struck's peaks \d+\.\d a minute[,;( ].*\(.* struck \d\.\d{3}")
+
+
+RECORDED = [{"key": 36, "band": 10, "place": 0}, {"key": 42, "band": 280, "place": 2}, {"key": 45, "band": -1, "place": -1}]  # a recording's kit by piece
+
+
+def cells(frames, at) -> list:
+    """a target of frames rows of the places, marked a frame either side of each (frame, place) in at"""
+    out = np.zeros((frames, ripmodels.PLACES), np.uint8)
+    for f, p in at:
+        out[max(f - 1, 0):f + 2, p] = 1
+    return out.tolist()
+
+
+class ThePlaces(unittest.TestCase):
+    def test_a_strike_is_asked_at_its_pieces_place_with_its_genes_and_loudness(self):
+        """A strike of a kit's piece marks its piece's place a frame either side and is asked every place at every frame;
+        where it alone marks a frame there it is asked its piece's genes where they are known and its velocity where
+        known, and on its own frame named its piece. Two strikes on one frame and place ask neither; a recorded piece
+        states no genes; a strike at no place told leaves the places beside it unasked but those known there; a loop
+        of a corpus of kits where nothing is struck is asked every place silent, and one of a corpus of none nothing."""
+        drawn = label([hit(10, piece=0), hit(30, piece=1, vel=-1), hit(50, piece=0), hit(50, piece=0)], 64, kit=KIT)
+        t = drawn.window(0, 64)
+        self.assertEqual(t["places"].tolist(), cells(64, [(10, 1), (30, 0), (50, 1)]))
+        self.assertEqual((t["placeask"].min(), t["placeask"].max()), (1, 1))
+        self.assertEqual(t["geneask"].tolist(), cells(64, [(10, 1), (30, 0)]))
+        self.assertEqual((t["genes"][10, 1].tolist(), t["genes"][30, 0].tolist()), ([0.5] * 13, [0.25] * 13))
+        self.assertEqual(t["loudask"].tolist(), cells(64, [(10, 1)]))
+        self.assertAlmostEqual(float(t["loudness"][11, 1]), 0.8, places=6)
+        self.assertEqual(sorted(zip(*np.nonzero(t["pieces"] >= 0))), [(10, 1), (30, 0)])
+        self.assertEqual((t["pieces"][10, 1], t["pieces"][30, 0]), (0, 1))
+        recorded = label([hit(10, 0, piece=0), hit(10, 2, piece=1), hit(40, piece=2), hit(41, 0, piece=0)], 64, kit=RECORDED).window(0, 64)
+        self.assertEqual(recorded["places"].tolist(), cells(64, [(10, 0), (10, 2), (41, 0)]))
+        self.assertEqual(recorded["placeask"].tolist(), [[1] * 3] * 39 + [[0] * 3] + [[1, 0, 0]] * 2 + [[1] * 3] * 22)
+        self.assertEqual((int(recorded["geneask"].sum()), sorted(zip(*np.nonzero(recorded["pieces"] >= 0)))), (0, [(10, 0), (10, 2), (41, 0)]))
+        quiet = {**MANIFEST, "places": ripmodels.PLACES}
+        silent, bare = (train.Label({"events": [note(0, 10, 60, "piano")]}, 64, m).window(0, 64) for m in (quiet, MANIFEST))
+        self.assertEqual((int(silent["placeask"].min()), int(silent["places"].sum()), int(bare["placeask"].sum())), (1, 0, 0))
+
+    def test_the_genes_head_states_its_error_as_the_cents_head_does(self):
+        """The genes' loss is their mean absolute miss over the cells asked, and the error stated for each a Laplace's
+        scale fitted to the miss held fixed, its loss least where the head states the miss; a loudness is asked as a
+        velocity, its squared miss."""
+        frames, t = 64, label([hit(20, piece=0, vel=0.5)], 64, kit=KIT)
+        frs, tgs, _ = train.validation([(Frames(frames), t)], frames, 2)
+        model = Heard(frames)
+        genes, loud = model.cfg.slice("genes"), model.cfg.slice("loudness")
+        k = ripmodels.PLACES * ripmodels.STRUCK_GENES
+        model.y[..., genes.start:genes.start + k] = 0.0  # every gene a half: the piece's 0.5 exact, 0.25 off by 0.25
+        model.y[..., loud] = 0.0  # a half, the strike's own
+        def at(stated):
+            model.y[..., genes.start + k:genes.stop] = math.log(stated)
+            return {key: v.item() for key, v in train.losses(model, frs[0], tgs[0]).items()}
+        got = at(0.1)
+        self.assertAlmostEqual(got["genes"], 0.0, places=6)  # piece 0, its genes all a half, at place 1
+        self.assertAlmostEqual(got["loudness"], 0.0, places=6)
+        model.y[..., genes.start:genes.start + k] = math.log(3)  # 0.75: a quarter off every gene
+        stated = [at(e)["genespread"] for e in (0.15, 0.25, 0.4)]
+        self.assertAlmostEqual(at(0.25)["genes"], 0.25, places=5)
+        self.assertAlmostEqual(stated[1], 0.25 / 0.25 + math.log(0.25), places=5)
+        self.assertLess(stated[1], min(stated[0], stated[2]))
+
+    def test_strikes_of_one_piece_are_told_alike_and_of_two_apart(self):
+        """Where no genes are stated a strike is named among its window's pieces by its genes' miss from each one's mean,
+        its own's without it, over the errors stated: lower where one piece's strikes are described alike and two
+        apart, nothing in a window of one piece or of pieces struck once, and nothing where genes are stated."""
+        value = torch.full((1, 8, ripmodels.PLACES, ripmodels.STRUCK_GENES), 0.5)
+        spread = torch.full_like(value, math.log(0.05))
+        pieces = torch.full((1, 8, ripmodels.PLACES), -1, dtype=torch.int32)
+        pieces[0, [0, 2, 4, 6], 0] = torch.tensor([0, 1, 0, 1], dtype=torch.int32)
+        asked = torch.ones(1, 8, ripmodels.PLACES)
+        alike = train.told_apart(value, spread, pieces, asked).item()
+        value[0, [2, 6], 0] = 0.9  # piece 1 described apart from piece 0
+        apart = train.told_apart(value, spread, pieces, asked).item()
+        self.assertAlmostEqual(alike, math.log(2), places=5)
+        self.assertLess(apart, 1e-3)
+        once = pieces.clone()
+        once[0, [4, 6], 0] = -1
+        self.assertEqual(train.told_apart(value, spread, once, asked).item(), 0.0)
+        self.assertEqual(train.told_apart(value, spread, pieces, torch.zeros_like(asked)).item(), 0.0)
+
+    def test_a_line_reads_what_is_struck_at_each_place(self):
+        """A held-out or validation line gives, over loops of pieces, each place's F1 and theirs pooled at the peaks the
+        struck head's are read by, the genes' median miss beside the median error stated and the share within it, the
+        loudness' median miss, and the share of pairs of one piece's strikes lying nearer than pairs of two, a
+        recording's saying no genes are stated; a corpus of no kit says no place is asked."""
+        frames, model = 200, Heard(256)
+        loop = label([hit(20, piece=0), hit(60, piece=1), hit(100, piece=1), hit(140, piece=1)], frames, kit=KIT)
+        places, genes, loud = (model.cfg.slice(k).start for k in ("places", "genes", "loudness"))
+        k = ripmodels.PLACES * ripmodels.STRUCK_GENES
+        for f, p in ((20, 1), (60, 0), (100, 0), (150, 2)):  # three right, one that is none
+            model.y[0, f, places + p] = 9.0
+        model.y[0, :, genes:genes + k] = 0.0  # every gene a half: piece 0 exact, piece 1 a quarter off
+        model.y[0, :, genes + k:genes + 2 * k] = math.log(0.1)
+        model.y[0, :, loud:loud + ripmodels.PLACES] = 0.0  # a half against the strikes' 0.8
+        v = train.evaluate(model, *train.validation([(Frames(frames), loop)], 256, 2)[:2], "cpu")["kit"]
+        self.assertAlmostEqual(v["all"], 2 * (3 / 4) * (3 / 4) / (3 / 4 + 3 / 4))
+        self.assertEqual(v["places"][2], None)
+        self.assertAlmostEqual(v["genes"][0], 0.25, places=5)  # the median of the misses, piece 1's three strikes a quarter off
+        self.assertAlmostEqual(v["genes"][1], 0.1, places=5)
+        self.assertAlmostEqual(v["loudness"], 0.3, places=5)
+        self.assertEqual(v["apart"][1], 1)
+        with tempfile.TemporaryDirectory() as d:
+            os.mkdir(os.path.join(d, "recordings"))
+            corpus(d, [{"bpm": 100, "bars": 1, "kit": KIT, "events": [hit(8 * k, piece=k % 2) for k in range(8)]}] * 2, places=ripmodels.PLACES)
+            corpus(os.path.join(d, "recordings"), [{"source": "a.wav", "kit": RECORDED, "events": [hit(8 * k, 0, piece=k % 2) for k in range(8)]}], places=ripmodels.PLACES)
+            said = run("--corpus", d, "--out", os.path.join(d, "out.bin"), "--holdout", "1", "--validate", os.path.join(d, "recordings")).splitlines()
+            os.mkdir(os.path.join(d, "bare"))
+            corpus(os.path.join(d, "bare"), [{"bpm": 100, "bars": 1, "events": [hit(8 * k, k % 3) for k in range(8)]}] * 2)
+            bare = run("--corpus", os.path.join(d, "bare"), "--out", os.path.join(d, "out.bin"), "--holdout", "1").splitlines()
+        held, validation = (next(line for line in said if line.startswith(f"step 1 {name} ")) for name in ("held-out", "validation"))
+        self.assertRegex(held, r", places' F1 \d\.\d{3} \([-\d. ]+\), genes \d\.\d{3} off, \d\.\d{3} stated, \d+% within, loudness \d\.\d{3} off, one piece's strikes nearer than two pieces' \d\.\d{3} of the time over 1 loops[,;( ]")
+        self.assertRegex(validation, r", places' F1 \d\.\d{3} \([-\d. ]+\), no genes stated, loudness \d\.\d{3} off")
+        self.assertIn(", no place asked", next(line for line in bare if line.startswith("step 1 held-out ")))
+
+    def test_a_corpus_of_kits_states_the_places_the_model_hears(self):
+        """A corpus whose labels hold a kit and whose manifest states no places, or others than the model's, is
+        refused by how to write its labels again."""
+        for manifest in ({}, {"places": ripmodels.PLACES + 1}):
+            with self.subTest(manifest=manifest), tempfile.TemporaryDirectory() as d:
+                corpus(d, [{"bpm": 100, "bars": 1, "kit": KIT, "events": [hit(8, piece=0)]}], **manifest)
+                with self.assertRaises(SystemExit) as refused:
+                    train.load_corpus(d)
+                self.assertIn("write its labels again", str(refused.exception))
 
 
 def sounding(frames, events) -> np.ndarray:
@@ -868,26 +998,28 @@ class TheBatches(unittest.TestCase):
         a, b = (handed(*self.flags, "--shard-seed", shard, steps=3) for shard in ("0", "1"))
         self.assertFalse(any(torch.equal(x, y) for (x, _), (y, _) in zip(a, b)))
 
-    def test_a_batch_without_a_kit_asks_every_head_but_struck_as_a_model_without_it_is_asked(self):
-        """Over a run's batches drawn through every share, none with a kit, a model grown the struck head has every
-        other head's loss a model without it has, bit for bit, the drums' among them, and the total that and struck's."""
+    def test_a_batch_without_a_kit_asks_every_head_as_a_model_without_the_heads_after_the_downbeat_is_asked(self):
+        """Over a run's batches drawn through every share, none with a kit, a model grown the struck head and those of what
+        is struck at each place has every other head's loss a model without them has, bit for bit, the drums' among
+        them; the places ask nothing, each of their losses zero, and the total is that and struck's."""
         old = ripmodels.Config(channels=4, dim=8, heads=2, layers=1, ffn=16, window=4, outputs=heads_before("struck"))
         start = ripmodels.FrameModel(old)
         grown = ripmodels.FrameModel(ripmodels.Config(**{**asdict(old), "outputs": list(ripmodels.HEADS)}))
         grown.load_state_dict(ripmodels.carried(grown, old, start.state_dict()))
         for x, t in handed(*self.flags, steps=6):
-            self.assertEqual(int(t["kit"].sum()), 0)
+            self.assertEqual((int(t["kit"].sum()), int(t["placeask"].sum())), (0, 0))
             with torch.no_grad():
                 was, now = train.losses(start, x, t), train.losses(grown, x, t)
-            self.assertEqual({k: v.item() for k, v in was.items()}, {k: v.item() for k, v in now.items() if k != "struck" and k != "total"} | {"total": was["total"].item()})
+            self.assertEqual({k: v.item() for k, v in was.items()}, {k: v.item() for k, v in now.items() if k not in ("struck", "total", *PLACED)} | {"total": was["total"].item()})
+            self.assertEqual([now[k].item() for k in PLACED], [0.0] * len(PLACED))
             self.assertEqual(now["total"].item(), (was["total"] + now["struck"]).item())
 
     def test_without_a_placed_start_every_target_and_loss_is_as_without_reaches(self):
         """A digest of every other target over windows cut anywhere and padded, of labels whose notes hold their pitch
         or move, cents placed or not, two to a cell or outside the pitches, beside drums, is pinned, a placed start's
         targets unset there and in a run's batches of every kind, whose every loss is bit for bit an onset's and a
-        strike's asked at every frame, written out here; a change to what a window holds pins it again. With no kit and
-        every strike a line's hit, what is struck is where a drum is and the kit's mask empty, so the digest leaves both."""
+        strike's asked at every frame, written out here; a change to what a window holds pins it again. With no kit,
+        every strike a line's hit, what is struck is where a drum is, the kit's mask and every place's empty: unpinned."""
         rng, digest = random.Random(5), hashlib.sha1()
         with mock.patch.object(train, "GENES", array.array("f")):
             for _ in range(24):
@@ -906,7 +1038,8 @@ class TheBatches(unittest.TestCase):
                 for start in rng.sample(range(frames), 3):
                     t = train.targets(Frames(frames), lab, start, rng.choice([86, 512]), rng.random() < 0.5)
                     self.assertEqual((t["struck"].tolist(), int(t["kit"].sum())), (t["drums"].max(1).tolist(), 0))
-                    for k in sorted(set(t) - {"struck", "kit"}):
+                    self.assertEqual([int(t[k].sum()) for k in ("places", "placeask", "geneask", "loudask")] + [int((t["pieces"] >= 0).sum())], [0] * 5)
+                    for k in sorted(set(t) - {"struck", "kit", "places", "placeask", "genes", "geneask", "loudness", "loudask", "pieces"}):
                         if k in PLACED_STARTS:
                             self.assertFalse(t[k].any(), k)
                             continue

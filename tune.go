@@ -513,7 +513,7 @@ func (m *music) label(events []audio.RipEvent, ends map[int]int, voices map[stri
 	}
 	if m.kit != nil {
 		for _, pc := range m.kit.pieces {
-			lab.Kit = append(lab.Kit, corpusPiece{Genes: pc.genes, Band: pc.band})
+			lab.Kit = append(lab.Kit, corpusPiece{Genes: pc.genes, Band: pc.band, Place: pc.place})
 		}
 	}
 	if m.kind == "overlap" {
@@ -1159,12 +1159,18 @@ type corpusLoop struct {
 	Chords    []corpusChord `json:"chords,omitempty"`
 }
 
-// corpusPiece is a piece of a loop's kit as its label holds it: the genes it
-// was drawn as, in the manifest's struck_genes order, and the band its hit
-// rises most in where it is struck (strikeBand)
+// corpusPiece is a piece of a loop's kit as its label holds it: a drawn one's
+// genes, in the manifest's struck_genes order, or a recorded one's key; the
+// band its hit rises most in and the place whose bands rise most (strikeBand,
+// recordedKit), and a recorded one's sureness of it, both -1 where that is
+// unread or under pieceSure and then why, a word of placeWhy
 type corpusPiece struct {
-	Genes []float64 `json:"genes"`
+	Genes []float64 `json:"genes,omitempty"`
+	Key   *int      `json:"key,omitempty"`
 	Band  int       `json:"band"`
+	Place int       `json:"place"`
+	Sure  float64   `json:"sure,omitempty"`
+	Why   string    `json:"why,omitempty"`
 }
 
 // leftHit is a hit of a recording put on its sound that its label leaves out:
@@ -1287,8 +1293,12 @@ type corpusManifest struct {
 	Families   []string `json:"families"`
 	VoiceGenes int      `json:"voice_genes"`
 	// a corpus whose loops play kits names the struck genome's genes, the
-	// order a kit's piece lists them in
+	// order a kit's piece lists them in, and one whose labels hold a kit how
+	// many places its pieces are placed in (kitPlaces)
 	StruckGenes []string `json:"struck_genes,omitempty"`
+	Places      int      `json:"places,omitempty"`
+	// a corpus of recordings, its pieces left at no place by a word of placeWhy
+	Unplaced map[string]int `json:"unplaced,omitempty"`
 }
 
 // newCorpusManifest is the manifest of a corpus of loops
@@ -1618,7 +1628,9 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	var (
 		mu         sync.Mutex
 		first      error
-		sat, notes int // of the recordings a pitch track is named for
+		sat, notes int            // of the recordings a pitch track is named for
+		kitted     bool           // a recording's strikes make a kit
+		unplaced   map[string]int // its pieces at no place, by a word of placeWhy
 	)
 	// each takes as many recordings at once as the process runs threads, four at
 	// most: a recording's samples, and a measured one's rings, take hundreds of
@@ -1745,6 +1757,15 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		}
 		j.moved, j.skip, j.left = lab.Lag != nil, lab.Skip, lab.Left
 		mu.Lock()
+		kitted = kitted || len(lab.Kit) > 0
+		for _, pc := range lab.Kit {
+			if pc.Why != "" {
+				if unplaced == nil {
+					unplaced = map[string]int{}
+				}
+				unplaced[pc.Why]++
+			}
+		}
 		if !labels {
 			frames += lab.Frames
 		}
@@ -1756,7 +1777,11 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	}); err != nil {
 		return err
 	}
-	if err := writeJSON(filepath.Join(dir, "corpus.json"), newCorpusManifest(loops)); err != nil {
+	man := newCorpusManifest(loops)
+	if kitted {
+		man.Places, man.Unplaced = kitPlaces, unplaced
+	}
+	if err := writeJSON(filepath.Join(dir, "corpus.json"), man); err != nil {
 		return err
 	}
 	// a recording whose hits are not put on its sound is named, and its loop
@@ -1845,6 +1870,16 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 			}
 		}
 		what += fmt.Sprintf(", %d of their hit(s) left out of the labels in left.tsv: %s", len(cut), strings.Join(by, ", "))
+	}
+	if len(unplaced) > 0 {
+		var by []string
+		n := 0
+		for _, w := range placeWhy {
+			if unplaced[w] > 0 {
+				by, n = append(by, fmt.Sprintf("%d for %s", unplaced[w], w)), n+unplaced[w]
+			}
+		}
+		what += fmt.Sprintf(", %d of their piece(s) at no place: %s", n, strings.Join(by, ", "))
 	}
 	if len(skipped) > 0 {
 		fmt.Fprintf(s.out, "skipped %d whose MIDI has no notes and no kick, snare or hihat, as %s\n", len(skipped), skipped[0])
@@ -1960,7 +1995,7 @@ func corpusRecording(base, wav, source string, family int, vel func(float64) flo
 		lab.Events = append(lab.Events, ev)
 	}
 	for _, h := range hits {
-		e := corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: vel(h.Vel), Wave: -1, Family: familyIndex("drums")}
+		e := corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: vel(h.Vel), Wave: -1, Family: familyIndex("drums"), Piece: new(h.Key)}
 		// a hit put on its sound whose onset reads no rise there draws none
 		if r := onsetRise(flux, h.Start+lag+lagRise); lab.Lag != nil && e.Frame >= 0 && e.Frame < frames && r < hitBound {
 			lab.Left = append(lab.Left, leftHit{Frame: e.Frame, Key: h.Key, Drum: e.Drum, Vel: h.Vel, Why: hitWhy[0], sec: h.Start, rise: r})
@@ -1969,6 +2004,7 @@ func corpusRecording(base, wav, source string, family int, vel func(float64) flo
 		lab.Events = append(lab.Events, e)
 	}
 	lab.Events = slices.DeleteFunc(lab.Events, func(e corpusEvent) bool { return e.Frame < 0 || e.Frame >= frames })
+	pieceKit(&lab, rows)
 	for i, to := range []*[]int{&lab.Beats, &lab.Downbeats} {
 		for _, sec := range grid[i] {
 			if f := frame(sec); sec+lag >= 0 && f < frames {
@@ -2299,7 +2335,7 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	if o.parts == 0 && unheard == 0 {
 		man := newCorpusManifest(o.loops)
 		if o.kits {
-			man.StruckGenes = audio.StruckGeneNames()
+			man.StruckGenes, man.Places = audio.StruckGeneNames(), kitPlaces
 		}
 		if err := writeJSON(filepath.Join(dir, "corpus.json"), man); err != nil {
 			return err

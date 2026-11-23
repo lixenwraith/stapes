@@ -152,6 +152,11 @@ hand](#by-hand)), and its steps a second follow what they get.
   or over against every strike of no pitch within four frames, a line's hit,
   one of no line or a kit's, or over a corpus where nothing is struck
   `nothing struck, struck's peaks N a minute`, which should read near 0.
+  A frame model then says what is struck at each place over loops of pieces, or
+  `no place asked`: `places' F1` pooled and by place, the genes' median miss
+  beside the median error stated and the share within it, the loudness' median
+  miss, and the share of pairs of one piece's strikes lying nearer than pairs of
+  two ([what is struck at each place](#what-is-struck-at-each-place)).
   Over loops of placed starts either model's lines then give `placed starts' F1
   ... within R frames`, the onset head's peaks over a half against those starts
   within the corpus's reach, and `their strikes'`, the strike head's at the
@@ -483,9 +488,11 @@ whether a beat of the meter and a bar line fall within a frame, as binary
 cross-entropy with no weight, in the score that picks the step
 ([the beat and the bar line](#the-beat-and-the-bar-line)); and whether something
 of no pitch is struck within a frame, as weighted binary cross-entropy over every
-frame, outside the score that picks the step ([the struck head](#the-struck-head)).
-A loop whose label holds a kit asks the drums head nothing, since a kit's pieces
-name no line.
+frame, outside the score that picks the step ([the struck head](#the-struck-head)),
+and on the frame model, at each place, what is struck there
+([what is struck at each place](#what-is-struck-at-each-place)). A loop whose
+label holds a kit drawn from the genome asks the drums head nothing, since its
+pieces name no line.
 
 ## The beat and the bar line
 
@@ -554,9 +561,10 @@ the target and the loss.
   marked as a hit's are. A strike laid by `--over` or spliced into a shuffled
   window counts where it stands out of what else sounds, of no line as of a line,
   and is an onset there too.
-- **A kit asks the drums head nothing.** A loop whose label holds a kit, whose
-  pieces name no line, gives that head no term; every other head is asked as on
-  any loop, and a batch with no kit asks every head but this one as before it.
+- **A drawn kit asks the drums head nothing.** A loop whose label holds a kit
+  drawn from the genome, whose pieces name no line, gives that head no term; every
+  other head but those of what is struck at each place is asked as on any loop, and
+  a batch with no kit asks every head but this one and those as before them.
 - **It joins the loss**, a strike weighing 8 as a hit does in the drums head's, but
   neither the decoders' loss that picks the step nor the heads a pass that carries
   on reads: until a decoder reads it, a step or a rate chosen by it chooses for
@@ -570,6 +578,27 @@ the target and the loss.
   notes model but the one it was fitted on.
 - **The lines** give `struck's F1`, or `nothing struck, struck's peaks N a minute`
   ([reading a run](#reading-a-run)).
+
+## What is struck at each place
+
+A frame model's three heads after the struck head say, at each of three places of
+the bands and at each frame, whether something is struck there, the genes of what
+is struck with the error the head states for each, and how hard; no decoder reads
+them yet, and audio from v0.42.0 reads them into the frames ([Rip
+training](../../doc/rip-training.md) §3, §5 and §8).
+
+- **A loop of pieces asks them**: one whose label holds a kit, drawn from the genome
+  or a recording's by piece, and one of a corpus of kits where nothing is struck.
+  A strike marks its piece's place as the struck head is marked; where it alone
+  marks a frame there, it is asked its piece's genes where they are stated and its
+  velocity where known. A recorded piece at no place, unread or unsure, asks none
+  about its strikes. A corpus of no kit asks them nothing, its every other loss
+  a model's without them to the bit.
+- **The genes state their error** as the cents head does, a Laplace's scale fitted
+  to the miss held fixed; a recording's strikes, of no genes stated, teach the
+  genes by being told apart, one piece's alike and two apart, at the errors stated.
+- **They grow onto a pass's weights** as the struck head did: `--init` from its
+  checkpoint, every other output the pass's to the bit.
 
 A round's pair grown with no step taken, from the checkpoints of the weights it
 exported (its `.best.pt`, or its `.last.pt` for the pair exported from that):
@@ -774,7 +803,8 @@ It writes the file's version 6, which states the band frames' layout as a
 constant after the heads (`layout`, `ripmodels.LAYOUT`) and, for `--pitchnet`'s
 cell net, no bins for its regions to pool, and needs audio v0.30.0 (transformer
 v0.7.0), a file with a struck head v0.34.0, which reads nothing of a head after
-its specs'. Audio refuses a file of another layout or of none, naming its own,
+its specs', and one with the heads of what is struck at each place v0.42.0, which
+reads those. Audio refuses a file of another layout or of none, naming its own,
 and a file without a head its specs name but a notes model's cents head, which a
 probe's file lacks; the measure is a frame head of one value whose weights are
 zero and whose bias is the measure.

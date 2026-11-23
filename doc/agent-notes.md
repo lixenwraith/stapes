@@ -1194,3 +1194,32 @@ proves wrong or that a document now states, and link the document instead.
   128: a container's checkpoint to measure against trains on the short windows,
   2,000 steps in 25 minutes. A run beside it on the same cores slows both many
   times over: the trainer's tests took 646 s so where they take 80 alone.
+- **A count with the labels as the heads does not carry to trained heads.**
+  The joint path read every bar of 574 generated loops so; with trained heads
+  on 737 recordings it read every line and beat right on 132 of 264 generated
+  loops where the present path reads 94, and on 29 of 298 GuitarSet
+  recordings where 118. Of the changes of v0.57.0 to v0.66.0, none counted
+  with a trained model before it merged, three moved a rip under one: the
+  grid's two ends (383 of the 737 right where 266, no group falling; E-GMD's
+  hits 0.51 to 0.53), the key over the bars (233 of 399 generated loops where
+  186) and the notes begun at a heard start, which took unheard singers from
+  0.457 to 0.424 under a judge fitted before them. Read a change to the
+  decoders with trained models, by kind of sound, before building on its count.
+- **A search that scores pitch and start moves a note's end blind.** Under the
+  thresholds such a search found (`release` 0.38) and its judge, a matched
+  note's end read right for 0.26 of an unheard guitarist's notes, 0.22 of
+  unheard singers' and 0.39 of held-out loops'; under the built-in thresholds
+  with no judge 0.40, 0.47 and 0.53. `tune 2 1 truth` over kept frames prints
+  the ends beside the notes: `weigh ends` in any search that may move
+  `release`.
+- **A list that names each recording gives the choice a pooled score hides.**
+  Where a truth list's condition is the recording (`set|group|name`),
+  `tune 2 1 truth` scores every recording apart, and two such logs give the
+  better of two decoders a recording and a count by kind in minutes. For the
+  two tempo paths: 357 of 737 by recording and 323 by kind alone (a lone
+  guitar the present path, all else the joint), where either alone reads 266
+  and 234.
+- **The notes model's family names tell a recording of one kind, not a line in
+  a mix.** On singers and a guitarist it never trained on it names `voice` for
+  0.99 of the notes and `guitar` for 0.98; on held-out generated mixes 0.55 of
+  the notes, a sung one 0.08. No decoder reads the name.

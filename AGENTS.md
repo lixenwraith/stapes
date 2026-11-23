@@ -118,6 +118,21 @@ it there in the same PR.
   copied there, each with its line in `MANIFEST.txt`, and the installed pair
   with its `rip.toml` whenever it changes. A weight file held only in a
   round's own folder is one disk from lost.
+- A change to what a rip decodes, to a model's heads or to a fit is read with
+  trained models on recordings before it merges: by kind of sound (a guitar,
+  singing, recorded drums, generated mixes), each kind before and after and
+  what fell among them, the figures alone in the PR body. A thread with no
+  trained model opens its PR as a draft and names the reading it waits for.
+- A count with the labels in the models' place (`heads`), or on built heads, is
+  the decoders' ceiling: it is given as that, never as a benefit, and nothing
+  is changed or merged on it alone.
+- Nothing lands unused: a parameter whose default leaves its path off, a head
+  no decoder reads or a verb's word no script runs has an item in
+  `doc/todo.md` naming the reading with trained models that decides it and
+  the date it is deleted by.
+- What a round repeats (the judge's rows and fit, the thresholds' search, the
+  read-back by kind) is a stage of `tool/rip-train`'s scripts, never a copy of
+  the last round's commands.
 
 ## Docs
 

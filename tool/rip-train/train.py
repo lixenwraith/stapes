@@ -74,7 +74,15 @@ class Label:
         self.placed = bool(label.get("placed"))  # its notes' starts placed on the recording by an alignment, not heard struck
         self.reach = int(manifest["reach"]) if self.placed else 0  # the frames a placed start's known start lies within (§5)
         self.struck = (self.drum >= 0) | (self.midi == 0)  # struck, of no pitch: a hit of a line, or a strike of no line at midi 0
-        self.kit = bool(label.get("kit"))  # its drums a kit's pieces, which name no line: it asks the drums head nothing
+        # a kit drawn from the genome, whose pieces name no line, asks the drums head nothing; a recorded one's pieces are its
+        # file's keys, its hits keeping their lines. Either asks what is struck at each place, and so does a loop of a corpus
+        # of kits where nothing is struck, every place silent there
+        kit = label.get("kit") or []
+        self.kit = any("genes" in p for p in kit)
+        self.pieced = bool(kit) or bool(manifest.get("places")) and not self.struck.any()
+        self.piece = np.array([e.get("piece", -1) for e in ev], np.int16)
+        self.place = np.array([p.get("place", -1) for p in kit], np.int8)  # -1 where a recording's strikes cannot tell it
+        self.kitgenes = np.array([p.get("genes") or [np.nan] * ripmodels.STRUCK_GENES for p in kit], np.float32).reshape(-1, ripmodels.STRUCK_GENES)
         self.wave = np.array([e.get("wave", -1) if e.get("voice") else -1 for e in ev], np.int8)
         self.family = np.array([e.get("family", -1) for e in ev], np.int8)
         index = {}  # a loop's notes share a few voices
@@ -124,6 +132,12 @@ class Label:
         i = i[self.struck[i]]
         return zip(self.t[i].tolist(), self.drum[i].tolist())
 
+    def placed_at(self, f: int):
+        """the place of a strike of a piece at frame f, -1 where its strikes cannot tell it, None where no piece strikes there"""
+        i = self.order[np.searchsorted(self.sorted, f):np.searchsorted(self.sorted, f, "right")]
+        i = i[self.struck[i] & (self.piece[i] >= 0)]
+        return int(self.place[self.piece[i[0]]]) if len(i) else None
+
     def window(self, a: int, b: int, with_strikes: bool = True) -> dict:
         """Per-frame targets for frames a to b, as doc/rip-training.md §5 lists them; masks say where a
         target counts. The yes-or-no ones are bytes until batch; the strikes and releases are lists of
@@ -134,6 +148,8 @@ class Label:
         pitches, min_midi = ripmodels.PITCHES, ripmodels.LOW
         onset, stretch, starts, struck = np.zeros(w, np.uint8), np.zeros(w, np.uint8), np.zeros(w, np.uint8), np.zeros(w, np.uint8)
         drums = np.zeros((w, 3), np.uint8)
+        places, lost = np.zeros((w, ripmodels.PLACES), np.uint8), np.zeros(w, bool)  # a kit's strikes by place, and the frames of one at none told
+        at_place = np.full((w, ripmodels.PLACES), -1, np.int32)  # the strike marking a frame at a place, -2 where a second does
         pitch = np.zeros((w, pitches), np.uint8)
         pitchstretch, pitchstarts = np.zeros((w, pitches), np.uint8), np.zeros((w, pitches), np.uint8)
         wave = np.full(w, -1, np.int64)
@@ -178,6 +194,12 @@ class Label:
                 struck[mark] = 1
                 if self.drum[i] >= 0:
                     drums[mark, self.drum[i]] = 1
+                if self.pieced and self.piece[i] >= 0:
+                    if (place := int(self.place[self.piece[i]])) < 0:
+                        lost[mark] = True
+                    else:
+                        places[mark, place] = 1
+                        at_place[mark, place] = np.where(at_place[mark, place] == -1, i, -2)
                 continue
             x, at = max(t, a), int(self.cents_at[i])
             r0, r1 = x - a, max(min(end, b), x) - a  # the note's frames in the window
@@ -236,12 +258,30 @@ class Label:
         name = of(self.name)
         if FAMILY_HOLDOUT is not None:  # the family held out is named to no head
             family[family == FAMILY_HOLDOUT], name[name == FAMILY_HOLDOUT] = -1, -1
+        # every place is asked at every frame of a loop of pieces, but the places beside a strike at none told; a strike alone
+        # at its frame and place is asked its piece's genes where they are known, its velocity where known, and named its piece
+        # on its own frame, for the strikes of one piece to be told alike and of two apart
+        placeask = np.full((w, ripmodels.PLACES), int(self.pieced), np.uint8)
+        placeask[lost] = places[lost]
+        lone = at_place >= 0
+        struck_by = np.where(lone, at_place, 0)
+        piece = np.where(lone, self.piece[struck_by] if len(self.piece) else 0, -1)
+        kit_genes, known = np.zeros((w, ripmodels.PLACES, ripmodels.STRUCK_GENES), np.float32), np.zeros((w, ripmodels.PLACES), bool)
+        if len(self.kitgenes):
+            drawn = self.kitgenes[np.maximum(piece, 0)]
+            known = lone & ~np.isnan(drawn).any(-1)
+            kit_genes[known] = drawn[known]
+        geneask = known.astype(np.uint8)
+        loudness = np.where(lone, self.vel[struck_by] if len(self.vel) else 0.0, 0.0).astype(np.float32)
+        loudask = (lone & (loudness >= 0)).astype(np.uint8)
+        pieces = np.where(lone & ((self.t[struck_by] if len(self.t) else 0) == np.arange(a, b)[:, None]), piece, -1).astype(np.int32)
         return {"onset": onset, "stretch": stretch, "starts": starts, "pitchstretch": pitchstretch, "pitchstarts": pitchstarts,
                 "drums": drums, "struck": struck, "pitch": pitch, "voicing": (pitch.sum(1) > 0).astype(np.uint8),
                 "wave": wave, "voice": voice, "voiced": (top >= 0).astype(np.uint8), "family": family, "beat": beat, "downbeat": downbeat, "metered": metered,
                 "strikes": np.array(strikes, np.int32).reshape(-1, 2), "vels": np.array(vels, np.float32),
                 "releases": np.array(releases, np.int32).reshape(-1, 2), "cents": cents, "asked": asked, "moving": moving,
-                "note": np.where(one, sole, -1), "pitchfamily": name, "pitchwave": of(self.wave), "pitchvoice": of(self.voice)}
+                "note": np.where(one, sole, -1), "pitchfamily": name, "pitchwave": of(self.wave), "pitchvoice": of(self.voice),
+                "places": places, "placeask": placeask, "genes": kit_genes, "geneask": geneask, "loudness": np.maximum(loudness, 0), "loudask": loudask, "pieces": pieces}
 
 
 # a family's index in ripmodels.FAMILIES whose notes the run names to no head, so a calibration run never hears its name
@@ -258,6 +298,8 @@ def load_corpus(d: str):
         raise SystemExit(ripmodels.refused(f"{d}: its manifest", manifest.get("layout")) + ": export it again")
     if manifest.get("families", list(ripmodels.FAMILIES)) != list(ripmodels.FAMILIES):
         raise SystemExit(f"{d}: families {manifest['families']}, the model's {list(ripmodels.FAMILIES)}")
+    if manifest.get("places", ripmodels.PLACES) != ripmodels.PLACES:
+        raise SystemExit(f"{d}: its kits' pieces are placed in {manifest['places']} places, the model hears {ripmodels.PLACES}: write its labels again (corpus ... labels)")
     loops, unnamed = [], 0
     skip = set(open(os.path.join(d, "skip.txt")).read().split()) if os.path.exists(os.path.join(d, "skip.txt")) else set()
     for i in range(manifest["loops"]):
@@ -269,6 +311,8 @@ def load_corpus(d: str):
             raise SystemExit(f"{fr.path}: {fr.values} values a frame, layout {ripmodels.LAYOUT}'s {ripmodels.VALUES}")
         with open(base + ".json") as f:
             label = json.load(f)
+        if label.get("kit") and "places" not in manifest:
+            raise SystemExit(f"{d}: {base}'s label holds a kit and its manifest states no places: write its labels again (corpus ... labels)")
         if label.get("placed") and "reach" not in manifest:
             raise SystemExit(f"{d}: its starts are placed and its manifest states no reach (doc/rip-training.md §5): "
                              f"python3 tool/rip-lab/labels/placefit.py <truth root> reach {d}")
@@ -356,9 +400,10 @@ def targets(fr, lab: Label, start: int, window: int, with_strikes: bool = True) 
 
     def take(a, fill=0):
         return np.concatenate([a, np.full((pad,) + a.shape[1:], fill, a.dtype)]) if pad else a
-    out = {k: take(t[k]) for k in ("onset", "starts", "pitchstarts", "drums", "struck", "pitch", "voicing", "voice", "voiced", "cents", "asked", "moving", "beat", "downbeat", "metered")}
+    out = {k: take(t[k]) for k in ("onset", "starts", "pitchstarts", "drums", "struck", "pitch", "voicing", "voice", "voiced", "cents", "asked", "moving", "beat", "downbeat", "metered",
+                                   "places", "placeask", "genes", "geneask", "loudness", "loudask")}
     out["stretch"], out["pitchstretch"] = edged(take(t["stretch"])), edged(take(t["pitchstretch"]))
-    out.update({k: take(t[k], -1) for k in ("wave", "family", "note", "pitchfamily", "pitchwave", "pitchvoice")})
+    out.update({k: take(t[k], -1) for k in ("wave", "family", "note", "pitchfamily", "pitchwave", "pitchvoice", "pieces")})
     shape = (window, t["pitch"].shape[1])
     strike, release, velocity, heard = np.zeros(shape, np.uint8), np.zeros(shape, np.uint8), np.zeros(shape, np.float32), np.zeros(shape, np.uint8)
     for (f, p), v in zip(t["strikes"], t["vels"]):
@@ -408,6 +453,7 @@ def shuffled(pick, window: int, planes: int, rng, channel=None):
         out.update(asked=asked.astype(np.uint8), cents=np.where(mine, ta["cents"], tb["cents"]) * asked, moving=np.where(mine, ta["moving"], tb["moving"]) * asked)
         out.update({k: np.where(tb["pitch"] == 0, ta[k], np.where(ta["pitch"] == 0, tb[k], -1)) for k in ("pitchfamily", "pitchwave", "pitchvoice")})
         out["note"] = np.full_like(ta["note"], -1)  # a chunk's notes are no one loop's
+        out.update({k: np.zeros_like(ta[k]) for k in ("places", "placeask", "genes", "geneask", "loudness", "loudask")}, pieces=np.full_like(ta["pieces"], -1))  # nor its strikes a place's
         hiss = noise[at:at + CHUNK]
         hiss = np.concatenate([hiss, np.zeros((CHUNK - len(hiss), hiss.shape[1]))]) if len(hiss) < CHUNK else hiss
         for d, rest, lab, s in ((ea * through, eb * through + hiss, la, sa), (eb * through, ea * through + hiss, lb, sb)):
@@ -453,6 +499,8 @@ def sample(fr, lab: Label, start: int, window: int, planes: int, over=None, rng=
     if over is not None:
         ofr, olab, level = over
         out["metered"][:] = 0
+        out["placeask"][:] = olab.pieced  # a loop where nothing is struck under drums whose pieces' places are told
+        out["geneask"][:], out["loudask"][:], out["pieces"][:] = 0, 0, -1
         first, n = start - a, min(len(ofr), len(e))
         at, ofrom = rng.randrange(len(e) - n + 1), rng.randrange(len(ofr) - n + 1)
         d = np.expm1(ofr[ofrom:ofrom + n].astype(np.float64)) * through * 10 ** (level / 10) * loud / max(power(ofr), 1e-9)
@@ -466,6 +514,11 @@ def sample(fr, lab: Label, start: int, window: int, planes: int, over=None, rng=
                 out["onset"][near] = out["struck"][near] = 1
                 if drum >= 0:
                     out["drums"][near, drum] = 1
+                if olab.pieced and (place := olab.placed_at(f)) is not None:
+                    if place < 0:
+                        out["placeask"][near] = out["places"][near]
+                    else:
+                        out["places"][near, place] = 1
     return ripmodels.features(np.log1p(e).astype(np.float32), planes)[start - a:], out
 
 
@@ -654,13 +707,31 @@ def shares(tgs) -> torch.Tensor | None:
     return n / n.sum() if n.sum() else None
 
 
+def nearer(described: dict) -> tuple | None:
+    """whether strikes of one piece lie nearer each other than strikes of two: over each loop's pairs of strikes, the
+    share of a pair of one piece and a pair of two in which the first lies nearer, ties a half, each pair's distance
+    its genes' mean miss over the errors stated for both; and the loops of two pieces or more that hold both"""
+    below = pairs = 0.0
+    loops = 0
+    for got in described.values():
+        c, d, e = (torch.cat(x) for x in zip(*got))
+        i, j = torch.triu_indices(len(c), len(c), 1)
+        far, same = ((d[i] - d[j]).abs() / (e[i] + e[j])).mean(-1), c[i] == c[j]
+        if not same.any() or same.all():
+            continue
+        a, b = far[same].sort().values, far[~same]
+        below += (torch.searchsorted(a, b, right=False).sum() + 0.5 * (torch.searchsorted(a, b, right=True) - torch.searchsorted(a, b, right=False)).sum()).item()
+        pairs, loops = pairs + len(a) * len(b), loops + 1
+    return (below / pairs, loops) if pairs else None
+
+
 def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None = None, notes: torch.Tensor | None = None,
              heads: tuple | None = None, prior: torch.Tensor | None = None) -> dict:
-    """the losses' means over fixed windows, the weights untouched, and in windows each window's, its loop and the heads'
-    sum, the decoders' unless given (Rate); with low, the first pitch over the strikes' low bar, their F1 and a cents head's
-    reads by kind; with notes, the windows' (validation), what plays each as heard (noted), under prior the names' loss a
-    cell; the beats' and bar lines' F1, None and no loss unasked; over placed starts the onset head's F1 within their reach,
-    the reach and the strike head's by pitch at those bars; the struck head's F1, None where nothing is, its peaks a minute"""
+    """the losses' means over fixed windows, untouched, and each window's, its loop and the heads' sum, the decoders' unless
+    given (Rate); with low, the strikes' F1 and a cents head's reads by kind; with notes, what plays each (noted); the beats'
+    and bar lines' F1, None unasked; over placed starts the onset's and strikes' F1 within their reach; the struck head's
+    F1, None where nothing is, its peaks a minute; over pieces each place's F1 and theirs, the genes' miss against the error
+    stated, the loudness' miss and one piece's strikes nearer than two pieces' (nearer)"""
     model.eval()
     sums: dict = {}
     each, loops = {}, []
@@ -670,6 +741,9 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
     timed, hit = "beat" in dict(model.cfg.outputs), "struck" in dict(model.cfg.outputs)
     beats, metered = torch.zeros(2, 4, dtype=torch.long, device=device), 0.0  # the two heads' peaks counted, and the frames asked
     hits, heard_for = torch.zeros(4, dtype=torch.long, device=device), 0.0  # the struck head's peaks counted, and the frames read
+    kitted = "places" in dict(model.cfg.outputs)
+    placing, placed_any = torch.zeros(ripmodels.PLACES, 4, dtype=torch.long, device=device), False  # each place's peaks counted
+    told, louds, described = [], [], {}  # each gene asked its miss and error stated, each loudness its miss, a loop's strikes as described
     read = []  # each asked reading's miss and stated error in cents, and its kind
     voiced = notes is not None and notes.shape[1] > 0 and "pitchfamily" in dict(model.cfg.outputs)
     # a note's cells' say summed by their weights, then the weights and those of the cells under a higher one sounding
@@ -685,7 +759,7 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
                 each.setdefault(k, []).append(x)
             loops.append(int(t["loop"][0]) if "loop" in t else len(loops))
             starting = "reach" in t and bool(t["placed"].any())  # a window of a loop whose starts are placed
-            if low is not None or timed or starting or hit:
+            if low is not None or timed or starting or hit or kitted:
                 out = model(fr)
             if starting:
                 reach = int(t["reach"][0])
@@ -702,6 +776,20 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
                 heard_for += t["valid"].sum().item()
                 for i in range(len(out)):
                     hits += peaks(out[i][:, model.cfg.slice("struck")], t["struck"][i][:, None], t["valid"][i], STRUCK_BAR)
+            if kitted and bool(t["placeask"].any()):
+                placed_any, scores = True, out[..., model.cfg.slice("places")]
+                for i in range(len(out)):
+                    for p in range(ripmodels.PLACES):
+                        placing[p] += peaks(scores[i][:, p:p + 1], t["places"][i][:, p:p + 1], t["valid"][i] * t["placeask"][i][:, p], STRUCK_BAR)
+                value, spread = placed_genes(out, model.cfg)
+                if (g := (t["geneask"] * t["valid"][..., None]) > 0).any():
+                    told.append(torch.stack([(value - t["genes"]).abs()[g].flatten(), spread.exp()[g].flatten()]).cpu())
+                if (h := (t["loudask"] * t["valid"][..., None]) > 0).any():
+                    louds.append((torch.sigmoid(out[..., model.cfg.slice("loudness")]) - t["loudness"]).abs()[h].cpu())
+                at = (t["pieces"] >= 0) & (t["valid"][..., None] > 0)
+                for i in range(len(out)):
+                    if at[i].any():
+                        described.setdefault(loops[-1], []).append((t["pieces"][i][at[i]].cpu(), value[i][at[i]].cpu(), spread[i][at[i]].exp().cpu()))
             if low is not None:
                 y = out[..., model.cfg.slice("strike")]
                 for i in range(len(y)):
@@ -742,6 +830,15 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
         out["starts"] = (fscore(starts[0]), reach, fscore(starts[1]))
     if hit:
         out["hits"] = (fscore(hits) if hits[3] else None, hits[1].item() / max(heard_for, 1.0) * 60 * ripmodels.RATE / ripmodels.HOP)
+    if kitted:  # a corpus that asks no place, as one of no kit, gives none of these
+        out["kit"] = {}
+        if placed_any:
+            out["kit"] = {"places": [fscore(c) if c[3] else None for c in placing], "all": fscore(placing.sum(0)), "apart": nearer(described)}
+            if told:
+                miss, stated = torch.cat(told, 1)
+                out["kit"]["genes"] = (miss.median().item(), stated.median().item(), (miss <= stated).float().mean().item())
+            if louds:
+                out["kit"]["loudness"] = torch.cat(louds).median().item()
     if timed:  # a corpus that lists no beat asks neither head, and a mean over no frame would read as a head never wrong
         out["beats"] = tuple(fscore(c) for c in beats) if metered else None
         if not metered:
@@ -869,6 +966,44 @@ def rise_loss(logits: torch.Tensor, marks: torch.Tensor, stretch: torch.Tensor, 
     return (((l * cells).mean(-1) * valid).sum() + (rose * whole).sum() / k) / ((cells.mean(-1) * valid).sum() + whole.sum() / k).clamp(min=1)
 
 
+GENE_GRAIN = 2.0 ** -24  # a label's genes are read as float32: a miss under its resolution of a gene in [0, 1] says no more
+
+
+def placed_genes(y: torch.Tensor, cfg) -> tuple:
+    """the genes a frame model says are struck at each place, [..., places, genes], and the log of the error it states
+    for each, the head's two halves"""
+    g = y[..., cfg.slice("genes")].unflatten(-1, (2, ripmodels.PLACES, ripmodels.STRUCK_GENES))
+    return torch.sigmoid(g[..., 0, :, :]), g[..., 1, :, :]
+
+
+def told_apart(value: torch.Tensor, spread: torch.Tensor, pieces: torch.Tensor, asked: torch.Tensor) -> torch.Tensor:
+    """the strikes of one piece described alike and of two apart, where no genes are stated, each [windows, frames,
+    places] but the genes' [..., genes]: a strike named among its window's pieces by how far its genes lie from each
+    one's mean, its own's without it, over the errors stated for both, as a Laplace of that scale reads it, a mean
+    over the strikes of a piece struck again in a window of two pieces or more; the errors are the genes' head's alone"""
+    total, count = value.new_zeros(()), 0
+    for b in range(len(value)):
+        at = (pieces[b] >= 0) & (asked[b] > 0)
+        if not at.any():
+            continue
+        d, e = value[b][at], spread[b][at].detach().exp()
+        names, c = torch.unique(pieces[b][at], return_inverse=True)
+        if len(names) < 2:
+            continue
+        n = torch.bincount(c, minlength=len(names)).to(d.dtype)
+        own = F.one_hot(c, len(names)).to(d.dtype)  # a strike's own piece is counted without it
+        left = n[None] - own
+        mean = (d.new_zeros(len(names), d.shape[-1]).index_add(0, c, d)[None] - own[..., None] * d[:, None]) / left.clamp(min=1)[..., None]
+        stated = (e.new_zeros(len(names), e.shape[-1]).index_add(0, c, e)[None] - own[..., None] * e[:, None]) / left.clamp(min=1)[..., None]
+        scale = e[:, None] + stated
+        logits = torch.where(left > 0, -((d[:, None] - mean).abs() / scale + scale.log()).sum(-1), float("-inf"))
+        again = n[c] > 1
+        if again.any():
+            total = total + F.cross_entropy(logits[again], c[again], reduction="sum")
+            count += int(again.sum())
+    return total / max(count, 1)
+
+
 def losses(model: ripmodels.FrameModel, fr: torch.Tensor, t: dict) -> dict:
     y = model(fr)
     cfg = model.cfg
@@ -905,6 +1040,20 @@ def losses(model: ripmodels.FrameModel, fr: torch.Tensor, t: dict) -> dict:
         out["family"] = (ce * asked).sum() / asked.sum().clamp(min=1)
     if "struck" in dict(cfg.outputs):  # asked at every frame of every window
         out["struck"] = bce("struck", t["struck"], STRUCK_POS)
+    if "places" in dict(cfg.outputs):  # what is struck at each place, asked of a loop of pieces
+        ask = t["placeask"] * valid[..., None]
+        l = F.binary_cross_entropy_with_logits(y[..., cfg.slice("places")], t["places"], pos_weight=torch.as_tensor(STRUCK_POS, device=y.device), reduction="none")
+        out["places"] = (l * ask).sum() / ask.sum().clamp(min=1)
+        value, spread = placed_genes(y, cfg)
+        asked = t["geneask"] * valid[..., None]
+        miss = (value - t["genes"]).abs()
+        # the error stated is a Laplace's scale fitted to the miss held fixed, as the cents head's, its exponent taken only where asked
+        fit = miss.detach().clamp(min=GENE_GRAIN) * torch.exp(-torch.where(asked[..., None] > 0, spread, 0.0)) + spread
+        n = asked.sum().clamp(min=1)
+        out["genes"], out["genespread"] = (miss.mean(-1) * asked).sum() / n, (fit.mean(-1) * asked).sum() / n
+        heard = t["loudask"] * valid[..., None]
+        out["loudness"] = ((torch.sigmoid(y[..., cfg.slice("loudness")]) - t["loudness"]) ** 2 * heard).sum() / heard.sum().clamp(min=1)
+        out["pieces"] = told_apart(value, spread, t["pieces"], (t["geneask"] == 0) * valid[..., None])
     if "beat" in dict(cfg.outputs):  # a beat weighs as a frame without one: audio reads each head's level as a posterior
         out["beat"] = bce("beat", t["beat"], 1.0, t["metered"] * valid)
         out["downbeat"] = bce("downbeat", t["downbeat"], 1.0, t["metered"] * valid)
@@ -936,6 +1085,8 @@ def losses(model: ripmodels.FrameModel, fr: torch.Tensor, t: dict) -> dict:
                     + out.get("beat", 0.0) + out.get("downbeat", 0.0)
                     + 2.0 * out.get("cents", 0.0) + SPREAD * out.get("spread", 0.0)
                     + PLAYS * (0.5 * out.get("pitchfamily", 0.0) + 0.5 * out.get("pitchwave", 0.0) + 2.0 * out.get("pitchvoice", 0.0))) + out.get("struck", 0.0)
+    if "places" in out:  # each weighed as its like: the struck head, the cents and their spread, the velocity, a name
+        out["total"] = out["total"] + (out["places"] + 2.0 * out["genes"] + SPREAD * out["genespread"] + 2.0 * out["loudness"] + 0.5 * out["pieces"])
     return out
 
 
@@ -1379,12 +1530,22 @@ def main() -> None:
         # the wave, voice, velocity and family heads say how a note is played and by
         # what, and memorize the corpus's, so they do not pick the step
         v["decoders"] = sum(f * v.get(k, 0.0) for k, f in heads)
-        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "strikes", "hits", "read", "voices", "beats", "starts", "windows"))
+        parts = " ".join(f"{k} {x:.3f}" for k, x in v.items() if k not in ("total", "decoders", "strikes", "hits", "read", "voices", "beats", "starts", "windows", "kit"))
         f1 = f", strikes' F1 {v['strikes']:.3f}" if "strikes" in v else ""
         if "beats" in v:
             f1 += ", beats' F1 {:.3f}, bar lines' {:.3f}".format(*v["beats"]) if v["beats"] else ", no beat or bar line asked"
         if "hits" in v:
             f1 += f", struck's F1 {v['hits'][0]:.3f}" if v["hits"][0] is not None else f", nothing struck, struck's peaks {v['hits'][1]:.1f} a minute"
+        if "kit" in v:  # what is struck at each place: its strikes found, their genes against the errors stated, their loudness, their pieces
+            k = v["kit"]
+            if not k:
+                f1 += ", no place asked"
+            else:
+                f1 += ", places' F1 {:.3f} ({})".format(k["all"], " ".join("-" if x is None else f"{x:.3f}" for x in k["places"]))
+                f1 += ", genes {:.3f} off, {:.3f} stated, {:.0%} within".format(*k["genes"]) if "genes" in k else ", no genes stated"
+                f1 += f", loudness {k['loudness']:.3f} off" if "loudness" in k else ", no loudness stated"
+                if k["apart"]:
+                    f1 += ", one piece's strikes nearer than two pieces' {:.3f} of the time over {} loops".format(*k["apart"])
         if "starts" in v:
             f1 += ", placed starts' F1 {:.3f} within {} frames, their strikes' {:.3f}".format(*v["starts"])
         # the cents head: each kind of reading's median miss, the median error stated for it, and the share within the stated

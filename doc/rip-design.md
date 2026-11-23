@@ -175,7 +175,12 @@ flowchart TD
    and each drum's hits on the kit, every part at the gain that brings their
    mix nearest the recording in log-mel bands (`mixDistance`, `fitDistance`),
    so neither a note's neighbours nor another line's sound is the candidate's
-   to imitate and no part's level counts. A line no voice was heard for plays
+   to imitate and no part's level counts. A line two voices share is named
+   by its other voice's loud, long notes, which the candidate plays too
+   ([agent notes](agent-notes.md#the-rip-and-its-truths)); `cells`, off unless
+   named, hears each note on its own cells, the line's other notes on its
+   voice, over notes spread through the line, by the median of the windows.
+   A line no voice was heard for plays
    in the others' windows on the registered voice nearest its notes alone
    (`presentVoices`), and a fitted line on its fit. The voice's level is set
    after to the recording's around its notes. The melody's second line gets

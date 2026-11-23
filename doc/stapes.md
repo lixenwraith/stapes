@@ -184,11 +184,20 @@ Over the library's rip (library
   theirs (`corpusLoop.notes`), its key where its root is over MIDI 0, as no
   recording's or overlap's is, and its chords each to the next one's frame, the
   last to the loop's end (`corpusLoop.said`); a velocity of -1 and a note in no
-  part give none, and a last line names what the label gives none of. `heads`
-  reads a decoder apart from the model that feeds it: the recording is ripped
-  again as it was (`ripped.by`), the label's beats and bar lines in the beat
-  and downbeat heads' place, each a frame either side at one as the trainer's
-  targets are (`labelHeads`), and that rip is scored. `notes`
+  part give none, and a last line names what the label gives none of. `heads
+  <head,...>` reads the decoders apart from the models that feed them: the
+  recording is ripped again as it was (`ripped.by`), the heads named written off
+  the label as the trainer's targets are (`labelHeads`, `corpusLoop.planes`, a
+  row a head in `labelHeadRows`), the rest the front end's, laid on the piano's
+  keys where it hears fewer, and that rip is scored; `all` names every head
+  the decoders read and hears nothing where the label states each, the label's
+  frames standing alone. A head the label does not state, as the trainer asks
+  it nothing there, stays the front end's (a row's `stated`,
+  `labelHeads.kept`); its pitch states no tuning, as a model's. Every truth ends with
+  the rip's stages read against it (audio's `ReadStages` over `Rip.Stages`,
+  which the session's rips keep, `stageLines`): the notes lost by stage, why the
+  strikes refused those they lost, the notes added, the ends wrong and the hits
+  lost and added. `notes`
   lists a transcript, each note's brightness with the unmeasured counted, and
   `notes <name> <file.mid>` writes one (`WriteMIDI`) to correct in a sequencer.
   `corpus <dir> from` labels a file's other drum strikes (`MIDIScore.Struck`)
@@ -269,9 +278,10 @@ Over the library's rip (library
   With hits `onset_min` is searched too (`drumGenes`), with bars the tempo's
   prior, combs, cuts, `tightness`, the bars' weights, the meter's margins and
   the joint path's costs and levels (`barGenes`); `heads` rips each recording
-  whose truth is a label with its beats and bar lines as the heads, as
-  `truth`'s does (`truthTake.front`), through the analysis where no model is
-  loaded;
+  whose truth is a label with the heads it names the label's, as `truth`'s does
+  (`truthTake.read`), the rest through the analysis where no model is loaded,
+  and counts by head the takes whose label states one not; each condition's
+  stages follow its readings (`truthCount.stages`);
   and either search's best has each gene whose move the score does not see,
   put back alone, back at the start's (`settled`), since a pool moves genes by
   chance and a search through the analysis, a model without the heads or loops

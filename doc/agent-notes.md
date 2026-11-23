@@ -200,14 +200,37 @@ proves wrong or that a document now states, and link the document instead.
 
 ## The rip and its truths
 
-- **A bars decoder is read apart from its model by the labels as heads**:
-  `truth <name> <label.json> heads` and `tune ... truth <list> heads` mark a
-  label's beats and bar lines as the trainer's targets are over the frames its
-  front end hears, the analysis's in a container with no model. Heads spoiled
-  to a trained F1 for a count scale each kind of error the notes record by one
-  severity, bisected until the trainer's peaks (over a half, highest within two
-  frames, right within four of a mark) give that F1; the mix of kinds is the
-  count's assumption, so state it beside the figures.
+- **A decoder is read apart from its models by the label as heads**: `truth
+  <name> <label.json> heads <head,...>` and `tune ... truth <list> heads
+  <head,...>` write the heads named as the trainer's targets, `all` with no
+  model. The planes matched `train.Label.window` and `targets` plane by plane
+  on 24 loops of `corpus ... aug gen glide meters overlaps` (a scratch Python
+  beside the Go planes dumped raw): check so again after a change to either.
+  Heads spoiled to a trained F1 for a count scale each kind of error the notes
+  record by one severity, bisected until the trainer's peaks (over a half,
+  highest within two frames, right within four of a mark) give that F1; the
+  mix of kinds is the count's assumption, so state it beside the figures.
+- **A stage's loss is read off the rip's own record**: `truth` ends with its
+  stages and `tune ... truth` says them a condition (audio's `ReadStages` over
+  `Rip.Stages`, which the session's rips and every take keep). §11's reading
+  is `tune 2 1 truth <list> heads all`, its figures before: a pool of 2 is the
+  least, and a set its search finds is written into the root's `rip.toml`, so
+  each reading takes a root of its own. A list whose third column is one word
+  gives the all row; a root whose `rip.toml` sets `joint = 1` the joint path's.
+- **Every head given, the decoder still reads the recording**: the bass's
+  own-pitch and steady-rise rules, `dynamics`, the accounting, `bright` and the
+  drums' tones, and a model's front end states no tuning, nor a label's pitch
+  over any front end, so the accounting measures at A440. A corpus and its
+  `aug`, which renders the same music, part what the room, the mix and the
+  tuning cost those stages.
+- **A head a label does not state is heard, the analysis's in a container**,
+  and its frames carry more than that head: of the rest only their tuning
+  reaches the offline decoders, the analysis's bands and drums' loudest being
+  its ear's and the stream's, and a label's pitch clears it. An overlap states
+  no beat, so under `heads all` it is ripped over the analysis's frames.
+- **A label's ends can lie past its loop**: an overlap's notes ring on past
+  its last frame (an event's `end` past the label's `frames`), which the trainer
+  clamps, and `truth`'s ends count them wrong.
 - **Four bars of a short meter can be under four seconds**: a 2/4 loop of
   `corpus ... 4 ... meters` at 128 or more, and a 3/4 or 6/8 at 176 that
   quickens, gives no rip, 26 of 600 loops.

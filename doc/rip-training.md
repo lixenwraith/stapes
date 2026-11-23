@@ -1948,25 +1948,19 @@ before. `truth` and `tune ... truth` say how each key was missed: at the given t
 a scale holding or held by the given's (nested), at the given's tones under another
 tonic (relative), or else.
 
-Counted with every head off the label by a scratch test over `truth`'s rip, on
+`tune 2 1 truth <list> heads all` reads it, a condition a scale, before its search, on
 `corpus <dir> 720 8 gen glide meters seed 11`, every scale the arranger writes at every
-root, and the same with `aug`; and on each loop cut to begin part-way through its
-second bar and end part-way through its last but one (707 of 4 s or more). Right, then
-the misses by kind, and the chords' share, before and after:
+root, and on the same with `aug`, the joint path's from a root whose `rip.toml` sets
+`joint = 1`; before is audio v0.43.1's key, read by this reading. Right, the misses by
+kind and the chords' share, the rows summed over the scales:
 
 ```
-                     before                   after                   chords
+                           before                   after                   chords
                   n  right nested rel else    right nested rel else   before after
 plain           720  0.588     25 144  128    0.682     46 143   40   0.772 0.777
-  joint path    720  0.588     25 144  128    0.690     47 137   39   0.859 0.864
-  cut           707  0.433     19 184  198    0.562     34 207   69   0.754 0.758
-  cut, joint    707  0.433     19 184  198    0.564     35 205   68   0.808 0.813
-aug             720  0.569     24 146  140    0.664     44 141   57   0.771 0.775
+  joint path    720  0.588     25 144  128    0.690     47 137   39   0.860 0.864
+aug             720  0.569     24 146  140    0.664     44 141   57   0.770 0.774
   joint path    720  0.569     24 146  140    0.668     44 138   57   0.858 0.862
-  cut           707  0.421     18 187  204    0.549     33 207   79   0.753 0.755
-  cut, joint    707  0.421     18 187  204    0.554     33 203   79   0.809 0.812
-pitch spoiled   720  0.549     26 140  159    0.644     45 143   68   0.746 0.749
-  aug           720  0.546     23 136  168    0.633     42 139   83   0.740 0.743
 ```
 
 By the label's scale, plain, present path, right and the misses by kind:
@@ -1974,17 +1968,16 @@ By the label's scale, plain, present path, right and the misses by kind:
 ```
                     before                 after
 scale            n  right nest  rel else   right nest  rel else
-phrygian        63  0.635    0   18    5   0.841    0    8    2
-minor          218  0.523    0   84   20   0.628    0   74    7
-harmonic minor  71  0.915    0    0    6   1.000    0    0    0
-dorian          85  0.729    0   11   12   0.824    0   14    1
-minor pent      71  0.000   25    0   46   0.000   46    0   25
-major          212  0.670    0   31   39   0.755    0   47    5
+phrygian         63  0.635    0   18    5   0.841    0    8    2
+minor           218  0.523    0   84   20   0.628    0   74    7
+harmonic minor   71  0.915    0    0    6   1.000    0    0    0
+dorian           85  0.729    0   11   12   0.824    0   14    1
+minor pent       71  0.000   25    0   46   0.000   46    0   25
+major           212  0.670    0   31   39   0.755    0   47    5
 ```
 
-The loops open on their tonic chord 78 times in 100 and close on it 48; cut, 18 and 25.
-Each cue alone and together (`key_bars`, `key_open`, `key_close`), plain, present path,
-the joint path's and `aug`'s in the same order:
+Each cue alone and together, by a root whose `rip.toml` sets `key_bars`, `key_open` and
+`key_close` to 1 or 0, plain, present path; whole, and cut (below):
 
 ```
                      whole    cut
@@ -1999,26 +1992,42 @@ all three            0.721  0.458
 The opening's gain is the arranger's progressions opening on the tonic; weighed beside
 the bars at 0.25 or 0.1, or beside the lean, it still costs the cut loops. So
 `key_open` and `key_close` weigh nothing by default, which costs the whole loops 28 of
-720. A stream names no key until its first bars freeze, then the key those bars rest on,
-their last no close, and holds it: 511 of the 720 named one before the end, at 9.9 s on
-average, 345 right where the profile named 311 right; at the end 0.675 right on the
-present path and 0.686 on the joint, against 0.682 and 0.690 offline and 0.592 before.
-`pitch spoiled` writes each note missing at 0.15, a note a semitone beside at 0.1 and
-one an octave above at 0.1 into every pitched head alike, a guess at a notes model's
-errors.
+720.
 
-Of §11's 95 misses of neither kind (seed 5, present path), 46 were a key whose lean
-took it from the label's though the label's scale holds every tone the loop sounds over
-2% of its notes' time, 37 a sounding tone outside the label's scale tipping the fit (a
-scoop written a semitone or two under, a walking bass's approach, a pentatonic's minor
-chords), 12 the tonic in another scale; after, of 45, 12, 18 and 15.
+The verb has no cut, no spoiled head and no stream, so these are a scratch test's, each
+loop's label and recording as `truth ... heads all` rips them:
 
-What a generated label cannot tell: of the 578 diatonic loops of seed 11, 139 sound a
-relative's tonic chord as long as the label's, as a vi–IV–I–V loop sounds A minor as
-long as C major, so their tonic is the arranger's word; 70 of the 71 pentatonic labels
-sound the minor scale's other two tones in their chords and bass, so a rip reads the
-minor; 253 of the 720 sound a tone outside the label's scale over 2% of their notes'
-time; 11 loops' tones fit another scale at the label's tonic too.
+- **Cut**: each loop cut to begin part-way through its second bar and end part-way
+  through its last but one, its label's events, beats, lines and chords moved with it,
+  707 of 4 s or more; its keys and chords read by a copy of `keyOver` and `MatchChords`
+  over the bars the rip lays, which gave the rip's own key on 1,131 whole loops of
+  1,131. Right before and after, the misses by kind after, the chords before and after:
+  plain 0.433 and 0.562 (34, 207, 69), 0.754 and 0.758, the joint path 0.564 (35, 205,
+  68), 0.808 and 0.813; `aug` 0.421 and 0.549 (33, 207, 79), 0.753 and 0.755, the joint
+  path 0.554 (33, 203, 79), 0.809 and 0.812.
+- **Spoiled pitch**: each note of the label missing at 0.15, a note a semitone beside
+  added at 0.1 and one an octave above at 0.1, in every pitched head alike, a guess at
+  a notes model's errors, read by the same copy: right 0.549 before and 0.644 after
+  (45, 143, 68), `aug` 0.546 and 0.633 (42, 139, 83), the chords 0.746 and 0.749.
+- **Stream**: the label's heads given to `RipStream` as an ear, half a second at a time.
+  A stream names no key until its first bars freeze, then the key those bars rest on,
+  their last no close, and holds it: 511 of the 720 named one before the end, at 9.9 s
+  on average, 345 right where the profile named 311 right; at the end 0.675 right on the
+  present path and 0.686 on the joint, against 0.682 and 0.690 offline and 0.592 before.
+
+A script over the labels' chords and notes reads the rest. The loops open on their tonic
+chord 78 times in 100 and close on it 48; cut, 18 and 25. Of §11's 95 misses of neither
+kind (seed 5, present path), 46 were a key whose lean took it from the label's though
+the label's scale holds every tone the loop sounds over 2% of its notes' time, 37 a
+sounding tone outside the label's scale tipping the fit (a scoop written a semitone or
+two under, a walking bass's approach, a pentatonic's minor chords), 12 the tonic in
+another scale; after, of 45, 12, 18 and 15. What a generated label cannot tell: of the
+578 diatonic loops of seed 11, 139 sound a relative's tonic chord as long as the label's,
+as a vi–IV–I–V loop sounds A minor as long as C major, so their tonic is the arranger's
+word; 70 of the 71 pentatonic labels sound the minor scale's other two tones in their
+chords and bass, so a rip reads the minor; 253 of the 720 sound a tone outside the
+label's scale over 2% of their notes' time; 11 loops' tones fit another scale at the
+label's tonic too.
 
 ## 12. The scores
 

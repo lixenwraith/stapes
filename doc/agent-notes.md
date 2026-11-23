@@ -361,6 +361,31 @@ proves wrong or that a document now states, and link the document instead.
   bank voice it was redrawn from, and a fit that beats it does so by a
   twentieth of its distance, wandering 0.1 to 0.25 from its genes where the
   measure hears little: the fits nearer the genes than their seed fell.
+- **A line two voices share is named by its other voice's loud, long notes.**
+  The fit puts one voice on a line and plays every note in a window on it,
+  the other voice's too: a decaying wave (a string, a modal bank) cannot
+  sustain one, a saw's envelope passes for a decaying note, and on the
+  owner's own soft notes, where little of the window is the line, the owner
+  and a fitted saw stand within a hundredth. A window's longest and loudest
+  notes are listened to first, so the owner holds fewer of them than of the
+  notes. `fits ... heads all` shows it with no model; `given` cannot, as its
+  shared lines are voices doubled by another, each line its own notes. 
+  Over 49 loops of `corpus <dir> 196 4 aug gen seed 23` through the label's
+  heads, a shared line is named right 0 of 16 times where a string owns it,
+  17 of 23 a modal and 15 of 26 a saw, its owner holding 0.70 of its notes
+  and 0.66 of the windows listened to; one-voice lines 56 of 71. The same
+  line without `aug`: 4 of 14, 18 of 23, 14 of 26, 0.71 and 0.73, 65 of 74.
+  A median of the windows, each over its nearest seed's, is flat: most
+  windows hold too little of the line to tell voices apart. The note's own
+  cells (`cells`) name strings and lose saws, so they are off by default
+  ([todo](todo.md#close-the-rips-loop), item 10).
+- **The search stops short within the right wave.** Two thirds of its first
+  pool are drawn across the whole genome and crossed into the seeds, and a
+  move changes a sixth of the genes by a tenth, so it never refines near a
+  point, where the label's voice, a redraw, lies a few hundredths from a
+  seed. Each gene moved alone either way by 0.1, then 0.05, kept when
+  nearer, finds it: of ten lines `given` stopped short on, all named right,
+  seven no longer were, for as many evaluations as the search again.
 - **A unison stack or a string is never its own note again.** Audio seeds a
   stack's start phases and drift and a string's burst by the note's pitch and
   its voice's last trigger (`noteSeed`), and `RenderNoteAt` triggers at 0: at

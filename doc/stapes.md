@@ -140,25 +140,28 @@ Over the library's rip (library
   candidate beside the other lines' on their voices and the drums' hits on
   the kit, each part at a gain of its own (`fitDistance`, `mixDistance`,
   [Rip design §2](rip-design.md#2-stages)); `fit` runs it again at the sizes
-  its words name (`fitWords`: `notes`, `pool`, `generations`, `seed`), and
-  `genes` says a voice's wave and genes as a label states them
+  its words name (`fitWords`: `notes`, `pool`, `generations`, `seed`, and
+  `cells`, off unless named, which hears each note on its own cells,
+  `fitScene.own`), and `genes` says a voice's wave and genes as a label states them
   (`VoiceDef.Genes`).
 - `fits` reads that search against voices that are known: each loop of a
   corpus directory that kept its audio is ripped and fitted as `rip` does it
-  (`Session.ripper`, `fitVoice`), or with `given` each voice the label states
+  (`Session.ripper`, `fitVoice`), with `heads` through the label's own heads
+  as `truth`'s (`newLabelHeads`), no model heard under `all`, or with `given` each voice the label states
   is a line fitted on its own notes at the label's tuning, nothing ripped, so
   the measure is read apart from the rip. A row a line (`fitRow`) says whose
   line it is, the label's voice that plays most of the line's notes that
   match a labelled note (`lineOwner`, `MatchNotes` timed, a voice a wave and
-  its genes), and four distances by the fit's measure (`fitDistance`) on the
+  its genes), its share of those notes and of the notes listened to
+  (`windows`), and four distances by the fit's measure (`fitDistance`) on the
   notes the fit listened to and on the line's other notes: the voice the
   front end heard, the best seed, the fit, and the label's own voice, rebuilt
   from its genes (`VoiceFromGenes`), played at the same notes. The label's
   own voice nearer than the fit is a search that stopped short; the fit
   nearer than it is a measure that prefers another voice. A loop is a file
   under its audio's checksum, so a run keeps what is there and `part k/n`
-  needs no numbering; `fits.json` names the sizes and the weights, or
-  `given`. The
+  needs no numbering; `fits.json` names the sizes and the weights, the
+  heads and `cells`, or `given`. The
   search draws its candidates from one seeded stream and scores them side by
   side, so a seed's rows are the same on any number of cores
   ([todo](todo.md#close-the-rips-loop), item 9, for the one way they may not be).

@@ -292,7 +292,9 @@ proves wrong or that a document now states, and link the document instead.
   decoder that leans on a recording's start; only `corpus ... meters` starts
   loops part-way. Read bars on loops cut a quarter to three quarters of a bar
   in, the truth's lines moved by the cut, beside whole ones: a search fitted on
-  whole loops alone can learn the lean.
+  whole loops alone can learn the lean. Read a key so too, on loops cut a bar or
+  two in from each side: the arranger's progressions open on their tonic chord 78
+  times in 100, cut 18, and a rule leaning on the opening lost 0.104 there.
 - Write a truth from a score or a MIDI file, never from memory.
 - Score recordings pooled (every note once) beside their mean: a few notes move
   a short recording's F1 far.

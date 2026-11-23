@@ -4430,6 +4430,7 @@ save pattern %s
 	out.Reset()
 	runOrFatal(t, s, &out, fmt.Sprintf("truth loop %s timed\ntruth loop %s timed\n", label("said.json", true), label("bare.json", false)))
 	for _, want := range []string{every, "ends     1.000 of", "loudness 1.000 of", "drums' loudness 1.000 of", "parts    1.000 of", "key      1.000 of", "chords   1.000 of",
+		"         0 missed: 0 at the given tonic in a scale holding or held by the given's, 0 at the given's tones under another tonic, 0 else\n",
 		"the label gives no loudness, drums' loudness, parts, key, chords\n", "lost     0 of the notes given, by stage: none\n"} {
 		if !strings.Contains(out.String(), want) || strings.Count(out.String(), "ends     1.000 of") != 2 {
 			t.Errorf("no %q, nor ends read twice, from two labels of the rip's own notes:\n%s", want, out.String())

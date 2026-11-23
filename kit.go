@@ -217,12 +217,28 @@ func risePlace(rose []float64, places int) int {
 // strike four frames from another reads none of the other's
 const pieceAlone = 4
 
+// pieceRead is what a recording's strikes say of one piece: the energy they add
+// to each band (adds) summed over the strikes its place is read from, and how
+// many of those rise most at that place
+type pieceRead struct {
+	rose      []float64
+	agree, of int
+}
+
+// sure is how sure a piece's place is: how often a strike of it rises most
+// there, the agreeing strikes plus one over all plus the places, the mean that
+// an even prior over the places and those strikes give, so a place few strikes
+// read is held near even odds
+func (r pieceRead) sure(places int) float64 {
+	return float64(r.agree+1) / float64(r.of+places)
+}
+
 // pieceRises is a recording's pieces, a key each in order, each strike's piece,
-// and each piece's energy added to each band (adds), summed over its strikes
-// alone frames or more from every other, else over those beside only pieces
-// read so, outside those pieces' places; nil for a piece of neither. frames
-// and keys are the strikes', rows the band frames.
-func pieceRises(rows iter.Seq[[]float32], frames, keys []int, alone, places int) (order, piece []int, rose [][]float64) {
+// and what its strikes say of each piece, summed over its strikes alone frames
+// or more from every other, else over those beside only pieces read so, outside
+// those pieces' places; rose nil for a piece of neither. frames and keys are
+// the strikes', rows the band frames.
+func pieceRises(rows iter.Seq[[]float32], frames, keys []int, alone, places int) (order, piece []int, read []pieceRead) {
 	order = slices.Compact(slices.Sorted(slices.Values(keys)))
 	piece = make([]int, len(keys))
 	for i, k := range keys {
@@ -269,40 +285,32 @@ func pieceRises(rows iter.Seq[[]float32], frames, keys []int, alone, places int)
 		}
 		return up
 	}
-	sum := func(into [][]float64, p int, up []float64) {
-		if into[p] == nil {
-			into[p] = make([]float64, audio.RipBands)
-		}
-		for b, v := range up {
-			into[p][b] += v
-		}
-	}
-	rose = make([][]float64, len(order))
+	ups := make([][][]float64, len(order)) // each piece's strikes its place is read from
 	for i, f := range frames {
 		if up := added(f); up != nil && len(with(i)) == 0 {
-			sum(rose, piece[i], up)
+			ups[piece[i]] = append(ups[piece[i]], up)
 		}
 	}
-	read := make([]int, len(order))
-	for p := range read {
-		read[p] = -1
-		if rose[p] != nil {
-			read[p] = risePlace(rose[p], places)
+	placed := make([]int, len(order))
+	for p := range placed {
+		placed[p] = -1
+		if len(ups[p]) > 0 {
+			placed[p] = risePlace(sum(ups[p]), places)
 		}
 	}
-	beside := make([][]float64, len(order))
+	beside := make([][][]float64, len(order))
 	for i, f := range frames {
 		up, others := added(f), with(i)
-		if read[piece[i]] >= 0 || up == nil {
+		if placed[piece[i]] >= 0 || up == nil {
 			continue
 		}
 		taken := map[int]bool{}
 		for _, j := range others {
-			if piece[j] != piece[i] && read[piece[j]] < 0 {
+			if piece[j] != piece[i] && placed[piece[j]] < 0 {
 				taken = nil
 				break
 			}
-			taken[read[piece[j]]] = piece[j] != piece[i]
+			taken[placed[piece[j]]] = piece[j] != piece[i]
 		}
 		if taken == nil {
 			continue
@@ -312,34 +320,72 @@ func pieceRises(rows iter.Seq[[]float32], frames, keys []int, alone, places int)
 				up[b] = 0
 			}
 		}
-		sum(beside, piece[i], up)
+		beside[piece[i]] = append(beside[piece[i]], up)
 	}
-	for p := range rose {
-		if rose[p] == nil {
-			rose[p] = beside[p]
+	read = make([]pieceRead, len(order))
+	for p := range read {
+		if len(ups[p]) == 0 {
+			ups[p] = beside[p]
 		}
+		if len(ups[p]) == 0 {
+			continue
+		}
+		read[p].rose = sum(ups[p])
+		at := risePlace(read[p].rose, places)
+		for _, up := range ups[p] {
+			if risePlace(up, places) == at {
+				read[p].agree++
+			}
+		}
+		read[p].of = len(ups[p])
 	}
-	return order, piece, rose
+	return order, piece, read
 }
 
+// sum is rises summed band by band
+func sum(ups [][]float64) []float64 {
+	out := make([]float64, audio.RipBands)
+	for _, up := range ups {
+		for b, v := range up {
+			out[b] += v
+		}
+	}
+	return out
+}
+
+// pieceSure is the least sureness a recorded piece's place is given at, under
+// which the piece asks no place: the least at which the generated drums' pieces
+// kept were right nine times in ten
+// (TestTheBandsArePlacedInTheRunsThatKeepTheMostStrikesApart)
+const pieceSure = 0.71
+
+// placeWhy is why a recorded piece is given no place, each a reason a manifest
+// and a run count its pieces left so by
+var placeWhy = []string{"no strike read", "a place unsure"}
+
 // recordedKit is a recording's kit by piece (pieceRises), each piece at the
-// place where its strikes' rise is most (risePlace) and that rise's highest
-// band, -1 for both where none of its strikes is read, and each strike's piece
+// place where its strikes' rise is most (risePlace) where it is sure of it
+// (pieceSure), with that rise's highest band and the sureness; -1 for both and
+// a word of placeWhy elsewhere; and each strike's piece
 func recordedKit(rows iter.Seq[[]float32], frames, keys []int) ([]corpusPiece, []int) {
-	order, piece, rose := pieceRises(rows, frames, keys, pieceAlone, kitPlaces)
+	order, piece, read := pieceRises(rows, frames, keys, pieceAlone, kitPlaces)
 	kit := make([]corpusPiece, len(order))
 	for p, k := range order {
-		kit[p] = corpusPiece{Key: new(k), Band: -1, Place: -1}
-		if rose[p] == nil {
+		kit[p] = corpusPiece{Key: new(k), Band: -1, Place: -1, Why: placeWhy[0]}
+		r := read[p]
+		if r.rose == nil {
+			continue
+		}
+		if kit[p].Sure, kit[p].Why = math.Round(r.sure(kitPlaces)*1e4)/1e4, placeWhy[1]; r.sure(kitPlaces) < pieceSure {
 			continue
 		}
 		band := 0
-		for b, v := range rose[p] {
-			if v > rose[p][band] {
+		for b, v := range r.rose {
+			if v > r.rose[band] {
 				band = b
 			}
 		}
-		kit[p].Band, kit[p].Place = band, risePlace(rose[p], kitPlaces)
+		kit[p].Band, kit[p].Place, kit[p].Why = band, risePlace(r.rose, kitPlaces), ""
 	}
 	return kit, piece
 }

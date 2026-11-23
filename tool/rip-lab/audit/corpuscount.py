@@ -21,6 +21,7 @@ man = json.load(open(D + '/corpus.json')) if os.path.exists(D + '/corpus.json') 
 sizes = collections.Counter(); struck = []; by_size = collections.defaultdict(list); genes = []; bands = []
 PLACES = (man or {}).get('places', 0)   # the places a corpus's pieces are placed in
 near = {k: [0, 0, 0] for k in ('drawn', 'recorded')}; keyed = collections.defaultdict(collections.Counter)  # strikes, of those within a frame of another, of those at one place
+unplaced = collections.Counter()   # a recorded piece at no place, by why
 for i, l in labs.items():
     ev = l['events']; notes = [e for e in ev if e['drum'] < 0 and e.get('midi', 0) > 0]
     for e in ev:
@@ -61,7 +62,11 @@ for i, l in labs.items():
         kit_keys = [p.get('key') for p in kit]
         if kit_keys != sorted(set(kit_keys)) or any(not -1 <= p['place'] < PLACES or not -1 <= p['band'] < BANDS or 'genes' in p for p in kit):
             bad['a recorded kit whose keys are not each once in order, or a piece of genes, or of no place or band of the manifest\'s nor -1'].append(f'loop {i}')
-        for p in kit: keyed[p['key']][p['place']] += 1
+        if any((p['place'] < 0) != bool(p.get('why')) or not 0 <= p.get('sure', 0) <= 1 for p in kit):
+            bad['a recorded piece at no place that says not why, or at one that does, or of a sureness outside [0, 1]'].append(f'loop {i}')
+        for p in kit:
+            keyed[p['key']][p['place']] += 1
+            if p['place'] < 0: unplaced[p.get('why', '?')] += 1
     at = collections.defaultdict(list)
     for e in strikes:
         if not 0 <= e['piece'] < len(kit): bad['a strike of a piece its kit lacks'].append(f'loop {i} piece {e["piece"]}'); continue
@@ -111,7 +116,10 @@ if sizes:
 for kind, (n, within, one) in near.items():
     if n: print(f'{kind} kits\' strikes: {n}, {within} ({100 * within / n:.1f}%) within a frame of another, {one} ({100 * one / n:.1f}%) of them at its place too, of {PLACES} places')
 if keyed:
-    print(f'recorded kits by piece: {sum(sum(c.values()) for c in keyed.values())} pieces, each key\'s by place (-1 none told): ' + '; '.join(f'{k} ' + ' '.join(f'{p}:{n}' for p, n in sorted(c.items())) for k, c in sorted(keyed.items())))
+    print(f'recorded kits by piece: {sum(sum(c.values()) for c in keyed.values())} pieces, each key\'s by place (-1 none): ' + '; '.join(f'{k} ' + ' '.join(f'{p}:{n}' for p, n in sorted(c.items())) for k, c in sorted(keyed.items())))
+    print('recorded pieces at no place, by why: ' + (', '.join(f'{n} for {w}' for w, n in sorted(unplaced.items()) if n) or 'none'))
+if {w: n for w, n in unplaced.items() if n} != ((man or {}).get('unplaced') or {}):
+    bad["a manifest's pieces at no place that are not its labels'"].append(f'{dict(unplaced)}')
 if kinds['recorded']:
     print(f'recorded: {frames * HOP / 3600:.2f} hours; hits: ' + (', '.join(f'{n} {k}' for k, n in sorted(hits.items())) or 'none') + f'; events of velocity -1, which ask nothing: {unasked}')
     print(f'hits put on their sound in {len(lags)} loops' + (f', by a lag from {1000 * min(lags):+.1f} to {1000 * max(lags):+.1f} ms, median {1000 * float(np.median(lags)):+.1f}' if lags else '') + f'; left out: {sum(left.values())}' + ''.join(f', {n} for {k}' for k, n in sorted(left.items())) + f'; skip.txt names {len(skip)} loops')

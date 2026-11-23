@@ -181,7 +181,15 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    three quarters of a bar in, their beats and lines given as a recording's
    are, so the bars' weights do not learn a rendered loop's start ([agent
    notes](agent-notes.md#the-rip-and-its-truths)); the table reads bars on
-   such loops beside the whole ones.
+   such loops beside the whole ones. What a label says past pitch and onset,
+   its notes' ends and loudness, its hits' loudness, its parts, key and chords,
+   `truth` reads and `tune ... truth` says by condition, weighing it only under
+   `weigh`; `release`, which nothing else sees, is searched so alone. Left:
+   GuitarSet's JAMS files hold each take's key (`key_mode`) and its chords,
+   instructed and performed, which its labels do not carry; a `.mid` or a
+   transcript gives no reading, its velocities and lengths its writer's;
+   E-GMD's hits state no velocity (its list's `none`); and a `release` a
+   weighed search writes is read on recordings before it ships.
 7. The pedal: a piano arpeggio under pedal rings three or four notes at once,
    and the analysis's two lines hold two, so the second line's eighths read as
    held notes. A model's strikes start every note struck however many ring;

@@ -2,6 +2,7 @@ package stapes
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -32,10 +33,11 @@ func cmdAgree(s *Session, a []string) error {
 }
 
 // cmdTruth scores a rip's transcript against one given as text in the notes
-// verb's own form, or as a MIDI file, whose drum channel scores the drums:
-// the notes given it heard by pitch and onset, then line by line, and the hits;
-// a MIDI file's bars and a JAMS file's beats, a truth of beats alone, score its
-// bar lines. Timed, the truth's seconds are the recording's: no map is fitted.
+// verb's own form, as a MIDI file, whose drum channel scores the drums, or as a
+// corpus loop's label: the notes given it heard by pitch and onset, then line by
+// line, and the hits; a MIDI file's bars, a label's and a JAMS file's beats, a
+// truth of beats alone, score its bar lines, and a label's readings what it says
+// past them. Timed, the truth's seconds are the recording's: no map is fitted.
 func cmdTruth(s *Session, a []string) error {
 	rp, ok := s.rips[a[0]]
 	if !ok {
@@ -52,10 +54,16 @@ func cmdTruth(s *Session, a []string) error {
 	var truth []audio.RipNote
 	var hits []audio.RipHit
 	var score *audio.MIDIScore
+	var lab *corpusLoop
 	switch {
 	case isMIDI(a[1]):
 		if score, err = audio.ReadMIDI(bytes.NewReader(data)); err == nil {
 			truth, hits = score.Notes, score.Hits
+		}
+	case strings.EqualFold(filepath.Ext(a[1]), ".json"):
+		lab = new(corpusLoop)
+		if err = json.Unmarshal(data, lab); err == nil {
+			truth, hits = lab.notes(), lab.hits()
 		}
 	case strings.EqualFold(filepath.Ext(a[1]), ".jams"):
 		beats, downbeats, err := audio.ReadJAMSBeats(bytes.NewReader(data))
@@ -73,8 +81,9 @@ func cmdTruth(s *Session, a []string) error {
 	// a score's bars are placed on the recording as its notes matched, or with
 	// none as its hits did
 	var at func(float64) float64
+	var ag audio.Agreement
 	if len(truth) > 0 {
-		ag := audio.MatchNotes(rp.rip.Notes, truth, timed)
+		ag = audio.MatchNotes(rp.rip.Notes, truth, timed)
 		if timed {
 			fmt.Fprintf(s.out, "%s against %d note(s) given on the recording's own clock: no map fitted, no transposition tried\n", a[0], len(truth))
 		} else {
@@ -93,8 +102,9 @@ func cmdTruth(s *Session, a []string) error {
 		reportLevels(s.out, rp, ag, truth)
 		at = ag.At
 	}
+	var hg *audio.HitsAgreement
 	if len(hits) > 0 {
-		hg := reportHits(s.out, a[0], rp.rip, hits, timed)
+		hg = new(reportHits(s.out, a[0], rp.rip, hits, timed))
 		if at == nil {
 			at = func(sec float64) float64 { return hg.Stretch*sec + hg.Offset }
 		}
@@ -103,7 +113,133 @@ func cmdTruth(s *Session, a []string) error {
 		beats, downbeats := score.Beats(at)
 		reportBars(s.out, a[0], rp.rip, beats, downbeats)
 	}
+	if lab != nil {
+		if beats, downbeats := lab.grid(); len(downbeats) > 0 {
+			reportBars(s.out, a[0], rp.rip, beats, downbeats)
+		}
+		var c truthCount
+		c.notes, c.drums.given = everyNote(ag), len(hits)
+		c.read(rp.rip, ag, hg, lab.said())
+		reportReadings(s.out, c)
+	}
 	return nil
+}
+
+// reading is a row of readings: the word tune truth weighs it by, its name,
+// whether a truth gives what it is read over (its notes, its hits or itself),
+// whether a count gives the reading, its score, a share, and what it is of
+type reading struct {
+	word, name string
+	over       func(truthCount) bool
+	given      func(truthCount) bool
+	score      func(truthCount) float64
+	of         func(truthCount) string
+}
+
+// readings are what a label says past pitch and onset as the rip reads it
+// (audio's readings), read where a label gives it, weighed by tune truth alone
+// where its words ask
+var readings = []reading{
+	{"ends", "ends", notesGiven, func(c truthCount) bool { return c.stated.ends > 0 }, func(c truthCount) float64 { return share(c.ends.Right, c.ends.Given) },
+		func(c truthCount) string {
+			return fmt.Sprintf("%d note(s) matched whose end is given, each right within %g of its length or %g ms, the median end %+.2f of a length off",
+				c.ends.Given, audio.EndShare, 1000*audio.EndFloor, median(c.ends.Off))
+		}},
+	{"loudness", "loudness", notesGiven, func(c truthCount) bool { return c.stated.loud > 0 }, func(c truthCount) float64 { return share(c.loud.Right, c.loud.Given) },
+		func(c truthCount) string {
+			return fmt.Sprintf("%d note(s) matched whose velocity is given, each right within %g dB once the recording's level is out, the median %.1f dB off",
+				c.loud.Given, audio.LevelBound, medianOff(c.loud.Off))
+		}},
+	{"loudness", "drums' loudness", func(c truthCount) bool { return c.drums.given > 0 }, func(c truthCount) bool { return c.stated.hitLoud > 0 },
+		func(c truthCount) float64 { return share(c.hitLoud.Right, c.hitLoud.Given) },
+		func(c truthCount) string {
+			return fmt.Sprintf("%d hit(s) matched whose velocity is given, each right within %g dB once its drum's level is out, the median %.1f dB off",
+				c.hitLoud.Given, audio.LevelBound, medianOff(c.hitLoud.Off))
+		}},
+	{"parts", "parts", notesGiven, func(c truthCount) bool { return c.stated.parts > 0 },
+		func(c truthCount) float64 {
+			if c.parts.Given == 0 {
+				return 0
+			}
+			in, on := c.parts.InPart/float64(c.parts.Given), c.parts.OnLine/float64(c.parts.Given)
+			return 2 * in * on / (in + on)
+		},
+		func(c truthCount) string {
+			n := float64(max(c.parts.Given, 1))
+			return fmt.Sprintf("%d note(s) matched in a part given, the F1 of %.3f of a line's notes of their part and %.3f of a part's on their line",
+				c.parts.Given, c.parts.InPart/n, c.parts.OnLine/n)
+		}},
+	{"key", "key", func(truthCount) bool { return true }, func(c truthCount) bool { return c.stated.keys > 0 }, func(c truthCount) float64 { return share(c.keys.both, c.keys.given) },
+		func(c truthCount) string {
+			return fmt.Sprintf("%d recording(s) whose key is given, right in both its tonic and its scale: %d tonic(s) right, %d scale(s)", c.keys.given, c.keys.tonic, c.keys.scale)
+		}},
+	{"chords", "chords", func(truthCount) bool { return true }, func(c truthCount) bool { return c.stated.chords > 0 },
+		func(c truthCount) float64 { return c.chords.Right / max(c.chords.Given, 1e-9) },
+		func(c truthCount) string {
+			return fmt.Sprintf("%.1f s of chords given, right where a bar of the rip's names the chord's root", c.chords.Given)
+		}},
+}
+
+func notesGiven(c truthCount) bool { return c.notes.given > 0 }
+
+func share(right, given int) float64 { return float64(right) / float64(max(given, 1)) }
+
+// medianOff is the median of how far each is off, its sign left out
+func medianOff(off []float64) float64 {
+	abs := make([]float64, len(off))
+	for i, v := range off {
+		abs[i] = math.Abs(v)
+	}
+	return median(abs)
+}
+
+// readingWords are the words the readings are weighed by, each once
+func readingWords() []string {
+	var out []string
+	for _, rd := range readings {
+		if !slices.Contains(out, rd.word) {
+			out = append(out, rd.word)
+		}
+	}
+	return out
+}
+
+// read reads what a label says past pitch and onset as r reads it: over the
+// notes ag matched, the hits hg matched (nil where its truth knows no drum),
+// and against its key and chords
+func (c *truthCount) read(r *audio.Rip, ag audio.Agreement, hg *audio.HitsAgreement, said *labelSaid) {
+	c.ends, c.loud, c.parts, c.stated = ag.Ends(), ag.Levels(), ag.Parts(), said.stated
+	if hg != nil {
+		c.hitLoud = hg.Levels()
+	}
+	if said.key != nil {
+		one := func(b bool) int {
+			if b {
+				return 1
+			}
+			return 0
+		}
+		tonic, scale := audio.MatchKey(r, said.key[0], audio.ScaleID(said.key[1]))
+		c.keys = keyCount{1, one(tonic), one(scale), one(tonic && scale)}
+	}
+	c.chords = audio.MatchChords(r, said.chords)
+}
+
+// reportReadings prints a row a reading a label gives, and names those it
+// gives none of where it gives what they are read over
+func reportReadings(w io.Writer, c truthCount) {
+	var lacks []string
+	for _, rd := range readings {
+		switch {
+		case rd.given(c):
+			fmt.Fprintf(w, "%-8s %.3f of %s\n", rd.name, rd.score(c), rd.of(c))
+		case rd.over(c):
+			lacks = append(lacks, rd.name)
+		}
+	}
+	if len(lacks) > 0 {
+		fmt.Fprintf(w, "the label gives no %s\n", strings.Join(lacks, ", "))
+	}
 }
 
 // matchHeard matches a rip's notes to a truth's as MatchNotes does, the notes

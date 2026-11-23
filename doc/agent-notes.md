@@ -247,6 +247,13 @@ proves wrong or that a document now states, and link the document instead.
 - A scorer is code nobody trained: a new scorer gets a test or a count made
   apart before a figure from it is used. A table is one decode's: when audio
   moves, rebuild the reading tools between rounds and read the baseline again.
+- **Which genes a score sees is read by a sweep, not by a search.** A scratch
+  test in audio's package rips rendered loops through `struck`, a start plane
+  laid where any pitch strikes, at five points of each gene's range, and says
+  which scores and which of the rip's fields moved: over two loops of eight bars,
+  160 s, `release` moved the ends alone, no gene the key or the chords, and F1's
+  counts held while `strike_low`, `voicing` and `start` moved onsets within the
+  window. Rerun it before calling a gene seen or blind.
 - A bank loop and every loop `bench` draws start on a bar line, which rewards a
   decoder that leans on a recording's start; only `corpus ... meters` starts
   loops part-way. Read bars on loops cut a quarter to three quarters of a bar

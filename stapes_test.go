@@ -2200,9 +2200,10 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 ! tune 1 truth %s
 ! tune truth %s guard 2
 ! tune truth %s frames
-`, list, list, list, list, list))
-	if !strings.Contains(out.String(), "no "+frameFile+" is loaded") {
-		t.Errorf("no refusal for want of a model:\n%s", out.String())
+! tune truth %s weigh ends,tempo
+`, list, list, list, list, list, list))
+	if !strings.Contains(out.String(), "no "+frameFile+" is loaded") || !strings.Contains(out.String(), `weigh "tempo": want readings among ends, loudness, parts, key, chords`) {
+		t.Errorf("no refusal for want of a model, or of a reading weigh does not know:\n%s", out.String())
 	}
 	// a loop the registered patterns render, its notes a MIDI truth
 	const bars = 2
@@ -2361,7 +2362,7 @@ func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
 	}
 	const guard = 0.01
 	given := conditionCounts(takes, len(conds), s.rip, s.lead)
-	before, costly := scores(given, given), scores(conditionCounts(takes, len(conds), lower, s.lead), given)
+	before, costly := scores(given, given, nil), scores(conditionCounts(takes, len(conds), lower, s.lead), given, nil)
 	if before[0] != 1 || guarded(costly, before, 1) <= guarded(before, before, 1) || before[0]-costly[0] <= guard {
 		t.Fatalf("the lower bar scores %.3f from %.3f: want a gain of the mean that costs sure over %g", costly, before, guard)
 	}
@@ -2378,6 +2379,27 @@ func TestTuneTruthRefusesASetThatCostsACondition(t *testing.T) {
 	}
 	if _, err := os.Stat(file); err == nil {
 		t.Errorf("a set was written past the guard:\n%s", out.String())
+	}
+}
+
+// TestAReadingJoinsTheScoresOnlyWhenWeighed: a condition's scores are its F1s
+// and bars until weigh names a reading, which then joins them where the
+// condition's labels state it, and only there, a rip that matched none of
+// their notes scoring it nothing
+func TestAReadingJoinsTheScoresOnlyWhenWeighed(t *testing.T) {
+	said := truthCount{notes: noteCount{8, 10, 9}, ends: audio.EndReading{Given: 8, Right: 6}, parts: audio.PartReading{Given: 8, InPart: 8, OnLine: 4}, stated: statedCount{ends: 10, parts: 10}}
+	bare, unheard := truthCount{notes: noteCount{5, 10, 6}}, truthCount{notes: noteCount{0, 10, 0}, stated: statedCount{ends: 10}}
+	counts := []truthCount{said, bare, unheard}
+	if got, want := scores(counts, counts, nil), []float64{said.notes.f1(), bare.notes.f1(), 0}; !slices.Equal(got, want) {
+		t.Errorf("unweighed, the scores are %v, want the F1s %v", got, want)
+	}
+	got, want := scores(counts, counts, []string{"chords", "parts", "ends"}), []float64{said.notes.f1(), 0.75, 2. / 3, bare.notes.f1(), 0, 0}
+	same := len(got) == len(want)
+	for i := range got {
+		same = same && math.Abs(got[i]-want[i]) < 1e-9
+	}
+	if !same {
+		t.Errorf("weighing chords, parts and ends, the scores are %v, want %v: ends and parts where given, in the table's order", got, want)
 	}
 }
 
@@ -2489,7 +2511,8 @@ func TestTuneTruthScoresDrumsAndBarsWhereATruthGivesThem(t *testing.T) {
 	if err := s.tuneTruth(tuneOptions{generations: 2, pool: 8, seed: 1}, list, file, analysisEar{}); err != nil {
 		t.Fatalf("tune truth: %v\n%s", err, out.String())
 	}
-	for _, want := range []string{"loop: F1 ", "loop: drums F1 ", "loop: bars ", fmt.Sprintf("%d hit(s), %d bar line(s) and %d beat(s) given", len(r.Hits()), len(lab.Downbeats), len(lab.Beats))} {
+	for _, want := range []string{"loop: F1 ", "loop: drums F1 ", "loop: bars ", fmt.Sprintf("%d hit(s), %d bar line(s) and %d beat(s) given", len(r.Hits()), len(lab.Downbeats), len(lab.Beats)),
+		"loop: ends 1.000 before, ", "loop: loudness 1.000 before, ", "loop: drums' loudness 1.000 before, ", "loop: no parts, key, chords given\n"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("no %q in what tune truth says of a label:\n%s", want, out.String())
 		}
@@ -2660,12 +2683,12 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 	given, quiet := truthCount{drums: noteCount{40, 40, 40}, drummed: 0.5}, truthCount{drumless: 0.5}
 	score := func(heard int) float64 {
 		quiet.drums.heard = heard
-		return scores([]truthCount{given, quiet}, []truthCount{given, quiet})[1]
+		return scores([]truthCount{given, quiet}, []truthCount{given, quiet}, nil)[1]
 	}
 	if none, few, more, pooled := score(0), score(4), score(8), (noteCount{40, 40, 44}).f1(); none != 1 || few != pooled || more >= few {
 		t.Errorf("0, 4 and 8 hits heard where none plays score %.3f, %.3f and %.3f against 40 given in as long, want 1, %.3f and less", none, few, more, pooled)
 	}
-	if got := scores([]truthCount{quiet}, []truthCount{quiet}); len(got) != 0 {
+	if got := scores([]truthCount{quiet}, []truthCount{quiet}, nil); len(got) != 0 {
 		t.Errorf("a list that gives no hit scores %v, want no drums' score where nothing weighs a hit", got)
 	}
 	var out bytes.Buffer
@@ -4024,6 +4047,56 @@ save pattern %s
 	}
 	if strings.Count(out.String(), every) != 2 || !strings.Contains(out.String(), "given, transposed -2: ") {
 		t.Errorf("a truth a tone up, want every note heard transposed -2 and not on the recording's clock:\n%s", out.String())
+	}
+	// a label of the rip's own notes, each in its line's part, its hits, key and
+	// each bar's chord reads every reading whole; one stating no velocity, part,
+	// key or chord says it gives none of them
+	label := func(name string, said bool) string {
+		frame := func(sec float64) int { return int(math.Round(sec / audio.RipFrameSec)) }
+		r, lab := rp.rip, corpusLoop{Frames: frame(rp.rip.Beats[len(rp.rip.Beats)-1])}
+		vel := func(v float64) float64 {
+			if said {
+				return v
+			}
+			return -1
+		}
+		for _, n := range r.Notes {
+			e := corpusEvent{Frame: frame(n.Start), End: frame(n.End), Drum: -1, MIDI: n.MIDI, Vel: vel(n.Vel)}
+			switch {
+			case !said:
+			case n.Bass:
+				e.Part = "bass"
+			case n.Second:
+				e.Part = "under"
+			default:
+				e.Part = "melody"
+			}
+			lab.Events = append(lab.Events, e)
+		}
+		for _, h := range r.Hits() {
+			lab.Events = append(lab.Events, corpusEvent{Frame: frame(h.Start), Drum: int(h.Drum), Vel: vel(h.Vel)})
+		}
+		if said {
+			lab.Root, lab.Scale = r.Root, int(r.Scale)
+			iv := audio.ScaleIntervals(r.Scale)
+			for b, d := range r.Progression {
+				tones := []int{(r.Root + iv[d]) % 12, (r.Root + iv[(d+2)%len(iv)]) % 12, (r.Root + iv[(d+4)%len(iv)]) % 12}
+				lab.Chords = append(lab.Chords, corpusChord{Frame: frame(r.Beats[b*r.Meter.Beats()]), Tones: tones})
+			}
+		}
+		file := filepath.Join(dir, name)
+		if err := writeJSON(file, lab); err != nil {
+			t.Fatal(err)
+		}
+		return file
+	}
+	out.Reset()
+	runOrFatal(t, s, &out, fmt.Sprintf("truth loop %s timed\ntruth loop %s timed\n", label("said.json", true), label("bare.json", false)))
+	for _, want := range []string{every, "ends     1.000 of", "loudness 1.000 of", "drums' loudness 1.000 of", "parts    1.000 of", "key      1.000 of", "chords   1.000 of",
+		"the label gives no loudness, drums' loudness, parts, key, chords\n"} {
+		if !strings.Contains(out.String(), want) || strings.Count(out.String(), "ends     1.000 of") != 2 {
+			t.Errorf("no %q, nor ends read twice, from two labels of the rip's own notes:\n%s", want, out.String())
+		}
 	}
 	// one line of the song on its own: the instruments named after the file
 	runOrFatal(t, s, &out, fmt.Sprintf("! song loop %s nothing\nsong loop %s kick\n", song, song))

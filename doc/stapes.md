@@ -163,20 +163,30 @@ Over the library's rip (library
   side, so a seed's rows are the same on any number of cores
   ([todo](todo.md#close-the-rips-loop), item 9, for the one way they may not be).
 - `agree` compares two rips of one piece (`MatchNotes`); `truth` scores a rip
-  against notes given as text or a tapped rhythm (`ParseTranscript`) or a MIDI
-  file (`truth <name> <file.mid>`), first every note as one line by pitch and
-  onset (`Agreement.All`, the `notes` row), then by line, counting the notes
-  heard by level as well (`NoteLevels`); `timed` matches a truth on the
-  recording's own clock, its notes and its hits (`MatchNotes`' and
+  against notes given as text or a tapped rhythm (`ParseTranscript`), a MIDI
+  file (`truth <name> <file.mid>`) or a corpus loop's label (`truth <name>
+  <loop.json>`, read as `tune ... truth` reads one), first every note as one
+  line by pitch and onset (`Agreement.All`, the `notes` row), then by line,
+  counting the notes heard by level as well (`NoteLevels`); `timed` matches a
+  truth on the recording's own clock, its notes and its hits (`MatchNotes`' and
   `MatchHits`' `timed`: no map, no transposition); a
   MIDI file's parts past its melody, under and bass count in the melody
   register as one line, or the bass under E3, in an `every part` row. It prints a
   `bars` row for a MIDI file's bars, placed as its notes matched
   (`MIDIScore.Beats`), or a JAMS file's beats, a truth of beats
   alone (`truth <name> <file.jams>`, `ReadJAMSBeats`): the rip's bar lines
-  against the downbeats and beats given (`MatchBars`); `notes` lists a
-  transcript, each note's brightness with the unmeasured counted, and `notes
-  <name> <file.mid>` writes one (`WriteMIDI`) to correct in a sequencer.
+  against the downbeats and beats given (`MatchBars`). A label is read past
+  them too, a row a reading it gives (`readings`, `reportReadings`), audio's
+  over the notes and hits matched (`Agreement.Ends`, `Levels`, `Parts`,
+  `HitsAgreement.Levels`) and against its key and chords (`MatchKey`,
+  `MatchChords`): its notes filed under their track, `part` and `instr` joined,
+  as a bank slot's tracks share their part's name and an overlap's instruments
+  theirs (`corpusLoop.notes`), its key where its root is over MIDI 0, as no
+  recording's or overlap's is, and its chords each to the next one's frame, the
+  last to the loop's end (`corpusLoop.said`); a velocity of -1 and a note in no
+  part give none, and a last line names what the label gives none of. `notes`
+  lists a transcript, each note's brightness with the unmeasured counted, and
+  `notes <name> <file.mid>` writes one (`WriteMIDI`) to correct in a sequencer.
   `corpus <dir> from` labels a file's other drum strikes (`MIDIScore.Struck`)
   as onsets alone.
 - `live` drives the library's stream over a file (`RipStream`): `Write` a
@@ -236,9 +246,25 @@ Over the library's rip (library
   drums' score. A set scores their mean:
   each is a share of one capability, none converts into another, and the
   guard holds each, so a set that takes more than `guard` from any one at the
-  start scores under zero (`guarded`) and is never written. With hits
-  `onset_min` is searched too (`drumGenes`), with bars the tempo's prior,
-  combs, cuts, `tightness`, the bars' weights and the meter's margins (`barGenes`);
+  start scores under zero (`guarded`) and is never written. `weigh` adds the
+  readings it names (a word a row of `readings`, `loudness` the notes' and the
+  hits') to a condition's scores where its labels give them, none unless asked,
+  and each condition's readings are said before and after, weighed or not, and
+  those its labels give none of. Of the genes the search moves, `release` is
+  read by nothing but where a note ends, in the strikes' `until` and the glide
+  follower: no F1, drums' or bars' score sees it, save where the installed
+  scores' rows read a kept note's ends, and the ends reading does, as the parts
+  reading does where a note's length moves the parting, which holds no two notes
+  at once on a line. The key moves with no gene (the frames alone say it), the
+  chords with the bars' genes alone, which the bars' score sees, and the hits'
+  loudness with `onset_min` and the bars, which the drums' F1 sees. Through
+  audio's `struck` over two loops, with and without a start plane, F1's counts
+  also held while `min_note`, and `strike_hold` without starts, moved the ends
+  and the loudness, and `strike_low`, `voicing` and `start` moved onsets within
+  the window and the loudness: those F1 sees elsewhere, as notes come and go.
+  With hits `onset_min` is searched too (`drumGenes`), with bars the tempo's
+  prior, combs, cuts, `tightness`, the bars' weights and the meter's margins
+  (`barGenes`);
   and either search's best has each gene whose move the score does not see,
   put back alone, back at the start's (`settled`), since a pool moves genes by
   chance and a search through the analysis, a model without the heads or loops

@@ -22,10 +22,9 @@ type labelHead struct {
 
 // labelHeadRows are the heads the decoders read: the frame model's onset,
 // drums, voice genes, beat and downbeat, and the notes model's pitch, strike,
-// release, velocity, cents, onset (start) and what plays each pitch (plays,
-// its three heads and its measure), the frame model's four where no notes
-// model is loaded. The frame model's wave and family and either's voicing no
-// decoder reads.
+// release, velocity, cents, onset (start) and plays (its three heads and their
+// measure), the frame model's four where no notes model is loaded; its wave,
+// family and places, and either's voicing, no decoder reads.
 var labelHeadRows = []labelHead{
 	{"onset", func(f *audio.RipFrames, l *labelPlanes) { f.Flux = l.onset }, nil},
 	{"drums", func(f *audio.RipFrames, l *labelPlanes) { f.Onset = l.drums }, func(l *corpusLoop) bool { return !l.drawnKit() }},

@@ -1867,7 +1867,7 @@ note of its pitch starts within 100 ms of it, to a twin where one stood there to
 and matched another; a note added is the stage's that last made it, an end wrong the
 first stage's that left it so, a hit lost what became of the hit picked nearest it. The
 notes' rows are the same under both decoders, at (`twins`, `ring_on`) 0 and 1, the
-defaults, every rip audio v0.44.0's, and at 1 and 1, 1 and 0, and 0 and 0, by the verb:
+defaults, every rip audio v0.46.0's, and at 1 and 1, 1 and 0, and 0 and 0, by the verb:
 
 ```
                                             plain                           aug

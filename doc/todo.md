@@ -719,6 +719,20 @@ rip are in place; what remains:
    candidates of one generation within it take whichever was scored first,
    which the cores decide. Key it by the genome's bits and read `fits` before
    and after.
+10. The yardstick of a line two voices share: `fits` counts it right when the
+    wave fitted is that of the label's voice that plays most of its notes
+    (`lineOwner`), but where the other voice's notes are the long and loud
+    ones the sound names a voice that plays them, and no one voice plays
+    both ([agent notes](agent-notes.md#the-rip-and-its-truths)). Whether the
+    line's voice is the one that plays most of its notes or the one its sound
+    is nearest is open: listening settles it, the line rendered on each and
+    the nearer picked (item 6), as does the song's score against the
+    recording (`song ... score`) on each. Before either, `cells` is read on
+    trained models over whole corpora, where the count decides; on 49 loops of
+    each corpus here (`fits ... heads all cells 50`) it named 6 of 16 shared
+    strings where the measure names none, and 7 of 26 shared saws where it
+    names 15 (aug; without `aug` 6 of 14 and 15 of 26 against 4 and 14), at
+    half its CPU a loop.
 
 ## Files and banks
 

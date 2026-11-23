@@ -3311,7 +3311,7 @@ func TestFitsGivenFitsEachVoiceOnItsOwnNotes(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, v := range labelVoices(lab, cm) {
-			if len(fitSamples(v.notes, 1)) > 0 {
+			if len(fitSamples(v.notes, 1, false)) > 0 {
 				voiced++
 			}
 		}
@@ -3341,9 +3341,9 @@ func TestFitsGivenFitsEachVoiceOnItsOwnNotes(t *testing.T) {
 
 // TestAVoiceIsItsOwnLinesNearest: piano chords over a bass line, rendered as a
 // corpus renders them and read at their notes as a label states them, hold
-// each line's own voice nearer by the fit's measure than any other registered
-// voice and than its genes on any other wave: the line alone, and in the loop
-// beside the other line at the voice presentVoices hears it play.
+// each line's own voice nearer than any other registered voice and its genes on
+// any other wave, by the fit's measure and with each note on its own cells: the
+// line alone, and beside the other line on the voice presentVoices hears.
 func TestAVoiceIsItsOwnLinesNearest(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
@@ -3399,20 +3399,63 @@ func TestAVoiceIsItsOwnLinesNearest(t *testing.T) {
 				others[w+" wave"] = voiceFromGenome(voiceGenome(audio.VoiceFromGenes(w, own.Genes())))
 			}
 		}
-		alone := &fitScene{x: render([]audio.InstrumentType{in}), rate: audio.AudioSampleRate, lines: []fitPart{{notes: lines[i].notes}}}
-		for _, c := range []struct {
-			heard string
-			sc    *fitScene
-			line  int
-		}{{"alone", alone, 0}, {"beside the other line", mix, i}} {
-			targets := c.sc.targets(c.line, 6)
-			d := fitDistance(own, lines[i].notes, targets, 0)
-			for other, v := range others {
-				if o := fitDistance(v, lines[i].notes, targets, 0); o <= d {
-					t.Errorf("the %s line %s reads %.4f from its own voice and %.4f from the %s", name, c.heard, d, o, other)
+		alone := &fitScene{x: render([]audio.InstrumentType{in}), rate: audio.AudioSampleRate, lines: []fitPart{{notes: lines[i].notes, voice: mix.lines[i].voice}}}
+		for _, cells := range []float64{0, 0.5} {
+			for _, c := range []struct {
+				heard string
+				sc    *fitScene
+				line  int
+			}{{"alone", alone, 0}, {"beside the other line", mix, i}} {
+				c.sc.cells = cells
+				targets := c.sc.targets(c.line, 6)
+				d := fitDistance(own, lines[i].notes, targets, 0)
+				for other, v := range others {
+					if o := fitDistance(v, lines[i].notes, targets, 0); o <= d {
+						t.Errorf("the %s line %s, its cells told at %.0f%%, reads %.4f from its own voice and %.4f from the %s", name, c.heard, 100*cells, d, o, other)
+					}
 				}
 			}
 		}
+	}
+}
+
+// TestFitsThroughTheLabelsHeadsHearEachLinesVoice: fits rips each loop through
+// its label's own heads, no model loaded, so a line's voice is heard from the
+// label, and says the owner's share of the notes the fit listened to; a
+// directory of those fits refuses fits of another kind.
+func TestFitsThroughTheLabelsHeadsHearEachLinesVoice(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	dir := t.TempDir()
+	corpus, heads := filepath.Join(dir, "engine"), filepath.Join(dir, "heads")
+	runOrFatal(t, s, &out, fmt.Sprintf("corpus %[1]s 2 2 gen\nfits %[2]s from %[1]s heads all\n! fits %[2]s from %[1]s given\n", corpus, heads))
+	files, _ := filepath.Glob(filepath.Join(heads, "*.json"))
+	var rows []fitRow
+	for _, file := range files {
+		if filepath.Base(file) == fitsFile {
+			continue
+		}
+		var loop []fitRow
+		data, _ := os.ReadFile(file)
+		if err := json.Unmarshal(data, &loop); err != nil {
+			t.Fatal(err)
+		}
+		rows = append(rows, loop...)
+	}
+	heard, owned := 0, 0
+	for _, r := range rows {
+		if r.Heard != nil {
+			heard++
+		}
+		if r.Windows < 0 || r.Windows > 1 {
+			t.Errorf("a row's owner holds %v of the notes listened to", r.Windows)
+		} else if r.Windows > 0 {
+			owned++
+		}
+	}
+	if heard == 0 || owned == 0 || !strings.Contains(out.String(), "through the label's") {
+		t.Errorf("%d row(s), %d with a voice heard and %d with an owner listened to:\n%s", len(rows), heard, owned, out.String())
 	}
 }
 
@@ -4403,6 +4446,7 @@ save pattern %s
 	out.Reset()
 	runOrFatal(t, s, &out, fmt.Sprintf("truth loop %s timed\ntruth loop %s timed\n", label("said.json", true), label("bare.json", false)))
 	for _, want := range []string{every, "ends     1.000 of", "loudness 1.000 of", "drums' loudness 1.000 of", "parts    1.000 of", "key      1.000 of", "chords   1.000 of",
+		"         0 missed: 0 at the given tonic in a scale holding or held by the given's, 0 at the given's tones under another tonic, 0 else\n",
 		"the label gives no loudness, drums' loudness, parts, key, chords\n", "lost     0 of the notes given, by stage: none\n"} {
 		if !strings.Contains(out.String(), want) || strings.Count(out.String(), "ends     1.000 of") != 2 {
 			t.Errorf("no %q, nor ends read twice, from two labels of the rip's own notes:\n%s", want, out.String())

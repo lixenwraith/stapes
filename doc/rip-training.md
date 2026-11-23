@@ -1825,22 +1825,23 @@ and 2/4 and 4/4 (7).
 all` a list by its conditions, here a meter each, before its search. On the 600 loops
 of `corpus <dir> 600 4 gen glide meters overlaps seed 5`, and of the same line with
 `aug`, the same music through a room, a mix, redrawn voices and a tuning off A440, 580
-of them of 4 s or more, on the present path (`joint` 0) and `twins` 1, the last row
-audio v0.43.1's, before `twins`:
+of them of 4 s or more, on the present path (`joint` 0), the key and the chords as audio
+v0.44.0 names the key ([below](#the-key)), `twins` and `ring_on` 1, the last row audio
+v0.44.0's, before `twins`:
 
 ```
                               plain                                     aug
 cond      n notes  ends  loud  hits parts   key chords   notes  ends  loud parts   key chords
-4/4     177 0.895 0.937 0.938 0.882 0.654 0.475  0.741   0.841 0.931 0.796 0.669 0.441  0.733
-3/4      60 0.873 0.921 0.951 0.892 0.665 0.483  0.713   0.855 0.920 0.834 0.672 0.500  0.706
-6/8      44 0.893 0.932 0.952 0.887 0.672 0.500  0.680   0.865 0.938 0.819 0.701 0.455  0.688
-12/8     46 0.909 0.948 0.892 0.931 0.653 0.435  0.707   0.864 0.951 0.769 0.667 0.413  0.709
-2/4      13 0.908 0.941 0.937 0.818 0.702 0.385  0.345   0.890 0.940 0.825 0.725 0.462  0.336
-5/4      37 0.887 0.944 0.936 0.934 0.661 0.541  0.693   0.835 0.948 0.767 0.663 0.514  0.689
-7/8      34 0.902 0.922 0.945 0.877 0.667 0.618  0.602   0.845 0.917 0.746 0.690 0.529  0.562
-overlap 169 0.909 0.773 0.668     - 0.480     -      -   0.883 0.772 0.640 0.484     -      -
-all     580 0.896 0.912 0.896 0.895 0.633 0.489  0.704   0.853 0.909 0.769 0.645 0.462  0.697
-v0.43.1 580 0.895 0.887 0.895 0.896 0.637 0.489  0.704   0.852 0.883 0.769 0.647 0.462  0.698
+4/4     177 0.895 0.910 0.938 0.882 0.653 0.605  0.744   0.841 0.895 0.796 0.666 0.571  0.735
+3/4      60 0.873 0.900 0.951 0.892 0.664 0.600  0.717   0.855 0.901 0.834 0.673 0.600  0.706
+6/8      44 0.893 0.900 0.952 0.887 0.673 0.636  0.680   0.865 0.910 0.819 0.708 0.636  0.688
+12/8     46 0.909 0.917 0.892 0.931 0.656 0.609  0.717   0.864 0.917 0.769 0.669 0.609  0.711
+2/4      13 0.908 0.937 0.937 0.818 0.702 0.538  0.345   0.890 0.922 0.825 0.711 0.462  0.336
+5/4      37 0.887 0.914 0.936 0.934 0.660 0.595  0.688   0.835 0.911 0.768 0.662 0.595  0.685
+7/8      34 0.902 0.898 0.945 0.877 0.665 0.676  0.598   0.845 0.886 0.746 0.690 0.618  0.555
+overlap 169 0.909 0.771 0.668     - 0.480     -      -   0.883 0.769 0.640 0.482     -      -
+all     580 0.896 0.889 0.896 0.895 0.633 0.611  0.707   0.853 0.882 0.769 0.644 0.589  0.698
+v0.44.0 580 0.895 0.887 0.895 0.896 0.637 0.608  0.707   0.852 0.883 0.769 0.647 0.586  0.698
 ```
 
 The hits read 0.894 through `aug` and the drums' loudness 0.746 on both. The bars under
@@ -1850,14 +1851,14 @@ each decoder, with the hits and chords laid in them, plain (`aug`'s bars and hit
 ```
            downbeats on a line  beats on a beat        hits           chords
 meter    n    present  joint   present  joint   present  joint  present  joint
-4/4    177      1.000  1.000     0.882  0.971     0.882  0.957    0.741  0.844
-3/4     60      1.000  1.000     0.892  0.986     0.892  0.941    0.713  0.847
+4/4    177      1.000  1.000     0.882  0.971     0.882  0.957    0.744  0.847
+3/4     60      1.000  1.000     0.892  0.986     0.892  0.941    0.717  0.851
 6/8     44      0.795  1.000     0.687  0.968     0.887  0.953    0.680  0.836
-12/8    46      0.804  1.000     0.718  0.982     0.931  0.966    0.707  0.862
+12/8    46      0.804  1.000     0.718  0.982     0.931  0.966    0.717  0.866
 2/4     13      0.000  1.000     0.779  1.000     0.818  0.961    0.345  0.798
-5/4     37      0.000  1.000     0.945  0.977     0.934  0.957    0.693  0.861
-7/8     34      0.000  1.000     0.628  0.966     0.877  0.955    0.602  0.869
-all    411      0.752  1.000     0.793  0.975     0.895  0.956    0.704  0.850
+5/4     37      0.000  1.000     0.945  0.977     0.934  0.957    0.688  0.855
+7/8     34      0.000  1.000     0.628  0.966     0.877  0.955    0.598  0.864
+all    411      0.752  1.000     0.793  0.975     0.895  0.956    0.707  0.851
 ```
 
 `truth` and `tune ... truth` end with the rip's own record of its stages (audio's
@@ -1865,46 +1866,50 @@ all    411      0.752  1.000     0.793  0.975     0.895  0.956    0.704  0.850
 note of its pitch starts within 100 ms of it, to a twin where one stood there to the end
 and matched another; a note added is the stage's that last made it, an end wrong the
 first stage's that left it so, a hit lost what became of the hit picked nearest it. The
-notes' rows are the same under both decoders, audio v0.43.1's beside `twins` 1's:
+notes' rows are the same under both decoders; audio v0.44.0's beside this version's at
+(`twins`, `ring_on`) 1 and 1, the defaults, 1 and 0, and 0 and 0, each by the verb:
 
 ```
-                                       plain             aug
-                                   v0.43.1  twins   v0.43.1  twins
-heard as given, of 35,724           29,039  29,091   26,766  26,818
-lost at the accounting               4,816   4,922    6,883   6,965
-lost to a twin                       1,249   1,161    1,123   1,050
-lost at the bass's own-pitch rule      432     432      372     380
-lost at the strikes                    169      99      447     382
-  its pitch silent within min_note      51      51      290     290
-  within strike_gap                     49       0       49       0
-  its note under min_note               40      19       33      17
-  no strike near                         0       0       46      46
-  its register unheard                  29      29       29      29
-lost at the glides                      18      18      128     124
-lost at the steady rise                  1       1        5       5
-added                                  131     128      337     330
-  begun                                126     123      239     236
-  by the glides                          5       5       53      49
-  by the strikes                         0       0       41      41
-  by the accounting                      0       0        4       4
-ends wrong, of those heard           3,294   2,556    3,142   2,435
-  strikes early                      2,467   1,821    2,243   1,686
-  accounting late                      679       1      734       2
-  strikes late                          80     670       69     660
-  accounting early                      49      45       64      56
-  glides late                           19      19       31      31
-  glides early                           0       0        1       0
+                                            plain                           aug
+(twins, ring_on)                 v0.44.0    1,1    1,0    0,0  v0.44.0    1,1    1,0    0,0
+notes                              0.895  0.896  0.896  0.895    0.852  0.853  0.853  0.852
+ends right                         0.887  0.889  0.912  0.908    0.883  0.882  0.909  0.908
+heard as given, of 35,724         29,039 29,085 29,091 29,045   26,766 26,813 26,818 26,772
+lost at the accounting             4,816  4,922  4,922  4,816    6,883  6,965  6,965  6,883
+lost to a twin                     1,249  1,161  1,161  1,249    1,123  1,050  1,050  1,123
+lost at the bass's own-pitch rule    432    438    432    426      372    385    380    368
+lost at the strikes                  169     99     99    169      447    382    382    445
+  its pitch silent within min_note    51     51     51     51      290    290    290    290
+  within strike_gap                   49      0      0     49       49      0      0     49
+  its note under min_note             40     19     19     40       33     17     17     31
+  no strike near                       0      0      0      0       46     46     46     46
+  its register unheard                29     29     29     29       29     29     29     29
+lost at the glides                    18     18     18     18      128    124    124    128
+lost at the steady rise                1      1      1      1        5      5      5      5
+added                                131    128    128    131      337    330    330    337
+  begun                              126    123    123    126      239    236    236    239
+  by the glides                        5      5      5      5       53     49     49     53
+  by the strikes                       0      0      0      0       41     41     41     41
+  by the accounting                    0      0      0      0        4      4      4      4
+ends wrong, of those heard         3,294  3,234  2,556  2,662    3,142  3,174  2,435  2,466
+  strikes early                    2,467  1,757  1,821  2,519    2,243  1,630  1,686  2,297
+  accounting late                    679    732      1      2      734    788      2      4
+  strikes late                        80    681    670     73       69    669    660     67
+  accounting early                    49     45     45     49       64     56     56     66
+  glides late                         19     19     19     19       31     31     31     31
+  glides early                         0      0      0      0        1      0      0      1
 ```
 
-`twins` 0 reads v0.43.1's notes, every rip's the same but where a kept note rang on
-through a dropped one (below): its ends read 0.908 plain and through `aug`, the twins
-the rest of 0.912 and 0.909. With heads spoiled as a guess at trained ones, a tenth of
-the strikes' marks dropped, a fifth of the releases', and a sure strike added in a
-tenth of the stretches a pitch sounds 0.25 s or more (strikes' F1 0.928, releases'
-0.889), `twins` 1 hears 27,301 as given plain where v0.43.1 heard 27,248, adds 729
-where it added 730 and reads 0.877 of the ends where it read 0.867; through `aug`
-25,234 and 25,209, 939 and 939, 0.877 and 0.864. The verb spoils no head: these are
-tune's count over the same lists through a scratch wrapper of `labelHeads`.
+At `twins` 0 and `ring_on` 1 every rip is audio v0.44.0's. The ring-on holds the ends
+under the twins at 0.889 and 0.882, a kept note taking the end of a dropped one of its
+pitch struck while it sounded or as it ended. With heads spoiled as a guess at trained
+ones, a tenth of the strikes' marks dropped, a fifth of the releases', and a sure strike
+added in a tenth of the stretches a pitch sounds 0.25 s or more (strikes' F1 0.928,
+releases' 0.889), the defaults hear 27,297 as given plain where v0.44.0 heard 27,248,
+add 729 where it added 730 and read 0.869 of the ends where it read 0.867, and
+`ring_on` 0 27,301, 729 and 0.877; through `aug` 25,230, 938 and 0.865 where it read
+25,209, 939 and 0.864, and `ring_on` 0 25,234, 939 and 0.877. The verb spoils no head:
+these are tune's count over the same lists through a scratch wrapper of `labelHeads`.
 
 Of 8,828 hits, plain, the present path loses 1,627, 1,525 outside the bars, 58 a step
 off, 33 none picked, 6 on a step another holds and 5 to a twin, and the joint path
@@ -1919,21 +1924,22 @@ What each stage costs, largest first:
   fitted on notes cut at their pitch's next strike: a note sounding on to its own end
   beside a twin reads less of its span its own, and a strike dropped on a pitch still
   sounding stays dropped, 106 lost more than under `twins` 0 (82 through `aug`, 65 of
-  the plain's in the overlaps). A note dropped moves no other's end; v0.43.1 rang a
-  kept one on through it, 679 ends late.
+  the plain's in the overlaps). Under `ring_on` a kept note sounds on to the end of a
+  dropped one of its pitch, made for heads that strike falsely inside a ring: 732 ends
+  late under the twins, 679 without; a twin neither rings on nor is rung on.
 - **Two notes on one pitch** (`twins` 1): a pitch holds as many notes as it is let go,
   a release ending the earliest struck; a sure strike on a sounding pitch starts one
   beside it where the releases until the pitch falls silent hold both, else ends it,
   and a strike within `strike_gap` of the last, let go twice, holds a second from
   there. Two parts struck together or within a mark of each other are one strike let
   go twice, as a restrike the head missed is, one note, 1,161 lost to a twin; a short
-  note over a held one of its pitch takes the held one's end, 670 ends late; a note
+  note over a held one of its pitch takes the held one's end, 681 ends late; a note
   ends early where its cell falls silent or a strike the releases cannot hold renews
-  it, 1,821.
+  it, 1,757.
 - **The present path's bars** are laid on the beats it hears, so a loop's last bar,
   closed by its end, lies outside them with its hits and its chords, and it reads no
   2/4, 5/4 or 7/8 line and a fifth of 6/8's and 12/8's. The joint path reads every
-  line, loses 573 hits outside its bars and names 0.850 of the chords' seconds.
+  line, loses 573 hits outside its bars and names 0.851 of the chords' seconds.
 - **The bass's own-pitch rule** drops a low note whose fundamental stands more than
   10 dB under its next partials (`ripOwnPitch`).
 - **The strikes** read a target's plateau on its last frame, a frame late, so a sound
@@ -1945,17 +1951,111 @@ What each stage costs, largest first:
 - **The tuning**: neither a model's front end nor a label's pitch states one, so the
   accounting and `bright` measure at A440, `aug`'s loops up to a quarter tone off it.
 - **The lines** are three, the bass by its register and the melody's two by pitch,
-  length and strength; **the key** is a profile's, the tonic weighed by its chroma, its
-  fifth's and the bass's, 201 of 411 right (231 tonics, 221 scales); **a chord** is one
-  a bar, by its triad's chroma.
+  length and strength; **the key** is the scale its tones fit and the tonic chord the
+  most of its bars rest on ([below](#the-key)), 251 of 411 right where the chroma's
+  profile alone read 201; **a chord** is one a bar, by its triad's chroma.
 - **The drums' loudness**: the drums head states none, so a drum's hits read alike; of
   the heads only the places' loudness states a strike's, and no decoder reads it yet.
 
 Of those, a threshold's or a setting's: the accounting's bar and weights, `ripOwnPitch`,
-`strike_gap`, `min_note`, `twins`, and `joint` for the bars. The shape's, which no
-setting writes down: a release to its pitch's earliest note, three lines, one chord a
-bar, the key's profile, the drums' loudness, `dynamics` on a head that hears level, the
-A440 a model's front end states, and a plateau's peak read on its last frame.
+`strike_gap`, `min_note`, `twins`, `ring_on`, `joint` for the bars and `key_bars` to
+`key_bar` for the key. The shape's, which no setting writes down: a release to its
+pitch's earliest note, three lines, one chord a bar, one key a recording, the drums'
+loudness, `dynamics` on a head that hears level, the A440 a model's front end states,
+and a plateau's peak read on its last frame.
+
+### The key
+
+Audio v0.44.0 names a rip's key after its bars ([audio
+§9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)):
+the scale whose tones hold the most of the chroma less what lies outside them, and of
+the keys of those tones, as a minor's are its relative major's, the one whose tonic
+chord, as the rip names a bar's chord in it, the most of the music's bars rest on
+(`key_bars`); then the chroma's lean to the tonic, which with the fit alone named it
+before. `truth` and `tune ... truth` say how each key was missed: at the given tonic in
+a scale holding or held by the given's (nested), at the given's tones under another
+tonic (relative), or else.
+
+`tune 2 1 truth <list> heads all` reads it, a condition a scale, before its search, on
+`corpus <dir> 720 8 gen glide meters seed 11`, every scale the arranger writes at every
+root, and on the same with `aug`, the joint path's from a root whose `rip.toml` sets
+`joint = 1`; before is audio v0.43.1's key, read by this reading. Right, the misses by
+kind and the chords' share, the rows summed over the scales:
+
+```
+                           before                   after                   chords
+                  n  right nested rel else    right nested rel else   before after
+plain           720  0.588     25 144  128    0.682     46 143   40   0.772 0.777
+  joint path    720  0.588     25 144  128    0.690     47 137   39   0.860 0.864
+aug             720  0.569     24 146  140    0.664     44 141   57   0.770 0.774
+  joint path    720  0.569     24 146  140    0.668     44 138   57   0.858 0.862
+```
+
+By the label's scale, plain, present path, right and the misses by kind:
+
+```
+                    before                 after
+scale            n  right nest  rel else   right nest  rel else
+phrygian         63  0.635    0   18    5   0.841    0    8    2
+minor           218  0.523    0   84   20   0.628    0   74    7
+harmonic minor   71  0.915    0    0    6   1.000    0    0    0
+dorian           85  0.729    0   11   12   0.824    0   14    1
+minor pent       71  0.000   25    0   46   0.000   46    0   25
+major           212  0.670    0   31   39   0.755    0   47    5
+```
+
+Each cue alone and together, by a root whose `rip.toml` sets `key_bars`, `key_open` and
+`key_close` to 1 or 0, plain, present path; whole, and cut (below):
+
+```
+                     whole    cut
+before               0.588  0.433
+tones and lean       0.667  0.549
+the opening alone    0.717  0.475
+the close alone      0.594  0.460
+the bars alone       0.682  0.562
+all three            0.721  0.458
+```
+
+The opening's gain is the arranger's progressions opening on the tonic; weighed beside
+the bars at 0.25 or 0.1, or beside the lean, it still costs the cut loops. So
+`key_open` and `key_close` weigh nothing by default, which costs the whole loops 28 of
+720.
+
+The verb has no cut, no spoiled head and no stream, so these are a scratch test's, each
+loop's label and recording as `truth ... heads all` rips them:
+
+- **Cut**: each loop cut to begin part-way through its second bar and end part-way
+  through its last but one, its label's events, beats, lines and chords moved with it,
+  707 of 4 s or more; its keys and chords read by a copy of `keyOver` and `MatchChords`
+  over the bars the rip lays, which gave the rip's own key on 1,131 whole loops of
+  1,131. Right before and after, the misses by kind after, the chords before and after:
+  plain 0.433 and 0.562 (34, 207, 69), 0.754 and 0.758, the joint path 0.564 (35, 205,
+  68), 0.808 and 0.813; `aug` 0.421 and 0.549 (33, 207, 79), 0.753 and 0.755, the joint
+  path 0.554 (33, 203, 79), 0.809 and 0.812.
+- **Spoiled pitch**: each note of the label missing at 0.15, a note a semitone beside
+  added at 0.1 and one an octave above at 0.1, in every pitched head alike, a guess at
+  a notes model's errors, read by the same copy: right 0.549 before and 0.644 after
+  (45, 143, 68), `aug` 0.546 and 0.633 (42, 139, 83), the chords 0.746 and 0.749.
+- **Stream**: the label's heads given to `RipStream` as an ear, half a second at a time.
+  A stream names no key until its first bars freeze, then the key those bars rest on,
+  their last no close, and holds it: 511 of the 720 named one before the end, at 9.9 s
+  on average, 345 right where the profile named 311 right; at the end 0.675 right on the
+  present path and 0.686 on the joint, against 0.682 and 0.690 offline and 0.592 before.
+
+A script over the labels' chords and notes reads the rest. The loops open on their tonic
+chord 78 times in 100 and close on it 48; cut, 18 and 25. Of §11's 95 misses of neither
+kind (seed 5, present path), 46 were a key whose lean took it from the label's though
+the label's scale holds every tone the loop sounds over 2% of its notes' time, 37 a
+sounding tone outside the label's scale tipping the fit (a scoop written a semitone or
+two under, a walking bass's approach, a pentatonic's minor chords), 12 the tonic in
+another scale; after, of 45, 12, 18 and 15. What a generated label cannot tell: of the
+578 diatonic loops of seed 11, 139 sound a relative's tonic chord as long as the label's,
+as a vi–IV–I–V loop sounds A minor as long as C major, so their tonic is the arranger's
+word; 70 of the 71 pentatonic labels sound the minor scale's other two tones in their
+chords and bass, so a rip reads the minor; 253 of the 720 sound a tone outside the
+label's scale over 2% of their notes' time; 11 loops' tones fit another scale at the
+label's tonic too.
 
 ## 12. The scores
 

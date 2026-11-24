@@ -24,6 +24,7 @@ import torch
 import average
 import datacheck
 import ripmodels
+import table
 import train
 
 # a corpus of the frames the models hear: its manifest states their layout, and its labels hold every note
@@ -1827,6 +1828,26 @@ class TheDatacheck(unittest.TestCase):
         lines = said.stdout.splitlines()
         self.assertEqual(lines[0], datacheck.HEAD)
         self.assertRegex(lines[1], r"^script +2 +2 +0 +0 +0 +0\.0% +0\.0% \|")
+
+
+class TheRoundsTable(unittest.TestCase):
+    def test_a_set_under_which_a_kind_fell_is_said_before_the_rows(self):
+        """A read-back's log gives a row a kind; a fitted set's falls against the start are the first line."""
+        logs = {"start": "guitar: F1 0.817 before, 0.817 after\n"
+                         "guitar: ends 0.400 before, 0.400 after, of 2794 note(s) matched whose end is given\n"
+                         "guitar: ends 1676 wrong, by stage: strikes early 1418 before and after\n"
+                         "voice: F1 0.424 before, 0.430 after\n",
+                "fit-voice": "guitar: F1 0.790 before, 0.790 after\nvoice: F1 0.470 before, 0.470 after\n"}
+        with tempfile.TemporaryDirectory() as d:
+            paths = []
+            for name, text in logs.items():
+                paths.append(os.path.join(d, f"readback-{name}.log"))
+                with open(paths[-1], "w") as f:
+                    f.write(text)
+            lines = table.table(paths).splitlines()
+        self.assertEqual(lines[0], "fell under fit-voice, against start: notes on guitar 0.817 to 0.790")
+        self.assertEqual(lines[2].split(), ["guitar", "start", "0.817", "0.400", "1118", "of", "2794"] + ["-"] * 6)
+        self.assertEqual(lines[5].split()[:3], ["voice", "fit-voice", "0.470"])
 
 
 if __name__ == "__main__":

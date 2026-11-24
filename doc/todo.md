@@ -586,8 +586,9 @@ lab's chain shows ([Rip training §8](rip-training.md#a-pass-that-carries-on)):
 The tools that fetch a set, write its labels and its list and check them are in
 [`tool/rip-lab`](../tool/rip-lab/README.md). What remains:
 
-- The scripts that run a round and read its rips predate the band frames: they
-  go in once a round has run them. A corpus renders in parts by `pipeline.sh`.
+- A round's fit and read-back are `pipeline.sh`'s stages. The lists they read
+  (a judge's, a search's and a read-back's sides that share no recording) are
+  still drawn by a script of the lab's, not in the tree.
 - Only `audit/corpuscount.py` has a test: a smoke test each for the others.
 - `datasets/fetch.sh egmd` reads `datasets/egmd/batches.tsv`, each file's byte
   range in the set's archive, which the tree does not hold: the batches fetch

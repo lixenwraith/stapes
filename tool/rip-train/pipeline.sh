@@ -233,7 +233,8 @@ rows() {
 	fitroot
 	local from name
 	for from in $ROWS; do
-		name=$(basename "${from%.*}")
+		name=$(basename "$from")
+		name=${name%.*}
 		echo "== rows: $from through the pair, into $FIT/rows/$name"
 		slab "rows-$name" "$FIT/root" "rows $FIT/rows/$name from $(realpath "$from") frames $FRAMES"
 	done

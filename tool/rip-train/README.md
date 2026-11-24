@@ -183,6 +183,9 @@ A list's paths are absolute, since `fit` cuts it a kind into `FIT`. `TRUTH`
 and `READBACK` may name a corpus directory that kept its audio: its loops of
 four seconds or more are listed against their labels under the folder's name.
 A new pair takes a new `FIT`: a judge and the kept frames are their pair's.
+Kept frames are their build's too: a build that reads a head an older one
+did not keep decodes them as if the head were not there, so `FRAMES` kept
+before such a change are heard again.
 
 | Knob | Default | What it does |
 |---|---|---|

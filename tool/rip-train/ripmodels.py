@@ -29,9 +29,10 @@ VOICE_GENES = 32
 FAMILIES = ("piano", "guitar", "voice", "bass", "strings", "winds", "synth", "drums", "unknown")  # RipFamilies, in its order
 NAMES = len(FAMILIES) - 1  # the families a note may be named: unknown is the absence of a name, the last
 
-# the frame model's heads, each added after the last
+# the frame model's heads, each added after the last; struck says that something of no pitch was struck, of a line or of
+# none, and struckvel how hard
 HEADS = [("onset", 1), ("drums", DRUMS), ("pitch", PITCHES), ("voicing", 1), ("wave", WAVES), ("voice", VOICE_GENES), ("strike", PITCHES),
-         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1)]
+         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1), ("struck", 1), ("struckvel", 1)]
 
 
 def refused(what: str, layout) -> str:

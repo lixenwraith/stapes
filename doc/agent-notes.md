@@ -1090,9 +1090,11 @@ proves wrong or that a document now states, and link the document instead.
   their notes, struck at 0.97, and no other pitch over 0.001; at 0.03 the A0
   read 0.43. The trainer's test of the piano's two ends runs at 0.01.
 - A frame model's probe (`--probe` from a model without the beat and downbeat
-  heads) is checked on real weights by its held-out line and by a rip: the other
-  ten heads' losses print to the digit as the start's, and its file ripped with
-  the two heads left out is the start's row for row.
+  heads, or without those it names) is checked on real weights by its file, its
+  held-out line and a rip: the file holds the start's every tensor to the bit, its
+  output layer's rows but the new ones too, the other heads' losses print to the
+  digit as the start's, and its file ripped with the new heads left out is the
+  start's row for row.
 - **A level set against the sharp plane's summed energy is set against a low
   note many times over**: its bands share bins under about 270 Hz and count a
   tone about twenty times at A0 ([audio notes](https://github.com/lixenwraith/audio/blob/main/doc/agent-notes.md#front-ends-and-fidelity)).

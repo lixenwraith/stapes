@@ -44,6 +44,7 @@ DILATIONS=${DILATIONS:-}             # notes: its long convolutions' frames apar
 LR=${LR:-}                           # the learning rate; empty for train.py's own
 EXTRA=${EXTRA:-}                     # more corpora and the share of windows each draws, dir:share by commas, such as recorded sets; empty for none
 CARRY=${CARRY:-}                     # carry: a pass that carries on from INIT with its optimizer's state; empty for a fresh run
+PROBE=${PROBE:-}                     # heads of INIT's model trained alone, by commas, every other weight held; empty for a whole model
 FIT=${FIT:-$CORPUS/fit}              # where a pair's fit goes: its root, rows, sets, logs and table; a new pair takes a new folder
 ROWS=${ROWS:-}                       # rows: the truth lists and corpus directories the judge is fitted on, blank-separated
 LEAVE_OUT=${LEAVE_OUT:-}             # judge: conditions its fit leaves out and counts, blank-separated
@@ -126,7 +127,7 @@ train() {
 	echo "== train: $STEPS steps of batch $BATCH on $CORPUS, $HOLDOUT loops held out${VALIDATE:+, the step picked on $VALIDATE}, width $DIM, $HEADS heads, $LAYERS layers, feed-forward $FFN"
 	(cd "$here" && "$PYTHON" train.py --corpus "$(realpath "$CORPUS")" --out "$(realpath -m "$OUT")" --steps "$STEPS" --batch "$BATCH" --every "$EVERY" --holdout "$HOLDOUT" --checkpoint "$(realpath -m "$CHECKPOINT")" \
 		--dim "$DIM" --heads "$HEADS" --layers "$LAYERS" --ffn "$FFN" --convs "$CONVS" --towers "$TOWERS" ${MIX:+--mix "$MIX"} ${OVER:+--over "$OVER"} ${CHANNEL:+--channel "$CHANNEL"} ${PCEN:+--pcen} ${VALIDATE:+--validate "$(realpath "$VALIDATE")"} \
-		${LR:+--lr "$LR"} ${EXTRA:+--extra "$EXTRA"} ${INIT:+--init "$(realpath "$INIT")"} ${CARRY:+--carry} "$@")
+		${LR:+--lr "$LR"} ${EXTRA:+--extra "$EXTRA"} ${INIT:+--init "$(realpath "$INIT")"} ${CARRY:+--carry} ${PROBE:+--probe "$PROBE"} "$@")
 }
 
 # A shard's files are named by SHARD, so a round never resumes an earlier one's checkpoint.

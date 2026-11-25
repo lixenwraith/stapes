@@ -472,9 +472,10 @@ whose label holds such a kit asks the drums head nothing ([Rip training
 §5](rip-training.md#5-the-targets)); and the frame model's struck heads, the rip's
 strikes off them and their reading by time alone
 ([rip-train](../tool/rip-train/README.md#what-is-struck)). They stay where the
-read-back of a frame pass that grew them gives, on E-GMD's test takes, more of the
-instants than the same model's lines' hits do, and no more strikes a minute than those
-hold hits on a guitar's and on singing; else they go. The heads of a strike's place and
+read-back of the frame model in use, the two trained alone on it
+(`--probe struck,struckvel`), gives, on E-GMD's test takes, more of the instants than its
+lines' hits do, no more strikes a minute than those hold hits on a guitar's and on
+singing, and every reading it had as it was; else they go. The heads of a strike's place and
 genes stand on the branch `drums-places`, in no model in use. What remains, each read
 before the next:
 

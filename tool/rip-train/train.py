@@ -858,16 +858,20 @@ def rows(model) -> dict:
     return out
 
 
-def probe(model) -> callable:
-    """holds every weight of a model but the rows of the heads a probe trains: a notes model's cell heads that say
-    what plays each pitch, a frame model's beat and downbeat. No other weight takes a gradient, theirs is masked
-    out of the output layer that holds them among the other heads, and the function returned puts the other rows
+def probe(model, names: str = "") -> callable:
+    """holds every weight of a model but the rows of the heads a probe trains, those named, else a notes model's cell
+    heads that say what plays each pitch, a frame model's beat and downbeat. No other weight takes a gradient, theirs is
+    masked out of the output layer that holds them among the other heads, and the function returned puts the other rows
     back after a step, since AdamW's decay moves a row with no gradient"""
+    probed = names.split(",") if names else ("pitchfamily", "pitchwave", "pitchvoice") if isinstance(model, ripmodels.PitchNet) else ("beat", "downbeat")
+    heads = rows(model)
+    if unknown := [k for k in probed if k not in heads]:
+        raise SystemExit(f"--probe: no head {', '.join(unknown)} in this model, whose heads are {', '.join(heads)}")
+    layer = heads[probed[0]][0]
+    if any(heads[k][0] is not layer for k in probed):
+        raise SystemExit(f"--probe: {', '.join(probed)} lie over several output layers, and a probe holds one")
     for p in model.parameters():
         p.requires_grad_(False)
-    probed = ("pitchfamily", "pitchwave", "pitchvoice") if isinstance(model, ripmodels.PitchNet) else ("beat", "downbeat")
-    heads = rows(model)
-    layer = heads[probed[0]][0]
     mask = torch.zeros(len(layer.bias), device=layer.weight.device)
     for k in probed:
         mask[heads[k][1]] = 1
@@ -1254,7 +1258,7 @@ def main() -> None:
     ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
     ap.add_argument("--family-unasked", action="store_true", help="a frame model's family head grown and asked nothing: no term for it in the loss and its rows of the output layer zero from the start, so every frame's shares are even and the file says nothing there")
     ap.add_argument("--plays", type=float, default=PLAYS, help="the weight of the heads of what plays each pitch in the total, against what plays the frame: a quarter by default")
-    ap.add_argument("--probe", action="store_true", help="a notes model's heads of what plays each pitch, or a frame model's beat and downbeat heads, trained alone from --init's weights, every other weight held as it was: a notes model carries no cents head, so its file rips as its start, and a frame model's other heads say what its start's did; the last step is exported")
+    ap.add_argument("--probe", nargs="?", const="", metavar="HEADS", help="heads of one output layer, comma-separated, trained alone from --init's weights, every other weight held as it was; by itself a notes model's heads of what plays each pitch, or a frame model's beat and downbeat: a notes model carries no cents head, so its file rips as its start, and a frame model's other heads say what its start's did; the last step is exported")
     ap.add_argument("--even-glides", action="store_true", help="the cents head's gliding readings weigh as much as the rest in its loss wherever a batch holds both")
     ap.add_argument("--dip", type=float, default=0.0, help="the share of the channel's windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room hears")
     ap.add_argument("--sung", default="", help="a corpus of solo singing and the share of a shuffled window's chunks drawn from it, dir:share")
@@ -1296,13 +1300,13 @@ def main() -> None:
         raise SystemExit(f"--towers {args.towers!r}: want layers:heads each, the heads adding up to {len(ripmodels.HEADS)}")
     if args.family_unasked and (args.pitchnet or towers):
         raise SystemExit("--family-unasked: the family head is a frame model's, on one output layer")
-    if args.probe and towers and not args.pitchnet:
+    if args.probe is not None and towers and not args.pitchnet:
         raise SystemExit("--probe with --towers: a model in towers lays its heads over several output layers, and a probe holds one")
-    if args.carry and args.probe:
+    if args.carry and args.probe is not None:
         raise SystemExit("--carry with --probe: a probe holds the weights the rate moves")
     if args.wide is not None and (not args.carry or args.wide < 0):
         raise SystemExit(f"--wide {args.wide}: the passes before a wide one, 0 or more, of a pass that carries on (--carry)")
-    heads = [h for h in ripmodels.PITCHNET_HEADS if h[0] != "cents" or not args.probe]  # a probe's file rips as its start
+    heads = [h for h in ripmodels.PITCHNET_HEADS if h[0] != "cents" or args.probe is None]  # a probe's file rips as its start
     heard = dict(inputs=ripmodels.STACK_BINS + 1, channels=ripmodels.STACK_CHANNELS, outputs=heads) if args.pitchnet else \
         dict(channels=4 if args.pcen else 2, outputs=list(ripmodels.HEADS))
     cfg = ripmodels.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,
@@ -1400,7 +1404,7 @@ def main() -> None:
     if FAMILY_UNASKED:
         unask_family(model)
         print("the family head is asked nothing: its rows zero, every frame's shares even")
-    hold = probe(model) if args.probe else None
+    hold = probe(model, args.probe) if args.probe is not None else None
     print(f"{sum(p.numel() for p in model.parameters())} weights, {len(loops)} loops, {sum(len(m) for m, _ in loops)} frames, {len(held)} held out in {len(val_frs)} windows")
     if rate:
         print(f"read by its {', '.join(h for h, _ in heads)}, the heads audio reads from a {'notes' if args.pitchnet else 'frame'} model in a pair")
@@ -1556,7 +1560,7 @@ def main() -> None:
                             "best": (best_loss, best_step, best_state), "validated": validated, **({"rate": rate.state()} if rate else {})}, args.checkpoint)
     if rate:
         print(rate.close())
-    if args.probe:
+    if hold:
         print(f"a probe: exporting its last step, {step}")
     elif args.validate and validated[2] is not None:
         model.load_state_dict(validated[2])

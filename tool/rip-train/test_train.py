@@ -214,31 +214,11 @@ class WhatPlaysEachPitch(unittest.TestCase):
         model.sure.fill_(0.75)
         with tempfile.TemporaryDirectory() as d:
             ripmodels.export(model, os.path.join(d, "notes.bin"))
-            with open(os.path.join(d, "notes.bin"), "rb") as f:
-                body = f.read()
-        at = 4 + 16 + len(ripmodels._cells_header(model))
-
-        def take(fmt):
-            nonlocal at
-            v = struct.unpack_from("<" + fmt, body, at)
-            at += struct.calcsize("<" + fmt)
-            return v if len(v) > 1 else v[0]
-
-        def name():
-            nonlocal at
-            n = take("H")
-            at += n
-            return body[at - n:at].decode()
-        heads = [(name(), take("I")) for _ in range(take("I"))]
-        self.assertEqual([(name(), take("f")) for _ in range(take("I"))], [("layout", float(ripmodels.LAYOUT))])
+            heads, constants, tensors = exported(os.path.join(d, "notes.bin"), 4 + 16 + len(ripmodels._cells_header(model)))
+        self.assertEqual(constants, [("layout", float(ripmodels.LAYOUT))])
         p = ripmodels.PITCHES
         self.assertEqual(heads[4:8], [("cents", 2 * p), ("pitchfamily", ripmodels.NAMES * p), ("pitchwave", ripmodels.WAVES * p), ("pitchvoice", ripmodels.VOICE_GENES * p)])
         self.assertEqual(heads[-1], ("sure", 1))
-        tensors = {}
-        for _ in range(take("I")):
-            k, dims = name(), [take("I") for _ in range(take("B"))]
-            tensors[k] = np.frombuffer(body, "<f4", int(np.prod(dims)), at).reshape(dims)
-            at += 4 * int(np.prod(dims))
         frame = sum(n for k, n in heads[8:])
         self.assertEqual(tensors["frameout.weight"].shape, (frame, model.frame.in_features))
         self.assertEqual((float(np.abs(tensors["frameout.weight"][-1]).max()), float(tensors["frameout.bias"][-1])), (0.0, 0.75))
@@ -287,6 +267,32 @@ def run(*flags, steps=1) -> str:
     with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as said:
         train.main()
     return said.getvalue()
+
+
+def exported(path: str, shape: int) -> tuple:
+    """a weight file's heads, constants and tensors, after the bytes that state its model's shape"""
+    with open(path, "rb") as f:
+        body = f.read()
+    at = shape
+
+    def take(fmt):
+        nonlocal at
+        v = struct.unpack_from("<" + fmt, body, at)
+        at += struct.calcsize("<" + fmt)
+        return v if len(v) > 1 else v[0]
+
+    def name():
+        nonlocal at
+        n = take("H")
+        at += n
+        return body[at - n:at].decode()
+
+    heads, constants, tensors = [(name(), take("I")) for _ in range(take("I"))], [(name(), take("f")) for _ in range(take("I"))], {}
+    for _ in range(take("I")):
+        k, dims = name(), [take("I") for _ in range(take("B"))]
+        tensors[k] = np.frombuffer(body, "<f4", int(np.prod(dims)), at).reshape(dims)
+        at += 4 * int(np.prod(dims))
+    return heads, constants, tensors
 
 
 def handed(*flags, steps=1) -> list:
@@ -458,34 +464,44 @@ class TheBeatAndTheBarLine(unittest.TestCase):
                 self.assertIn(listed + layout + struct.pack("<I", len(after["model"])), body)
         self.assertFalse({"struck", "struckvel"} & set(dict(ripmodels.PITCHNET_HEADS)))
 
-    def test_a_probe_trains_the_two_heads_alone_on_a_frame_model_held_as_it_was(self):
-        """--probe on a frame model started from one without the beat and downbeat heads trains those two heads' rows
-        of the output layer and holds the rest: after three steps every other weight is the start's, every other
-        head says bit for bit what the start's did, the two heads say something else, and the last step is exported."""
-        old = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=heads_before("beat"))
-        before = ripmodels.FrameModel(old).state_dict()
-        with tempfile.TemporaryDirectory() as d:
-            at = lambda name: os.path.join(d, name)
-            corpus(d, [{"bpm": 100, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
-            torch.save({"model": before, "layout": ripmodels.LAYOUT, "cfg": asdict(old)}, at("old.pt"))
-            run("--corpus", d, "--out", at("start.bin"), "--init", at("old.pt"), "--checkpoint", at("start.pt"), "--lr", "0")  # the start: the two rows as grown
-            said = run("--corpus", d, "--out", at("probed.bin"), "--init", at("old.pt"), "--checkpoint", at("probed.pt"), "--probe", "--lr", "0.01", steps=3)
-            start, probed = torch.load(at("start.pt")), torch.load(at("probed.pt"))
-        self.assertIn("a probe: exporting its last step, 3", said)
-        had = old.out_size
-        for k, v in before.items():
-            with self.subTest(tensor=k):
-                self.assertTrue(torch.equal(probed["model"][k][:had] if k.startswith("out.") else probed["model"][k], v))
-        frames = torch.randn(1, 40, 2 * ripmodels.INPUTS, generator=torch.Generator().manual_seed(1))
-        says = []
-        for ck in (start, probed):
-            model = ripmodels.FrameModel(ripmodels.shape(ck["cfg"]))
-            model.load_state_dict(ck["model"])
+    def test_a_probe_trains_the_heads_it_names_alone_on_a_frame_model_held_as_it_was(self):
+        """--probe on a frame model started from one without the heads trained, the beat and the downbeat by itself or
+        those it names, trains their rows of the output layer and holds the rest: the file it exports, its last step's,
+        holds every other weight of the start's file, its every other output is the start's to the bit, and the two
+        heads say something else. A head the model lacks, or heads of two output layers, are refused."""
+        shape = dict(dim=8, heads=2, layers=1, ffn=16, window=4)
+        x = torch.randn(1, 40, 2 * ripmodels.INPUTS, generator=torch.Generator().manual_seed(1))
+        for first, words, trained in (("beat", ["--probe"], {"beat", "downbeat"}), ("struck", ["--probe", "struck,struckvel"], {"struck", "struckvel"})):
+            old = ripmodels.Config(**shape, outputs=heads_before(first))
+            start = ripmodels.FrameModel(old).eval()
+            with tempfile.TemporaryDirectory() as d:
+                at = lambda name: os.path.join(d, name)
+                corpus(d, [{"bpm": 100, "bars": 1, "events": [note(0, 10, 60, "piano"), hit(20, 0)]}])
+                torch.save({"model": start.state_dict(), "layout": ripmodels.LAYOUT, "cfg": asdict(old)}, at("old.pt"))
+                run("--corpus", d, "--out", at("start.bin"), "--init", at("old.pt"), "--lr", "0")  # the start's file, the new rows as grown
+                said = run("--corpus", d, "--out", at("probed.bin"), "--init", at("old.pt"), *words, "--lr", "0.01", steps=3)
+                with self.assertRaisesRegex(SystemExit, "no head tempo in this model"):
+                    run("--corpus", d, "--out", at("no.bin"), "--init", at("old.pt"), "--probe", "struck,tempo")
+                (heads, _, was), (_, _, now) = exported(at("start.bin"), 48), exported(at("probed.bin"), 48)
+            self.assertIn("a probe: exporting its last step, 3", said)
+            self.assertEqual(heads, ripmodels.HEADS)
+            model = ripmodels.FrameModel(ripmodels.Config(**shape)).eval()
+            for k, t in ripmodels.tensors(model):
+                t.copy_(torch.from_numpy(now[k].copy()))
+            rows = train.rows(model)
             with torch.no_grad():
-                says.append(model.eval()(frames))
-        self.assertTrue(torch.equal(says[0][..., :had], says[1][..., :had]))
-        for k in (had, had + 1):
-            self.assertFalse(torch.equal(says[0][..., k], says[1][..., k]))
+                said_by, says = start(x), model(x)
+            self.assertTrue(torch.equal(says[..., :old.out_size], said_by))
+            for k in was:
+                moved = np.zeros(len(was[k]), bool)
+                if k.startswith("out."):
+                    for h in trained:
+                        moved[rows[h][1]] = True
+                with self.subTest(first=first, tensor=k):
+                    self.assertTrue(np.array_equal(now[k][~moved], was[k][~moved]))
+                    self.assertFalse(moved.any() and any(np.array_equal(now[k][rows[h][1]], was[k][rows[h][1]]) for h in trained))
+        with self.assertRaisesRegex(SystemExit, "lie over several output layers"):
+            train.probe(ripmodels.PitchNet(CFG), "onset,pitchfamily")
 
     def test_a_family_unasked_has_no_term_and_its_rows_stay_zero(self):
         """--family-unasked on a frame model grown from the nine heads before the family: the step's loss has no

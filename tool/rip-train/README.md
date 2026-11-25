@@ -109,7 +109,7 @@ tool/rip-train/pipeline.sh rows judge fit readback table keep   # the fit of a p
 | `ROOT` | `~/.config/stapes` | the stapes root, under `$XDG_CONFIG_HOME` when that is set: `install` copies the weights into it as `ripframe.bin`, and `bench` hears with its `rip.toml` |
 | `NOTES` | empty | a notes model's weight file: `notes` trains it by `train`'s knobs with `--pitchnet`, its checkpoint beside it as `.pt`, and `bench`, `install` and the fit put it beside `OUT` as `ripnotes.bin` |
 | `DILATIONS` | empty | `notes`: the notes model's long convolutions, their frames apart, `train.py`'s `--dilations` |
-| `LR`, `EXTRA`, `CARRY` | empty | `train.py`'s `--lr`; `--extra`, more corpora and the share of windows each draws, `dir:share` by commas, such as the recorded sets; and `carry` for `--carry`, a pass that carries on from `INIT` |
+| `LR`, `EXTRA`, `CARRY`, `PROBE` | empty | `train.py`'s `--lr`; `--extra`, more corpora and the share of windows each draws, `dir:share` by commas, such as the recorded sets; `carry` for `--carry`, a pass that carries on from `INIT`; and the heads `--probe` trains alone, by commas |
 | `JUDGE`, `SET` | empty | `install`: a judge's file and a `rip.toml`, one of the fit's sets, put in the root as `ripjudge.bin` and `rip.toml` |
 | `KINDS` | empty | `install`, `readback`: the sets a kind of sound is ripped under, `kind=file` blank-separated (`voice=$FIT/sets/voice.toml`), put in the root as `rip.<kind>.toml` |
 | `BENCH_LOOPS`, `BENCH_BARS` | 12, 4 | the fresh loops `bench` grades on |
@@ -595,7 +595,8 @@ targets and the loss.
   `FrameSpec`'s, any after them read by nothing ("frame model's heads are [...],
   want [...] first"), so the start's file loads in no audio that reads the new
   head. With `--probe` a run trains the
-  beat and downbeat heads' rows of the output layer alone: every other weight
+  beat and downbeat heads' rows of the output layer alone, or those of the heads
+  it names (`--probe struck,struckvel`): every other weight
   stays the start's bit for bit, as a notes model's probe holds it
   ([below](#parity)), so the file's other heads say what the start's did and its
   rip with the two left out is the start's, and the last step is exported. A fine-tune without it moves the heads the decoders already
@@ -646,7 +647,9 @@ losses.
   grow onto a pass's weights as any head added later does: `--init` from the
   checkpoint that holds them, with the pass's own shape, starts their rows of the
   output layer fresh and carries every other weight, so every other output is the
-  pass's to the bit. A notes model has neither.
+  pass's to the bit. A notes model has neither. `--probe struck,struckvel`
+  (`pipeline.sh`'s `PROBE`) trains the two alone and holds the rest of the model as
+  it was, so its file's rip is the start's but for the strikes.
 - **The lines** give `struck's F1`, or `nothing struck, struck's peaks N a minute`
   ([reading a run](#reading-a-run)).
 
@@ -803,9 +806,9 @@ of the cells' output layer, which holds every cell head, and the rest are put ba
 after each step against AdamW's decay), the probed notes model carries no cents head,
 and the last step is exported, since no score that picks a step moves. Its file rips as its start's
 does, so only the new heads need reading. A frame model's probe trains its beat and
-downbeat heads the same way, the rows of its one output layer ([the beat and the bar
-line](#the-beat-and-the-bar-line)); a frame model in towers, whose heads lie over
-several output layers, is refused.
+downbeat heads, or those it names, the same way, the rows of its one output layer ([the
+beat and the bar line](#the-beat-and-the-bar-line)); a frame model in towers, whose heads
+lie over several output layers, is refused, as are named heads that do.
 
 The held-out run's last lines give the reach; the shipped run prints what its file
 carries (`a family naming a note past a share of R`), and a file with no measure

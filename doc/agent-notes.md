@@ -296,7 +296,7 @@ proves wrong or that a document now states, and link the document instead.
   in, the truth's lines moved by the cut, beside whole ones: a search fitted on
   whole loops alone can learn the lean. Read a key so too, on loops cut a bar or
   two in from each side: the arranger's progressions open on their tonic chord 78
-  times in 100, cut 18, and a rule leaning on the opening lost 0.104 there.
+  times in 100, cut 18, so a rule leaning on the opening gains on whole loops alone.
 - Write a truth from a score or a MIDI file, never from memory.
 - Score recordings pooled (every note once) beside their mean: a few notes move
   a short recording's F1 far.
@@ -353,16 +353,16 @@ proves wrong or that a document now states, and link the document instead.
 - **A window is heard as the mix of what plays in it.** Set against one note
   rendered alone at its peak, the recording around it holds the line's other
   notes, the other lines and the drums, and a voice whose attack or ring fills
-  them wins: on 40 clean loops at the labels' own notes the label's voice was
-  nearest on 0 of 86 lines, a string or modal wave on 57. The line's notes in
-  the window, the others' and the hits beside them, each at a gain of its own,
-  put it nearest on 40, most of the rest losing to a voice near its genes.
-- Read so (`fits ... given`, 50 loops of seed 23, 113 lines a reading, the
-  default sizes), the fitted wave is the label's on 109 lines alone, 98 in
-  their loops and 82 with lengths and velocities moved as the analysis's rip
-  moves them, and 104, 90 and 83 under `aug`, where one note at its peak got
-  82, 48, 45 and 78, 56, 47. The best seed is now the label's voice, or the
-  bank voice it was redrawn from, and a fit that beats it does so by a
+  them wins: on 40 clean loops at the labels' own notes, a ceiling on labels, the
+  label's voice was nearest on 0 of 86 lines, a string or modal wave on 57. The
+  line's notes in the window, the others' and the hits beside them, each at a gain
+  of its own, put it nearest on 40, most of the rest losing to a voice near its genes.
+- Read so (`fits ... given`, the labels' notes and so a ceiling: 50 loops of seed
+  23, 113 lines a reading, the default sizes), the fitted wave is the label's on
+  109 lines alone, 98 in their loops and 82 with lengths and velocities moved as
+  the analysis's rip moves them, and 104, 90 and 83 under `aug`, where one note at
+  its peak got 82, 48, 45 and 78, 56, 47. The best seed is now the label's voice,
+  or the bank voice it was redrawn from, and a fit that beats it does so by a
   twentieth of its distance, wandering 0.1 to 0.25 from its genes where the
   measure hears little: the fits nearer the genes than their seed fell.
 - **A line two voices share is named by its other voice's loud, long notes.**
@@ -373,13 +373,9 @@ proves wrong or that a document now states, and link the document instead.
   and a fitted saw stand within a hundredth. A window's longest and loudest
   notes are listened to first, so the owner holds fewer of them than of the
   notes. `given` cannot show it, as its shared lines are voices doubled by
-  another, each line its own notes. Over 49 loops of `corpus <dir> 196 4 aug gen
-  seed 23`, the label's events in the heads' place, a shared line is named right 0 of 16 times where a string owns it,
-  17 of 23 a modal and 15 of 26 a saw, its owner holding 0.70 of its notes
-  and 0.66 of the windows listened to; one-voice lines 56 of 71. The same
-  line without `aug`: 4 of 14, 18 of 23, 14 of 26, 0.71 and 0.73, 65 of 74.
-  A median of the windows, each over its nearest seed's, is flat: most
-  windows hold too little of the line to tell voices apart.
+  another, each line its own notes. A median of the windows, each over its
+  nearest seed's, is flat: most windows hold too little of the line to tell
+  voices apart.
 - **The search stops short within the right wave.** Two thirds of its first
   pool are drawn across the whole genome and crossed into the seeds, and a
   move changes a sixth of the genes by a tenth, so it never refines near a

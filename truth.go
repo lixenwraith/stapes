@@ -39,7 +39,8 @@ func cmdAgree(s *Session, a []string) error {
 // corpus loop's label: the notes given it heard by pitch and onset, then line by
 // line, and the hits; a MIDI file's bars, a label's and a JAMS file's beats, a
 // truth of beats alone, score its bar lines, and a label's readings what it says
-// past them. Timed, the truth's seconds are the recording's: no map is fitted.
+// past them; a label's or a MIDI file's strikes score what the rip heard struck.
+// Timed, the truth's seconds are the recording's: no map is fitted.
 func cmdTruth(s *Session, a []string) error {
 	rp, ok := s.rips[a[0]]
 	if !ok {
@@ -60,18 +61,18 @@ func cmdTruth(s *Session, a []string) error {
 		return err
 	}
 	var truth []audio.RipNote
-	var hits []audio.RipHit
+	var hits, strikes []audio.RipHit
 	var score *audio.MIDIScore
 	var lab *corpusLoop
 	switch {
 	case isMIDI(a[1]):
 		if score, err = audio.ReadMIDI(bytes.NewReader(data)); err == nil {
-			truth, hits = score.Notes, score.Hits
+			truth, hits, strikes = score.Notes, score.Hits, slices.Concat(score.Hits, score.Struck)
 		}
 	case label:
 		lab = new(corpusLoop)
 		if err = json.Unmarshal(data, lab); err == nil {
-			truth, hits = lab.notes(), lab.hits()
+			truth, hits, strikes = lab.notes(), lab.hits(), lab.strikes()
 		}
 	case strings.EqualFold(filepath.Ext(a[1]), ".jams"):
 		beats, downbeats, err := audio.ReadJAMSBeats(bytes.NewReader(data))
@@ -119,6 +120,9 @@ func cmdTruth(s *Session, a []string) error {
 		if at == nil {
 			at = func(sec float64) float64 { return hg.Stretch*sec + hg.Offset }
 		}
+	}
+	if lab != nil || len(strikes) > 0 {
+		reportStruck(s.out, a[0], rp, strikes, timed)
 	}
 	if score != nil {
 		beats, downbeats := score.Beats(at)
@@ -399,6 +403,25 @@ func reportHits(w io.Writer, name string, r *audio.Rip, given []audio.RipHit, ti
 		}
 	}
 	return hg
+}
+
+// reportStruck prints how a rip's strikes answer those given by their time alone,
+// its lines' hits counted beside them, or how many it heard where none is given;
+// nothing for a rip that heard none
+func reportStruck(w io.Writer, name string, rp *ripped, given []audio.RipHit, timed bool) {
+	r, minutes := rp.rip, 0.0
+	if rp.rate > 0 {
+		minutes = float64(len(rp.x)) / float64(rp.rate) / 60
+	}
+	c := countStruck(r, given, 30/float64(r.BPM)/audio.StepsPerBeat, timed, minutes)
+	switch {
+	case c.read == 0:
+	case len(given) > 0:
+		fmt.Fprintf(w, "struck %s %d, given %d instant(s), %d answered by time alone, F1 %.3f, the lines' hits %.3f; each of their %d strike(s) its own hit, %.3f, the lines' %.3f, and one hit an instant %.3f at most\n",
+			name, c.by.heard, c.by.given, c.by.hits, c.by.f1(), c.lines.f1(), c.own.given, c.own.f1(), c.linesOwn.f1(), c.most())
+	default:
+		fmt.Fprintf(w, "struck %s %d, %.1f a minute where none plays, the lines' hits %d\n", name, c.own.heard, float64(c.own.heard)/max(minutes, 1e-9), c.linesOwn.heard)
+	}
 }
 
 // levelBands part the notes given by how far, in dB, the recording plays each

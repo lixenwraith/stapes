@@ -436,6 +436,15 @@ proves wrong or that a document now states, and link the document instead.
 - A judge's fit is read with a collection left out, never a recording.
 - A truth that holds one line alone counts every chord the rip hears as wrong:
   read it by that line's notes right.
+- **A truth list reads a loop its corpus skips.** A label whose lag could not be
+  told (`skip`, no `lag`) keeps its file's times, and a list that names it counts
+  the rip against them within 50 ms: 6 of 20 E-GMD train takes drawn by hand were
+  such, and one struck head read F1 0.912 by instant over the 20 and 0.941 over the
+  14. Leave `skip.txt`'s loops out of a list.
+- **A struck head's precision is read against labels that leave hits out.** Over
+  those 14 takes 184 of its 6,625 peaks had no strike given within 50 ms, and 154 of
+  the 184 had a hit in the label's `left`: the reading counts them false, as it counts
+  the lines' hits there, where the trainer asks nothing.
 - Hold-outs are by source, never by file: GuitarSet's players (00 to 03 train,
   04 validates, 05 tests), VocalSet's singers (f2, f8, m3, m5 and m10 held out),
   E-GMD's split, NSynth's instruments, a generated set's seed. Check every

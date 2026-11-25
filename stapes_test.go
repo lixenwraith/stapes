@@ -2564,7 +2564,7 @@ func TestTuneTruthMovesOnlyTheGenesItIsTold(t *testing.T) {
 	s := newTestSession(t, &out)
 	defer teardown(t, s)
 	runOrFatal(t, s, &out, "! tune truth truths.txt genes strike,kick_share\n")
-	for _, want := range []string{`genes "kick_share": want parts or their genes`, "notes (strike, strike_low, ", "drums (onset_min), bars (tempo_prior, "} {
+	for _, want := range []string{`genes "kick_share": want parts or their genes`, "notes (strike, strike_low, ", "drums (onset_min, struck), bars (tempo_prior, "} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("no %q refusing a gene tune truth does not search:\n%s", want, out.String())
 		}
@@ -2616,11 +2616,11 @@ func TestTuneTruthMovesOnlyTheGenesItIsTold(t *testing.T) {
 	notes, _ := search("notes", modelGenes...)
 	drums, p := search("strike,onset_min", modelGenes[0], drumGenes[0])
 	start.JointMargin = margin
-	if !freed(notes, "notes") || !freed(drums, "strike, drums") || p.OnsetMin >= start.OnsetMin {
+	if !freed(notes, "notes") || !freed(drums, "strike, onset_min") || p.OnsetMin >= start.OnsetMin {
 		t.Errorf("told the notes and then strike and onset_min, want each said free and onset_min moved under the start's %g by the second:\n%s\n%s", start.OnsetMin, notes, drums)
 	}
 	untold, _ := search("", all...)
-	if told, _ := search("bars,drums,notes", all...); told != untold || !freed(untold, "notes, drums, bars") {
+	if told, _ := search("bars,drums,notes", all...); told != untold || !freed(untold, "notes, onset_min, bars") {
 		t.Errorf("untold, want every part free, the search told them all:\n%s\n%s", untold, told)
 	}
 }
@@ -2879,6 +2879,97 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 	}
 	if p, err := audio.LoadRipParams(data); err != nil || p.OnsetMin <= start.OnsetMin {
 		t.Errorf("wrote %+v (%v): want onset_min over the start's %g", p, err, start.OnsetMin)
+	}
+}
+
+// builtStruck hears through the analysis with what is struck written by hand: how
+// sure of a strike at each frame it names
+type builtStruck map[int]float64
+
+func (h builtStruck) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFrames, error) {
+	f, err := audio.Ripper{Params: p}.Hear(x, rate)
+	if err != nil {
+		return nil, err
+	}
+	f.Struck, f.StruckVel = make([]float64, len(f.Flux)), make([]float64, len(f.Flux))
+	for at, v := range h {
+		f.Struck[at] = v
+	}
+	return f, nil
+}
+
+// TestTuneTruthReadsWhatIsStruckByItsTimeAlone: a rip's strikes are counted against
+// every one a label gives, of a line or of none, by instant and with its lines' hits
+// beside, then each given strike with a hit of its own, which one hit an instant
+// cannot reach, and a minute where none is given; their bar is searched where the
+// models hear what is struck, its moves scored by instant, and nowhere else
+func TestTuneTruthReadsWhatIsStruckByItsTimeAlone(t *testing.T) {
+	var out bytes.Buffer
+	s := newTestSession(t, &out)
+	defer teardown(t, s)
+	list, r, lab := crescendoTruth(t, s)
+	s.rip = audio.DefaultRipParams()
+	dir, gap, lines := filepath.Dir(list), s.rip.OnsetGap, audio.Instants(lab.hits(), s.rip.OnsetGap)
+	frame := func(h audio.RipHit, after int) int { return int(math.Round(h.Start/audio.RipFrameSec)) + after }
+	// a tom under a line's first instant and one alone between two others
+	for _, f := range []int{frame(lines[4], 2), frame(lines[6], 10)} {
+		lab.Events = append(lab.Events, corpusEvent{Frame: f, End: f, Drum: -1})
+	}
+	given := audio.Instants(lab.strikes(), gap)
+	if len(given) != len(lines)+1 || len(lab.strikes()) != len(lab.hits())+2 {
+		t.Fatalf("%d instants of %d strikes over %d of %d hits: no fixture", len(given), len(lab.strikes()), len(lines), len(lab.hits()))
+	}
+	ear := builtStruck{frame(lines[8], 10): 0.51, frame(lines[10], 10): 0.51}
+	for _, h := range given[1:] {
+		ear[frame(h, 0)] = 0.95
+	}
+	quiet := corpusLoop{Events: slices.DeleteFunc(slices.Clone(lab.Events), func(e corpusEvent) bool { return e.MIDI == 0 })}
+	for name, l := range map[string]corpusLoop{"loop.json": lab, "quiet.json": quiet} {
+		if err := writeJSON(filepath.Join(dir, name), l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFile(t, list, "loop.wav\tloop.json\tloop\ttimed\nloop.wav\tquiet.json\tquiet\ttimed\n")
+	takes, _, err := readTruthList(list, ear, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got [2]struckCount
+	for i, take := range takes {
+		snd, err := take.sound()
+		if err != nil {
+			t.Fatal(err)
+		}
+		c, err := take.count(snd, s.rip, s.lead)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got[i] = c.struck
+	}
+	n, strikes, minutes := len(given), len(lab.strikes()), got[0].minutes
+	want := [2]struckCount{{by: noteCount{n - 1, n, n - 1}, lines: noteCount{n - 1, n, n - 1}, own: noteCount{n - 1, strikes, n - 1}, linesOwn: noteCount{len(r.Hits()), strikes, len(r.Hits())}, read: 1, minutes: minutes},
+		{by: noteCount{heard: n - 1}, lines: noteCount{heard: n - 1}, own: noteCount{heard: n - 1}, linesOwn: noteCount{heard: len(r.Hits())}, read: 1, quiet: minutes}}
+	if got != want || minutes <= 0 || math.Abs(got[0].most()-2*float64(n)/float64(n+strikes)) > 1e-9 {
+		t.Errorf("counted %+v, want %+v over some minutes", got, want)
+	}
+	s.rip.Struck, s.rips["loop"] = 0.5, &ripped{rip: &audio.Rip{BPM: r.BPM, Meter: r.Meter, Beats: r.Beats, Bars: r.Bars, Params: r.Params, Struck: given[1:]}}
+	runOrFatal(t, s, &out, fmt.Sprintf("truth loop %s timed\ntruth loop %s timed\n", filepath.Join(dir, "loop.json"), filepath.Join(dir, "quiet.json")))
+	file := filepath.Join(dir, "rip.toml")
+	o := tuneOptions{generations: 2, pool: 8, seed: 1, guard: 1, hold: 2, genes: []string{"struck"}}
+	if err := s.tuneTruth(o, list, file, ear); err != nil {
+		t.Fatalf("tune truth: %v\n%s", err, out.String())
+	}
+	for _, want := range []string{fmt.Sprintf("struck loop %d, given %d instant(s), %d answered by time alone, F1 ", n-1, n, n-1), fmt.Sprintf("struck loop %d, ", n-1), "a minute where none plays, the lines' hits ",
+		"the genes free: struck; ", "loop: struck F1 ", fmt.Sprintf(", by time alone over %d instant(s) given; each of their %d strike(s) its own hit, ", n, strikes), "quiet: struck ", " strike(s) a minute before, "} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("no %q in what truth and tune truth say of strikes:\n%s", want, out.String())
+		}
+	}
+	if s.rip.Struck <= 0.51 {
+		t.Errorf("the search left struck at %g, want it over the doubts at 0.51:\n%s", s.rip.Struck, out.String())
+	}
+	if err := s.tuneTruth(o, list, file, analysisEar{}); err == nil || !strings.Contains(err.Error(), "none named is searched here") {
+		t.Errorf("struck searched where nothing hears what is struck: %v", err)
 	}
 }
 

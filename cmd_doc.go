@@ -318,7 +318,7 @@ func (s *Session) takeRip(file, name string, rp *ripped, bars int, nodrums bool)
 		for b := range r.Bars {
 			r.Bars[b].Drums = [audio.InstrClap][]audio.Step{}
 		}
-		r.Tone = [audio.InstrClap]audio.RipTone{} // no drums to match
+		r.Tone, r.Struck = [audio.InstrClap]audio.RipTone{}, nil // no drums to match
 	}
 	if len(r.Patterns(name, bars)) == 0 {
 		return fmt.Errorf("%s: nothing heard to write", file)

@@ -243,9 +243,10 @@ Over the library's rip (library
   alone, its `beats` and `downbeats`, `corpusLoop.grid`, a recording's from
   its list's beats, GuitarSet's its JAMS files' `beat_position`; a
   transcription's `.mid` holds its writer's default signature). Each
-  condition then carries up to three scores (`truthCount`, `scores`): its
+  condition then carries up to four scores (`truthCount`, `scores`): its
   notes' F1 by pitch and onset, its drums' F1 (`MatchHits`, as `truth` counts
-  them) and its bars, the mean of two shares (`MatchBars`): the downbeats
+  them), its strikes' F1 by instant (`countStruck`) and its bars, the mean of
+  two shares (`MatchBars`): the downbeats
   given on a bar line of a rip whose bar is the given's length, and the beats
   given with a beat of the rip's on them, so a bar of the given's length over
   beats not its own, a 12/8 read over its dotted quarters, scores two thirds.
@@ -258,7 +259,15 @@ Over the library's rip (library
   minute its recordings with drums give (`hitRate`): 2g/(2g+h) for h heard
   against g, one with none heard, and what the same hits cost pooled with a
   recording as long heard whole. A list that gives no hit has no rate and no
-  drums' score. A set scores their mean:
+  drums' score. Where the models hear what is struck, a rip's strikes
+  (`Rip.Struck`) are counted against every one a truth gives, a `.mid`'s drum
+  channel's or a label's events at `midi` 0, on a line or on none
+  (`corpusLoop.strikes`), by their time alone within the hits' tolerance
+  (`MatchStruck`): over instants (`Instants`, at the rip's `onset_gap`), which
+  is the score, and each given strike asking a hit of its own, which one hit an
+  instant cannot reach and whose most is said; the lines' hits are counted the
+  same two ways beside them, and where none is given the strikes score as the
+  drums do. A set scores their mean:
   each is a share of one capability, none converts into another, and the
   guard holds each, so a set that takes more than `guard` from any one at the
   start scores under zero (`guarded`) and is never written. `weigh` adds the
@@ -275,7 +284,8 @@ Over the library's rip (library
   bars it is read over, the chords with the bars' genes and the key, which the
   bars' score sees, and the hits'
   loudness with `onset_min` and the bars, which the drums' F1 sees.
-  With hits `onset_min` is searched too (`drumGenes`), with bars the tempo's
+  With strikes given `onset_min` is searched too (`drumGenes`), and `struck`
+  where the models hear them, with bars the tempo's
   prior, combs, cuts, `tightness`, the bars' weights, the meter's margins and
   the joint path's costs and levels (`barGenes`). `genes` frees of these those
   it names alone (`parseGenes`), a gene by its key in `rip.toml` or a part,

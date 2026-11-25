@@ -1722,12 +1722,16 @@ class TheDatacheck(unittest.TestCase):
 
 class TheRoundsTable(unittest.TestCase):
     def test_a_set_under_which_a_kind_fell_is_said_before_the_rows(self):
-        """A read-back's log gives a row a kind; a fitted set's falls against the start are the first line."""
+        """A read-back's log gives a row a kind, what is struck beside its lines' hits, a minute where none plays; a
+        fitted set's falls against the start are the first line."""
         logs = {"start": "guitar: F1 0.817 before, 0.817 after\n"
                          "guitar: ends 0.400 before, 0.400 after, of 2794 note(s) matched whose end is given\n"
                          "guitar: ends 1676 wrong, by stage: strikes early 1418 before and after\n"
-                         "voice: F1 0.424 before, 0.430 after\n",
-                "fit-voice": "guitar: F1 0.790 before, 0.790 after\nvoice: F1 0.470 before, 0.470 after\n"}
+                         "guitar: struck 0.2 strike(s) a minute before, 0.3 after, the lines' hits 0.1, 0.1, heard where none plays, against 231 instant(s) given elsewhere\n"
+                         "voice: F1 0.424 before, 0.430 after\n"
+                         "E-GMD: struck F1 0.912 before, 0.915 after, the lines' hits 0.882, 0.880, by time alone over 7767 instant(s) given; each of their 13622 strike(s) its own hit, 0.677, 0.678, the lines' 0.754, 0.753, and one hit an instant 0.726 at most\n",
+                "fit-voice": "guitar: F1 0.790 before, 0.790 after\nvoice: F1 0.470 before, 0.470 after\n"
+                             "E-GMD: struck F1 0.901 before, 0.901 after, the lines' hits 0.882, 0.882, by time alone\n"}
         with tempfile.TemporaryDirectory() as d:
             paths = []
             for name, text in logs.items():
@@ -1735,9 +1739,10 @@ class TheRoundsTable(unittest.TestCase):
                 with open(paths[-1], "w") as f:
                     f.write(text)
             lines = table.table(paths).splitlines()
-        self.assertEqual(lines[0], "fell under fit-voice, against start: notes on guitar 0.817 to 0.790")
-        self.assertEqual(lines[2].split(), ["guitar", "start", "0.817", "0.400", "1118", "of", "2794"] + ["-"] * 6)
+        self.assertEqual(lines[0], "fell under fit-voice, against start: notes on guitar 0.817 to 0.790, struck on E-GMD 0.912 to 0.901")
+        self.assertEqual(lines[2].split(), ["guitar", "start", "0.817", "0.400", "1118", "of", "2794", "-", "-", "0.2/min", "0.1/min"] + ["-"] * 4)
         self.assertEqual(lines[5].split()[:3], ["voice", "fit-voice", "0.470"])
+        self.assertEqual(lines[6].split(), ["E-GMD", "start"] + ["-"] * 5 + ["0.912", "0.882"] + ["-"] * 4)
 
 
 if __name__ == "__main__":

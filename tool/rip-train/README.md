@@ -174,7 +174,9 @@ tool/rip-train/pipeline.sh rows judge fit readback table keep
   leaves the logs.
 - `table` writes `$FIT/table.txt` from those logs (`table.py`): a kind a
   block and a set a row, notes, ends (their share and the notes whose end is
-  right), loudness, drums, bars, parts, key and chords, and before the rows
+  right), loudness, drums, what is struck by instant and beside it the lines'
+  hits counted so (`by line`), either a minute where none plays, bars, parts,
+  key and chords, and before the rows
   each fitted set's falls of more than 0.005 against the start, or the judge
   where no start is named.
 - `keep` copies the pair, its checkpoints, the judge, the sets and the table
@@ -237,8 +239,7 @@ before such a change are heard again.
   noise 0.008`), the validation line the rate, and the pass's last line what it
   carries on. Its `decoders` is the sum of the heads audio reads from its model in
   a pair, which a line before its start names: a notes model's pitch, strike and
-  release, a frame model's onset, drums, beat, downbeat, struck and struckvel;
-  not yet a notes model's onset, which audio reads beside its strikes.
+  release, a frame model's onset, drums, beat, downbeat, struck and struckvel.
   A training loss that keeps falling after the held-out loss turns is a
   model learning the corpus by heart; more loops, not more steps, is the cure.
 - `bench` prints four lines: the analysis and the frame model, on clean and on
@@ -623,7 +624,7 @@ exported with ten heads, which stapes itself then benches; the two rip alike.
 
 A frame model's two heads after the downbeat say whether something of no pitch is
 struck within a frame (`struck`: a drum line's hit, a strike of no line or a kit's
-piece) and how hard (`struckvel`, a velocity). Audio from v0.48.0 reads them into
+piece) and how hard (`struckvel`, a velocity). Audio from v0.49.0 reads them into
 the rip's strikes ([audio §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording));
 [Rip training](../../doc/rip-training.md) §5 and §8 follow the targets and the
 losses.
@@ -846,7 +847,7 @@ It writes the file's version 6, which states the band frames' layout as a
 constant after the heads (`layout`, `ripmodels.LAYOUT`) and, for `--pitchnet`'s
 cell net, no bins for its regions to pool, and needs audio v0.30.0 (transformer
 v0.7.0); audio from v0.34.0 loads a file with a head after its specs' and reads
-nothing of it, from v0.48.0 but the struck heads. Audio refuses a file of another layout or of none, naming its own,
+nothing of it, from v0.49.0 but the struck heads. Audio refuses a file of another layout or of none, naming its own,
 and a file without a head its specs name but a notes model's cents head, which a
 probe's file lacks; the measure is a frame head of one value whose weights are
 zero and whose bias is the measure.

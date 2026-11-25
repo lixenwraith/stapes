@@ -282,7 +282,8 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
       n/127, the engine's kits' measure; whether the lab's list says so waits
       on the trainer's reading of whether a kit's stated strengths follow the
       levels its hits sound at, and where they do not a hit's strength
-      measured from its sound is the way left. No head asks a hit's velocity.
+      measured from its sound is the way left. `struckvel` asks a hit's velocity,
+      which rendered loops alone give it till then.
     - A hit that draws no sound is told by its own rise alone: a silent hit
       within two frames of a sounding one reads that one's and stays, and a
       room's tails lift silence's rise, so through `degrade` 15% of lone silent
@@ -460,18 +461,35 @@ others under the root's ([Stapes §4](stapes.md#4-the-rips-verbs)). Left:
 ### Hear what is struck
 
 - Priority: P1
-- Affected files: `kit.go`, `tool/rip-train`, `tool/rip-lab/audit`, `lixenwraith/audio`
-  (`ripmodels`, the decoder)
+- Affected files: `kit.go`, `tune.go`, `tool/rip-train`, `tool/rip-lab/audit`,
+  `lixenwraith/audio` (`ripmodels`, the decoder, the engine)
 
 A hit is to be described by what it sounds like, not named. Landed: `corpus ... gen
 kits` plays an arranged loop's drums on a kit of two to ten struck sounds drawn over
 audio's struck genome, each strike labelled with its piece and the loop with each
 piece's genes and band ([Rip training §3](rip-training.md#a-loops-kit)); a loop
 whose label holds such a kit asks the drums head nothing ([Rip training
-§5](rip-training.md#5-the-targets)). A struck head on both models and the heads of
-a strike's place, genes and loudness stand on the branch `drums-places`, in no
-model in use. What remains, each read before the next:
+§5](rip-training.md#5-the-targets)); and the frame model's struck heads, the rip's
+strikes off them and their reading by time alone
+([rip-train](../tool/rip-train/README.md#what-is-struck)). They stay where the
+read-back of a frame pass that grew them gives, on E-GMD's test takes, more of the
+instants than the same model's lines' hits do, and no more strikes a minute than those
+hold hits on a guitar's and on singing; else they go. The heads of a strike's place and
+genes stand on the branch `drums-places`, in no model in use. What remains, each read
+before the next:
 
+- A kit from the recording's own strikes: grouped into pieces by the sound the recording
+  holds at each, and by the genes the branch's heads state, the two read against each
+  other on E-GMD's takes by the pairs of strikes told alike or apart as their keys are. An
+  instant's strikes are one hit to a rip: 39% of the strikes of E-GMD's train labels
+  (92,762 in 142 takes) lie within `onset_gap` of the one before, 11% on its very frame.
+- A kit of pieces the engine plays ([audio
+  todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#play-what-is-struck)):
+  a song plays the three lines' hits still, and no strike.
+- How hard a recorded strike was: no label in use states one, so no reading counts it,
+  and `struckvel` is taught on rendered loops alone.
+- A strike heard where a label leaves a hit out counts false in the reading, where the
+  trainer asks nothing: a truth that knows the hit would count it neither way.
 - The count of 200 loops with the word, by `corpuscount.py` and `corpusheard.py`,
   and a listening sample of kits of two, five and ten pieces.
 - The places: a grouping of the bands, which the count's share of same-frame strikes
@@ -493,9 +511,10 @@ Left open by what landed:
 - A sound's takes are seeded by its name, so the pieces numbered alike share their
   noise and their takes' spread from loop to loop: a seed of the loop's wants audio
   to take one.
-- Until the trainer reads a piece, a kit's strikes teach the onset alone: its loop asks the three-line drums head nothing, so a pass on it
-  teaches that head neither a hit nor silence there, `--over` lays no drums on it,
-  something being struck there, and `datacheck.py` reads no lag of its strikes.
+- Until the trainer reads a piece, a kit's strikes teach the onset and the struck heads
+  alone: its loop asks the three-line drums head nothing, so a pass on it teaches that
+  head neither a hit nor silence there, `--over` lays no drums on it, something being
+  struck there, and `datacheck.py` reads no lag of its strikes.
 
 ### Train both models again
 

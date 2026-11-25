@@ -1431,8 +1431,7 @@ its lines and its pick as they were, bit for bit.
 
 Such a pass is read by the heads audio reads from its model in a pair (`READ`), each at
 its weight in `decoders`: a notes model's pitch, strike and release, a frame model's
-onset, drums, beat, downbeat, struck and struckvel; not yet a notes model's onset, which audio reads beside
-its strikes (todo, "Tune the rip"). Their sum is its lines' `decoders`, picks its step
+onset, drums, beat, downbeat, struck and struckvel. Their sum is its lines' `decoders`, picks its step
 where the decoders' loss does, and is what the rate (`Rate`) follows over the held-out
 windows; a line before its start names them.
 
@@ -1555,6 +1554,8 @@ beat and downbeat heads fill `RipFrames.Beat` and `Downbeat`, and where the fram
 both, the tempo and the beats are read from the beat head and the bar lines from the
 downbeat head beside the cues' rules ([audio
 §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)).
+Its struck heads fill `RipFrames.Struck` and `StruckVel`, whose peaks over `struck` are the
+rip's strikes (`Rip.Struck`), which no bar holds.
 
 The decoders then read the frames: hits by peak picking, the bass by one hidden path,
 the melody register by strike peaks. `strike` and `strike_again` are the thresholds
@@ -1720,7 +1721,14 @@ relative's tonic chord as long as the label's has its tonic by the arranger's wo
   counts a note right when one of its pitch starts within 0.1 s of its place on that map
   (audio's `MatchNotes`). For a rhythm given with no pitches it matches onsets on a
   fitted time map. Against a MIDI file it also
-  counts hits per drum, within half a step, under a fitted stretch and offset.
+  counts hits per drum, within half a step, under a fitted stretch and offset, and what
+  is struck by its time alone.
+- **Strikes** are counted by instant, within the hits' tolerance: a strike and those within
+  `onset_gap` of an instant's first are one, whatever they strike, for a truth, a rip's
+  strikes and its lines' hits alike, as a rip keeps one strike an instant and the lines
+  several. Each given strike asking a hit of its own is said beside, with the most one
+  strike an instant reads there: of the 92,762 strikes of E-GMD's train labels (142 takes) 39%
+  lie within `onset_gap` of the one before, 63% are an instant's first, so 0.775 at most.
 - **`bench`** renders fresh loops and grades each against what was played: a note
   counts only at its exact step and pitch in the right bar. The total is `(tempo + bars
   + 2 drums + 2 melody + bass) / 7`, so its numbers can't be compared with F1 on

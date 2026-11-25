@@ -935,9 +935,8 @@ proves wrong or that a document now states, and link the document instead.
 - A run's noise differs by set, so a difference on one set is read against that
   set's own spread. Two runs that differ in anything else are not a repeat.
 - `--validate` picks a notes model by its strike head's peaks at the decoder's
-  bars, not by its loss on recordings, which holds its onset head's, which the
-  pick leaves out though audio reads it beside the strikes. One instrument's
-  score can trade against another's, so
+  bars, not by its loss on recordings, which holds its onset head's, a head no
+  decoder reads from it. One instrument's score can trade against another's, so
   validate on every kind of recording at once. A frame model is still picked by
   the decoders' loss there, in a pass that carries on the sum of the heads audio
   reads from it, which can rise as its onset head grows surer while
@@ -972,10 +971,8 @@ proves wrong or that a document now states, and link the document instead.
 - **A take read again costs its resample.** A second of sound read again for a
   rip takes 4.7 ms of a core: 4.1 the resample from 44.1 kHz to the rip's rate,
   which low-passes every sample though it keeps every other, 0.5 `ReadWAV` and
-  0.07 the file; a full-size pair's frames read back from their gob take 1.3
-  and a label's planes built again 0.3 to 0.5, where a rip through the label's
-  heads takes some 20. A pair hears it again in 58 ms on four cores, the
-  analysis in 35 on one.
+  0.07 the file; a full-size pair's frames read back from their gob take 1.3.
+  A pair hears it again in 58 ms on four cores, the analysis in 35 on one.
 - A fit over a list of one kind can gain on it at every other's cost: scored
   within lines over a list of guitar alone, a search can silence the bass line
   (`strike_low` near 1). The guard refuses that only for conditions its list

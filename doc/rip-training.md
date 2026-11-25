@@ -1372,9 +1372,8 @@ with the best `decoders` score is what gets written, unless `--validate` names a
 `decoders` step is written, the held-out score printed beside it. A notes model is
 picked there by its strikes instead: the strike head's peaks over the decoder's bars
 (0.7, and 0.9 under E3) against the labelled strikes within four frames, as an F1
-over the frames not placed (§5), since its loss holds an onset head that the
-pick leaves out, though audio reads it beside the strikes (todo, "Tune the rip").
-The wave, voice, velocity and family heads don't choose it,
+over the frames not placed (§5), since its loss holds an onset head that no
+decoder reads from it. The wave, voice, velocity and family heads don't choose it,
 because they memorize the corpus. A positive
 weight w shifts a head's scale: it scores a posterior p as wp / (wp + 1 - p), which is
 part of why thresholds belong to the weights (§10); the beat and the downbeat carry
@@ -1617,7 +1616,7 @@ as long in seconds and not theirs.
 Audio v0.41.0's joint path (`joint` 1) decides the tempo, the bar line and the meter as
 one path over the heads, in the corpus's seven meters. Read with no model, the cues the
 analysis's, on the 574 loops of 4 s or more of `corpus <dir> 600 4 aug gen meters seed
-5`: with the labels as the heads (`truth ... heads`), and with heads spoiled to the
+5`: with the labels as the heads, the decoders' ceiling, and with heads spoiled to the
 trained F1s, 0.778 and 0.839 (beats missed, thrice as often in the first second, weak
 beats and a compound bar's inner eighths lower, a simple bar's eighths at half and some
 over a half, false peaks, the half bar marked as a line, a 6/8's every other line low,

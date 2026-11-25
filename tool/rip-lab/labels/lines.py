@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """lines.py <out dir> <engine|nsynth> <seed> <count> <fit|out> [tuned|shapes] | lines.py <out dir> verify: lines of
-one voice whose notes are known, each a WAV and its truth, for scoring a tracker or a placing: the engine's,
+one voice whose notes are known, each a WAV and its truth, for scoring a label procedure: the engine's,
 rendered by lines/ (ENGINELINES names its binary), among them takes of VocalSet's exercises sung right and wrong,
 and NSynth's vocal notes laid end to end (NSYNTH names its audio folder). ../README.md says what is drawn."""
 import csv, itertools, json, math, os, random, struct, subprocess, sys, wave
@@ -14,7 +14,7 @@ NSYNTH = os.path.join(os.path.expanduser(os.environ.get('NSYNTH', '~/data/rip/ns
 STEPS = [(0, 8), (1, 11), (-1, 11), (2, 15), (-2, 15), (3, 5), (-3, 5), (4, 5), (-4, 5), (5, 4), (-5, 4), (7, 3.5), (-7, 3.5), (12, 2.5), (-12, 2.5)]
 
 def sound_pitch(seg, sr):
-    """a held sound's pitch as a MIDI number, apart from the tracker's own measure; 0 for none. The pitch whose first
+    """a held sound's pitch as a MIDI number, apart from vocal.py's own measure; 0 for none. The pitch whose first
     ten harmonics hold the most of the spectrum, each weighed 0.84 of the one under it (subharmonic summation), so a
     weak fundamental or a strong third harmonic does not move it an octave or a twelfth"""
     if not len(seg) or not seg.any():
@@ -348,7 +348,7 @@ def nsynth(out, seed, count, which, peaks):
     return rows
 
 def verify(out, rows):
-    """each line read back apart from the tracker: a plain note's pitch at its middle, and the sound at its start"""
+    """each line read back apart from vocal.py: a plain note's pitch at its middle, and the sound at its start"""
     checked, near, off, mute, worst = 0, 0, 0, 0, []
     for r in rows:
         sway = max(r[4], r[18]) / 100       # a vibrato's reach in semitones: a short window reads anywhere within it

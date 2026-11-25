@@ -2258,9 +2258,6 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	for _, at := range modelGenes {
 		*at(&held) = *at(&p)
 	}
-	for _, at := range modelCounts {
-		*at(&held) = *at(&p)
-	}
 	if p != held {
 		t.Errorf("a parameter the model's decoders do not read moved: %+v, from %+v", p, start)
 	}
@@ -2595,24 +2592,13 @@ func TestTuneTruthMovesOnlyTheGenesItIsTold(t *testing.T) {
 		for _, at := range free {
 			*at(&held) = *at(&start)
 		}
-		if genes == "" || strings.Contains(genes, "notes") { // the part's integers too
-			for _, at := range modelCounts {
-				*at(&held) = *at(&start)
-			}
-		}
 		if held != start {
 			t.Errorf("told %q, the search moved another gene: %+v from %+v", genes, s.rip, start)
 		}
 		var moved []string
 		for _, part := range geneParts {
 			for k, g := range part.names() {
-				var from, to string
-				if k < len(part.genes) {
-					from, to = fmt.Sprint(*part.genes[k](&start)), fmt.Sprint(*part.genes[k](&s.rip))
-				} else {
-					from, to = fmt.Sprint(*part.counts[k-len(part.genes)](&start)), fmt.Sprint(*part.counts[k-len(part.genes)](&s.rip))
-				}
-				if from != to {
+				if from, to := fmt.Sprint(*part.genes[k](&start)), fmt.Sprint(*part.genes[k](&s.rip)); from != to {
 					moved = append(moved, fmt.Sprintf("%s moved from %s to %s\n", g, from, to))
 				}
 			}

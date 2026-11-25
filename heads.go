@@ -46,7 +46,6 @@ var labelHeadRows = []labelHead{
 			return len(e.Voice) > 0 || slices.ContainsFunc(e.Cents, func(c float64) bool { return !math.IsNaN(c) })
 		})
 	}},
-	{"start", func(f *audio.RipFrames, l *labelPlanes) { f.Start = l.start }, nil},
 	{"plays", func(f *audio.RipFrames, l *labelPlanes) { f.VoiceAt, f.Voices, f.Sure = l.voiceAt, l.voices, labelSure }, func(l *corpusLoop) bool {
 		unknown := slices.Index(audio.RipFamilies[:], "unknown")
 		return l.anyNote(func(e corpusEvent) bool { return len(e.Voice) > 0 || e.Family >= 0 && e.Family != unknown })

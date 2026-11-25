@@ -148,22 +148,17 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    costs (`streamJump`, `streamLength`, `streamLevel`, `streamSwitch`), the
    lead rule's default and `cross` would be tuned on music rather than set by
    hand. The models' thresholds (`strike`, `strike_low`, `strike_again`,
-   `release`, `voicing`) are searched
-   by `tune ... truth <list>` through the loaded models by pitch and onset, as
-   the mean over its list's conditions under a guard, the frames kept between
-   runs ([Rip design §7](rip-design.md#7-plan)). The trainer's `READ` and
-   `--validate`'s pick leave out the notes model's onset head, which audio
-   reads beside the strikes since v0.39.0: the smallest close, `onset` in
-   `READ[True]` and the placed starts' F1 beside the strikes' in the pick,
-   once a round's starts are read on recordings. Left of it: the real
-   validation list, GuitarSet's player 04, is guitar alone, so it wants a
-   condition a kind, of the collections and renders a fit may hold and never
-   a full track,
-   `timed` on GuitarSet's lines and `drumless` on every line no drum plays
-   in (a `.mid` says nothing of drums without it, and the phantom hits on a
-   guitar or a singer alone are then unseen), before a run after every round
-   writes a `rip.toml`; and kept frames outlive a change to the models'
-   code, which their names do not hold. It scores the drums and the bars
+   `release`, `voicing`) are searched by `tune ... truth <list>` through the
+   loaded models by pitch and onset, as the mean over its list's conditions
+   under a guard, the frames kept between runs ([Rip design
+   §7](rip-design.md#7-plan)). Left of it: the real validation list,
+   GuitarSet's player 04, is guitar alone, so it wants a condition a kind, of
+   the collections and renders a fit may hold and never a full track, `timed`
+   on GuitarSet's lines and `drumless` on every line no drum plays in (a
+   `.mid` says nothing of drums without it, and the phantom hits on a guitar
+   or a singer alone are then unseen), before a run after every round writes
+   a `rip.toml`; and kept frames outlive a change to the models' code, which
+   their names do not hold. It scores the drums and the bars
    beside the notes where a truth gives them, a hit heard where a truth
    knows no drum plays against the drums, and then searches `onset_min` and
    the tempo's, the beats' and the bars' parameters (`drumGenes`, `barGenes`); bars come from
@@ -200,18 +195,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    what the arrangement still lacks is a chord read per beat as the set of
    ringing pitches, rendered as a pad under the lines. The corpus plays no
    pedal: one that holds the notes, with labels that say so, is still to build.
-8. The fit as it fits a real lead: it picks modal voices where the user hears
-   a plucked string (a harp or a santur) or a flute. A plucked voice
-   (`string`) with a doubled, beating course. The measure now hears each
-   window as the mix of the line's notes, the other lines' and the drums' hits,
-   each at a gain of its own (`mixDistance`), read on the labels' own notes
-   with `fits ... given`. Left: the reading through the trained weights on
-   ripped loops they did not train on, which alone fills `heard`; a take for
-   `RenderNoteAt`, so a unison stack's or a string's measure averages the
-   phases and bursts its notes are seeded with ([agent
-   notes](agent-notes.md#the-rip-and-its-truths)); and onsets off the frame
-   grid.
-9. The judge as a trained stage ([Rip design](rip-design.md) §7) is built and
+8. The judge as a trained stage ([Rip design](rip-design.md) §7) is built and
    none is fitted on recordings or installed: `rows`, `tool/rip-train`'s
    `judge.py` and the root's `ripjudge.bin`
    ([a judge](../tool/rip-train/README.md#a-judge)). Left:
@@ -234,13 +218,13 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    - A count from rows reads apart from `truth`'s decode (the trainer's README
      says why); audio's own open items are in
      [its todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#close-what-a-judge-leaves-open).
-10. A performance's character, generated: `corpus ... gen` draws one by hand,
-    accents, swells and fades, a feel and a jitter a part and a tempo's drift
-    ([Rip training §3](rip-training.md#arranged-loops)). Left: how loudness
-    and timing move in the performances of a set that trains (GuitarSet's
-    annotations against a steady grid), measured there and the draws set from
-    it, judged as any corpus change, a pair. No round may learn it from a track.
-11. A recorded note's velocity is measured from its recording under the
+9. A performance's character, generated: `corpus ... gen` draws one by hand,
+   accents, swells and fades, a feel and a jitter a part and a tempo's drift
+   ([Rip training §3](rip-training.md#arranged-loops)). Left: how loudness
+   and timing move in the performances of a set that trains (GuitarSet's
+   annotations against a steady grid), measured there and the draws set from
+   it, judged as any corpus change, a pair. No round may learn it from a track.
+10. A recorded note's velocity is measured from its recording under the
     `measured` word ([Rip training §3](rip-training.md#a-recordings-velocities)).
     Left:
     - The bent voices: the bank's piano and bass, whose hammer's filter and
@@ -582,9 +566,6 @@ The tools that fetch a set, write its labels and its list and check them are in
 - `datasets/fetch.sh egmd` reads `datasets/egmd/batches.tsv`, each file's byte
   range in the set's archive, which the tree does not hold: the batches fetch
   only beside the lab's copy of it.
-- The free tracker (`labels/vocal.py`, `trackscore.py`, `trackfit.py`) labels
-  nothing. It stays for a set with no sheet to place, VocalSet's excerpts
-  first, and goes if none is labelled with it.
 
 ### Train the piano's pitches
 
@@ -702,10 +683,16 @@ rip are in place; what remains:
    the lead rule's default by what ears prefer rather than by hand.
 
 7. A rip's voice from what was heard: `rip` fits every line, and the heard
-   voice is its first seed. What remains is the voice of every note (the
-   instrument model, above) and a distance that does not part a unison voice
-   from its own note by where its oscillators start ([tune the
-   rip](#tune-the-rip), item 8).
+   voice is its first seed. A real lead the user hears as a plucked string (a
+   harp or a santur) or a flute is fitted modal; read through trained models
+   ([agent notes](agent-notes.md#the-rip-and-its-truths)), a string alone reads
+   modal as often as a string under `aug`, and a line two voices share loses
+   its string and its modal wave to a saw. What remains: the voice of every
+   note (the instrument model, above); a plucked voice (`string`) with a
+   doubled, beating course; a take for `RenderNoteAt`, so a unison stack's or a
+   string's measure averages the phases and bursts its notes are seeded with
+   and parts no voice from its own note by where its oscillators start; and
+   onsets off the frame grid.
 8. Put off: a second piece of music under the first, which the rip
    transcribes with it; it wants the judge to follow instruments as it
    follows notes.
@@ -721,12 +708,7 @@ rip are in place; what remains:
     line's voice is the one that plays most of its notes or the one its sound
     is nearest is open: listening settles it, the line rendered on each and
     the nearer picked (item 6), as does the song's score against the
-    recording (`song ... score`) on each. Before either, `cells` is read on
-    trained models over whole corpora, where the count decides; on 49 loops of
-    each corpus here (`fits ... cells 50`, the label's events in the heads' place) it named 6 of 16 shared
-    strings where the measure names none, and 7 of 26 shared saws where it
-    names 15 (aug; without `aug` 6 of 14 and 15 of 26 against 4 and 14), at
-    half its CPU a loop.
+    recording (`song ... score`) on each.
 
 ## Files and banks
 

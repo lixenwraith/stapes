@@ -123,9 +123,9 @@ it there in the same PR.
   singing, recorded drums, generated mixes), each kind before and after and
   what fell among them, the figures alone in the PR body. A thread with no
   trained model opens its PR as a draft and names the reading it waits for.
-- A count with the labels in the models' place (`heads`), or on built heads, is
-  the decoders' ceiling: it is given as that, never as a benefit, and nothing
-  is changed or merged on it alone.
+- A count with the labels in the models' place, or on built heads, is the
+  decoders' ceiling: it is given as that, never as a benefit, and nothing is
+  changed or merged on it alone.
 - Nothing lands unused: a parameter whose default leaves its path off, a head
   no decoder reads or a verb's word no script runs has an item in
   `doc/todo.md` naming the reading with trained models that decides it and

@@ -142,9 +142,8 @@ Over the library's rip (library
   candidate beside the other lines' on their voices and the drums' hits on
   the kit, each part at a gain of its own (`fitDistance`, `mixDistance`,
   [Rip design §2](rip-design.md#2-stages)); `fit` runs it again at the sizes
-  its words name (`fitWords`: `notes`, `pool`, `generations`, `seed`, and
-  `cells`, off unless named, which hears each note on its own cells,
-  `fitScene.own`), and `genes` says a voice's wave and genes as a label states them
+  its words name (`fitWords`: `notes`, `pool`, `generations`, `seed`), and
+  `genes` says a voice's wave and genes as a label states them
   (`VoiceDef.Genes`).
 - `fits` reads that search against voices that are known: each loop of a
   corpus directory that kept its audio is ripped and fitted as `rip` does it
@@ -161,10 +160,9 @@ Over the library's rip (library
   own voice nearer than the fit is a search that stopped short; the fit
   nearer than it is a measure that prefers another voice. A loop is a file
   under its audio's checksum, so a run keeps what is there and `part k/n`
-  needs no numbering; `fits.json` names the sizes and the weights, the
-  heads and `cells`, or `given`. The
-  search draws its candidates from one seeded stream and scores them side by
-  side, so a seed's rows are the same on any number of cores
+  needs no numbering; `fits.json` names the sizes and the weights, or
+  `given`. The search draws its candidates from one seeded stream and scores
+  them side by side, so a seed's rows are the same on any number of cores
   ([todo](todo.md#close-the-rips-loop), item 9, for the one way they may not be).
 - `agree` compares two rips of one piece (`MatchNotes`); `truth` scores a rip
   against notes given as text or a tapped rhythm (`ParseTranscript`), a MIDI
@@ -299,15 +297,14 @@ Over the library's rip (library
   candidate pays the decoders alone; `frames <dir>` keeps what was heard
   between runs, a gob of the `RipFrames` named by the checksums of the
   recording and of the weight files (`Session.earSum`). What a rip reads of a
-  take (`takeSound`), its samples at the rip's rate and its frames or its
-  label's planes, some 450 kB a second of sound, is held after its first rip
-  in the list's order while `hold` has room (`truthTake.held`); every other
-  take is read again as each candidate rips it (`truthTake.sound`), its
-  recording resampled, its frames read back from `frames <dir>` or heard again
-  without it and its label's planes built again, the bits held, so every
-  candidate scores the same. That costs some 5 ms of a core a second of sound
-  where a rip takes some 20, and a model's hearing again many times that; a
-  take that cannot be read again ends the search with its error, writing
+  take (`takeSound`), its samples at the rip's rate and its frames, some 450 kB
+  a second of sound, is held after its first rip in the list's order while
+  `hold` has room (`truthTake.held`); every other take is read again as each
+  candidate rips it (`truthTake.sound`), its recording resampled and its frames
+  read back from `frames <dir>` or heard again without it, the bits held, so
+  every candidate scores the same. That costs some 5 ms of a core a second of
+  sound where a rip takes some 20, and a model's hearing again many times that;
+  a take that cannot be read again ends the search with its error, writing
   nothing. The collector lets the heap grow to twice what is live, so a run
   under a memory cap sets `GOMEMLIMIT` under the cap.
 - `compress` gives a first bar that starts partway the beat of the bar most

@@ -3379,7 +3379,7 @@ func TestFitsGivenFitsEachVoiceOnItsOwnNotes(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, v := range labelVoices(lab, cm) {
-			if len(fitSamples(v.notes, 1, false)) > 0 {
+			if len(fitSamples(v.notes, 1)) > 0 {
 				voiced++
 			}
 		}
@@ -3409,9 +3409,9 @@ func TestFitsGivenFitsEachVoiceOnItsOwnNotes(t *testing.T) {
 
 // TestAVoiceIsItsOwnLinesNearest: piano chords over a bass line, rendered as a
 // corpus renders them and read at their notes as a label states them, hold
-// each line's own voice nearer than any other registered voice and its genes on
-// any other wave, by the fit's measure and with each note on its own cells: the
-// line alone, and beside the other line on the voice presentVoices hears.
+// each line's own voice nearer by the fit's measure than any other registered
+// voice and than its genes on any other wave: the line alone, and in the loop
+// beside the other line at the voice presentVoices hears it play.
 func TestAVoiceIsItsOwnLinesNearest(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
@@ -3467,20 +3467,17 @@ func TestAVoiceIsItsOwnLinesNearest(t *testing.T) {
 				others[w+" wave"] = voiceFromGenome(voiceGenome(audio.VoiceFromGenes(w, own.Genes())))
 			}
 		}
-		alone := &fitScene{x: render([]audio.InstrumentType{in}), rate: audio.AudioSampleRate, lines: []fitPart{{notes: lines[i].notes, voice: mix.lines[i].voice}}}
-		for _, cells := range []float64{0, 0.5} {
-			for _, c := range []struct {
-				heard string
-				sc    *fitScene
-				line  int
-			}{{"alone", alone, 0}, {"beside the other line", mix, i}} {
-				c.sc.cells = cells
-				targets := c.sc.targets(c.line, 6)
-				d := fitDistance(own, lines[i].notes, targets, 0)
-				for other, v := range others {
-					if o := fitDistance(v, lines[i].notes, targets, 0); o <= d {
-						t.Errorf("the %s line %s, its cells told at %.0f%%, reads %.4f from its own voice and %.4f from the %s", name, c.heard, 100*cells, d, o, other)
-					}
+		alone := &fitScene{x: render([]audio.InstrumentType{in}), rate: audio.AudioSampleRate, lines: []fitPart{{notes: lines[i].notes}}}
+		for _, c := range []struct {
+			heard string
+			sc    *fitScene
+			line  int
+		}{{"alone", alone, 0}, {"beside the other line", mix, i}} {
+			targets := c.sc.targets(c.line, 6)
+			d := fitDistance(own, lines[i].notes, targets, 0)
+			for other, v := range others {
+				if o := fitDistance(v, lines[i].notes, targets, 0); o <= d {
+					t.Errorf("the %s line %s reads %.4f from its own voice and %.4f from the %s", name, c.heard, d, o, other)
 				}
 			}
 		}

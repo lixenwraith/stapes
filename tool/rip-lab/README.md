@@ -26,9 +26,8 @@ own files.
 3. VocalSet:
    - the known takes, three draws, each read by `audit/linescheck.py`: `go
      build -o <bin> ./tool/rip-lab/labels/lines`, then with `ENGINELINES=<bin>`,
-     `labels/lines.py <truth root>/engine-shapes-fit engine 5 480 fit shapes`,
-     `.../engine-shapes-check engine 6 240 fit shapes` and
-     `.../engine-shapes-out engine 7 240 out shapes`;
+     `labels/lines.py <truth root>/engine-shapes-fit 5 480 fit`,
+     `.../engine-shapes-check 6 240 fit` and `.../engine-shapes-out 7 240 out`;
    - `labels/placefit.py <truth root> write`, which writes `labels/place.json`;
    - `labels/label.py <out dir>`, then `labels/placed.py <out dir>` and
      `audit/vocalcheck.py <out dir>/vocal-list.csv`;
@@ -49,9 +48,8 @@ own files.
 
 A tool writes only where its arguments say. The sets' folders come from the
 environment, each with the default of the machine the labels were made on:
-`VOCALSET`, `GUITARSET`, and `NSYNTH` for the `audio` folder of NSynth's
-training split. A rendered line's sound follows the engine the renderer is
-built on, so a fit is run on the draws its own build rendered.
+`VOCALSET` and `GUITARSET`. A rendered take's sound follows the engine the
+renderer is built on, so a fit is run on the draws its own build rendered.
 
 ## What a label is refused for
 
@@ -117,8 +115,8 @@ annotations.
 place.py: the notes of a take of one of VocalSet's exercises, placed on its sound; imported by label.py and fitted
 by placefit.py. The set's sheet says what an arpeggio, a scale and a long-tones take sing (shapes.py holds the steps),
 so a take's notes are not read from its pitch: the sound gives the key the singer took, where each note begins and
-ends, and whether the take is its exercise at all (Lixen's choice of 15 November 2026, after the labels a free tracker
-cut were heard).
+ends, and whether the take is its exercise at all (Lixen's choice of 15 November 2026, after labels cut from the pitch
+alone were heard).
   The placing. Each frame's pitch (vocal.frames) and whether it is voiced; the pitch's centre, the median of the
   voiced frames within `smooth` seconds about each one in its own run of sound (half the take's mean note at most),
   which is a vibrato's middle and leaves a slide a slide; the take's own grid, the circular mean of its voiced
@@ -164,7 +162,7 @@ missing, a wrong note, a bar sung twice or a restart has not.
 
 ```
 placefit.py <truth root> [write]: place.py's bounds fitted on known takes of VocalSet's exercises and checked on
-takes the fit did not see. <truth root> holds lines.py's three `shapes` draws: engine-shapes-fit (the fit's),
+takes the fit did not see. <truth root> holds lines.py's three draws: engine-shapes-fit (the fit's),
 engine-shapes-check (the same voices under another seed) and engine-shapes-out (a wave no fit take has). Six in ten
 takes are right, some with one note sung most of a semitone off; the rest have a note missing, a wrong note, the bar
 sung twice or a restart. Two fits, each from the bounds as first tried (place.TRIED), a bound at a time over its
@@ -227,100 +225,70 @@ the placing's own test cannot, since it holds every take at once.
 ### labels/shapes.py
 
 ```
-shapes.py <vocal-list.csv>...: the shapes of VocalSet's exercises (SHAPE, which place.py places on a take's sound
-since Lixen's choice of 15 November 2026), and a list's labels counted against them: a count that says something of
-labels a free tracker cut, and nothing of placed ones, which hold their shape by construction.
-The set's own sheet (DataSetVocalises.pdf, in its archive) gives what every take sings: an arpeggio
-is a bar of seven notes (the tonic, third, fifth, octave and back down), a scale a bar of seventeen (a major scale up a
-ninth and back), each on C or on F as the take's name says, and a long-tones take three whole notes (C4, C5, F5). A
-singer may move the key, so what is checked is the count and the steps between the notes. By exercise and technique:
-the takes, the share whose label holds exactly the shape's count, the share whose every step is the shape's too
-(`steps`), the median count, the share with more notes than the shape (little notes written in) and with fewer (notes
-lost). A take over 1.6 times its group's median length may hold a bar twice or both bars: those are counted apart and
-judged by no shape. Excerpts have no one count: their median only. Reads the lists and their MIDI files alone.
+The notes VocalSet's sheet gives each exercise (SHAPE, the steps in semitones from one to the next), which place.py
+places on a take's sound and lines.py sings. The set's own sheet (DataSetVocalises.pdf, in its archive) gives what every
+take sings: an arpeggio is a bar of seven notes (the tonic, third, fifth, octave and back down), a scale a bar of
+seventeen (a major scale up a ninth and back), each on C or on F as the take's name says, and a long-tones take three
+whole notes (C4, C5, F5). A singer may move the key, so what is placed is the steps between the notes. An excerpt is no
+exercise and has no shape.
 ```
 
 ### labels/vocal.py
 
 ```
-Notes of a solo voice from its pitch, YIN then a vibrato-tolerant cut, each placed where its sound is: imported by
-label.py, and scored by trackscore.py on lines whose notes are known. Every bound of it is in BOUNDS, each as it was
-set by hand until trackfit.py fits it; bounds.json beside this file, when trackfit.py has written it, replaces them
-(VOCAL_BOUNDS=hand in the environment keeps the hand-set ones, and a JSON object there sets some over them, to compare).
-  lp        the corner in Hz of a low-pass before the periodicity measure, 0 for none; the level is read unfiltered
+A solo voice's frames, which place.py places notes on, placefit.py fits by and datasets/vocalsing.py measures: each
+one's pitch by YIN, its periodicity (the difference function at the lag taken) and its level, at its window's centre.
+`frames` takes the corner in Hz of a low-pass before the periodicity measure (place.py's `lp`), 0 for none; the level
+is read unfiltered. A frame is voiced where its periodicity is under place.py's `ap_max` and its level within `top`.
+HAND holds the two bounds set by hand:
   dip       how low the difference function has to dip for a lag to be taken as the period
-  ap_max    the periodicity bound: a frame is voiced under it
   top       the level gate: a frame is voiced within this many dB of the recording's loudest
-  move      what a move of the path between semitones costs, against a frame's distance from its semitone
-  gap       the frames of no voice a note may hold inside itself
-  minlen    the shortest note, in frames
-  join      the frames two notes of one key may stand apart and be one
-  slip_len, slip_far   a note shorter than slip_len seconds and more than slip_far semitones from both its
-            neighbours is the tracker's slip, an octave or so off, and is left out
-  blip_len, blip_near  a note shorter than blip_len seconds that touches a note of one key on each side, within
-            blip_near semitones of it, is a vibrato's swing written as a note: it goes and the two are one. 0: none
-  slide_len, slide_share   a note shorter than slide_len seconds on a key between its two neighbours' that the pitch
-            crosses by slide_share of their interval or more, or one before a note with none before it that rises
-            or falls into that note by as much, is a slide or a scoop written as a note: the note before it holds
-            through a slide, the note after starts with its scoop. 0: none
-A little note between two long ones is likely an error and no note of its own (Lixen's ear, 15 November 2026): the
-two blip rules are that, each with its bound fitted where the notes are known.
 ```
 
 ### labels/lines.py
 
 ```
-lines.py <out dir> <engine|nsynth> <seed> <count> <fit|out> [tuned|shapes] | lines.py <out dir> verify: lines of one voice whose notes are known, laid so that
-the pitch tracker (vocal.py) can be scored where the answer is known (trackscore.py, trackfit.py). A line is about
-twelve seconds on a sixteenth-step grid at a drawn tempo: notes from 0.1 to 2.5 s, three in ten followed by a rest, the
-next key a drawn interval from the last (repeats, steps, thirds, fourths, fifths, octaves), each note's velocity drawn
-over 26 dB, so that a soft note beside a loud one is in every line.
-  engine: a voice of the engine drawn by the seed (a saw or a square through a vowel's formants or none, with or
-    without vibrato, its envelope and a low-pass drawn), rendered by labels/lines (ENGINELINES names its binary), with
-    a slide into the next note at the end of seven in ten of the notes another follows (0.05 to 0.25 s long) and a
-    scoop from below into half of the notes that follow silence, since a slide between two held notes is no note
-    (Lixen's ear on VocalSet's labels, 15 November 2026). Known: every note's start, end and key, its bend, the
-    voice's vibrato. Half the lines get a ring, the band from 1.5 to 4 kHz raised by 10 to 35 dB: the takes of
-    VocalSet the tracker loses hold 0.75 to 0.83 of their energy there under a vibrato of 80 to 146 cents either way
-    on low notes, and a line needs both for a period's measure to break on it (measured 15 November 2026; the
-    engine's vibrato stops at 100 cents). `fit` voices are saws, `out` voices squares, a wave no fit hears. With
-    `tuned` each line is rendered at a tuning of its own, up to 50 cents either way of A440 and one in eight at
-    exactly 50, as a singer with no accompaniment keeps a pitch standard of their own; a tuned line's keys are its
-    written ones, as a rendered loop's label keeps them (rip training, `tuning`). With `shapes` each line is a take
-    of one of VocalSet's exercises as its sheet writes them (an arpeggio's seven notes, a scale's seventeen, three
-    long tones; fast takes 0.12 to 0.24 s a note and half of them detached, slow ones 0.35 to 1.2 s, long tones 2 to
-    5 s with breaths between), at a tuning of its own, for scoring a placing of the sheet's notes on a take's pitch.
-    A voice sings one note at a time, so these voices let go in 0.01 to 0.04 s and slide into short notes too.
-    Six in ten are right, and of those three in ten have one note sung 0.5 to 0.9 of a semitone off its key, which
-    is still the note meant (Lixen's ear); one in ten each has a note missing, the bar sung twice, a restart after
-    two to four notes, or a wrong note two to four semitones from the one written. A wrong take's truth is what is
-    sung; lines.tsv says its exercise and what is wrong.
-    A take is sung as a singer sings, which the engine's notes are not: each note sits its own distance off its
-    key, a draw about nothing whose spread is the take's own, from 0.07 to 0.40 of a semitone (what the takes of
-    VocalSet hold between their twentieth and their last twentieth, measured 15 November 2026 on the settled
-    middle of the notes of its slow takes), and a slide ends on the pitch the next note is sung at; three in
-    twenty takes carry a vibrato of 100 to 170 cents either way at 4.3 to 7.7 Hz in place of the engine's, which
-    stops at 100 (a tenth of VocalSet's takes are wider than that, the widest 170 to 180); the notes of a slow take are
-    not all one length (a boundary a step early or late); and a quarter of the takes have a chest's resonance, a
-    peak of 14 to 28 dB a tenth to a quarter of an octave wide somewhere from 330 to 1050 Hz, so that a note whose
-    second harmonic falls on it holds that harmonic far over its first, as the loud low notes of VocalSet do that a
-    period's measure reads an octave over (their second harmonic 11 to 17 dB over the first and 13 to 23 over the
-    third, twice their pitch from 330 to 1050 Hz). The sound is the engine's line played a little faster
-    or slower sample by sample (`warp`), so one render holds all of it; a truth row gives each note's start and end
-    in the sound as written and `off`, the semitones it is sung off its key. A take's standard is the tuning
-    drawn: its notes' offsets are centred on nothing by their lengths.
-  nsynth: notes of one NSynth vocal_acoustic instrument laid end to end, each its recording's first seconds at the
-    level its velocity asks. Known: each note's key, by the set's label, and where it is laid. A note whose sound is
-    not within 0.6 of a semitone of its label at seven points from 0.1 s to 2 s is left out and listed
-    (notes-left-out.tsv, with its reading furthest from the label): a voice that scoops into its note, or a choir
-    doubled at the octave, has no one key to be right about. Two thirds of the instruments on disk are `fit`, the rest
-    `out`, by a seeded shuffle of their names.
-Both get what a recording has beside its notes: a breath of noise in half the longer rests, a burst of high noise before
-three in ten of the notes that start from silence, and a peak drawn from VocalSet's own peaks
-(datasets/logs/vocalset-wavscan.tsv), written as 16 bits. A line is <name>.wav (44.1 kHz mono) and <name>.tsv, its
-truth: a row a note (start, end, key, velocity, scoop, bend, where the bend starts) and a row a noise. lines.tsv lists
-the lines. Neither kind is a singer's phrase: the engine has no consonants, breaths or words but the noise laid here,
-and NSynth's notes are single held notes joined, with no glide between them and nothing above 8 kHz.
+lines.py <out dir> <seed> <count> <fit|out> | lines.py <out dir> verify: takes sung by one voice whose notes are known,
+laid so that a label procedure can be scored where the answer is known (placefit.py). Each is a take of one of VocalSet's
+exercises as its sheet writes them (an arpeggio's seven notes, a scale's seventeen, three long tones; fast takes 0.12 to
+0.24 s a note and half of them detached, slow ones 0.35 to 1.2 s, long tones 2 to 5 s with breaths between), on a
+sixteenth-step grid at a drawn tempo, each note's velocity drawn over 6 dB, at a tuning of its own: up to 50 cents either
+way of A440 and one in eight at exactly 50, as a singer with no accompaniment keeps a pitch standard of their own. A
+take's keys are its written ones, as a rendered loop's label keeps them (rip training, `tuning`).
+The voice is the engine's, drawn by the seed (a saw or a square through a vowel's formants or none, with or without
+vibrato, its envelope and a low-pass drawn) and rendered by labels/lines (ENGINELINES names its binary), with a slide into
+the next note at the end of seven in ten of the notes another follows (0.03 to 0.25 s long) and a scoop from below into
+half of the notes that follow silence, since a slide between two held notes is no note (Lixen's ear on VocalSet's labels,
+15 November 2026). Known: every note's start, end and key, its bend, the voice's vibrato. Half the takes get a ring, the
+band from 1.5 to 4 kHz raised by 10 to 35 dB: the takes of VocalSet a period's measure loses hold 0.75 to 0.83 of their
+energy there under a vibrato of 80 to 146 cents either way on low notes, and a take needs both for that measure to break
+on it (measured 15 November 2026; the engine's vibrato stops at 100 cents). `fit` voices are saws, `out` voices squares, a
+wave no fit hears. A voice sings one note at a time, so these voices let go in 0.01 to 0.04 s and slide into short notes
+too.
+Six in ten are right, and of those three in ten have one note sung 0.5 to 0.9 of a semitone off its key, which
+is still the note meant (Lixen's ear); one in ten each has a note missing, the bar sung twice, a restart after
+two to four notes, or a wrong note two to four semitones from the one written. A wrong take's truth is what is
+sung; lines.tsv says its exercise and what is wrong.
+A take is sung as a singer sings, which the engine's notes are not: each note sits its own distance off its
+key, a draw about nothing whose spread is the take's own, from 0.07 to 0.40 of a semitone (what the takes of
+VocalSet hold between their twentieth and their last twentieth, measured 15 November 2026 on the settled
+middle of the notes of its slow takes), and a slide ends on the pitch the next note is sung at; three in
+twenty takes carry a vibrato of 100 to 170 cents either way at 4.3 to 7.7 Hz in place of the engine's, which
+stops at 100 (a tenth of VocalSet's takes are wider than that, the widest 170 to 180); the notes of a slow take are
+not all one length (a boundary a step early or late); and a quarter of the takes have a chest's resonance, a
+peak of 14 to 28 dB a tenth to a quarter of an octave wide somewhere from 330 to 1050 Hz, so that a note whose
+second harmonic falls on it holds that harmonic far over its first, as the loud low notes of VocalSet do that a
+period's measure reads an octave over (their second harmonic 11 to 17 dB over the first and 13 to 23 over the
+third, twice their pitch from 330 to 1050 Hz). The sound is the engine's line played a little faster
+or slower sample by sample (`warp`), so one render holds all of it; a truth row gives each note's start and end
+in the sound as written and `off`, the semitones it is sung off its key. A take's standard is the tuning
+drawn: its notes' offsets are centred on nothing by their lengths.
+A take gets what a recording has beside its notes: a breath of noise in half the longer rests, a burst of high noise
+before three in ten of the notes that start from silence, and a peak drawn from VocalSet's own peaks
+(datasets/logs/vocalset-wavscan.tsv), written as 16 bits. It is <name>.wav (44.1 kHz mono) and <name>.tsv, its truth: a
+row a note (start, end, key, velocity, scoop, bend, where the bend starts, the semitones it is sung off its key) and a row
+a noise. lines.tsv lists the takes. A take is no singer's phrase: the engine has no consonants, breaths or words but the
+noise laid here.
 ```
 
 ### labels/guitar.py
@@ -342,47 +310,6 @@ the first two characters of its name: 00 to 03 train, 04 val, 05 test, and as `s
 `audio/hex/<name>_hex_cln.wav` from the set's audio_hex-pickup_debleeded.zip, where it is unpacked and a pitch track is
 named: stapes ends each note where its string stops sounding it (doc/rip-training.md, "A recording's strings").
 Writes only under <out dir>: the list's paths are relative to it, as `corpus ... from` reads them.
-```
-
-### labels/trackscore.py
-
-```
-trackscore.py <truth dir>...: the pitch tracker (vocal.py, under its bounds as they stand) scored on lines whose
-notes are known (lines.py lays them). trackfit.py imports it to fit the bounds. What is counted, a line at a time:
-  by time, on a grid of hundredths of a second, leaving out 50 ms either side of a true start or end, a scoop's
-    step, a glide's length (where the pitch is on its way and no key is the right one) and a voice's release after
-    a note that a rest follows (where the sound is neither a note nor silence): of the time a note
-    sounds, the share the tracker covers, the share on the right key, an octave off (any number of octaves) and
-    elsewhere; of the time none sounds, the share it writes a note into, and that share inside the noises laid.
-  by note: the key that holds the most of each true note's time: the right one, an octave off, elsewhere or none.
-  by onset: a true note is found when a tracked note of its key starts within 50 ms of it (anywhere in a scoop);
-    precision is the found over the tracked, recall the found over the true, F their harmonic mean; and how far a
-    tracked start of the right key within 150 ms sits from the true one.
-  two faults of their own: the share of the sounding time written a semitone over or under the true key (up1, down1:
-    a whole line read off its own pitch standard shows here), and of the glides between two held notes, the share
-    with a note tracked to start inside on neither of the two keys (slid: a slide is no note).
-The score of a kind of line is the mean of two shares: the time said right (the right key where a note sounds,
-nothing where none does) and the onsets' F. Over kinds it is their mean, a kind weighing as much as another.
-```
-
-### labels/trackfit.py
-
-```
-trackfit.py <truth root> [write]: the pitch tracker's bounds (vocal.py) fitted on lines whose notes are known, and
-checked on lines the fit did not see. <truth root> holds lines.py's six draws: engine-fit and nsynth-fit (the fit's),
-engine-check and nsynth-check (the same voices under another seed), engine-out and nsynth-out (voices left out: a
-wave no fit line has, instruments no fit line has). The procedure:
-  1. It starts from the bounds as they were set by hand (vocal.HAND) and scores them on the fit draw (trackscore's
-     score: the mean of the time said right and the onsets' F, a kind of line weighing as much as the other).
-  2. One bound at a time, in GRID's order, every value of its grid is scored with the others held. The best value
-     is taken only if it is better than the one held on lines drawn again: over a thousand draws of the fit's lines
-     with replacement, within each kind, the gain's 2.5th percentile is above nothing. A bound the score cannot tell
-     apart stays as it is.
-  3. Passes over the bounds repeat until one takes nothing (three at most).
-  4. The bounds by hand and the bounds fitted are scored on the check draw and on the voices left out, and each bound
-     the fit moved is put back alone on each, to show what it gives where the fit did not look.
-A grid is the hand-set value and a few either side, about a third apart, longer on a side the fit ran to the end of;
-a low-pass corner goes from none down to 600 Hz, and the two blip rules' lengths from none up to 0.45 s. With `write` the fitted bounds go to bounds.json beside vocal.py, which then reads them.
 ```
 
 ### datasets/egmd.py

@@ -296,7 +296,7 @@ proves wrong or that a document now states, and link the document instead.
   in, the truth's lines moved by the cut, beside whole ones: a search fitted on
   whole loops alone can learn the lean. Read a key so too, on loops cut a bar or
   two in from each side: the arranger's progressions open on their tonic chord 78
-  times in 100, cut 18, and a rule leaning on the opening lost 0.104 there.
+  times in 100, cut 18, so a rule leaning on the opening gains on whole loops alone.
 - Write a truth from a score or a MIDI file, never from memory.
 - Score recordings pooled (every note once) beside their mean: a few notes move
   a short recording's F1 far.
@@ -353,18 +353,42 @@ proves wrong or that a document now states, and link the document instead.
 - **A window is heard as the mix of what plays in it.** Set against one note
   rendered alone at its peak, the recording around it holds the line's other
   notes, the other lines and the drums, and a voice whose attack or ring fills
-  them wins: on 40 clean loops at the labels' own notes the label's voice was
-  nearest on 0 of 86 lines, a string or modal wave on 57. The line's notes in
-  the window, the others' and the hits beside them, each at a gain of its own,
-  put it nearest on 40, most of the rest losing to a voice near its genes.
-- Read so (`fits ... given`, 50 loops of seed 23, 113 lines a reading, the
-  default sizes), the fitted wave is the label's on 109 lines alone, 98 in
-  their loops and 82 with lengths and velocities moved as the analysis's rip
-  moves them, and 104, 90 and 83 under `aug`, where one note at its peak got
-  82, 48, 45 and 78, 56, 47. The best seed is now the label's voice, or the
-  bank voice it was redrawn from, and a fit that beats it does so by a
+  them wins: on 40 clean loops at the labels' own notes, a ceiling on labels, the
+  label's voice was nearest on 0 of 86 lines, a string or modal wave on 57. The
+  line's notes in the window, the others' and the hits beside them, each at a gain
+  of its own, put it nearest on 40, most of the rest losing to a voice near its genes.
+- Read so (`fits ... given`, the labels' notes and so a ceiling: 50 loops of seed
+  23, 113 lines a reading, the default sizes), the fitted wave is the label's on
+  109 lines alone, 98 in their loops and 82 with lengths and velocities moved as
+  the analysis's rip moves them, and 104, 90 and 83 under `aug`, where one note at
+  its peak got 82, 48, 45 and 78, 56, 47. The best seed is now the label's voice,
+  or the bank voice it was redrawn from, and a fit that beats it does so by a
   twentieth of its distance, wandering 0.1 to 0.25 from its genes where the
   measure hears little: the fits nearer the genes than their seed fell.
+- Read on ripped notes through trained models (`fits`, the default sizes, 196
+  generated loops of a seed no round drew), the lines whose fitted wave is the
+  label's, one note at its peak and then the mix:
+
+  ```
+                       aug                   clean
+                  peak       mix        peak       mix
+  alone   all    120/234   169/234     135/238   218/238
+          saw     21/94     72/94       19/87     80/87
+          string  13/35     14/35       28/45     39/45
+          modal   86/105    83/105      88/106    99/106
+  shared  all    107/280   143/280      85/280   161/280
+          saw     18/122    86/122      18/128   115/128
+          string  17/67      9/67       10/68      4/68
+          modal   72/91     48/91       57/84     42/84
+  ```
+
+  What fell is a shared line's string and modal wave, a saw now named on 29 and 37
+  of them under `aug`, 35 and 35 without; a string alone reads modal on 15 and 4.
+  The measure still prefers another voice: on notes held out the fit is nearer than
+  the label's own on 115 of 152 lines alone and 189 of 240 shared under `aug` (146
+  and 235 at the peak), 117 of 162 and 193 of 250 without (158 and 240). It ends
+  nearer the label's genes than the voice heard on 60 and 32 lines under `aug`, 101
+  and 52 without.
 - **A line two voices share is named by its other voice's loud, long notes.**
   The fit puts one voice on a line and plays every note in a window on it,
   the other voice's too: a decaying wave (a string, a modal bank) cannot
@@ -373,15 +397,9 @@ proves wrong or that a document now states, and link the document instead.
   and a fitted saw stand within a hundredth. A window's longest and loudest
   notes are listened to first, so the owner holds fewer of them than of the
   notes. `given` cannot show it, as its shared lines are voices doubled by
-  another, each line its own notes. Over 49 loops of `corpus <dir> 196 4 aug gen
-  seed 23`, the label's events in the heads' place, a shared line is named right 0 of 16 times where a string owns it,
-  17 of 23 a modal and 15 of 26 a saw, its owner holding 0.70 of its notes
-  and 0.66 of the windows listened to; one-voice lines 56 of 71. The same
-  line without `aug`: 4 of 14, 18 of 23, 14 of 26, 0.71 and 0.73, 65 of 74.
-  A median of the windows, each over its nearest seed's, is flat: most
-  windows hold too little of the line to tell voices apart. The note's own
-  cells (`cells`) name strings and lose saws, so they are off by default
-  ([todo](todo.md#close-the-rips-loop), item 10).
+  another, each line its own notes. A median of the windows, each over its
+  nearest seed's, is flat: most windows hold too little of the line to tell
+  voices apart.
 - **The search stops short within the right wave.** Two thirds of its first
   pool are drawn across the whole genome and crossed into the seeds, and a
   move changes a sixth of the genes by a tenth, so it never refines near a
@@ -663,7 +681,7 @@ proves wrong or that a document now states, and link the document instead.
   note's own rise. audio's `ReadWAV` mixes channels to one, so `readChannels`
   patches the header's count to one and deals the samples out by the file's.
 - **A pickup is not the microphone**, by several dB a note
-  ([todo](todo.md#tune-the-rip), item 11): a map from a string's
+  ([todo](todo.md#tune-the-rip), item 10): a map from a string's
   level to the microphone's, fitted any way, missed the bound on notes left out.
   Look at the same note played again with every other string silent before
   fitting a finer one.
@@ -941,9 +959,8 @@ proves wrong or that a document now states, and link the document instead.
 - A run's noise differs by set, so a difference on one set is read against that
   set's own spread. Two runs that differ in anything else are not a repeat.
 - `--validate` picks a notes model by its strike head's peaks at the decoder's
-  bars, not by its loss on recordings, which holds its onset head's, which the
-  pick leaves out though audio reads it beside the strikes. One instrument's
-  score can trade against another's, so
+  bars, not by its loss on recordings, which holds its onset head's, a head no
+  decoder reads from it. One instrument's score can trade against another's, so
   validate on every kind of recording at once. A frame model is still picked by
   the decoders' loss there, in a pass that carries on the sum of the heads audio
   reads from it, which can rise as its onset head grows surer while
@@ -978,10 +995,8 @@ proves wrong or that a document now states, and link the document instead.
 - **A take read again costs its resample.** A second of sound read again for a
   rip takes 4.7 ms of a core: 4.1 the resample from 44.1 kHz to the rip's rate,
   which low-passes every sample though it keeps every other, 0.5 `ReadWAV` and
-  0.07 the file; a full-size pair's frames read back from their gob take 1.3
-  and a label's planes built again 0.3 to 0.5, where a rip through the label's
-  heads takes some 20. A pair hears it again in 58 ms on four cores, the
-  analysis in 35 on one.
+  0.07 the file; a full-size pair's frames read back from their gob take 1.3.
+  A pair hears it again in 58 ms on four cores, the analysis in 35 on one.
 - A fit over a list of one kind can gain on it at every other's cost: scored
   within lines over a list of guitar alone, a search can silence the bass line
   (`strike_low` near 1). The guard refuses that only for conditions its list

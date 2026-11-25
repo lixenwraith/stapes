@@ -174,16 +174,13 @@ flowchart TD
    so neither a note's neighbours nor another line's sound is the candidate's
    to imitate and no part's level counts. A line two voices share is named
    by its other voice's loud, long notes, which the candidate plays too
-   ([agent notes](agent-notes.md#the-rip-and-its-truths)); `cells`, off unless
-   named, hears each note on its own cells, the line's other notes on its
-   voice, over notes spread through the line, by the median of the windows.
-   A line no voice was heard for plays
-   in the others' windows on the registered voice nearest its notes alone
-   (`presentVoices`), and a fitted line on its fit. The voice's level is set
-   after to the recording's around its notes. The melody's second line gets
-   one of its own (`Rip.UnderVoice`). `fits` reads the search against the
-   voices a corpus's labels state, the label's own voice measured at the fit's
-   notes beside the fit, and on the label's own notes with `given`
+   ([agent notes](agent-notes.md#the-rip-and-its-truths)). A line no voice was
+   heard for plays in the others' windows on the registered voice nearest its
+   notes alone (`presentVoices`), and a fitted line on its fit. The voice's
+   level is set after to the recording's around its notes. The melody's second
+   line gets one of its own (`Rip.UnderVoice`). `fits` reads the search against
+   the voices a corpus's labels state, the label's own voice measured at the
+   fit's notes beside the fit, and on the label's own notes with `given`
    ([Stapes §4](stapes.md#4-the-rips-verbs)).
 5. **Patterns and the dictionary.** Notes and hits fall into bars on the
    sixteenth grid. `rip` writes windows of up to four bars as patterns, the
@@ -311,15 +308,13 @@ on its bar line (`song <name> play`), and renders one offline (`song <name>
   oscillator voices sway with a vibrato; every note that moves is labelled with
   its cents at each frame. `kits` plays an arranged loop's drums on a kit of two
   to ten struck sounds drawn over audio's struck genome, each piece's role its
-  band's place among the kit's ([Rip training §3](rip-training.md#a-loops-kit));
-  both models say on a head of their own, which no decoder reads yet, that
-  something of no pitch is struck, a kit's piece or a line's hit, and a loop
-  that holds a kit asks the drums head nothing ([Rip training
-  §5](rip-training.md#5-the-targets)). Each word draws from streams of its own, so a loop it leaves alone is the
-  same with it and without. The trainer changes a share of the windows as it
-  draws them: `--channel` hears them through a small speaker, a room and a
-  phone, and `--over` lays real drums under loops where nothing is struck,
-  labelling a strike only where it can be heard ([Rip training
+  band's place among the kit's ([Rip training §3](rip-training.md#a-loops-kit)),
+  and a loop that holds a kit asks the drums head nothing ([Rip training
+  §5](rip-training.md#5-the-targets)). Each word draws from streams of its own,
+  so a loop it leaves alone is the same with it and without. The trainer changes
+  a share of the windows as it draws them: `--channel` hears them through a small
+  speaker, a room and a phone, and `--over` lays real drums under loops where
+  nothing is struck, labelling a strike only where it can be heard ([Rip training
   §6](rip-training.md#6-what-may-change-a-windows-frames)).
 - **Harness.** `tool/rip-train/pipeline.sh` runs the corpus, the training, the
   bench and the install with every knob an environment variable, the corpus in

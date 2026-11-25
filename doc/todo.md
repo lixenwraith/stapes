@@ -449,6 +449,30 @@ Left open by what landed, each with the option not taken:
   with the notes model's salience from step to step.
 - `test_train.py` runs by hand: CI has no PyTorch.
 
+### A set a kind of sound
+
+- Priority: P1
+- Affected files: `kinds.go`, `tune.go`, `tool/rip-train/pipeline.sh`, `lixenwraith/audio` (the decoders)
+
+A recording read as singing is ripped under singing's own set (`rip.voice.toml`), the
+others under the root's ([Stapes §4](stapes.md#4-the-rips-verbs)). Left:
+
+- **The joint path by kind.** With trained heads it reads every line and beat right on
+  more generated loops than the present path, with drums (173 of 204 where 147) and
+  without (92 of 195 where 76), on fewer of a lone guitar's recordings (75 of 298 where
+  151) and as many of E-GMD's (8 of 40 where 9). A `rip.<kind>.toml` can set `joint`,
+  but no real mix with its bars given has been read. Close: such a list, read under
+  both, before `joint` 1 is installed for any kind.
+- **Drums alone are not told from drums under music**: over a kit the pitch head finds
+  pitches and the family head a bass, and the pair writes a median of 40 notes a minute
+  on E-GMD's test takes, where none plays. No reading counts them. Close: `tune ...
+  truth` counts the notes a minute heard on a recording whose truth holds hits alone,
+  as it counts hits where no drum plays, and the table carries it.
+- **The notes model states no measure** (`sure` 0), so no note is named a family and
+  the kind is read from the frame model's family head. Close: a measure from a family
+  held out, or the names dropped from a note.
+- `fits` and a live stream rip under the root's own set, whatever the kind.
+
 ### Hear what is struck
 
 - Priority: P1

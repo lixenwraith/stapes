@@ -44,6 +44,8 @@ The root is `-config-dir`, or else `os.UserConfigDir()` plus `stapes`
   engine's 50 ms when unset; a key it has no field for is refused by name;
 - `rip.toml`, the rip's parameters: what `rip` listens with when it is there,
   and where `tune` writes;
+- `rip.<kind>.toml`, a set for a kind of sound, `drums`, `voice` or `guitar`:
+  what `rip` listens with on a recording it reads as that kind;
 - `ripframe.bin`, the frame model, the rip's learned front end: what `rip`
   hears with when it is there, the built-in analysis when it is not
   ([rip-train](../tool/rip-train/README.md)); under its old name,
@@ -206,7 +208,13 @@ Over the library's rip (library
   against it: `MatchNotes` counted every note once, `MatchBars` with the
   offline rip's bar lines and beats as the truth, and the process's CPU over
   each (`getrusage`, so the mixer's and a screen's are in it).
-- `rip` listens with the root's `rip.toml` when one is there, and hears with
+- `rip` listens with the root's `rip.toml` when one is there; where the root
+  holds a set for a kind of sound (`rip.<kind>.toml`, `loadKinds`), a recording
+  is ripped once, its kind read from that rip and its frames (`kindOf`: `drums`
+  where the rip holds hits; with none, `voice` or `guitar` where the frame
+  model's family head gives that family half or more of the frames something
+  sounds in, `familyShares`), and ripped again under its kind's set, the model
+  hearing it once (`Session.hear`). It hears with
   the root's `ripframe.bin`, and the notes from its `ripnotes.bin` when that is
   there, which `tool/rip-train` trains on loops stapes exports (`corpus`); `render` writes what the slots hold to a WAV through
   `RenderMusic`, so an estimate is heard without a device. The root's
@@ -278,11 +286,11 @@ Over the library's rip (library
   refused with those it knows, and a word that leaves none free. A search that
   names every part draws what one without the word draws. It says the genes
   free before it starts, a whole part by its name, and last, once it writes a
-  set, each gene that moved, from and to as `rip.toml` writes them. `heads`
-  rips each recording whose truth is a label with the heads it names the
-  label's, as `truth`'s does (`truthTake.read`), the rest through the analysis
-  where no model is loaded, and counts by head the takes whose label states one
-  not; each condition's stages follow its readings (`truthCount.stages`);
+  set, each gene that moved, from and to as `rip.toml` writes them. Each
+  condition's stages follow its readings (`truthCount.stages`); a take of a
+  kind the root holds a set for is ripped under that set, as `rip` rips it
+  (`truthTake.kinds`), so a root with such a file reads as the app does and a
+  search leaves that kind's takes where the file puts them;
   and either search's best has each gene whose move the score does not see,
   put back alone, back at the start's (`settled`), since a pool moves genes by
   chance and a search through the analysis, a model without the heads or loops

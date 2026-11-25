@@ -1665,9 +1665,10 @@ E-GMD      judge            -      -              -         -  0.490  0.787     
 ```
 
 A guitar and the generated loops keep the built-in thresholds, as no search finds a set
-they keep; singing takes a set of its own (`fit-voice`). A count with a label's events
-in the heads' place says what the decoders could do with perfect heads: it is given as
-that, and nothing is changed or merged on it.
+they keep; singing takes a set of its own (`fit-voice`), which a root holds as
+`rip.voice.toml` and `rip` uses on a recording it reads as singing (`KINDS`, the row
+`kinds`). A count with a label's events in the heads' place says what the decoders
+could do with perfect heads: it is given as that, and nothing is changed or merged on it.
 
 ### The key
 

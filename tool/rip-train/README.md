@@ -111,6 +111,7 @@ tool/rip-train/pipeline.sh rows judge fit readback table keep   # the fit of a p
 | `DILATIONS` | empty | `notes`: the notes model's long convolutions, their frames apart, `train.py`'s `--dilations` |
 | `LR`, `EXTRA`, `CARRY` | empty | `train.py`'s `--lr`; `--extra`, more corpora and the share of windows each draws, `dir:share` by commas, such as the recorded sets; and `carry` for `--carry`, a pass that carries on from `INIT` |
 | `JUDGE`, `SET` | empty | `install`: a judge's file and a `rip.toml`, one of the fit's sets, put in the root as `ripjudge.bin` and `rip.toml` |
+| `KINDS` | empty | `install`, `readback`: the sets a kind of sound is ripped under, `kind=file` blank-separated (`voice=$FIT/sets/voice.toml`), put in the root as `rip.<kind>.toml` |
 | `BENCH_LOOPS`, `BENCH_BARS` | 12, 4 | the fresh loops `bench` grades on |
 | `INIT`, `SHARD` | none, 0 | the `.pt` a training starts from, `train.py`'s `--init`: a shard's round, or a pass's, the pass before it; and `shard`'s stream of windows, which writes `$CORPUS/shard$SHARD.pt` and `.bin` |
 | `MERGE_FILES`, `TRIM` | none, 0 | `merge`: the round's shard checkpoints, blank-separated or a glob, and the share of them dropped at each end of each weight before the mean |
@@ -165,7 +166,9 @@ tool/rip-train/pipeline.sh rows judge fit readback table keep
   the start, the kind's lines, the search's words), and is searched again
   when one of them changes.
 - `readback` reads `READBACK` under the models alone, under their judge,
-  under `START`, and under each kind's set that is not the start's own:
+  under `START`, under each kind's set that is not the start's own, and under
+  `KINDS`, each recording under the set of the kind stapes reads it as, which
+  is what `rip` does with that root:
   `tune 2 1 truth`, the smallest search, whose figures before are the set's.
   A reading stands while its root and the list do, and one whose set is gone
   leaves the logs.
@@ -176,8 +179,8 @@ tool/rip-train/pipeline.sh rows judge fit readback table keep
   where no start is named.
 - `keep` copies the pair, its checkpoints, the judge, the sets and the table
   under `$WEIGHTS/$NAME`, a file not there yet or changed, each with its line
-  in `$WEIGHTS/MANIFEST.txt`. `install` takes `JUDGE` and `SET` by name:
-  which set a root hears with is a decision, not a stage's.
+  in `$WEIGHTS/MANIFEST.txt`. `install` takes `JUDGE`, `SET` and `KINDS` by
+  name: which sets a root hears with is a decision, not a stage's.
 
 A list's paths are absolute, since `fit` cuts it a kind into `FIT`. `TRUTH`
 and `READBACK` may name a corpus directory that kept its audio: its loops of

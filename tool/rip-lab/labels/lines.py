@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-"""lines.py <out dir> <engine|nsynth> <seed> <count> <fit|out> [tuned|shapes] | lines.py <out dir> verify: lines of
-one voice whose notes are known, each a WAV and its truth, for scoring a label procedure: the engine's,
-rendered by lines/ (ENGINELINES names its binary), among them takes of VocalSet's exercises sung right and wrong,
-and NSynth's vocal notes laid end to end (NSYNTH names its audio folder). ../README.md says what is drawn."""
-import csv, itertools, json, math, os, random, struct, subprocess, sys, wave
+"""lines.py <out dir> <seed> <count> <fit|out> | lines.py <out dir> verify: takes of VocalSet's exercises sung right
+and wrong by a voice of the engine, whose notes are known, each a WAV and its truth, for scoring a label procedure;
+rendered by lines/ (ENGINELINES names its binary). ../README.md says what is drawn."""
+import csv, itertools, json, math, os, random, subprocess, sys, wave
 import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # shapes.py is beside this file, under python -I too
 import shapes
 
-SR, LENGTH, LOW, HIGH = 44100, 12.0, 36, 86
+SR, LOW, HIGH = 44100, 36, 86
 LAB = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-NSYNTH = os.path.join(os.path.expanduser(os.environ.get('NSYNTH', '~/data/rip/nsynth/nsynth-train/audio')), '')
-STEPS = [(0, 8), (1, 11), (-1, 11), (2, 15), (-2, 15), (3, 5), (-3, 5), (4, 5), (-4, 5), (5, 4), (-5, 4), (7, 3.5), (-7, 3.5), (12, 2.5), (-12, 2.5)]
 
 def sound_pitch(seg, sr):
     """a held sound's pitch as a MIDI number, apart from vocal.py's own measure; 0 for none. The pitch whose first
@@ -34,18 +31,11 @@ def sound_pitch(seg, sr):
     fine = i + (0.5 * (a - d) / (a - 2 * c + d) if a - 2 * c + d < 0 else 0)
     return 69 + 12 * math.log2(55 * 2 ** (fine / 120) / 440)
 
-def envelope(x, sr, ms=10):
-    """the RMS of x in windows of ms"""
-    w = max(int(sr * ms / 1000), 1)
+def envelope(x):
+    """the RMS of x in windows of 10 ms"""
+    w = SR // 100
     n = len(x) // w
     return np.sqrt((x[:n * w].reshape(n, w) ** 2).mean(1)) if n else np.zeros(0)
-
-def resample(x, sr, to):
-    n = int(round(len(x) * to / sr))
-    spec, out = np.fft.rfft(x), np.zeros(n // 2 + 1, complex)
-    k = min(len(spec), len(out))
-    out[:k] = spec[:k]
-    return np.fft.irfft(out, n) * (n / len(x))
 
 def ring(x, db):
     """the band from 1.5 to 4 kHz raised by db, where a trained voice's ring holds most of its energy"""
@@ -91,36 +81,23 @@ def noise(nrng, n, lo, hi):
     y = np.fft.irfft(spec, n) * np.hanning(n)
     return y / (np.sqrt((y ** 2).mean()) + 1e-12)
 
-def phrase(rng, step, pick):
-    """a line's notes on the step grid as [pos, dur, key, vel, scoop, bend, at]"""
-    total = int(math.ceil(LENGTH / step / 16)) * 16
-    notes, pos, key = [], rng.randrange(0, 3), pick(None, 0)
-    while pos < total - 1:
-        dur = max(1, min(round(math.exp(rng.uniform(math.log(0.1), math.log(2.5))) / step), 64, total - pos))
-        notes.append([pos, dur, key, 10 ** (rng.uniform(-26, 0) / 20), 0, 0.0, 0.0])
-        pos += dur
-        if rng.random() < 0.3:
-            pos += max(1, round(math.exp(rng.uniform(math.log(0.15), math.log(1.0))) / step))
-        key = pick(key, rng.choices([s for s, _ in STEPS], [w for _, w in STEPS])[0])
-    return notes
-
-def ornaments(rng, notes, step, voice=False):
-    """glides into the next note and scoops from below, on the engine's notes; a voice slides into a short note too"""
+def ornaments(rng, notes, step):
+    """glides into the next note, a short one too, and scoops from below"""
     for i, n in enumerate(notes):
         nxt = notes[i + 1] if i + 1 < len(notes) else None
         joined = nxt is not None and nxt[0] == n[0] + n[1]
         after = i > 0 and notes[i - 1][0] + notes[i - 1][1] == n[0]
         # a singer slides into most notes that follow another, in a twentieth to a quarter of a second, and scoops
         # into half of those that follow silence
-        if joined and nxt[2] != n[2] and abs(nxt[2] - n[2]) <= 7 and n[1] * step >= (0.1 if voice else 0.2) and rng.random() < 0.7:
-            n[5], n[6] = float(nxt[2] - n[2]), 1 - min(rng.uniform(0.03 if voice else 0.05, 0.25), 0.6 * n[1] * step) / (n[1] * step)
+        if joined and nxt[2] != n[2] and abs(nxt[2] - n[2]) <= 7 and n[1] * step >= 0.1 and rng.random() < 0.7:
+            n[5], n[6] = float(nxt[2] - n[2]), 1 - min(rng.uniform(0.03, 0.25), 0.6 * n[1] * step) / (n[1] * step)
         if not after and n[1] >= 2 and step <= 0.15 and n[2] - 3 >= LOW and rng.random() < 0.5:
             n[4] = rng.choice([1, 2, 3])
 
 def exercise(rng):
-    """a take of one of the sheet's exercises on the step grid: its name, its tempo, the notes sung as phrase gives
-    them, and what is wrong with the take, if anything: a note missing, a bar sung twice, a restart after two to four
-    notes, or a wrong note two to four semitones from the one written"""
+    """a take of one of the sheet's exercises on the step grid: its name, its tempo, the notes sung as [pos, dur, key,
+    vel, scoop, bend, at], and what is wrong with the take, if anything: a note missing, a bar sung twice, a restart
+    after two to four notes, or a wrong note two to four semitones from the one written"""
     kind = rng.choices(['arpeggios', 'scales', 'long_tones'], [43, 43, 14])[0]
     fast = kind != 'long_tones' and rng.random() < 0.3
     secs = (rng.uniform(2.0, 5.0) if kind == 'long_tones' else rng.uniform(0.14, 0.24) if fast and kind == 'arpeggios'
@@ -178,38 +155,26 @@ def finish(rng, nrng, x, truth, peaks):
     x = x / (np.abs(x).max() + 1e-12) * 10 ** (peak / 20)
     return np.round(x * 32767).astype('<i2'), sorted(rows), peak
 
-def write(out, name, x, truth, noises, offs=None):
+def write(out, name, x, truth, noises, offs):
     with wave.open(f'{out}/{name}.wav', 'wb') as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
         w.writeframes(x.tobytes())
     with open(f'{out}/{name}.tsv', 'w') as f:
         f.write('kind\tstart\tend\tkey\tvel\tscoop\tbend\tat\toff\n')
         for i, (s, e, k, v, sc, b, at) in enumerate(truth):
-            f.write(f'note\t{s:.6f}\t{e:.6f}\t{k}\t{v:.3f}\t{sc}\t{b:g}\t{at:.3f}\t{offs[i] if offs else 0:.3f}\n')
+            f.write(f'note\t{s:.6f}\t{e:.6f}\t{k}\t{v:.3f}\t{sc}\t{b:g}\t{at:.3f}\t{offs[i]:.3f}\n')
         for s, e in noises:
             f.write(f'noise\t{s:.6f}\t{e:.6f}\t0\t0\t0\t0\t0\t0\n')
 
-def engine(out, seed, count, which, peaks, mode=''):
+def engine(out, seed, count, which, peaks):
     spec, lines = [], []
     for i in range(count):
         rng = random.Random(f'engine-{which}-{seed}-{i}')
-        kind, wrong = '', ''
-        if mode == 'shapes':
-            kind, bpm, step, notes, wrong = exercise(rng)
-        else:
-            bpm = rng.randint(72, 190)
-            step = (SR * 60 // (bpm * 4)) / SR
-            centre = rng.randint(LOW + 9, HIGH - 9)
-            lo, hi = centre - 9, centre + 9
-            def pick(key, iv, rng=rng, lo=lo, hi=hi):
-                if key is None:
-                    return rng.randint(lo, hi)
-                return key + iv if lo <= key + iv <= hi else key - iv if lo <= key - iv <= hi else key
-            notes = phrase(rng, step, pick)
-        ornaments(rng, notes, step, mode == 'shapes')
+        kind, bpm, step, notes, wrong = exercise(rng)
+        ornaments(rng, notes, step)
         voice = dict(Wave='saw' if which == 'fit' else 'square', Vowel=rng.choice(['a', 'e', 'i', 'o', 'u', '']),
                      Attack=rng.uniform(0.005, 0.06), Decay=rng.uniform(0.05, 0.3), Sustain=rng.uniform(0.6, 1.0),
-                     Release=rng.uniform(0.01, 0.04) if mode == 'shapes' else rng.uniform(0.03, 0.15))
+                     Release=rng.uniform(0.01, 0.04))
         if rng.random() < 0.7:
             voice.update(VibratoHz=rng.uniform(4.5, 7.0), VibratoCents=rng.uniform(20, 100), VibratoDelay=rng.uniform(0, 0.3))
         if rng.random() < 0.5:
@@ -222,35 +187,34 @@ def engine(out, seed, count, which, peaks, mode=''):
             else:
                 events.append(dict(Pos=pos, Dur=dur, MIDI=key, Vel=vel, Bend=bend, At=at))
         name = f'engine{i:04d}'
-        # a singer's own pitch standard: a draw of its own, so an untuned draw's lines are what they were
+        # a singer's own pitch standard
         trng = random.Random(f'tuning-{which}-{seed}-{i}')
-        tuning = 0.0 if not mode else trng.choice([-50.0, 50.0]) if trng.random() < 0.125 else trng.uniform(-50, 50)
+        tuning = trng.choice([-50.0, 50.0]) if trng.random() < 0.125 else trng.uniform(-50, 50)
         # one note of three in ten right takes is sung most of a semitone off its key and is the note meant all the
         # same
-        off, offs, spread, wide, res = (-1, 0.0), None, 0.0, None, None
-        if mode == 'shapes':
-            if not wrong and trng.random() < 0.3:
-                off = (trng.randrange(len(notes)), trng.uniform(0.5, 0.9) * (-1 if tuning > 0 else 1))
-            # how the take is sung: each note its own distance off its key, the take's spread a draw; centred by
-            # the notes' lengths, so the take's standard is the tuning drawn
-            srng = random.Random(f'sung-{which}-{seed}-{i}')
-            spread = math.exp(srng.uniform(math.log(0.07), math.log(0.40)))
-            offs = [next(d for d in iter(lambda: srng.gauss(0, spread), None) if abs(d) <= 0.5) for _ in notes]
-            order = sorted(range(len(notes)), key=lambda j: offs[j])
-            half, run = sum(n[1] for n in notes) / 2, 0
-            for j in order:
-                run += notes[j][1]
-                if run >= half:
-                    offs = [d - offs[j] for d in offs]
-                    break
-            if off[0] >= 0:
-                offs[off[0]] = off[1]
-            if srng.random() < 0.15:
-                wide = (srng.uniform(100, 170), srng.uniform(4.3, 7.7), srng.uniform(0, 2 * math.pi))
-                for k in ('VibratoHz', 'VibratoCents', 'VibratoDelay'):
-                    voice.pop(k, None)
-            if srng.random() < 0.25:
-                res = (math.exp(srng.uniform(math.log(330), math.log(1050))), srng.uniform(14, 28), srng.uniform(0.1, 0.25))
+        off, wide, res = (-1, 0.0), None, None
+        if not wrong and trng.random() < 0.3:
+            off = (trng.randrange(len(notes)), trng.uniform(0.5, 0.9) * (-1 if tuning > 0 else 1))
+        # how the take is sung: each note its own distance off its key, the take's spread a draw; centred by the
+        # notes' lengths, so the take's standard is the tuning drawn
+        srng = random.Random(f'sung-{which}-{seed}-{i}')
+        spread = math.exp(srng.uniform(math.log(0.07), math.log(0.40)))
+        offs = [next(d for d in iter(lambda: srng.gauss(0, spread), None) if abs(d) <= 0.5) for _ in notes]
+        order = sorted(range(len(notes)), key=lambda j: offs[j])
+        half, run = sum(n[1] for n in notes) / 2, 0
+        for j in order:
+            run += notes[j][1]
+            if run >= half:
+                offs = [d - offs[j] for d in offs]
+                break
+        if off[0] >= 0:
+            offs[off[0]] = off[1]
+        if srng.random() < 0.15:
+            wide = (srng.uniform(100, 170), srng.uniform(4.3, 7.7), srng.uniform(0, 2 * math.pi))
+            for k in ('VibratoHz', 'VibratoCents', 'VibratoDelay'):
+                voice.pop(k, None)
+        if srng.random() < 0.25:
+            res = (math.exp(srng.uniform(math.log(330), math.log(1050))), srng.uniform(14, 28), srng.uniform(0.1, 0.25))
         spec.append(dict(Name=name, BPM=bpm, Tuning=tuning, Voice=voice, Notes=events))
         lines.append((name, rng, bpm, step, voice, notes, tuning, kind, wrong, off, offs, spread, wide, res))
     json.dump(spec, open(f'{out}/spec.json', 'w'))
@@ -260,11 +224,10 @@ def engine(out, seed, count, which, peaks, mode=''):
         raw = open(f'{out}/{name}.raw.wav', 'rb').read()
         x = np.frombuffer(raw[44:], '<f4').astype(np.float64)
         os.remove(f'{out}/{name}.raw.wav')
-        truth = [(pos * step, (pos + dur) * step, key, vel, scoop, bend, at) for pos, dur, key, vel, scoop, bend, at in notes]
-        if offs:                                            # the take as it is sung, and where its notes now are
-            x, place = warp(x, sung(notes, step, offs, len(x), wide))
-            there = lambda t: float(place[min(int(round(t * SR)), len(place) - 1)]) / SR
-            truth = [(there(s), there(e), *rest) for s, e, *rest in truth]
+        # the take as it is sung, and where its notes now are
+        x, place = warp(x, sung(notes, step, offs, len(x), wide))
+        there = lambda t: float(place[min(int(round(t * SR)), len(place) - 1)]) / SR
+        truth = [(there(pos * step), there((pos + dur) * step), key, vel, scoop, bend, at) for pos, dur, key, vel, scoop, bend, at in notes]
         if res:
             x = chest(x, *res)
         rung = rng.uniform(10, 35) if rng.random() < 0.5 else 0.0
@@ -276,75 +239,6 @@ def engine(out, seed, count, which, peaks, mode=''):
                      round(voice.get('Cutoff', 0)), round(peak, 1), round(len(y) / SR, 2), len(notes), round(voice['Release'], 3), round(rung, 1), round(tuning, 1), kind, wrong, off[0], round(off[1], 3),
                      round(spread, 3), round(wide[0]) if wide else 0, round(wide[1], 2) if wide else 0,
                      round(res[0]) if res else 0, round(res[1], 1) if res else 0, round(res[2], 3) if res else 0))
-    return rows
-
-def nsynth_notes(out, which):
-    """the vocal_acoustic notes on disk an instrument, each checked against its label: {instrument: {key: [file]}}"""
-    table, left, held = {}, [], 0
-    for f in sorted(os.listdir(NSYNTH)):
-        if not f.startswith('vocal_acoustic'):
-            continue
-        held += 1
-        inst, key, vel = f[:-4].rsplit('-', 2)
-        with wave.open(NSYNTH + f) as w:
-            sr = w.getframerate()
-            x = np.frombuffer(w.readframes(w.getnframes()), '<i2').astype(np.float64) / 32768
-        # a note is laid from its first sample, so its pitch has to be its label's from a tenth of a second on
-        reads = [sound_pitch(x[int(t * sr):int((t + 0.1) * sr)], sr) for t in (0.1, 0.2, 0.4, 0.8, 1.2, 1.6, 2.0)]
-        heard = max(reads, key=lambda r: abs(r - int(key)))
-        if not LOW <= int(key) <= HIGH or min(reads) <= 0 or abs(heard - int(key)) > 0.6 or np.abs(x).max() < 0.01:
-            left.append((f, int(key), round(heard, 2), round(float(np.abs(x).max()), 4)))
-            continue
-        table.setdefault(inst, {}).setdefault(int(key), []).append(f)
-    with open(f'{out}/notes-left-out.tsv', 'w') as f:
-        f.write('file\tlabel\theard\tpeak\n' + ''.join('%s\t%d\t%s\t%s\n' % r for r in left))
-    names = sorted(n for n, keys in table.items() if len(keys) >= 5)
-    random.Random(0).shuffle(names)
-    cut = len(names) * 2 // 3
-    mine = sorted(names[:cut] if which == 'fit' else names[cut:])
-    print(f'NSynth held {held} vocal_acoustic training notes when this ran; {len(left)} left out for a label their sound does not hold,',
-          f'a silence or a key out of reach; {len(names)} instruments with five keys or more, {len(mine)} of them {which}: {" ".join(n[15:] for n in mine)}')
-    return {n: table[n] for n in mine}
-
-def nsynth(out, seed, count, which, peaks):
-    table = nsynth_notes(out, which)
-    names, rows = sorted(table), []
-    for i in range(count):
-        rng = random.Random(f'nsynth-{which}-{seed}-{i}')
-        inst = names[i % len(names)]
-        keys = sorted(table[inst])
-        bpm = rng.randint(72, 190)
-        step = (SR * 60 // (bpm * 4)) / SR
-        def pick(key, iv, rng=rng, keys=keys):
-            if key is None:
-                return rng.choice(keys)
-            k = min(keys, key=lambda p: (abs(p - (key + iv)), p))
-            if k == key and iv:
-                j = keys.index(key) + (1 if iv > 0 else -1)
-                k = keys[j] if 0 <= j < len(keys) else key
-            return k
-        notes = phrase(rng, step, pick)
-        sr = 16000
-        x = np.zeros(int((notes[-1][0] + notes[-1][1]) * step * sr) + sr)
-        truth = []
-        for pos, dur, key, vel, *_ in notes:
-            with wave.open(NSYNTH + rng.choice(table[inst][key])) as w:
-                y = np.frombuffer(w.readframes(w.getnframes()), '<i2').astype(np.float64) / 32768
-            n = min(int(dur * step * sr), len(y))
-            y = y[:n].copy()
-            fade = min(int(0.03 * sr), n // 2)
-            y[n - fade:] *= np.cos(np.linspace(0, math.pi / 2, fade)) ** 2
-            env = envelope(y, sr, 50)
-            y *= vel / (env.max() + 1e-12)
-            fine = envelope(y, sr, 10)
-            rise = int(np.argmax(fine >= 0.1 * fine.max())) * 0.01
-            at = int(pos * step * sr)
-            x[at:at + n] += y
-            truth.append((pos * step + rise, pos * step + n / sr - fade / sr / 2, key, vel, 0, 0.0, 0.0))
-        name = f'nsynth{i:04d}'
-        y, noises, peak = finish(rng, np.random.default_rng([seed, i, 2]), resample(x, sr, SR), truth, peaks)
-        write(out, name, y, truth, noises)
-        rows.append((name, 'nsynth', inst[15:], bpm, 0, 0, 0, round(peak, 1), round(len(y) / SR, 2), len(notes), 0, 0, 0, '', '', -1, 0, 0, 0, 0, 0, 0, 0))
     return rows
 
 def verify(out, rows):
@@ -365,12 +259,12 @@ def verify(out, rows):
             checked += 1
             mid = [sound_pitch(x[int(t * SR):int(t * SR) + int(0.1 * SR)], SR) for t in np.linspace(s + 0.25 * (e - s), s + 0.75 * (e - s) - 0.1, 5)]
             mid = sorted(m for m in mid if m > 0)
-            heard = mid[len(mid) // 2] - r[12] / 100 if mid else 0.0   # a tuned line sounds its tuning off its keys
+            heard = mid[len(mid) // 2] - r[12] / 100 if mid else 0.0   # a take sounds its tuning off its keys
             near += 0.5 + sway < abs(heard - k) <= 1 + sway
             if abs(heard - k) > 1 + sway:
                 off += 1
                 worst.append((r[0], round(s, 2), k, round(heard, 2)))
-            seg = envelope(x[int(s * SR):int(e * SR)], SR)
+            seg = envelope(x[int(s * SR):int(e * SR)])
             mute += not len(seg) or seg[:8].max() < 0.1 * seg.max()
     print(f'read back: {checked} plain notes of 0.2 s or more; {near} read between a half and a whole semitone from their key (past the vibrato\'s reach),',
           f'{off} more than a semitone {worst[:6]}; {mute} have no sound in their first 80 ms')
@@ -382,15 +276,14 @@ if __name__ == '__main__':
                  float(r.get('chest_hz') or 0), float(r.get('chest_db') or 0), float(r.get('chest_width') or 0))
                 for r in csv.DictReader(open(f'{sys.argv[1]}/lines.tsv'), delimiter='\t')]
         sys.exit(verify(os.path.abspath(sys.argv[1]), rows))
-    out, kind, seed, count, which = os.path.abspath(sys.argv[1]), sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
-    mode = sys.argv[6] if len(sys.argv) > 6 else ''
-    assert kind in ('engine', 'nsynth') and which in ('fit', 'out') and mode in ('', 'tuned', 'shapes') and not (mode and kind == 'nsynth')
+    out, seed, count, which = os.path.abspath(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
+    assert which in ('fit', 'out')
     os.makedirs(out, exist_ok=True)
     peaks = [float(r['peak_db']) for r in csv.DictReader(open(f'{LAB}/datasets/logs/vocalset-wavscan.tsv'), delimiter='\t')]
-    rows = engine(out, seed, count, which, peaks, mode) if kind == 'engine' else nsynth(out, seed, count, which, peaks)
+    rows = engine(out, seed, count, which, peaks)
     with open(f'{out}/lines.tsv', 'w') as f:
         f.write('name\tkind\tvoice\tbpm\tvibrato_cents\tvibrato_hz\tcutoff\tpeak_db\tseconds\tnotes\trelease\tring_db\ttuning\texercise\twrong\toff_note\toff_by\tspread\twide_cents\twide_hz\tchest_hz\tchest_db\tchest_width\n')
         for r in rows:
             f.write('\t'.join(str(v) for v in r) + '\n')
-    print(f'{len(rows)} {kind} lines ({which} voices, seed {seed}) in {out}: {sum(r[9] for r in rows)} notes, {sum(r[8] for r in rows) / 60:.1f} minutes')
+    print(f'{len(rows)} takes ({which} voices, seed {seed}) in {out}: {sum(r[9] for r in rows)} notes, {sum(r[8] for r in rows) / 60:.1f} minutes')
     verify(out, rows)

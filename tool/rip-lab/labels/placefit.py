@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """placefit.py <truth root> [write]: place.py's bounds fitted on known takes of VocalSet's exercises (lines.py's
-three `shapes` draws) and checked on another seed and on voices left out; a value is taken only if its gain holds
+three draws) and checked on another seed and on voices left out; a value is taken only if its gain holds
 over a thousand redraws of the takes. With `write` the bounds go to place.json. placefit.py <truth root> reach
 <corpus dir>...: how far a placed start sits from its known start, into each corpus.json. ../README.md has both."""
 import collections, csv, glob, json, os, sys, time

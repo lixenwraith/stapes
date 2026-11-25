@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""linescheck.py <draw dir>...: the known lines that sing VocalSet's exercises (labels/lines.py ... shapes) checked
+"""linescheck.py <draw dir>...: the known lines that sing VocalSet's exercises (labels/lines.py) checked
 against themselves with none of that tool's code: each truth's keys against the shape the set's sheet writes and
 against what its list says is wrong with the take, and each note's pitch read from the WAV twice, by a comb about the
 pitch the truth gives and by a difference function. Exits 1 if a truth lacks its shape or a draw's files were written

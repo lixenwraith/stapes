@@ -195,18 +195,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    what the arrangement still lacks is a chord read per beat as the set of
    ringing pitches, rendered as a pad under the lines. The corpus plays no
    pedal: one that holds the notes, with labels that say so, is still to build.
-8. The fit as it fits a real lead: it picks modal voices where the user hears
-   a plucked string (a harp or a santur) or a flute. A plucked voice
-   (`string`) with a doubled, beating course. The measure now hears each
-   window as the mix of the line's notes, the other lines' and the drums' hits,
-   each at a gain of its own (`mixDistance`), read on the labels' own notes
-   with `fits ... given`. Left: the reading through the trained weights on
-   ripped loops they did not train on, which alone fills `heard`; a take for
-   `RenderNoteAt`, so a unison stack's or a string's measure averages the
-   phases and bursts its notes are seeded with ([agent
-   notes](agent-notes.md#the-rip-and-its-truths)); and onsets off the frame
-   grid.
-9. The judge as a trained stage ([Rip design](rip-design.md) §7) is built and
+8. The judge as a trained stage ([Rip design](rip-design.md) §7) is built and
    none is fitted on recordings or installed: `rows`, `tool/rip-train`'s
    `judge.py` and the root's `ripjudge.bin`
    ([a judge](../tool/rip-train/README.md#a-judge)). Left:
@@ -229,13 +218,13 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    - A count from rows reads apart from `truth`'s decode (the trainer's README
      says why); audio's own open items are in
      [its todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#close-what-a-judge-leaves-open).
-10. A performance's character, generated: `corpus ... gen` draws one by hand,
-    accents, swells and fades, a feel and a jitter a part and a tempo's drift
-    ([Rip training §3](rip-training.md#arranged-loops)). Left: how loudness
-    and timing move in the performances of a set that trains (GuitarSet's
-    annotations against a steady grid), measured there and the draws set from
-    it, judged as any corpus change, a pair. No round may learn it from a track.
-11. A recorded note's velocity is measured from its recording under the
+9. A performance's character, generated: `corpus ... gen` draws one by hand,
+   accents, swells and fades, a feel and a jitter a part and a tempo's drift
+   ([Rip training §3](rip-training.md#arranged-loops)). Left: how loudness
+   and timing move in the performances of a set that trains (GuitarSet's
+   annotations against a steady grid), measured there and the draws set from
+   it, judged as any corpus change, a pair. No round may learn it from a track.
+10. A recorded note's velocity is measured from its recording under the
     `measured` word ([Rip training §3](rip-training.md#a-recordings-velocities)).
     Left:
     - The bent voices: the bank's piano and bass, whose hammer's filter and
@@ -694,10 +683,16 @@ rip are in place; what remains:
    the lead rule's default by what ears prefer rather than by hand.
 
 7. A rip's voice from what was heard: `rip` fits every line, and the heard
-   voice is its first seed. What remains is the voice of every note (the
-   instrument model, above) and a distance that does not part a unison voice
-   from its own note by where its oscillators start ([tune the
-   rip](#tune-the-rip), item 8).
+   voice is its first seed. A real lead the user hears as a plucked string (a
+   harp or a santur) or a flute is fitted modal; read through trained models
+   ([agent notes](agent-notes.md#the-rip-and-its-truths)), a string alone reads
+   modal as often as a string under `aug`, and a line two voices share loses
+   its string and its modal wave to a saw. What remains: the voice of every
+   note (the instrument model, above); a plucked voice (`string`) with a
+   doubled, beating course; a take for `RenderNoteAt`, so a unison stack's or a
+   string's measure averages the phases and bursts its notes are seeded with
+   and parts no voice from its own note by where its oscillators start; and
+   onsets off the frame grid.
 8. Put off: a second piece of music under the first, which the rip
    transcribes with it; it wants the judge to follow instruments as it
    follows notes.

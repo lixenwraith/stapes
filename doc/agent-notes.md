@@ -365,6 +365,30 @@ proves wrong or that a document now states, and link the document instead.
   or the bank voice it was redrawn from, and a fit that beats it does so by a
   twentieth of its distance, wandering 0.1 to 0.25 from its genes where the
   measure hears little: the fits nearer the genes than their seed fell.
+- Read on ripped notes through trained models (`fits`, the default sizes, 196
+  generated loops of a seed no round drew), the lines whose fitted wave is the
+  label's, one note at its peak and then the mix:
+
+  ```
+                       aug                   clean
+                  peak       mix        peak       mix
+  alone   all    120/234   169/234     135/238   218/238
+          saw     21/94     72/94       19/87     80/87
+          string  13/35     14/35       28/45     39/45
+          modal   86/105    83/105      88/106    99/106
+  shared  all    107/280   143/280      85/280   161/280
+          saw     18/122    86/122      18/128   115/128
+          string  17/67      9/67       10/68      4/68
+          modal   72/91     48/91       57/84     42/84
+  ```
+
+  What fell is a shared line's string and modal wave, a saw now named on 29 and 37
+  of them under `aug`, 35 and 35 without; a string alone reads modal on 15 and 4.
+  The measure still prefers another voice: on notes held out the fit is nearer than
+  the label's own on 115 of 152 lines alone and 189 of 240 shared under `aug` (146
+  and 235 at the peak), 117 of 162 and 193 of 250 without (158 and 240). It ends
+  nearer the label's genes than the voice heard on 60 and 32 lines under `aug`, 101
+  and 52 without.
 - **A line two voices share is named by its other voice's loud, long notes.**
   The fit puts one voice on a line and plays every note in a window on it,
   the other voice's too: a decaying wave (a string, a modal bank) cannot
@@ -657,7 +681,7 @@ proves wrong or that a document now states, and link the document instead.
   note's own rise. audio's `ReadWAV` mixes channels to one, so `readChannels`
   patches the header's count to one and deals the samples out by the file's.
 - **A pickup is not the microphone**, by several dB a note
-  ([todo](todo.md#tune-the-rip), item 11): a map from a string's
+  ([todo](todo.md#tune-the-rip), item 10): a map from a string's
   level to the microphone's, fitted any way, missed the bound on notes left out.
   Look at the same note played again with every other string silent before
   fitting a finer one.

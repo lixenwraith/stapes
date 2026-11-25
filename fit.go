@@ -25,12 +25,11 @@ import (
 
 // fitOptions sizes a voice fit: the notes of a register it listens to, the
 // generations run over a pool of candidate voices, the seed every draw follows
-// and the candidates scored at once, the machine's cores at 0; cells, a share
-// in percent, hears each note on its own cells (fitScene.own), 0 for none
+// and the candidates scored at once, the machine's cores at 0
 type fitOptions struct {
-	notes, generations, pool, cells int
-	seed                            uint64
-	cores                           int
+	notes, generations, pool int
+	seed                     uint64
+	cores                    int
 }
 
 var defaultFit = fitOptions{notes: 6, generations: 8, pool: 16, seed: 1}
@@ -46,7 +45,6 @@ var fitWords = [...]struct {
 	{"pool", 4, 1024, func(o *fitOptions, n int) { o.pool = n }},
 	{"generations", 1, 500, func(o *fitOptions, n int) { o.generations = n }},
 	{"seed", 0, math.MaxInt32, func(o *fitOptions, n int) { o.seed = uint64(n) }},
-	{"cells", 0, 99, func(o *fitOptions, n int) { o.cells = n }},
 }
 
 // size sets the size a word of fitWords names to its number
@@ -62,7 +60,7 @@ func (o *fitOptions) size(word, number string) error {
 		f.set(o, n)
 		return nil
 	}
-	return fmt.Errorf("%q: want notes, pool, generations, seed or cells, each before its number", word)
+	return fmt.Errorf("%q: want notes, pool, generations or seed, each before its number", word)
 }
 
 // fitTail is how long past a note's end its window runs, for the release
@@ -256,22 +254,13 @@ func (s *Session) fitVoices(rp *ripped, o fitOptions) {
 }
 
 // fitSamples picks the notes a line is fitted on, each at least 80 ms: the
-// longest and loudest first, no pitch twice until every pitch has a note; or
-// spread evenly over the line's notes in time, a voice's windows its share
-func fitSamples(notes []audio.RipNote, n int, spread bool) []audio.RipNote {
+// longest and loudest first, no pitch twice until every pitch has a note
+func fitSamples(notes []audio.RipNote, n int) []audio.RipNote {
 	var cands []audio.RipNote
 	for _, note := range notes {
 		if note.End-note.Start >= 0.08 {
 			cands = append(cands, note)
 		}
-	}
-	if spread && len(cands) > n {
-		slices.SortStableFunc(cands, func(a, b audio.RipNote) int { return cmp.Compare(a.Start, b.Start) })
-		out := make([]audio.RipNote, n)
-		for i := range out {
-			out[i] = cands[(2*i+1)*len(cands)/(2*n)]
-		}
-		return out
 	}
 	sort.SliceStable(cands, func(i, j int) bool {
 		return (cands[i].End-cands[i].Start)*cands[i].Vel > (cands[j].End-cands[j].Start)*cands[j].Vel
@@ -344,7 +333,6 @@ type fitScene struct {
 	lines []fitPart
 	hits  []audio.RipHit
 	drums map[audio.InstrumentType][]float64 // each drum's take struck at full velocity
-	cells float64                            // the share a note's own cells are told by, 0 for none (own)
 }
 
 // ripScene is a rip's recording, its three lines and its hits, each line's voice
@@ -352,7 +340,6 @@ type fitScene struct {
 // gives it
 func (s *Session) ripScene(x []float64, rate int, r *audio.Rip, o fitOptions) *fitScene {
 	sc := s.scene(x, rate, r.Tuning, r.Hits())
-	sc.cells = float64(o.cells) / 100
 	for reg, at := range lineVoices(r) {
 		sc.lines = append(sc.lines, fitPart{notes: lineNotes(r, reg), voice: *at})
 	}
@@ -408,22 +395,15 @@ type fitTarget struct {
 	vel, dur       float64
 	mel            []float64
 	beside         [][]float64
-	cells          []int // of mel, the note's own (hear); nil where the window is heard whole
 }
 
 // targets picks n of line's notes and hears each one's window
 func (sc *fitScene) targets(line, n int) []fitTarget {
-	return sc.hear(line, fitSamples(sc.lines[line].notes, max(n, 1), sc.own(line)))
+	return sc.hear(line, fitSamples(sc.lines[line].notes, max(n, 1)))
 }
 
-// own is whether line's notes are heard on their own cells: where cells are
-// asked and the line has a voice its other notes play on
-func (sc *fitScene) own(line int) bool { return sc.cells > 0 && sc.lines[line].voice != nil }
-
 // hear hears the recording in each of samples' windows, beside what every
-// other line and drum plays there; on its own cells the line's other notes play
-// beside them on its voice, and a note's cells are those where it, on that
-// voice, carries more than the share of the mix fitted to its window
+// other line and drum plays there
 func (sc *fitScene) hear(line int, samples []audio.RipNote) []fitTarget {
 	targets := make([]fitTarget, len(samples))
 	for i, note := range samples {
@@ -448,24 +428,6 @@ func (sc *fitScene) hear(line int, samples []audio.RipNote) []fitTarget {
 		}
 		for _, d := range fitDrums {
 			heard(sc.struck(d, t.start, t.to))
-		}
-		if sc.own(line) {
-			v := sc.lines[line].voice
-			others := slices.DeleteFunc(slices.Clone(sc.lines[line].notes), func(m audio.RipNote) bool { return m == note })
-			heard(sounding(v, others, sc.cents, t.start, t.to))
-			alone := melEnergy(sounding(v, []audio.RipNote{note}, sc.cents, t.start, t.to), len(t.mel))
-			parts := append([][]float64{alone}, t.beside...)
-			_, g := mixDistance(parts, t.mel)
-			t.cells = []int{}
-			for j := range t.mel {
-				var m float64
-				for k, c := range parts {
-					m += g[k] * c[j]
-				}
-				if g[0]*alone[j] > sc.cells*m {
-					t.cells = append(t.cells, j)
-				}
-			}
 		}
 		targets[i] = t
 	}
@@ -524,45 +486,10 @@ func melEnergy(x []float64, cells int) []float64 {
 }
 
 // fitDistance is how far the recording in the targets' windows is from v
-// playing the line's notes there beside what else is heard, each part at a gain
-// of its own (windowDistances): the mean over the windows, or on their own cells
-// the median, the voice nearest over most of the line's notes; the fit's
-// measure, which a refinement holds a voice to
+// playing the line's notes there beside what else is heard: each window's
+// mixDistance, the line and every other part at a gain of its own, the mean
+// over the windows; the fit's measure, which a refinement holds a voice to
 func fitDistance(v *audio.VoiceDef, notes []audio.RipNote, targets []fitTarget, cents float64) float64 {
-	ds := windowDistances(v, notes, targets, cents)
-	if len(ds) > 0 && targets[0].cells != nil {
-		slices.Sort(ds)
-		return (ds[(len(ds)-1)/2] + ds[len(ds)/2]) / 2
-	}
-	var sum float64
-	for _, d := range ds {
-		sum += d
-	}
-	return sum / float64(max(len(ds), 1))
-}
-
-// windowDistances is each window's mixDistance: of v playing the line's notes
-// there, or on the window's own cells of v playing its note alone
-func windowDistances(v *audio.VoiceDef, notes []audio.RipNote, targets []fitTarget, cents float64) []float64 {
-	out := make([]float64, len(targets))
-	if len(targets) > 0 && targets[0].cells != nil {
-		for i, t := range targets {
-			x := audio.RenderNoteAt(v, t.midi, cents, t.vel, min(t.end, t.to)-t.start, max(t.to-t.end, 0))
-			parts := append([][]float64{melEnergy(x, len(t.mel))}, t.beside...)
-			y, cut := make([]float64, len(t.cells)), make([][]float64, len(parts))
-			for k := range cut {
-				cut[k] = make([]float64, len(t.cells))
-			}
-			for c, j := range t.cells {
-				y[c] = t.mel[j]
-				for k, p := range parts {
-					cut[k][c] = p[j]
-				}
-			}
-			out[i], _ = mixDistance(cut, y)
-		}
-		return out
-	}
 	// a note sounds alike up to any window's end it is rendered to, so each is
 	// rendered once, to the last window it sounds in
 	until := make([]float64, len(notes))
@@ -580,7 +507,8 @@ func windowDistances(v *audio.VoiceDef, notes []audio.RipNote, targets []fitTarg
 		}
 	}
 	const sr = audio.AudioSampleRate
-	for i, t := range targets {
+	var sum float64
+	for _, t := range targets {
 		lo := int(t.start * sr)
 		x := make([]float64, max(int(t.to*sr)-lo, 0))
 		for k, n := range notes {
@@ -592,16 +520,16 @@ func windowDistances(v *audio.VoiceDef, notes []audio.RipNote, targets []fitTarg
 				x[at+i] += played[k][i]
 			}
 		}
-		out[i], _ = mixDistance(append([][]float64{melEnergy(x, len(t.mel))}, t.beside...), t.mel)
+		sum += mixDistance(append([][]float64{melEnergy(x, len(t.mel))}, t.beside...), t.mel)
 	}
-	return out
+	return sum / float64(max(len(targets), 1))
 }
 
 // mixDistance is how far y, a window's mel frames, stands from the nearest mix
 // of the parts, each part's mel energy at a gain of its own: the mean square of
 // log1p(100 Σ g c) less y over the window's frames and bands, as MelDistance
-// counts, and the gains, found by Levenberg-Marquardt over their logs
-func mixDistance(parts [][]float64, y []float64) (float64, []float64) {
+// counts, the gains found by Levenberg-Marquardt over their logs
+func mixDistance(parts [][]float64, y []float64) float64 {
 	k := len(parts)
 	g := make([]float64, k)
 	cost := func(theta []float64) float64 {
@@ -628,7 +556,7 @@ func mixDistance(parts [][]float64, y []float64) (float64, []float64) {
 	}
 	theta := make([]float64, k)
 	if heard <= 0 || have <= 0 {
-		return cost(theta), g // silence on either side: no gain brings them nearer
+		return cost(theta) // silence on either side: no gain brings them nearer
 	}
 	for i := range theta {
 		theta[i] = math.Log(heard / 100 / have) // every part at the gain that matches the energy heard
@@ -674,10 +602,7 @@ func mixDistance(parts [][]float64, y []float64) (float64, []float64) {
 			break
 		}
 	}
-	for i := range k {
-		g[i] = math.Exp(theta[i])
-	}
-	return now, g
+	return now
 }
 
 // mixSteps bounds a gain fit's steps and each step's tries at its damping
@@ -851,7 +776,6 @@ type fitsManifest struct {
 	Seed        uint64 `json:"seed"`
 	Weights     string `json:"weights"`
 	Given       bool   `json:"given,omitempty"`
-	Cells       int    `json:"cells,omitempty"`
 }
 
 const fitsFile = "fits.json"
@@ -890,7 +814,7 @@ type fitRow struct {
 }
 
 func cmdFits(s *Session, a []string) error {
-	usage := errors.New("want fits <dir> from <corpus dir> [given] [part k/n] [notes <n>] [pool <n>] [generations <n>] [seed <n>] [cells <percent>]")
+	usage := errors.New("want fits <dir> from <corpus dir> [given] [part k/n] [notes <n>] [pool <n>] [generations <n>] [seed <n>]")
 	if a[1] != "from" {
 		return usage
 	}
@@ -920,10 +844,10 @@ func cmdFits(s *Session, a []string) error {
 }
 
 // fits reads the voice fit over a corpus directory's loops that kept their
-// audio: each is ripped and its lines fitted
-// as rip does it, at o's sizes, or given, each voice its label states fitted on
-// its own notes; a row a line fitted (fitRows) goes to <dir>/<the loop's
-// checksum>.json. A loop on disk is kept; parts take the loops i%parts == part.
+// audio: each is ripped and its lines fitted as rip does it, at o's sizes, or
+// given, each voice its label states fitted on its own notes; a row a line
+// fitted (fitRows) goes to <dir>/<the loop's checksum>.json. A loop on disk is
+// kept; parts take the loops i%parts == part.
 func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bool) error {
 	if info, err := os.Stat(from); err != nil {
 		return err
@@ -954,7 +878,7 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bo
 		}
 		return os.Rename(tmp, file)
 	}
-	m := fitsManifest{Version: 3, Notes: o.notes, Pool: o.pool, Generations: o.generations, Seed: o.seed, Weights: s.earSum, Given: given, Cells: o.cells}
+	m := fitsManifest{Version: 3, Notes: o.notes, Pool: o.pool, Generations: o.generations, Seed: o.seed, Weights: s.earSum, Given: given}
 	if given {
 		m.Weights = "" // nothing is ripped
 	}
@@ -1004,14 +928,12 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bo
 			var sc *fitScene
 			if given {
 				sc = s.scene(x, rate, lab.Tuning, lab.hits())
-				sc.cells = float64(o.cells) / 100
 				for _, v := range labelVoices(lab, corpus) {
 					lines, sc.lines = append(lines, fitLine{word: v.name, voice: v}), append(sc.lines, fitPart{notes: v.notes})
 				}
 				sc.presentVoices(o.notes)
 			} else {
-				by := s.ripper()
-				r, err := by.Samples(x, rate)
+				r, err := s.ripper().Samples(x, rate)
 				if err != nil {
 					failed = append(failed, fmt.Sprintf("%s: %v", l.wav, err))
 					continue
@@ -1032,9 +954,6 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bo
 	what := fmt.Sprintf("fits of %d loop(s) of %s in %s at %d note(s), %d generation(s) of %d, seed %d: %d line(s)", taken, from, dir, o.notes, o.generations, o.pool, o.seed, len(rows))
 	if given {
 		what += ", each a voice its label states, on its notes"
-	}
-	if o.cells > 0 {
-		what += fmt.Sprintf(", each note on its own cells at %d%%", o.cells)
 	}
 	if kept > 0 {
 		what += fmt.Sprintf("; %d loop(s) were there", kept)
@@ -1058,9 +977,6 @@ func (m fitsManifest) String() string {
 	of := fmt.Sprintf("through the weights %q", m.Weights)
 	if m.Given {
 		of = "on the labels' notes"
-	}
-	if m.Cells > 0 {
-		of += fmt.Sprintf(", each note on its own cells at %d%%", m.Cells)
 	}
 	return fmt.Sprintf("fits of %d note(s), %d generation(s) of %d, seed %d, %s", m.Notes, m.Generations, m.Pool, m.Seed, of)
 }
@@ -1164,8 +1080,8 @@ func (s *Session) fitRows(loop string, sc *fitScene, lines []fitLine, lab corpus
 			continue
 		}
 		// the notes the fit heard, and the rest held out of it
-		picked := fitSamples(notes, max(o.notes, 1), sc.own(i))
-		rest := slices.DeleteFunc(fitSamples(notes, len(notes), false), func(m audio.RipNote) bool { return slices.Contains(picked, m) })
+		picked := fitSamples(notes, max(o.notes, 1))
+		rest := slices.DeleteFunc(fitSamples(notes, len(notes)), func(m audio.RipNote) bool { return slices.Contains(picked, m) })
 		listened, held := sc.hear(i, picked), sc.hear(i, rest)
 		sc.lines[i].voice = f.voice // the lines after hear this one as fitted
 		row := fitRow{Loop: loop, Line: l.word, Notes: len(notes), Listened: len(listened), Held: len(held), Fitted: cmp.Or(f.voice.Wave, "sine"),

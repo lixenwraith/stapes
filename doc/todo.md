@@ -721,12 +721,7 @@ rip are in place; what remains:
     line's voice is the one that plays most of its notes or the one its sound
     is nearest is open: listening settles it, the line rendered on each and
     the nearer picked (item 6), as does the song's score against the
-    recording (`song ... score`) on each. Before either, `cells` is read on
-    trained models over whole corpora, where the count decides; on 49 loops of
-    each corpus here (`fits ... cells 50`, the label's events in the heads' place) it named 6 of 16 shared
-    strings where the measure names none, and 7 of 26 shared saws where it
-    names 15 (aug; without `aug` 6 of 14 and 15 of 26 against 4 and 14), at
-    half its CPU a loop.
+    recording (`song ... score`) on each.
 
 ## Files and banks
 

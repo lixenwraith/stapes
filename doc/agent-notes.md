@@ -379,9 +379,7 @@ proves wrong or that a document now states, and link the document instead.
   and 0.66 of the windows listened to; one-voice lines 56 of 71. The same
   line without `aug`: 4 of 14, 18 of 23, 14 of 26, 0.71 and 0.73, 65 of 74.
   A median of the windows, each over its nearest seed's, is flat: most
-  windows hold too little of the line to tell voices apart. The note's own
-  cells (`cells`) name strings and lose saws, so they are off by default
-  ([todo](todo.md#close-the-rips-loop), item 10).
+  windows hold too little of the line to tell voices apart.
 - **The search stops short within the right wave.** Two thirds of its first
   pool are drawn across the whole genome and crossed into the seeds, and a
   move changes a sixth of the genes by a tenth, so it never refines near a

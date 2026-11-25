@@ -142,9 +142,8 @@ Over the library's rip (library
   candidate beside the other lines' on their voices and the drums' hits on
   the kit, each part at a gain of its own (`fitDistance`, `mixDistance`,
   [Rip design §2](rip-design.md#2-stages)); `fit` runs it again at the sizes
-  its words name (`fitWords`: `notes`, `pool`, `generations`, `seed`, and
-  `cells`, off unless named, which hears each note on its own cells,
-  `fitScene.own`), and `genes` says a voice's wave and genes as a label states them
+  its words name (`fitWords`: `notes`, `pool`, `generations`, `seed`), and
+  `genes` says a voice's wave and genes as a label states them
   (`VoiceDef.Genes`).
 - `fits` reads that search against voices that are known: each loop of a
   corpus directory that kept its audio is ripped and fitted as `rip` does it
@@ -161,10 +160,9 @@ Over the library's rip (library
   own voice nearer than the fit is a search that stopped short; the fit
   nearer than it is a measure that prefers another voice. A loop is a file
   under its audio's checksum, so a run keeps what is there and `part k/n`
-  needs no numbering; `fits.json` names the sizes and the weights, the
-  heads and `cells`, or `given`. The
-  search draws its candidates from one seeded stream and scores them side by
-  side, so a seed's rows are the same on any number of cores
+  needs no numbering; `fits.json` names the sizes and the weights, or
+  `given`. The search draws its candidates from one seeded stream and scores
+  them side by side, so a seed's rows are the same on any number of cores
   ([todo](todo.md#close-the-rips-loop), item 9, for the one way they may not be).
 - `agree` compares two rips of one piece (`MatchNotes`); `truth` scores a rip
   against notes given as text or a tapped rhythm (`ParseTranscript`), a MIDI

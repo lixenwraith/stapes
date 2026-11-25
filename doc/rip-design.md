@@ -174,16 +174,13 @@ flowchart TD
    so neither a note's neighbours nor another line's sound is the candidate's
    to imitate and no part's level counts. A line two voices share is named
    by its other voice's loud, long notes, which the candidate plays too
-   ([agent notes](agent-notes.md#the-rip-and-its-truths)); `cells`, off unless
-   named, hears each note on its own cells, the line's other notes on its
-   voice, over notes spread through the line, by the median of the windows.
-   A line no voice was heard for plays
-   in the others' windows on the registered voice nearest its notes alone
-   (`presentVoices`), and a fitted line on its fit. The voice's level is set
-   after to the recording's around its notes. The melody's second line gets
-   one of its own (`Rip.UnderVoice`). `fits` reads the search against the
-   voices a corpus's labels state, the label's own voice measured at the fit's
-   notes beside the fit, and on the label's own notes with `given`
+   ([agent notes](agent-notes.md#the-rip-and-its-truths)). A line no voice was
+   heard for plays in the others' windows on the registered voice nearest its
+   notes alone (`presentVoices`), and a fitted line on its fit. The voice's
+   level is set after to the recording's around its notes. The melody's second
+   line gets one of its own (`Rip.UnderVoice`). `fits` reads the search against
+   the voices a corpus's labels state, the label's own voice measured at the
+   fit's notes beside the fit, and on the label's own notes with `given`
    ([Stapes §4](stapes.md#4-the-rips-verbs)).
 5. **Patterns and the dictionary.** Notes and hits fall into bars on the
    sixteenth grid. `rip` writes windows of up to four bars as patterns, the

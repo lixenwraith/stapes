@@ -404,11 +404,27 @@ func (s *Session) hear(file string, tempo int, meter *audio.Meter) (*ripped, err
 		ripper.Grid = &audio.RipGrid{BPM: tempo, Downbeat: -1}
 	}
 	ripper.Meter = meter
+	var ear *heardOnce
+	if len(s.kinds) > 0 && ripper.FrontEnd != nil { // a model hears once what both rips read
+		ear = &heardOnce{fe: ripper.FrontEnd}
+		ripper.FrontEnd = ear
+	}
 	r, err := ripper.Samples(x, rate)
 	if err != nil {
 		return nil, err
 	}
-	return &ripped{rip: r, x: x, rate: rate, file: file, by: ripper}, nil
+	// a recording of a kind the root holds a set for is ripped again under it
+	if ear != nil {
+		k := kindOf(r, ear.f)
+		if p, ok := s.kinds[k]; ok && p != ripper.Params {
+			ripper.Params = p
+			if r, err = ripper.Samples(x, rate); err != nil {
+				return nil, err
+			}
+			fmt.Fprintf(s.out, "%s is read as %s and ripped under %s\n", file, k, filepath.Base(kindFile("", k)))
+		}
+	}
+	return &ripped{rip: r, x: x, rate: rate, file: file}, nil
 }
 
 // The block live feeds a stream when none is named, a device's period, and the
@@ -509,7 +525,7 @@ func cmdLive(s *Session, a []string) error {
 		return err
 	}
 	offlineCPU := cpuTime() - cpu
-	if err := s.takeRip(a[0], name, &ripped{rip: final, x: x, rate: rate, file: a[0], by: s.ripper()}, audio.MaxPatternLen/audio.StepsPerBar, false); err != nil {
+	if err := s.takeRip(a[0], name, &ripped{rip: final, x: x, rate: rate, file: a[0]}, audio.MaxPatternLen/audio.StepsPerBar, false); err != nil {
 		return err
 	}
 	paced := ""

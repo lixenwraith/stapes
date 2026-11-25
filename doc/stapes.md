@@ -44,6 +44,8 @@ The root is `-config-dir`, or else `os.UserConfigDir()` plus `stapes`
   engine's 50 ms when unset; a key it has no field for is refused by name;
 - `rip.toml`, the rip's parameters: what `rip` listens with when it is there,
   and where `tune` writes;
+- `rip.<kind>.toml`, a set for a kind of sound, `drums`, `voice` or `guitar`:
+  what `rip` listens with on a recording it reads as that kind;
 - `ripframe.bin`, the frame model, the rip's learned front end: what `rip`
   hears with when it is there, the built-in analysis when it is not
   ([rip-train](../tool/rip-train/README.md)); under its old name,
@@ -146,8 +148,7 @@ Over the library's rip (library
   (`VoiceDef.Genes`).
 - `fits` reads that search against voices that are known: each loop of a
   corpus directory that kept its audio is ripped and fitted as `rip` does it
-  (`Session.ripper`, `fitVoice`), with `heads` through the label's own heads
-  as `truth`'s (`newLabelHeads`), no model heard under `all`, or with `given` each voice the label states
+  (`Session.ripper`, `fitVoice`), or with `given` each voice the label states
   is a line fitted on its own notes at the label's tuning, nothing ripped, so
   the measure is read apart from the rip. A row a line (`fitRow`) says whose
   line it is, the label's voice that plays most of the line's notes that
@@ -190,16 +191,7 @@ Over the library's rip (library
   theirs (`corpusLoop.notes`), its key where its root is over MIDI 0, as no
   recording's or overlap's is, and its chords each to the next one's frame, the
   last to the loop's end (`corpusLoop.said`); a velocity of -1 and a note in no
-  part give none, and a last line names what the label gives none of. `heads
-  <head,...>` reads the decoders apart from the models that feed them: the
-  recording is ripped again as it was (`ripped.by`), the heads named written off
-  the label as the trainer's targets are (`labelHeads`, `corpusLoop.planes`, a
-  row a head in `labelHeadRows`), the rest the front end's, laid on the piano's
-  keys where it hears fewer, and that rip is scored; `all` names every head
-  the decoders read and hears nothing where the label states each, the label's
-  frames standing alone. A head the label does not state, as the trainer asks
-  it nothing there, stays the front end's (a row's `stated`,
-  `labelHeads.kept`); its pitch states no tuning, as a model's. Every truth ends with
+  part give none, and a last line names what the label gives none of. Every truth ends with
   the rip's stages read against it (audio's `ReadStages` over `Rip.Stages`,
   which the session's rips keep, `stageLines`): the notes lost by stage, why the
   strikes refused those they lost, the notes added, the ends wrong and the hits
@@ -216,7 +208,13 @@ Over the library's rip (library
   against it: `MatchNotes` counted every note once, `MatchBars` with the
   offline rip's bar lines and beats as the truth, and the process's CPU over
   each (`getrusage`, so the mixer's and a screen's are in it).
-- `rip` listens with the root's `rip.toml` when one is there, and hears with
+- `rip` listens with the root's `rip.toml` when one is there; where the root
+  holds a set for a kind of sound (`rip.<kind>.toml`, `loadKinds`), a recording
+  is ripped once, its kind read from that rip and its frames (`kindOf`: `drums`
+  where the rip holds hits; with none, `voice` or `guitar` where the frame
+  model's family head gives that family half or more of the frames something
+  sounds in, `familyShares`), and ripped again under its kind's set, the model
+  hearing it once (`Session.hear`). It hears with
   the root's `ripframe.bin`, and the notes from its `ripnotes.bin` when that is
   there, which `tool/rip-train` trains on loops stapes exports (`corpus`); `render` writes what the slots hold to a WAV through
   `RenderMusic`, so an estimate is heard without a device. The root's
@@ -239,8 +237,7 @@ Over the library's rip (library
   engine, the current set seeding the pool, and writes a set that beats it
   ([todo](todo.md#tune-the-rip) for what the corpus still lacks). `tune ...
   truth <list>` searches instead the thresholds the loaded models' decoders
-  read (`modelGenes`) and `twins` and `ring_on` (`modelCounts`, integers it moves
-  as floats and reads rounded), the rest held, against recordings, a line
+  read (`modelGenes`), the rest held, against recordings, a line
   `wav<TAB>truth[<TAB>condition[<TAB>[timed] [drumless]]]` each, from a pool
   drawn near the current thresholds (`search`'s `near`). A truth gives notes,
   and may give
@@ -276,14 +273,10 @@ Over the library's rip (library
   scores' rows read a kept note's ends, and the ends reading does, as the parts
   reading does where a note's length moves the parting, which holds no two notes
   at once on a line. The key moves with its own genes (audio's `key_bars`,
-  `key_open`, `key_close`, `key_bar`), which no search here moves, and with the
+  `key_bar`), which no search here moves, and with the
   bars it is read over, the chords with the bars' genes and the key, which the
   bars' score sees, and the hits'
-  loudness with `onset_min` and the bars, which the drums' F1 sees. Through
-  audio's `struck` over two loops, with and without a start plane, F1's counts
-  also held while `min_note`, and `strike_hold` without starts, moved the ends
-  and the loudness, and `strike_low`, `voicing` and `start` moved onsets within
-  the window and the loudness: those F1 sees elsewhere, as notes come and go.
+  loudness with `onset_min` and the bars, which the drums' F1 sees.
   With hits `onset_min` is searched too (`drumGenes`), with bars the tempo's
   prior, combs, cuts, `tightness`, the bars' weights, the meter's margins and
   the joint path's costs and levels (`barGenes`). `genes` frees of these those
@@ -293,11 +286,11 @@ Over the library's rip (library
   refused with those it knows, and a word that leaves none free. A search that
   names every part draws what one without the word draws. It says the genes
   free before it starts, a whole part by its name, and last, once it writes a
-  set, each gene that moved, from and to as `rip.toml` writes them. `heads`
-  rips each recording whose truth is a label with the heads it names the
-  label's, as `truth`'s does (`truthTake.read`), the rest through the analysis
-  where no model is loaded, and counts by head the takes whose label states one
-  not; each condition's stages follow its readings (`truthCount.stages`);
+  set, each gene that moved, from and to as `rip.toml` writes them. Each
+  condition's stages follow its readings (`truthCount.stages`); a take of a
+  kind the root holds a set for is ripped under that set, as `rip` rips it
+  (`truthTake.kinds`), so a root with such a file reads as the app does and a
+  search leaves that kind's takes where the file puts them;
   and either search's best has each gene whose move the score does not see,
   put back alone, back at the start's (`settled`), since a pool moves genes by
   chance and a search through the analysis, a model without the heads or loops

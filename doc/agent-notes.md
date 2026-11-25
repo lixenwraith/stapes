@@ -200,46 +200,25 @@ proves wrong or that a document now states, and link the document instead.
 
 ## The rip and its truths
 
-- **A decoder is read apart from its models by the label as heads**: `truth
-  <name> <label.json> heads <head,...>` and `tune ... truth <list> heads
-  <head,...>` write the heads named as the trainer's targets, `all` with no
-  model. The planes matched `train.Label.window` and `targets` plane by plane
-  on 24 loops of `corpus ... aug gen glide meters overlaps` (a scratch Python
-  beside the Go planes dumped raw): check so again after a change to either.
-  Heads spoiled to a trained F1 for a count scale each kind of error the notes
-  record by one severity, bisected until the trainer's peaks (over a half,
-  highest within two frames, right within four of a mark) give that F1; the
-  mix of kinds is the count's assumption, so state it beside the figures.
 - **A stage's loss is read off the rip's own record**: `truth` ends with its
   stages and `tune ... truth` says them a condition (audio's `ReadStages` over
-  `Rip.Stages`, which the session's rips and every take keep). §11's reading
-  is `tune 2 1 truth <list> heads all`, its figures before: a pool of 2 is the
-  least, and a set its search finds is written into the root's `rip.toml`, so
-  each reading takes a root of its own. A list whose third column is one word
-  gives the all row; a root whose `rip.toml` sets `joint = 1` the joint path's.
-- **§11's figures with every head given are `timed`**, the list's fourth field:
-  a label is on its recording's clock, and untimed the matcher fits a map from
-  the notes, which a change to the notes moves (twins put a loop's at 0.906 x
-  +0.41 s and lost its first and last chords). The corpus line's 600 loops hold
-  20 under four seconds, which `tune ... truth` refuses: list by the WAV's length.
-- **The decoder alone counts in ninety seconds outside the verb.** `tune 2 1
-  truth` settles each gene it moved over every loop, an hour for 580; a scratch
-  test in the package over `readTruthLines`, `take` and `count`'s path on four
-  goroutines gives its figures to the note, and can spoil the heads, which the
-  verb cannot: a front end over `labelHeads` dropping or adding marks, seeded.
-  The verb itself takes minutes where `genes` names one gene the path read never
-  moves (`joint_margin` under `joint` 0): its before figures are the same.
-- **Every head given, the decoder still reads the recording**: the bass's
-  own-pitch and steady-rise rules, `dynamics`, the accounting, `bright` and the
-  drums' tones, and a model's front end states no tuning, nor a label's pitch
-  over any front end, so the accounting measures at A440. A corpus and its
-  `aug`, which renders the same music, part what the room, the mix and the
-  tuning cost those stages.
-- **A head a label does not state is heard, the analysis's in a container**,
-  and its frames carry more than that head: of the rest only their tuning
-  reaches the offline decoders, the analysis's bands and drums' loudest being
-  its ear's and the stream's, and a label's pitch clears it. An overlap states
-  no beat, so under `heads all` it is ripped over the analysis's frames.
+  `Rip.Stages`, which the session's rips and every take keep). A reading is
+  `tune 2 1 truth <list>`, its figures before: a pool of 2 is the least, and a
+  set its search finds is written into the root's `rip.toml`, so each reading
+  takes a root of its own (`tool/rip-train/pipeline.sh readback`). A root whose
+  `rip.toml` sets `joint = 1` reads the joint path's.
+- **A label's truth is `timed`**, the list's fourth field: a label is on its
+  recording's clock, and untimed the matcher fits a map from the notes, which a
+  change to the notes moves. A corpus's loops under four seconds `tune ...
+  truth` refuses: list by the WAV's length.
+- **A reading takes minutes where `genes` names one gene its path never
+  moves** (`joint_margin` under `joint` 0): `tune 2 1 truth` settles each gene
+  it moved over every loop, an hour for 580, and its before figures are the same.
+- **Beside the heads the decoders read the recording**: the bass's own-pitch
+  and steady-rise rules, `dynamics`, the accounting, `bright` and the drums'
+  tones, and a model's front end states no tuning, so the accounting measures
+  at A440. A corpus and its `aug`, which renders the same music, part what the
+  room, the mix and the tuning cost those stages.
 - **A label's ends can lie past its loop**: an overlap's notes ring on past
   its last frame (an event's `end` past the label's `frames`), which the trainer
   clamps; `truth` reads such an end at the recording's (audio's
@@ -305,12 +284,12 @@ proves wrong or that a document now states, and link the document instead.
   apart before a figure from it is used. A table is one decode's: when audio
   moves, rebuild the reading tools between rounds and read the baseline again.
 - **Which genes a score sees is read by a sweep, not by a search.** A scratch
-  test in audio's package rips rendered loops through `struck`, a start plane
-  laid where any pitch strikes, at five points of each gene's range, and says
-  which scores and which of the rip's fields moved: over two loops of eight bars,
-  160 s, `release` moved the ends alone, no gene the key or the chords, and F1's
-  counts held while `strike_low`, `voicing` and `start` moved onsets within the
-  window. Rerun it before calling a gene seen or blind.
+  test in audio's package rips rendered loops through `strikes` at five points
+  of each gene's range, and says which scores and which of the rip's fields
+  moved: over two loops of eight bars, 160 s, `release` moved the ends alone, no
+  gene the key or the chords, and F1's counts held while `strike_low` and
+  `voicing` moved onsets within the window. Rerun it before calling a gene seen
+  or blind.
 - A bank loop and every loop `bench` draws start on a bar line, which rewards a
   decoder that leans on a recording's start; only `corpus ... meters` starts
   loops part-way. Read bars on loops cut a quarter to three quarters of a bar
@@ -393,10 +372,9 @@ proves wrong or that a document now states, and link the document instead.
   owner's own soft notes, where little of the window is the line, the owner
   and a fitted saw stand within a hundredth. A window's longest and loudest
   notes are listened to first, so the owner holds fewer of them than of the
-  notes. `fits ... heads all` shows it with no model; `given` cannot, as its
-  shared lines are voices doubled by another, each line its own notes. 
-  Over 49 loops of `corpus <dir> 196 4 aug gen seed 23` through the label's
-  heads, a shared line is named right 0 of 16 times where a string owns it,
+  notes. `given` cannot show it, as its shared lines are voices doubled by
+  another, each line its own notes. Over 49 loops of `corpus <dir> 196 4 aug gen
+  seed 23`, the label's events in the heads' place, a shared line is named right 0 of 16 times where a string owns it,
   17 of 23 a modal and 15 of 26 a saw, its owner holding 0.70 of its notes
   and 0.66 of the windows listened to; one-voice lines 56 of 71. The same
   line without `aug`: 4 of 14, 18 of 23, 14 of 26, 0.71 and 0.73, 65 of 74.
@@ -733,7 +711,7 @@ proves wrong or that a document now states, and link the document instead.
   `ripmodels.New` refuses a frame model whose heads do not start with them
   ("frame model's heads are [...], want [...] first"), so after a head audio
   reads is added the weights trained before it load in no audio that reads it.
-  A head no decoder reads goes after them, as `struck` does, and loads in audio
+  A head no decoder reads goes after them and loads in audio
   from v0.34.0, which keeps the prefix rule; an older audio wants the heads
   exactly. Install frame weights beside the audio tag whose `FrameSpec` they
   start with; `--init` grows the head onto the weights from before it.
@@ -824,38 +802,6 @@ proves wrong or that a document now states, and link the document instead.
   (`offlineTakes`), so a piece never plays on the last one's takes. Binding a
   piece (`SetKit`) renders its 18 takes, 0.3 s, most of a kit loop's render;
   its band renders one hit more, 20 ms, which a labels pass pays too.
-- **A piece's place is read in the energy its hit adds, not in the frames' log
-  rise.** log1p(100 e) reads a hit alone at its own peak in the log's range and a
-  soft one in a loop in its straight one, so a rise's shape moved with the level: a
-  lone hat in its loop read a place lower than alone. A piece's highest band moves a
-  median of 11 bands over its 18 takes; the energy summed over a place held a loud
-  take in its piece's place 0.95 of the time at four. Divide by `sharpCounts`, or
-  the sharp plane's shared low bins (about twenty at A0) put every piece low.
-- **The count of places is flat from two to six**: over 24 drawn kits its least moved
-  between three and four with the seed, over 48 it holds at three. A kit's cost is
-  its pieces' renders, `SetKit`'s takes and each long decay's seven times its decay,
-  not its bars: two bars cost what four did. The suite draws 12, `PLACEDRAWS=48` the
-  fit, 20 and 67 s plain.
-- **E-GMD's archive is read a take at a time by range.** Its central directory, 13 MB
-  at the end of the ZIP64, lists 91,108 members with their offsets: a member is its
-  local header and its deflated bytes after it, as `fetch.sh`'s `egmd_file` reads
-  one, and the `e-gmd-v1.0.0.csv` inside is the lab's own by its MD5.
-- A recorded kit's pieces are its keys, and the kick is the one most often never
-  struck alone: of 80 takes 32 had no kick four frames from every other strike. A
-  piece read beside pieces read alone, outside their places, left 0.023 of a draw's
-  strikes at no place.
-- `WriteMIDI` writes only a line's keys; a test of a key of no line writes its own
-  track (`drumTrack`).
-- **`bandsRows` yields one buffer, read again each frame**: `slices.Collect` of it is
-  every frame the last one, and a reading over them finds nothing anywhere. Clone a
-  row to keep it, as `pieceRises` does.
-- What tells a recorded piece's place right is its strikes agreeing on it, not how much
-  of its energy stands in one place: on drawn kits a piece's top share kept its tenth of
-  the strikes right 0.69 of the time, its strikes' agreement 1.00. Two halves of the
-  count's draws, even and odd, fit the bound and read it back without a second render.
-- `Label.window`'s `of` reads `one` when it is called, so a new mask named alike after
-  it changes what the names, waves and voices are asked; name a window's new
-  arrays apart, as `genes` the module's function was too.
 - Passes of a kit sum to the loop whole because no arranged step draws: the
   engine's `Prob` and `Humanize` draw from one stream for every track, so a
   pass that empties a track would move the others'. The arranger sets neither.
@@ -889,11 +835,8 @@ proves wrong or that a document now states, and link the document instead.
 - With strikes the melody register never reaches the pair decoder, so
   `second_voice` and `cross` move no note on the models' path, while the bass
   line's own path reads `jump`, `switch` and `retrigger`: `modelGenes` is what
-  audio's strike decoder reads, its heard starts' five since v0.39.0; check it
-  against a new decoder. A candidate of `tune ... truth` pays the decoders
-  alone. Frames kept by `frames <dir>` before v0.39.0 hold no starts and decode
-  as if the notes model had no onset head, so the search sees none of those five
-  move.
+  audio's strike decoder reads; check it against a new decoder. A candidate of
+  `tune ... truth` pays the decoders alone.
 - A round that gains on the bench may still lose on the recordings: the bench's
   loops are the corpus's own kind. Judge by the recordings.
 - Towers (`transformer.Tower`, `TOWERS=` in `tool/rip-train`) are not dead code:
@@ -1026,7 +969,7 @@ proves wrong or that a document now states, and link the document instead.
   container has no `/usr/bin/time`: poll `VmHWM` in `/proc/<pid>/status` while
   the run lives, and read the heap live after each collection off
   `GODEBUG=gctrace=1`, the third of its `a->b->c MB`. Holding its whole list,
-  `tune 2 1 truth <list> heads all` over 419, 1,667 and 4,994 s of loops
+  `tune 2 1 truth <list>` over 419, 1,667 and 4,994 s of loops
   peaked at 1.15, 1.02 and 1.02 MB a second resident and 0.49, 0.46 and 0.45
   MB live: the collector lets the heap reach twice what is live, and a
   recording read at 44.1 kHz is garbage beside it. At `hold 2` the 4,994 s
@@ -1202,7 +1145,7 @@ proves wrong or that a document now states, and link the document instead.
   with a trained model before it merged, three moved a rip under one: the
   grid's two ends (383 of the 737 right where 266, no group falling; E-GMD's
   hits 0.51 to 0.53), the key over the bars (233 of 399 generated loops where
-  186) and the notes begun at a heard start, which took unheard singers from
+  186) and the notes begun at a heard start, gone since audio v0.47.0, which took unheard singers from
   0.457 to 0.424 under a judge fitted before them. Read a change to the
   decoders with trained models, by kind of sound, before building on its count.
 - **A search that scores pitch and start moves a note's end blind.** Under the

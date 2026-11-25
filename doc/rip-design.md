@@ -116,10 +116,6 @@ flowchart TD
      strike's partial, within `strike_gap` of the pitch's last, or under
      `strike_again` on a pitch still ringing, and the bass line's own path adds
      notes where no strike sounds.
-     Where the notes model's own onset head hears a start that no strike of
-     its pitch answers, a note begins there at the pitch that rises under it,
-     on the heads' word, and a strike with no start heard near it must clear
-     `strike_alone`, so a sung line the strikes miss is read note by note.
      With the cents head a note's sound is followed frame by frame across
      cells (`glides`): two cells naming one frequency within the errors the
      head states are one sound, a step that lands cuts it, and a glide stays

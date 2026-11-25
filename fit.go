@@ -77,7 +77,6 @@ type ripped struct {
 	rate  int
 	file  string
 	sound *audio.RipSound // the recording as Fidelity hears it, heard on first use
-	by    audio.Ripper    // what ripped it, the tempo and meter it was read at with it
 }
 
 // errScore refuses a verb that hears the recording a score lacks
@@ -852,7 +851,6 @@ type fitsManifest struct {
 	Seed        uint64 `json:"seed"`
 	Weights     string `json:"weights"`
 	Given       bool   `json:"given,omitempty"`
-	Heads       string `json:"heads,omitempty"` // the label's, comma separated, its rips read
 	Cells       int    `json:"cells,omitempty"`
 }
 
@@ -892,12 +890,11 @@ type fitRow struct {
 }
 
 func cmdFits(s *Session, a []string) error {
-	usage := errors.New("want fits <dir> from <corpus dir> [given | heads <head,...>] [part k/n] [notes <n>] [pool <n>] [generations <n>] [seed <n>] [cells <percent>]")
+	usage := errors.New("want fits <dir> from <corpus dir> [given] [part k/n] [notes <n>] [pool <n>] [generations <n>] [seed <n>] [cells <percent>]")
 	if a[1] != "from" {
 		return usage
 	}
 	o, part, parts, given := s.fit, 0, 0, false
-	var heads []string
 	for w := a[3:]; len(w) > 0; w = w[2:] {
 		if w[0] == "given" {
 			given, w = true, w[1:]
@@ -912,8 +909,6 @@ func cmdFits(s *Session, a []string) error {
 		switch w[0] {
 		case "part":
 			part, parts, err = parsePart(w[1])
-		case "heads":
-			heads, err = parseHeads(w[1])
 		default:
 			err = o.size(w[0], w[1])
 		}
@@ -921,18 +916,15 @@ func cmdFits(s *Session, a []string) error {
 			return err
 		}
 	}
-	if given && heads != nil {
-		return errors.New("fits given rips nothing, so it reads no heads: want given or heads")
-	}
-	return s.fits(s.path(a[0]), s.path(a[2]), o, part, parts, given, heads)
+	return s.fits(s.path(a[0]), s.path(a[2]), o, part, parts, given)
 }
 
 // fits reads the voice fit over a corpus directory's loops that kept their
-// audio: each is ripped, through its label's heads named, and its lines fitted
+// audio: each is ripped and its lines fitted
 // as rip does it, at o's sizes, or given, each voice its label states fitted on
 // its own notes; a row a line fitted (fitRows) goes to <dir>/<the loop's
 // checksum>.json. A loop on disk is kept; parts take the loops i%parts == part.
-func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bool, heads []string) error {
+func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bool) error {
 	if info, err := os.Stat(from); err != nil {
 		return err
 	} else if !info.IsDir() {
@@ -962,7 +954,7 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bo
 		}
 		return os.Rename(tmp, file)
 	}
-	m := fitsManifest{Version: 3, Notes: o.notes, Pool: o.pool, Generations: o.generations, Seed: o.seed, Weights: s.earSum, Given: given, Heads: strings.Join(heads, ","), Cells: o.cells}
+	m := fitsManifest{Version: 3, Notes: o.notes, Pool: o.pool, Generations: o.generations, Seed: o.seed, Weights: s.earSum, Given: given, Cells: o.cells}
 	if given {
 		m.Weights = "" // nothing is ripped
 	}
@@ -1019,9 +1011,6 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bo
 				sc.presentVoices(o.notes)
 			} else {
 				by := s.ripper()
-				if heads != nil {
-					by.FrontEnd = newLabelHeads(by.FrontEnd, &lab, heads)
-				}
 				r, err := by.Samples(x, rate)
 				if err != nil {
 					failed = append(failed, fmt.Sprintf("%s: %v", l.wav, err))
@@ -1043,9 +1032,6 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bo
 	what := fmt.Sprintf("fits of %d loop(s) of %s in %s at %d note(s), %d generation(s) of %d, seed %d: %d line(s)", taken, from, dir, o.notes, o.generations, o.pool, o.seed, len(rows))
 	if given {
 		what += ", each a voice its label states, on its notes"
-	}
-	if heads != nil {
-		what += ", ripped through the label's " + strings.Join(heads, ",") + " as heads"
 	}
 	if o.cells > 0 {
 		what += fmt.Sprintf(", each note on its own cells at %d%%", o.cells)
@@ -1070,11 +1056,8 @@ func (s *Session) fits(dir, from string, o fitOptions, part, parts int, given bo
 // String names the kind of fits m holds
 func (m fitsManifest) String() string {
 	of := fmt.Sprintf("through the weights %q", m.Weights)
-	switch {
-	case m.Given:
+	if m.Given {
 		of = "on the labels' notes"
-	case m.Heads != "":
-		of += ", the label's " + m.Heads + " as heads"
 	}
 	if m.Cells > 0 {
 		of += fmt.Sprintf(", each note on its own cells at %d%%", m.Cells)

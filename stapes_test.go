@@ -2258,9 +2258,6 @@ func TestTuneTruthSearchesTheModelsThresholds(t *testing.T) {
 	for _, at := range modelGenes {
 		*at(&held) = *at(&p)
 	}
-	for _, at := range modelCounts {
-		*at(&held) = *at(&p)
-	}
 	if p != held {
 		t.Errorf("a parameter the model's decoders do not read moved: %+v, from %+v", p, start)
 	}
@@ -2595,24 +2592,13 @@ func TestTuneTruthMovesOnlyTheGenesItIsTold(t *testing.T) {
 		for _, at := range free {
 			*at(&held) = *at(&start)
 		}
-		if genes == "" || strings.Contains(genes, "notes") { // the part's integers too
-			for _, at := range modelCounts {
-				*at(&held) = *at(&start)
-			}
-		}
 		if held != start {
 			t.Errorf("told %q, the search moved another gene: %+v from %+v", genes, s.rip, start)
 		}
 		var moved []string
 		for _, part := range geneParts {
 			for k, g := range part.names() {
-				var from, to string
-				if k < len(part.genes) {
-					from, to = fmt.Sprint(*part.genes[k](&start)), fmt.Sprint(*part.genes[k](&s.rip))
-				} else {
-					from, to = fmt.Sprint(*part.counts[k-len(part.genes)](&start)), fmt.Sprint(*part.counts[k-len(part.genes)](&s.rip))
-				}
-				if from != to {
+				if from, to := fmt.Sprint(*part.genes[k](&start)), fmt.Sprint(*part.genes[k](&s.rip)); from != to {
 					moved = append(moved, fmt.Sprintf("%s moved from %s to %s\n", g, from, to))
 				}
 			}
@@ -2664,10 +2650,7 @@ func (h builtHeads) Hear(x []float64, rate int, p audio.RipParams) (*audio.RipFr
 // eighths and lines, heard with every twelfth eighth marked a line, read 12/8 and
 // score in full where the beat head marks the eighths; where it marks the dotted
 // quarters alone they read 4/4 over them, every line on a downbeat of a bar the
-// label's length, and score the beats a third. The label's own beats and bar
-// lines read in the heads' place over the analysis read 12/8 in full too, by
-// truth and by tune truth with no model, where the analysis alone does not,
-// named or as all, the heads a label of no notes does not state kept.
+// label's length, and score the beats a third.
 func TestTuneTruthsBarsCountTheBeats(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
@@ -2737,33 +2720,6 @@ func TestTuneTruthsBarsCountTheBeats(t *testing.T) {
 		l, b := n.shares()
 		if err != nil || r.Meter != c.want || l != 1 || math.Abs(b-c.beats) > 0.05 || n.bars() != (l+b)/2 {
 			t.Errorf("a beat head on %s: %s at %d, downbeats on a line %.3f, beats on a beat %.3f, bars %.3f (%v); want %s, every line, %.2f of the beats", c.name, r.Meter, r.BPM, l, b, n.bars(), err, c.want, c.beats)
-		}
-	}
-	takes, _, err := readTruthList(list, nil, "", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, heads := range []bool{false, true} {
-		if takes[0].read(nil); heads {
-			takes[0].read([]string{"beat", "downbeat"})
-		}
-		snd, err := takes[0].sound()
-		if err != nil {
-			t.Fatal(err)
-		}
-		r, err := audio.Ripper{Params: s.rip, FrontEnd: snd.front(), Lead: s.lead}.Samples(snd.x, audio.RipRate)
-		n, cerr := takes[0].count(snd, s.rip, s.lead)
-		if full := err == nil && cerr == nil && r.Meter == twelve && n.bars() == 1; full != heads {
-			t.Errorf("the analysis with the label's heads %v: %s, bars %.3f (%v, %v); want 12/8 in full only with them", heads, r.Meter, n.bars(), err, cerr)
-		}
-	}
-	runOrFatal(t, s, &out, fmt.Sprintf("rip %s loop\n! truth loop %s heads beat,downbeat\ntruth loop %s timed heads downbeat,beat\ntruth loop %[3]s timed heads all\ntune 2 1 truth %s heads all\n",
-		filepath.Join(dir, "loop.wav"), filepath.Join(dir, "loop.wav"), filepath.Join(dir, "loop.json"), list))
-	for _, want := range []string{"ripped again with the label's beat, downbeat as its heads, the rest its front end's: 96 bpm 12/8",
-		"its voice, velocity, cents, plays too, which the label does not state: 96 bpm 12/8", "1.00 of 5 downbeat(s) given on a bar line", "loop: bars 1.000 before",
-		"by head: cents 1, plays 1, velocity 1, voice 1\n", "loop: hits 0 lost, by stage: none;"} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("no %q in what truth and tune truth say with the label's heads:\n%s", want, out.String())
 		}
 	}
 }
@@ -2993,8 +2949,8 @@ func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 // TestTuneTruthPastItsHoldSearchesAsOneThatHoldsAll: a search that holds none of
 // its takes, each read again as it is ripped from its recording, its label and
 // the frames it kept, says and writes all one holding them as heard does, and a
-// take heard again each rip counts as the one held, field by field: a label
-// whose every head is its own, one whose ear hears the rest, a .mid heard alone
+// take heard again each rip counts as the one held, field by field: two labels
+// and a .mid
 func TestTuneTruthPastItsHoldSearchesAsOneThatHoldsAll(t *testing.T) {
 	var out bytes.Buffer
 	s := newTestSession(t, &out)
@@ -3015,7 +2971,6 @@ func TestTuneTruthPastItsHoldSearchesAsOneThatHoldsAll(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(dir, "loop.mid"), mid.String())
 	writeFile(t, list, "gen.wav\tgen.json\tgen\ttimed\nloop.wav\tloop.json\tloop\ttimed\nloop.wav\tloop.mid\tmid\ttimed\n")
-	all, _ := parseHeads("all")
 	start, file, kept := s.rip, filepath.Join(dir, "rip.toml"), filepath.Join(dir, "frames")
 	// run is what a search holding hold GB says, the lines of what it holds and
 	// of the frames it keeps apart, and what it writes
@@ -3024,7 +2979,7 @@ func TestTuneTruthPastItsHoldSearchesAsOneThatHoldsAll(t *testing.T) {
 		s.rip = start
 		out.Reset()
 		os.Remove(file)
-		if err := s.tuneTruth(tuneOptions{generations: 1, pool: 4, seed: 1, guard: 1, hold: hold, frames: frames, heads: all}, list, file, nil); err != nil {
+		if err := s.tuneTruth(tuneOptions{generations: 1, pool: 4, seed: 1, guard: 1, hold: hold, frames: frames}, list, file, nil); err != nil {
 			t.Fatalf("tune truth holding %g GB: %v\n%s", hold, err, out.String())
 		}
 		for _, l := range strings.SplitAfter(out.String(), "\n") {
@@ -3040,7 +2995,7 @@ func TestTuneTruthPastItsHoldSearchesAsOneThatHoldsAll(t *testing.T) {
 	}
 	whole, holdsAll, wrote := run(2, "")
 	none, holdsNone, again := run(0, kept)
-	if !strings.HasSuffix(holdsAll, "; all held\n") || !strings.HasSuffix(holdsNone, " recording(s), 0 s of it held between rips in 0.00 GB of hold's 0; the rest read again as each is ripped from its recording, its label's heads built again, its frames read back from "+kept+"\n") {
+	if !strings.HasSuffix(holdsAll, "; all held\n") || !strings.HasSuffix(holdsNone, " recording(s), 0 s of it held between rips in 0.00 GB of hold's 0; the rest read again as each is ripped from its recording, its frames read back from "+kept+"\n") {
 		t.Errorf("holding all, said %q; holding none, %q", holdsAll, holdsNone)
 	}
 	if none != whole || !bytes.Equal(again, wrote) {
@@ -3061,8 +3016,6 @@ func TestTuneTruthPastItsHoldSearchesAsOneThatHoldsAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range held {
-		held[i].read(all)
-		gone[i].read(all)
 		if held[i].held, err = held[i].sound(); err != nil {
 			t.Fatal(err)
 		}
@@ -3534,46 +3487,6 @@ func TestAVoiceIsItsOwnLinesNearest(t *testing.T) {
 	}
 }
 
-// TestFitsThroughTheLabelsHeadsHearEachLinesVoice: fits rips each loop through
-// its label's own heads, no model loaded, so a line's voice is heard from the
-// label, and says the owner's share of the notes the fit listened to; a
-// directory of those fits refuses fits of another kind.
-func TestFitsThroughTheLabelsHeadsHearEachLinesVoice(t *testing.T) {
-	var out bytes.Buffer
-	s := newTestSession(t, &out)
-	defer teardown(t, s)
-	dir := t.TempDir()
-	corpus, heads := filepath.Join(dir, "engine"), filepath.Join(dir, "heads")
-	runOrFatal(t, s, &out, fmt.Sprintf("corpus %[1]s 2 2 gen\nfits %[2]s from %[1]s heads all\n! fits %[2]s from %[1]s given\n", corpus, heads))
-	files, _ := filepath.Glob(filepath.Join(heads, "*.json"))
-	var rows []fitRow
-	for _, file := range files {
-		if filepath.Base(file) == fitsFile {
-			continue
-		}
-		var loop []fitRow
-		data, _ := os.ReadFile(file)
-		if err := json.Unmarshal(data, &loop); err != nil {
-			t.Fatal(err)
-		}
-		rows = append(rows, loop...)
-	}
-	heard, owned := 0, 0
-	for _, r := range rows {
-		if r.Heard != nil {
-			heard++
-		}
-		if r.Windows < 0 || r.Windows > 1 {
-			t.Errorf("a row's owner holds %v of the notes listened to", r.Windows)
-		} else if r.Windows > 0 {
-			owned++
-		}
-	}
-	if heard == 0 || owned == 0 || !strings.Contains(out.String(), "through the label's") {
-		t.Errorf("%d row(s), %d with a voice heard and %d with an owner listened to:\n%s", len(rows), heard, owned, out.String())
-	}
-}
-
 // TestALabelServesReportedNotesFirstAndATruthNoteOnce: a strike is right when
 // a truth note of its pitch starts within the matcher's window of it; a truth
 // note answers one strike, the nearest, a reported note before a dropped
@@ -3633,197 +3546,6 @@ func TestATruthCountsNoNoteOutsideTheRipsPitches(t *testing.T) {
 	}
 	if ag, heard := matchHeard(r, late, false); ag.Shift != 2 || everyNote(ag) != (noteCount{5, 6, 5}) || len(heard) != 6 {
 		t.Errorf("a truth a tone down counts %+v of %d note(s) transposed %+d, want 5 of 6 given", everyNote(ag), len(heard), ag.Shift)
-	}
-}
-
-// TestALabelsHeadsAreItsTargets: a label's events are written as the trainer's
-// targets (train.py's Label.window): marks a frame either side, a note's cells
-// over its frames as its cents walk them, cents where the label places a sound,
-// velocities on the strike's frames, the later of a unison's, and what plays a
-// cell where one event alone sounds in it; the middle where nothing is asked.
-func TestALabelsHeadsAreItsTargets(t *testing.T) {
-	genes := func(v float64) []float64 { return slices.Repeat([]float64{v}, audio.VoiceGeneCount) }
-	guitar := slices.Index(audio.RipFamilies[:], "guitar")
-	lab := corpusLoop{Frames: 40, Tuning: 30, Beats: []int{0, 20}, Downbeats: []int{0}, Events: []corpusEvent{
-		{Frame: 5, End: 15, Drum: -1, MIDI: 60, Vel: 0.7, Wave: 2, Family: -1, Voice: genes(0.25)},
-		{Frame: 20, End: 26, Drum: -1, MIDI: 64, Vel: 0.5, Wave: 1, Family: -1, Voice: genes(0.75), Cents: centsList{0, 0, 40, 80, 120, 160}},
-		{Frame: 30, End: 35, Drum: -1, MIDI: 72, Vel: 0.4, Wave: 0, Family: -1, Voice: genes(0.1)},
-		{Frame: 30, End: 35, Drum: -1, MIDI: 72, Vel: 0.9, Wave: 3, Family: -1, Voice: genes(0.9)},
-		{Frame: 10, End: 10, Drum: 1, MIDI: 38, Vel: 0.8, Wave: -1, Family: -1},
-		{Frame: 2, End: 8, Drum: -1, MIDI: 48, Vel: -1, Wave: -1, Family: guitar},
-	}}
-	l, k := lab.planes(lab.Frames), audio.RipPiano.Len()
-	at := func(t, midi int) int { return t*k + midi - audio.RipPiano.Min }
-	marked := func(plane []float64, want ...int) []int {
-		var off []int
-		for f, v := range plane {
-			if (v == 1) != slices.Contains(want, f) {
-				off = append(off, f)
-			}
-		}
-		return off
-	}
-	for _, c := range []struct {
-		name  string
-		plane []float64
-		want  []int
-	}{{"onset", l.onset, []int{1, 2, 3, 4, 5, 6, 9, 10, 11, 19, 20, 21, 29, 30, 31}}, {"start", l.start, []int{1, 2, 3, 4, 5, 6, 9, 10, 11, 19, 20, 21, 29, 30, 31}},
-		{"snare", l.drums[1], []int{9, 10, 11}}, {"kick", l.drums[0], nil}, {"beat", l.beat, []int{0, 1, 19, 20, 21}}, {"downbeat", l.downbeat, []int{0, 1}}} {
-		if off := marked(c.plane, c.want...); off != nil {
-			t.Errorf("the %s head is off its target at frames %v", c.name, off)
-		}
-	}
-	for _, c := range []struct {
-		what  string
-		plane []float32
-		t     int
-		midi  int
-		want  float32
-	}{
-		{"a held note's pitch", l.pitch, 14, 60, 1}, {"its pitch past its end", l.pitch, 15, 60, 0}, {"a recorded note's pitch", l.pitch, 7, 48, 1},
-		{"a glide's cell at 80 cents", l.pitch, 23, 65, 1}, {"the cell it left", l.pitch, 23, 64, 0}, {"its last cell", l.pitch, 25, 66, 1},
-		{"a strike a frame before", l.strike, 4, 60, 1}, {"a strike a frame after", l.strike, 6, 60, 1}, {"a glide's strike in its first cell", l.strike, 20, 64, 1},
-		{"a release at its end", l.release, 16, 60, 1}, {"a glide's release in its last cell", l.release, 26, 66, 1},
-		{"a strike's velocity", l.velocity, 6, 60, 0.7}, {"a unison's, the later listed", l.velocity, 30, 72, 0.9}, {"no strike's velocity", l.velocity, 10, 60, 0.5},
-		{"a held note's cents, the tuning", l.cents, 8, 60, 30}, {"the cell it leans to", l.cents, 8, 61, -70}, {"a glide's cell at 80", l.cents, 23, 64, 80}, {"and the cell beside it", l.cents, 23, 65, -20},
-		{"a placed sound's error", l.centsError, 8, 61, labelCentsGrain}, {"a cell no sound is near", l.centsError, 8, 62, labelUnsure}, {"a recorded note's own cell", l.centsError, 4, 48, labelUnsure},
-	} {
-		if got := c.plane[at(c.t, c.midi)]; math.Abs(float64(got-c.want)) > 1e-4 {
-			t.Errorf("%s at frame %d, MIDI %d: %g, want %g", c.what, c.t, c.midi, got, c.want)
-		}
-	}
-	for _, c := range []struct {
-		t    int
-		want float32
-	}{{8, 0.25}, {32, 0.1}, {17, 0.5}} { // the highest note's voice, the first listed of a unison, the middle where none sounds
-		if got := l.voice[c.t*audio.VoiceGeneCount]; math.Abs(float64(got-c.want)) > 1e-6 {
-			t.Errorf("the voice head at frame %d: %g, want %g", c.t, got, c.want)
-		}
-	}
-	names, waves := len(audio.RipFamilies)-1, len(audio.VoiceWaves)
-	say := func(f, cell int) []uint8 {
-		i := slices.Index(l.voiceAt[f*audio.RipVoiceCells:(f+1)*audio.RipVoiceCells], uint8(cell))
-		if i < 0 {
-			return nil
-		}
-		return l.voices[(f*audio.RipVoiceCells+i)*audio.RipVoiceSize:][:audio.RipVoiceSize]
-	}
-	even := func(n int) []uint8 { return slices.Repeat([]uint8{uint8(math.Round(255 / float64(n)))}, n) }
-	whole := func(n, j int) []uint8 { s := make([]uint8, n); s[j] = 255; return s }
-	for _, c := range []struct {
-		what         string
-		t, midi      int
-		family, wave []uint8
-		gene         uint8
-	}{
-		{"an engine note's", 10, 60, even(names), whole(waves, 2), 64},
-		{"a recorded guitar's", 4, 48, whole(names, guitar), even(waves), 128},
-		{"a unison's", 32, 72, even(names), even(waves), 128},
-	} {
-		s := say(c.t, c.midi-audio.RipPiano.Min)
-		if s == nil || !slices.Equal(s[:names], c.family) || !slices.Equal(s[names:names+waves], c.wave) || s[names+waves] != c.gene {
-			t.Errorf("%s say at frame %d: %v, want %v, %v and genes at %d", c.what, c.t, s, c.family, c.wave, c.gene)
-		}
-	}
-	if got := l.voiceAt[10*audio.RipVoiceCells : 10*audio.RipVoiceCells+3]; !slices.Equal(got, []uint8{39, 0, 1}) {
-		t.Errorf("frame 10 keeps cells %v first, want its sounding cell, then the lowest silent ones", got)
-	}
-	if l.chroma[10][0] != 1 || l.bassChroma[4][0] != 1 || l.bassChroma[10][0] != 0 {
-		t.Errorf("chroma %v at frame 10, the bass's %v at frame 4: want C sounding, the bass's C under E3 alone", l.chroma[10], l.bassChroma[4])
-	}
-}
-
-// fixedEar is a front end that hears every recording as its frames, over a
-// range of its own, and counts how often it is asked
-type fixedEar struct {
-	f     audio.RipFrames
-	heard *int
-}
-
-func (e fixedEar) Hear([]float64, int, audio.RipParams) (*audio.RipFrames, error) {
-	*e.heard++
-	g := e.f
-	return &g, nil
-}
-
-// TestAHeadNotNamedIsTheFrontEnds: heads names what a label stands in for and
-// the rest is the front end's, its planes of a narrower range laid on the
-// piano's keys beside the label's, its tuning kept but under the label's pitch,
-// which states none; given every head, which the label states, the label is
-// heard alone, the front end never asked; a word no head has is refused.
-func TestAHeadNotNamedIsTheFrontEnds(t *testing.T) {
-	n, rg := 30, audio.RipRange{Min: audio.RipMinMIDI, Max: audio.RipMaxMIDI}
-	var heard int
-	ear := fixedEar{f: audio.RipFrames{Hop: audio.RipFrameSec, Tuning: 23, Flux: slices.Repeat([]float64{0.25}, n),
-		Salience: slices.Repeat([]float32{0.5}, n*rg.Len()), Chroma: make([][12]float64, n), BassChroma: make([][12]float64, n)}, heard: &heard}
-	for d := range ear.f.Onset {
-		ear.f.Onset[d] = make([]float64, n)
-	}
-	lab := &corpusLoop{Frames: n, Beats: []int{0, 15}, Downbeats: []int{0}, Events: []corpusEvent{
-		{Frame: 10, End: 20, Drum: -1, MIDI: 60, Vel: 0.6, Wave: 1, Family: -1, Voice: slices.Repeat([]float64{0.5}, audio.VoiceGeneCount)}}}
-	heads, err := parseHeads("strike")
-	if err != nil {
-		t.Fatal(err)
-	}
-	x := make([]float64, audio.RipRate)
-	f, err := newLabelHeads(ear, lab, heads).Hear(x, audio.RipRate, audio.DefaultRipParams())
-	k := audio.RipPiano.Len()
-	at := func(t, midi int) int { return t*k + midi - audio.RipPiano.Min }
-	if err != nil || heard != 1 || f.Range != audio.RipPiano || f.Tuning != 23 || f.Flux[10] != 0.25 || f.Salience[at(5, 60)] != 0.5 || f.Salience[at(5, 21)] != 0 || f.Strike[at(10, 60)] != 1 || f.Release != nil {
-		t.Errorf("a label's strike over the front end's frames: heard %d time(s) (%v), range %v, flux %g, salience %g at C4 and %g at A0, strike %g, release %v; want the front end's but for the strike",
-			heard, err, f.Range, f.Flux[10], f.Salience[at(5, 60)], f.Salience[at(5, 21)], f.Strike[at(10, 60)], f.Release != nil)
-	}
-	pitch, _ := parseHeads("pitch")
-	if f, err = newLabelHeads(ear, lab, pitch).Hear(x, audio.RipRate, audio.DefaultRipParams()); err != nil || heard != 2 || f.Tuning != 0 || f.Salience[at(12, 60)] != 1 {
-		t.Errorf("a label's pitch over the front end's frames: tuning %g, salience %g (%v); want no tuning, the label's cells", f.Tuning, f.Salience[at(12, 60)], err)
-	}
-	all, _ := parseHeads("all")
-	if f, err = newLabelHeads(ear, lab, all).Hear(x, audio.RipRate, audio.DefaultRipParams()); err != nil || heard != 2 || f.Flux[10] != 1 || f.Flux[5] != 0 || len(f.Salience) != n*k || f.Tuning != 0 {
-		t.Errorf("every head a label's: the front end heard %d time(s), flux %v, tuning %g (%v); want it never asked and the label's onset alone, no tuning", heard-2, f.Flux, f.Tuning, err)
-	}
-	if _, err := parseHeads("strike,wave"); err == nil || !strings.Contains(err.Error(), "onset, drums, voice") {
-		t.Errorf("heads strike,wave read (%v), want refused naming the heads the decoders read", err)
-	}
-}
-
-// TestAHeadItsLabelDoesNotStateIsTheFrontEnds: a head named that a label does
-// not state, as the trainer asks it nothing there, stays the front end's for
-// that take and is said kept: the beats and bar lines of a label that lists
-// none, the velocity of one whose notes all say -1, the cents of a recording's
-// with no pitch track, the voice and what plays a note of an unnamed one's,
-// and the drums of a kit drawn from the genome's, whose pieces name no line
-func TestAHeadItsLabelDoesNotStateIsTheFrontEnds(t *testing.T) {
-	n, k, genes := 30, audio.RipPiano.Len(), audio.VoiceGeneCount
-	var heard int
-	ear := fixedEar{f: audio.RipFrames{Hop: audio.RipFrameSec, Range: audio.RipPiano, Flux: make([]float64, n), Sure: 0.7,
-		Salience: make([]float32, n*k), Chroma: make([][12]float64, n), BassChroma: make([][12]float64, n),
-		Beat: slices.Repeat([]float64{0.25}, n), Downbeat: slices.Repeat([]float64{0.25}, n), Velocity: slices.Repeat([]float32{0.3}, n*k),
-		Cents: slices.Repeat([]float32{7}, n*k), CentsError: slices.Repeat([]float32{3}, n*k), Voice: slices.Repeat([]float32{0.2}, n*genes),
-		VoiceAt: slices.Repeat([]uint8{5}, n*audio.RipVoiceCells), Voices: slices.Repeat([]uint8{9}, n*audio.RipVoiceCells*audio.RipVoiceSize)}, heard: &heard}
-	for d := range ear.f.Onset {
-		ear.f.Onset[d] = slices.Repeat([]float64{0.4}, n)
-	}
-	recorded := corpusLoop{Frames: n, Events: []corpusEvent{{Frame: 10, End: 20, Drum: -1, MIDI: 60, Vel: -1, Wave: -1, Family: -1}}}
-	kit := recorded
-	kit.Kit = []corpusPiece{{Genes: []float64{0.5}}, {}}
-	for _, c := range []struct {
-		head string
-		lab  corpusLoop
-		ears func(f *audio.RipFrames) bool
-	}{
-		{"beat", recorded, func(f *audio.RipFrames) bool { return f.Beat[5] == 0.25 }},
-		{"downbeat", recorded, func(f *audio.RipFrames) bool { return f.Downbeat[5] == 0.25 }},
-		{"velocity", recorded, func(f *audio.RipFrames) bool { return f.Velocity[11*k+39] == 0.3 }},
-		{"cents", recorded, func(f *audio.RipFrames) bool { return f.Cents[0] == 7 && f.CentsError[0] == 3 }},
-		{"voice", recorded, func(f *audio.RipFrames) bool { return f.Voice[12*genes] == 0.2 }},
-		{"plays", recorded, func(f *audio.RipFrames) bool { return f.Sure == 0.7 && f.VoiceAt[0] == 5 && f.Voices[0] == 9 }},
-		{"drums", kit, func(f *audio.RipFrames) bool { return f.Onset[1][5] == 0.4 }},
-	} {
-		h := newLabelHeads(ear, &c.lab, []string{c.head})
-		f, err := h.Hear(make([]float64, audio.RipRate), audio.RipRate, audio.DefaultRipParams())
-		if err != nil || !slices.Equal(h.kept, []string{c.head}) || h.heads != nil || !c.ears(f) {
-			t.Errorf("a label that does not state its %s: kept %v, given %v (%v); want the front end's %s kept", c.head, h.kept, h.heads, err, c.head)
-		}
 	}
 }
 

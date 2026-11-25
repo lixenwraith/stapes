@@ -60,6 +60,7 @@ type Session struct {
 	// ripframe.bin holds, with its notes model, nil for the package's own analysis
 	rip      audio.RipParams
 	ripSrc   string
+	kinds    map[string]audio.RipParams // the sets the root holds for a kind of sound (kindOf), nil for none
 	frontEnd *ripmodels.FrontEnd
 	earSum   string // the checksum of the weight files frontEnd loaded, which names the frames tune truth keeps
 	// judge rules the model's strikes in the installed scores' place: the root's
@@ -284,6 +285,9 @@ func NewSession(o Options) (*Session, error) {
 			s.rip, s.ripSrc = p, f
 			fmt.Fprintf(out, "rip params %s\n", f)
 		}
+	}
+	if t := files.ripTarget; t != "" {
+		s.kinds = loadKinds(filepath.Dir(t), func(l string) { fmt.Fprintln(out, l) })
 	}
 	if f := files.frame; f != "" {
 		if err := s.loadModel(f, files.notes); err != nil {

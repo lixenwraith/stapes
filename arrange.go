@@ -1197,9 +1197,6 @@ func (a *arranger) compose(set *sampleSet, srng, glrng, krng *rand.Rand) error {
 	if a.kit != nil {
 		a.deal()
 	}
-	if a.kit != nil { // dealt: a loop whose drums strike nothing keeps none
-		return a.kit.placed(a.parts)
-	}
 	return nil
 }
 

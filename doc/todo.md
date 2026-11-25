@@ -148,7 +148,7 @@ engine exports (`corpus`), the frame model and the notes model, their trainer
    costs (`streamJump`, `streamLength`, `streamLevel`, `streamSwitch`), the
    lead rule's default and `cross` would be tuned on music rather than set by
    hand. The models' thresholds (`strike`, `strike_low`, `strike_again`,
-   `strike_alone`, `release`, `voicing`, `start` and its window) are searched
+   `release`, `voicing`) are searched
    by `tune ... truth <list>` through the loaded models by pitch and onset, as
    the mean over its list's conditions under a guard, the frames kept between
    runs ([Rip design §7](rip-design.md#7-plan)). The trainer's `READ` and
@@ -449,6 +449,30 @@ Left open by what landed, each with the option not taken:
   with the notes model's salience from step to step.
 - `test_train.py` runs by hand: CI has no PyTorch.
 
+### A set a kind of sound
+
+- Priority: P1
+- Affected files: `kinds.go`, `tune.go`, `tool/rip-train/pipeline.sh`, `lixenwraith/audio` (the decoders)
+
+A recording read as singing is ripped under singing's own set (`rip.voice.toml`), the
+others under the root's ([Stapes §4](stapes.md#4-the-rips-verbs)). Left:
+
+- **The joint path by kind.** With trained heads it reads every line and beat right on
+  more generated loops than the present path, with drums (173 of 204 where 147) and
+  without (92 of 195 where 76), on fewer of a lone guitar's recordings (75 of 298 where
+  151) and as many of E-GMD's (8 of 40 where 9). A `rip.<kind>.toml` can set `joint`,
+  but no real mix with its bars given has been read. Close: such a list, read under
+  both, before `joint` 1 is installed for any kind.
+- **Drums alone are not told from drums under music**: over a kit the pitch head finds
+  pitches and the family head a bass, and the pair writes a median of 40 notes a minute
+  on E-GMD's test takes, where none plays. No reading counts them. Close: `tune ...
+  truth` counts the notes a minute heard on a recording whose truth holds hits alone,
+  as it counts hits where no drum plays, and the table carries it.
+- **The notes model states no measure** (`sure` 0), so no note is named a family and
+  the kind is read from the frame model's family head. Close: a measure from a family
+  held out, or the names dropped from a note.
+- `fits` and a live stream rip under the root's own set, whatever the kind.
+
 ### Hear what is struck
 
 - Priority: P1
@@ -458,27 +482,20 @@ Left open by what landed, each with the option not taken:
 A hit is to be described by what it sounds like, not named. Landed: `corpus ... gen
 kits` plays an arranged loop's drums on a kit of two to ten struck sounds drawn over
 audio's struck genome, each strike labelled with its piece and the loop with each
-piece's genes, band and place ([Rip training §3](rip-training.md#a-loops-kit)); the
-places, three even runs of the bands by a count ([§3](rip-training.md#a-kits-places));
-a recording's hits labelled by piece, a piece each key, placed by its own strikes
-([§3](rip-training.md#a-recordings-kit)); a struck head on both models, asked at every
-frame of every corpus; and on the frame model, at each place, whether something is
-struck there, its genes with the error the head states for each and how hard, grown on
-the weights that stand, a recording's genes taught by its pieces' strikes told alike
-and apart, and read by audio into the frames ([Rip training §5](rip-training.md#5-the-targets),
-[§8](rip-training.md#8-a-training-step)). What remains, each read before the next:
+piece's genes and band ([Rip training §3](rip-training.md#a-loops-kit)); a loop
+whose label holds such a kit asks the drums head nothing ([Rip training
+§5](rip-training.md#5-the-targets)). A struck head on both models and the heads of
+a strike's place, genes and loudness stand on the branch `drums-places`, in no
+model in use. What remains, each read before the next:
 
 - The count of 200 loops with the word, by `corpuscount.py` and `corpusheard.py`,
-  and a listening sample of kits of two, five and ten pieces; E-GMD's labels made
-  again by piece (`corpus ... from ... labels`) and counted by key.
-- A pass that trains the places' heads on the kits' corpus and E-GMD, read by its
-  lines: the places' F1, the genes' miss beside the error stated, the loudness' miss,
-  and one piece's strikes nearer than two pieces'.
-- The decoder making hits from those heads, and `tune` reading strikes so, the struck
-  head's peaks among them; then the grouping of a track's hits into its kit. Until a
-  decoder reads them, the heads join neither `DECODERS` nor `READ`: in `DECODERS` their
-  loss would pick the step a run exports, in `READ` a pass's rate would follow it.
-- Scores that count hits without names.
+  and a listening sample of kits of two, five and ten pieces.
+- The places: a grouping of the bands, which the count's share of same-frame strikes
+  that share a place, for each count of places, decides.
+- The heads that say a strike's place and genes, and the trainer that reads `piece`
+  for them, from the branch, with the decoder and `tune` reading strikes so in the
+  same change: a head lands with what reads it.
+- A recorded kit's labels by piece: E-GMD's hits keep their keys' drums.
 
 Left open by what landed:
 
@@ -492,37 +509,9 @@ Left open by what landed:
 - A sound's takes are seeded by its name, so the pieces numbered alike share their
   noise and their takes' spread from loop to loop: a seed of the loop's wants audio
   to take one.
-- A place is a piece's, not a strike's: a third of the generated strikes alone sound
-  most at another place than their piece's, a soft layer lower. A place by each
-  strike's own take wants the engine to say which take a strike plays.
-- A recorded piece is placed only where its strikes agree (`pieceSure`): on the
-  genome's kits that keeps a quarter of the strikes read, 0.94 of them right, and on
-  E-GMD's draw 0.553 of its strikes, 662 of its 2,383 pieces; the rest ask no place.
-  More would be kept by reading the takes of one kit together, a list's column naming
-  a take's kit as `unit` names a velocity's recordings, each piece's lone strikes then
-  counted over every take; or by a head that keeps a frame's strikes apart by what
-  they sound like, a set of slots matched to the labelled strikes by their
-  description, for which no place is measured at all.
-- `datacheck.py` reads no lag of a drawn kit's strikes, and the `--over` drums are
-  laid only where nothing is struck.
-- The loudness of a recorded strike is its MIDI velocity only where its list's
-  `velocity` cell is empty: E-GMD's says `none`, so its lines say no loudness until the
-  lab sets it ([Rip training §3](rip-training.md#a-recordings-velocities)).
-
-### Read each head off the label on trained weights
-
-- Priority: P1
-- Affected files: none: readings
-
-`heads <head>` reads one head off the label and the rest through the loaded pair
-([Rip training §11](rip-training.md#the-decoder-alone)), where `heads all` reads
-the decoders alone. Left: on the installed pair, one head at a time, on
-generated loops at a seed no round drew and on the recorded sets' held-out
-lists, each beside the pair alone and `heads all`, by its readings and the
-stages `tune ... truth` prints: `strike` first, which holds the notes' F1 the
-decoders give, then `pitch` for the ends, the key and the chords, `start` and
-`cents` on singing, `release` for the ends; `velocity` waits on `dynamics`
-([audio's todo](https://github.com/lixenwraith/audio/blob/main/doc/todo.md#keep-what-perfect-heads-say)).
+- Until the trainer reads a piece, a kit's strikes teach the onset alone: its loop asks the three-line drums head nothing, so a pass on it
+  teaches that head neither a hit nor silence there, `--over` lays no drums on it,
+  something being struck there, and `datacheck.py` reads no lag of its strikes.
 
 ### Train both models again
 
@@ -734,7 +723,7 @@ rip are in place; what remains:
     the nearer picked (item 6), as does the song's score against the
     recording (`song ... score`) on each. Before either, `cells` is read on
     trained models over whole corpora, where the count decides; on 49 loops of
-    each corpus here (`fits ... heads all cells 50`) it named 6 of 16 shared
+    each corpus here (`fits ... cells 50`, the label's events in the heads' place) it named 6 of 16 shared
     strings where the measure names none, and 7 of 26 shared saws where it
     names 15 (aug; without `aug` 6 of 14 and 15 of 26 against 4 and 14), at
     half its CPU a loop.

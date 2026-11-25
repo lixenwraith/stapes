@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"iter"
 	"math"
 	"math/rand/v2"
 	"slices"
@@ -23,21 +22,13 @@ const (
 	kitPass   = int(audio.InstrClap) + 1
 )
 
-// kitPlaces is how many places the bands are cut into, even runs from the
-// lowest: the count that leaves the fewest strikes unheard at their place
-// (TestTheBandsArePlacedInTheRunsThatKeepTheMostStrikesApart)
-const kitPlaces = 3
-
 // kitPiece is one struck sound of a loop's kit: its number in the kit, the
-// genes it was drawn as, the band its hit rises most in, its sound, and once
-// its loop strikes it its hit's rise as struck there and the place of that
+// genes it was drawn as, the band its hit rises most in, and its sound
 type kitPiece struct {
 	n     int
 	genes []float64
 	band  int
 	sound *audio.SoundDef
-	rose  []float64
-	place int
 }
 
 // loopKit is a loop's kit, its pieces as drawn, and the piece or pieces each
@@ -114,280 +105,28 @@ func strikeBand(d *audio.SoundDef) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	band, _ := riseBand(x, strikeAt)
-	return band, nil
-}
-
-// placed gives each piece its place: where its hit, take 0 at the median of the
-// velocities its loop strikes it at, rises most (risePlace), the take most of
-// its strikes sound like, a softer one rising lower as a struck sound's layers do
-func (k *loopKit) placed(parts []*part) error {
-	for _, p := range parts {
-		if p.piece == nil || len(p.notes) == 0 {
-			continue
-		}
-		vels := make([]float64, len(p.notes))
-		for i, n := range p.notes {
-			vels[i] = n.vel
-		}
-		x, err := audio.RenderHit(p.piece.sound, audio.SoundShape{}, median(vels), 0)
-		if err != nil {
-			return err
-		}
-		_, p.piece.rose = riseBand(x, strikeAt)
-		p.piece.place = risePlace(p.piece.rose, kitPlaces)
-	}
-	return nil
+	return riseBand(x, strikeAt), nil
 }
 
 // riseBand is the band a hit x at the engine's rate rises most in laid on frame
 // at: through BandFrames over the samples the sharp plane reads up to the frame
 // after at, the band whose sharp plane rises most over the frame before on the
 // frames onsetRise reads a strike on frame at by, the one before to the one
-// after, the lowest of equals; and the energy it adds to each band (adds)
-func riseBand(x []float64, at int) (band int, rose []float64) {
+// after; the lowest of equals
+func riseBand(x []float64, at int) int {
 	lead := at * audio.RipHop * audio.AudioSampleRate / audio.RipRate
 	y := make([]float64, ((at+1)*audio.RipHop+audio.RipN/2)*audio.AudioSampleRate/audio.RipRate)
 	copy(y[lead:], x)
 	rows := audio.BandFrames(y, audio.AudioSampleRate)
-	top, rose := math.Inf(-1), make([]float64, audio.RipBands)
+	band, top := 0, math.Inf(-1)
 	for t := at - 1; t <= at+1 && t < len(rows); t++ {
 		for b := range audio.RipBands {
 			if up := float64(rows[t][audio.RipBands+b] - rows[t-1][audio.RipBands+b]); up > top {
 				band, top = b, up
 			}
 		}
-		adds(rose, rows[t][audio.RipBands:], rows[t-1][audio.RipBands:])
 	}
-	return band, rose
-}
-
-// adds keeps in rose each band's most energy added from the sharp plane before
-// to now, taken back from the frames' log1p(100 e) and over sharpCounts, so a
-// strike's shape is the same at any level and a low band no louder for its bins
-func adds(rose []float64, now, before []float32) {
-	counts := sharpCounts()
-	for b := range rose {
-		rose[b] = max(rose[b], (math.Expm1(float64(now[b]))-math.Expm1(float64(before[b])))/100/counts[b])
-	}
-}
-
-// sharpCounts is how many times the sharp plane's bands, summed, count a steady
-// cosine at each band's centre: about twenty at A0, where their triangles share
-// bins, near one at the top, as the trainer's sharp_counts reads them
-var sharpCounts = sync.OnceValue(func() []float64 {
-	out := make([]float64, audio.RipBands)
-	x := make([]float64, 4*audio.RipN*audio.AudioSampleRate/audio.RipRate)
-	for b := range out {
-		hz := audio.BandHz(float64(b))
-		for i := range x {
-			x[i] = math.Cos(2 * math.Pi * hz * float64(i) / audio.AudioSampleRate)
-		}
-		row := audio.BandFrames(x, audio.AudioSampleRate)[2*audio.RipN/audio.RipHop][audio.RipBands:]
-		var sum float64
-		for _, v := range row {
-			sum += math.Expm1(float64(v))
-		}
-		out[b] = sum / math.Expm1(float64(row[b]))
-	}
-	return out
-})
-
-// risePlace is the place of places whose bands take the most energy a strike
-// adds, the lowest of equals: where its sound is new, which one band's peak,
-// moved a median of 11 bands by a piece's takes and velocities, says less
-// steadily
-func risePlace(rose []float64, places int) int {
-	sum := make([]float64, places)
-	for b, up := range rose {
-		sum[b*places/audio.RipBands] += max(up, 0)
-	}
-	place := 0
-	for p, v := range sum {
-		if v > sum[place] {
-			place = p
-		}
-	}
-	return place
-}
-
-// pieceAlone is how far in frames from every other strike a recording's strike
-// lies for its rise to be its piece's alone: a rise spreads two frames either
-// way under the sharp plane's window and is read a frame either way, so a
-// strike four frames from another reads none of the other's
-const pieceAlone = 4
-
-// pieceRead is what a recording's strikes say of one piece: the energy they add
-// to each band (adds) summed over the strikes its place is read from, and how
-// many of those rise most at that place
-type pieceRead struct {
-	rose      []float64
-	agree, of int
-}
-
-// sure is how sure a piece's place is: how often a strike of it rises most
-// there, the agreeing strikes plus one over all plus the places, the mean that
-// an even prior over the places and those strikes give, so a place few strikes
-// read is held near even odds
-func (r pieceRead) sure(places int) float64 {
-	return float64(r.agree+1) / float64(r.of+places)
-}
-
-// pieceRises is a recording's pieces, a key each in order, each strike's piece,
-// and what its strikes say of each piece, summed over its strikes alone frames
-// or more from every other, else over those beside only pieces read so, outside
-// those pieces' places; rose nil for a piece of neither. frames and keys are
-// the strikes', rows the band frames.
-func pieceRises(rows iter.Seq[[]float32], frames, keys []int, alone, places int) (order, piece []int, read []pieceRead) {
-	order = slices.Compact(slices.Sorted(slices.Values(keys)))
-	piece = make([]int, len(keys))
-	for i, k := range keys {
-		piece[i], _ = slices.BinarySearch(order, k)
-	}
-	by := make([]int, len(frames)) // the strikes in the order of their frames
-	for i := range by {
-		by[i] = i
-	}
-	slices.SortStableFunc(by, func(i, j int) int { return cmp.Compare(frames[i], frames[j]) })
-	with := func(i int) []int { // the other strikes nearer than alone
-		var out []int
-		k, _ := slices.BinarySearchFunc(by, frames[i]-alone+1, func(j, f int) int { return cmp.Compare(frames[j], f) })
-		for ; k < len(by) && frames[by[k]] < frames[i]+alone; k++ {
-			if by[k] != i {
-				out = append(out, by[k])
-			}
-		}
-		return out
-	}
-	sharp := map[int][]float32{} // the sharp plane of every frame a strike's rise reads
-	for _, f := range frames {
-		for t := max(f-2, 0); t <= f+1; t++ {
-			sharp[t] = nil
-		}
-	}
-	t := 0
-	for row := range rows {
-		if _, ok := sharp[t]; ok {
-			sharp[t] = slices.Clone(row[audio.RipBands:])
-		}
-		t++
-	}
-	added := func(f int) []float64 { // what strike's frame f adds, nil where unread
-		up, read := make([]float64, audio.RipBands), false
-		for u := max(f-1, 1); u <= f+1; u++ {
-			if now, before := sharp[u], sharp[u-1]; now != nil && before != nil {
-				adds(up, now, before)
-				read = true
-			}
-		}
-		if !read {
-			return nil
-		}
-		return up
-	}
-	ups := make([][][]float64, len(order)) // each piece's strikes its place is read from
-	for i, f := range frames {
-		if up := added(f); up != nil && len(with(i)) == 0 {
-			ups[piece[i]] = append(ups[piece[i]], up)
-		}
-	}
-	placed := make([]int, len(order))
-	for p := range placed {
-		placed[p] = -1
-		if len(ups[p]) > 0 {
-			placed[p] = risePlace(sum(ups[p]), places)
-		}
-	}
-	beside := make([][][]float64, len(order))
-	for i, f := range frames {
-		up, others := added(f), with(i)
-		if placed[piece[i]] >= 0 || up == nil {
-			continue
-		}
-		taken := map[int]bool{}
-		for _, j := range others {
-			if piece[j] != piece[i] && placed[piece[j]] < 0 {
-				taken = nil
-				break
-			}
-			taken[placed[piece[j]]] = piece[j] != piece[i]
-		}
-		if taken == nil {
-			continue
-		}
-		for b := range up {
-			if taken[b*places/audio.RipBands] {
-				up[b] = 0
-			}
-		}
-		beside[piece[i]] = append(beside[piece[i]], up)
-	}
-	read = make([]pieceRead, len(order))
-	for p := range read {
-		if len(ups[p]) == 0 {
-			ups[p] = beside[p]
-		}
-		if len(ups[p]) == 0 {
-			continue
-		}
-		read[p].rose = sum(ups[p])
-		at := risePlace(read[p].rose, places)
-		for _, up := range ups[p] {
-			if risePlace(up, places) == at {
-				read[p].agree++
-			}
-		}
-		read[p].of = len(ups[p])
-	}
-	return order, piece, read
-}
-
-// sum is rises summed band by band
-func sum(ups [][]float64) []float64 {
-	out := make([]float64, audio.RipBands)
-	for _, up := range ups {
-		for b, v := range up {
-			out[b] += v
-		}
-	}
-	return out
-}
-
-// pieceSure is the least sureness a recorded piece's place is given at, under
-// which the piece asks no place: the least at which the generated drums' pieces
-// kept were right nine times in ten
-// (TestTheBandsArePlacedInTheRunsThatKeepTheMostStrikesApart)
-const pieceSure = 0.71
-
-// placeWhy is why a recorded piece is given no place, each a reason a manifest
-// and a run count its pieces left so by
-var placeWhy = []string{"no strike read", "a place unsure"}
-
-// recordedKit is a recording's kit by piece (pieceRises), each piece at the
-// place where its strikes' rise is most (risePlace) where it is sure of it
-// (pieceSure), with that rise's highest band and the sureness; -1 for both and
-// a word of placeWhy elsewhere; and each strike's piece
-func recordedKit(rows iter.Seq[[]float32], frames, keys []int) ([]corpusPiece, []int) {
-	order, piece, read := pieceRises(rows, frames, keys, pieceAlone, kitPlaces)
-	kit := make([]corpusPiece, len(order))
-	for p, k := range order {
-		kit[p] = corpusPiece{Key: new(k), Band: -1, Place: -1, Why: placeWhy[0]}
-		r := read[p]
-		if r.rose == nil {
-			continue
-		}
-		if kit[p].Sure, kit[p].Why = math.Round(r.sure(kitPlaces)*1e4)/1e4, placeWhy[1]; r.sure(kitPlaces) < pieceSure {
-			continue
-		}
-		band := 0
-		for b, v := range r.rose {
-			if v > r.rose[band] {
-				band = b
-			}
-		}
-		kit[p].Band, kit[p].Place, kit[p].Why = band, risePlace(r.rose, kitPlaces), ""
-	}
-	return kit, piece
+	return band
 }
 
 // cast gives each piece its role by its place in the order of the bands, of
@@ -584,23 +323,4 @@ func (m *music) pass(tl [][audio.MusicSlots]audio.PatternID, from, to int) [][au
 		out[b][0] = audio.RegisterPattern(&cp)
 	}
 	return out
-}
-
-// pieceKit gives a recording's strikes, each event naming its key until then,
-// the pieces of the kit its keys make (recordedKit), and its label that kit
-func pieceKit(lab *corpusLoop, rows iter.Seq[[]float32]) {
-	var frames, keys, at []int
-	for i, e := range lab.Events {
-		if e.Piece != nil {
-			frames, keys, at = append(frames, e.Frame), append(keys, *e.Piece), append(at, i)
-		}
-	}
-	if len(at) == 0 {
-		return
-	}
-	kit, piece := recordedKit(rows, frames, keys)
-	lab.Kit = kit
-	for j, i := range at {
-		lab.Events[i].Piece = new(piece[j])
-	}
 }

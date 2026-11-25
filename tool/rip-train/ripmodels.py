@@ -29,15 +29,9 @@ VOICE_GENES = 32
 FAMILIES = ("piano", "guitar", "voice", "bass", "strings", "winds", "synth", "drums", "unknown")  # RipFamilies, in its order
 NAMES = len(FAMILIES) - 1  # the families a note may be named: unknown is the absence of a name, the last
 
-# what is struck at each place: stapes' kitPlaces even runs of the bands from the lowest, and a struck sound's genes
-# (lixenwraith/audio's StruckGeneCount), a corpus manifest's places and struck_genes
-PLACES, STRUCK_GENES = 3, 13
-
-# the frame model's heads, each added after the last; struck says that something was struck, of no line or pitch, and the
-# three after it what is struck at each place: something, its genes and then the log of the error stated for each, how hard
+# the frame model's heads, each added after the last
 HEADS = [("onset", 1), ("drums", DRUMS), ("pitch", PITCHES), ("voicing", 1), ("wave", WAVES), ("voice", VOICE_GENES), ("strike", PITCHES),
-         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1), ("struck", 1),
-         ("places", PLACES), ("genes", 2 * PLACES * STRUCK_GENES), ("loudness", PLACES)]
+         ("release", PITCHES), ("velocity", PITCHES), ("family", len(FAMILIES)), ("beat", 1), ("downbeat", 1)]
 
 
 def refused(what: str, layout) -> str:
@@ -419,13 +413,13 @@ class PitchNet(nn.Module):
 # the three after it say what plays the pitch: a score for each family a note may be named, one for each wave, and the voice's genes
 CELL_HEADS = (("pitch", 1), ("strike", 1), ("release", 1), ("velocity", 1), ("cents", 2),
               ("pitchfamily", NAMES), ("pitchwave", WAVES), ("pitchvoice", VOICE_GENES))
-FRAME_HEADS = ("onset", "drums", "voicing", "wave", "voice", "struck")
+FRAME_HEADS = ("onset", "drums", "voicing", "wave", "voice")
 
 
 # PitchNet's heads: those of the frame model's in its order but the frame's family, which names one note of the frame,
-# then the per-pitch heads the frame model has none of, then struck, added after them
-PITCHNET_HEADS = [h for h in HEADS if h[0] in dict(CELL_HEADS) or h[0] in FRAME_HEADS and h[0] != "struck"] + \
-    [(k, n * PITCHES) for k, n in CELL_HEADS if k not in dict(HEADS)] + [("struck", 1)]
+# then the per-pitch heads the frame model has none of
+PITCHNET_HEADS = [h for h in HEADS if h[0] in dict(CELL_HEADS) or h[0] in FRAME_HEADS] + \
+    [(k, n * PITCHES) for k, n in CELL_HEADS if k not in dict(HEADS)]
 
 
 def cell_heads(cfg: Config) -> list:

@@ -146,8 +146,7 @@ Over the library's rip (library
   (`VoiceDef.Genes`).
 - `fits` reads that search against voices that are known: each loop of a
   corpus directory that kept its audio is ripped and fitted as `rip` does it
-  (`Session.ripper`, `fitVoice`), with `heads` through the label's own heads
-  as `truth`'s (`newLabelHeads`), no model heard under `all`, or with `given` each voice the label states
+  (`Session.ripper`, `fitVoice`), or with `given` each voice the label states
   is a line fitted on its own notes at the label's tuning, nothing ripped, so
   the measure is read apart from the rip. A row a line (`fitRow`) says whose
   line it is, the label's voice that plays most of the line's notes that
@@ -190,16 +189,7 @@ Over the library's rip (library
   theirs (`corpusLoop.notes`), its key where its root is over MIDI 0, as no
   recording's or overlap's is, and its chords each to the next one's frame, the
   last to the loop's end (`corpusLoop.said`); a velocity of -1 and a note in no
-  part give none, and a last line names what the label gives none of. `heads
-  <head,...>` reads the decoders apart from the models that feed them: the
-  recording is ripped again as it was (`ripped.by`), the heads named written off
-  the label as the trainer's targets are (`labelHeads`, `corpusLoop.planes`, a
-  row a head in `labelHeadRows`), the rest the front end's, laid on the piano's
-  keys where it hears fewer, and that rip is scored; `all` names every head
-  the decoders read and hears nothing where the label states each, the label's
-  frames standing alone. A head the label does not state, as the trainer asks
-  it nothing there, stays the front end's (a row's `stated`,
-  `labelHeads.kept`); its pitch states no tuning, as a model's. Every truth ends with
+  part give none, and a last line names what the label gives none of. Every truth ends with
   the rip's stages read against it (audio's `ReadStages` over `Rip.Stages`,
   which the session's rips keep, `stageLines`): the notes lost by stage, why the
   strikes refused those they lost, the notes added, the ends wrong and the hits
@@ -239,8 +229,7 @@ Over the library's rip (library
   engine, the current set seeding the pool, and writes a set that beats it
   ([todo](todo.md#tune-the-rip) for what the corpus still lacks). `tune ...
   truth <list>` searches instead the thresholds the loaded models' decoders
-  read (`modelGenes`) and `twins` and `ring_on` (`modelCounts`, integers it moves
-  as floats and reads rounded), the rest held, against recordings, a line
+  read (`modelGenes`), the rest held, against recordings, a line
   `wav<TAB>truth[<TAB>condition[<TAB>[timed] [drumless]]]` each, from a pool
   drawn near the current thresholds (`search`'s `near`). A truth gives notes,
   and may give
@@ -276,14 +265,10 @@ Over the library's rip (library
   scores' rows read a kept note's ends, and the ends reading does, as the parts
   reading does where a note's length moves the parting, which holds no two notes
   at once on a line. The key moves with its own genes (audio's `key_bars`,
-  `key_open`, `key_close`, `key_bar`), which no search here moves, and with the
+  `key_bar`), which no search here moves, and with the
   bars it is read over, the chords with the bars' genes and the key, which the
   bars' score sees, and the hits'
-  loudness with `onset_min` and the bars, which the drums' F1 sees. Through
-  audio's `struck` over two loops, with and without a start plane, F1's counts
-  also held while `min_note`, and `strike_hold` without starts, moved the ends
-  and the loudness, and `strike_low`, `voicing` and `start` moved onsets within
-  the window and the loudness: those F1 sees elsewhere, as notes come and go.
+  loudness with `onset_min` and the bars, which the drums' F1 sees.
   With hits `onset_min` is searched too (`drumGenes`), with bars the tempo's
   prior, combs, cuts, `tightness`, the bars' weights, the meter's margins and
   the joint path's costs and levels (`barGenes`). `genes` frees of these those

@@ -40,33 +40,21 @@ func cmdAgree(s *Session, a []string) error {
 // line, and the hits; a MIDI file's bars, a label's and a JAMS file's beats, a
 // truth of beats alone, score its bar lines, and a label's readings what it says
 // past them. Timed, the truth's seconds are the recording's: no map is fitted.
-// With heads, the recording is ripped again with the heads named its label's,
-// written as the trainer's targets, and that rip is scored.
 func cmdTruth(s *Session, a []string) error {
 	rp, ok := s.rips[a[0]]
 	if !ok {
 		return fmt.Errorf("%q: nothing ripped under that name this session (rip first)", a[0])
 	}
 	var timed bool
-	var heads []string
 	for w := a[2:]; len(w) > 0; w = w[1:] {
 		switch {
 		case w[0] == "timed":
 			timed = true
-		case w[0] == "heads" && len(w) > 1:
-			var err error
-			if heads, err = parseHeads(w[1]); err != nil {
-				return err
-			}
-			w = w[1:]
 		default:
-			return fmt.Errorf("%q: want timed, for a truth whose seconds are the recording's, heads <head,...>, for a label's events in those heads' place, or nothing", w[0])
+			return fmt.Errorf("%q: want timed, for a truth whose seconds are the recording's, or nothing", w[0])
 		}
 	}
 	label := strings.EqualFold(filepath.Ext(a[1]), ".json")
-	if heads != nil && !label {
-		return fmt.Errorf("%s: heads reads a corpus loop's label (.json), whose events stand in for the heads", a[1])
-	}
 	data, err := os.ReadFile(s.path(a[1]))
 	if err != nil {
 		return err
@@ -97,22 +85,6 @@ func cmdTruth(s *Session, a []string) error {
 	}
 	if err != nil {
 		return fmt.Errorf("%s: %w", a[1], err)
-	}
-	if heads != nil {
-		if rp.x == nil {
-			return errScore(rp)
-		}
-		by := rp.by
-		lh := newLabelHeads(by.FrontEnd, lab, heads)
-		by.FrontEnd = lh
-		r, err := by.Samples(rp.x, rp.rate)
-		if err != nil {
-			return err
-		}
-		again := *rp
-		again.rip, again.sound = r, nil
-		rp = &again
-		fmt.Fprintf(s.out, "%s ripped again with %s: %d bpm %s\n", a[0], lh.says(), r.BPM, r.Meter)
 	}
 	// a score's bars are placed on the recording as its notes matched, or with
 	// none as its hits did

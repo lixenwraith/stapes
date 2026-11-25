@@ -55,7 +55,6 @@ type tuneOptions struct {
 	frames                         string         // where tune truth keeps each recording's frames between runs; "" hears them every run
 	hold                           float64        // the GB of its recordings' samples and frames tune truth holds between rips
 	weigh                          []string       // the readings tune truth weighs beside the F1s and the bars, by their words
-	heads                          []string       // the heads tune truth reads off each label in the models' place
 	genes                          []string       // the genes tune truth may move, by their keys in rip.toml; all it knows where nil
 }
 
@@ -101,7 +100,7 @@ func cmdTune(s *Session, a []string) error {
 		o.generations = n
 		return nil
 	}
-	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list> [guard <x>] [frames <dir>] [hold <GB>] [weigh <reading,...>] [heads <head,...>] [genes <gene,...>]")
+	usage := errors.New("want tune [generations] [file], or tune [pool] [generations] truth <list> [guard <x>] [frames <dir>] [hold <GB>] [weigh <reading,...>] [genes <gene,...>]")
 	if i := slices.Index(a, "truth"); i >= 0 {
 		if i > 2 || i+1 >= len(a) {
 			return usage
@@ -130,12 +129,6 @@ func cmdTune(s *Session, a []string) error {
 					o.weigh = append(o.weigh, r)
 				}
 				w = w[2:]
-			case len(w) > 1 && w[0] == "heads":
-				h, err := parseHeads(w[1])
-				if err != nil {
-					return err
-				}
-				o.heads, w = h, w[2:]
 			case len(w) > 1 && w[0] == "genes":
 				g, err := parseGenes(w[1])
 				if err != nil {
@@ -158,14 +151,10 @@ func cmdTune(s *Session, a []string) error {
 				return err
 			}
 		}
-		var fe audio.RipFrontEnd // the analysis, where the labels stand in for the heads
-		switch {
-		case s.frontEnd != nil:
-			fe = s.frontEnd
-		case o.heads == nil:
+		if s.frontEnd == nil {
 			return fmt.Errorf("tune truth tunes the models' decoders, and no %s is loaded", frameFile)
 		}
-		return s.tuneTruth(o, s.path(a[i+1]), "", fe)
+		return s.tuneTruth(o, s.path(a[i+1]), "", s.frontEnd)
 	}
 	if len(a) > 2 {
 		return usage
@@ -527,7 +516,7 @@ func (m *music) label(events []audio.RipEvent, ends map[int]int, voices map[stri
 	}
 	if m.kit != nil {
 		for _, pc := range m.kit.pieces {
-			lab.Kit = append(lab.Kit, corpusPiece{Genes: pc.genes, Band: pc.band, Place: pc.place})
+			lab.Kit = append(lab.Kit, corpusPiece{Genes: pc.genes, Band: pc.band})
 		}
 	}
 	if m.kind == "overlap" {
@@ -1173,18 +1162,12 @@ type corpusLoop struct {
 	Chords    []corpusChord `json:"chords,omitempty"`
 }
 
-// corpusPiece is a piece of a loop's kit as its label holds it: a drawn one's
-// genes, in the manifest's struck_genes order, or a recorded one's key; the
-// band its hit rises most in and the place whose bands rise most (strikeBand,
-// recordedKit), and a recorded one's sureness of it, both -1 where that is
-// unread or under pieceSure and then why, a word of placeWhy
+// corpusPiece is a piece of a loop's kit as its label holds it: the genes it
+// was drawn as, in the manifest's struck_genes order, and the band its hit
+// rises most in where it is struck (strikeBand)
 type corpusPiece struct {
-	Genes []float64 `json:"genes,omitempty"`
-	Key   *int      `json:"key,omitempty"`
+	Genes []float64 `json:"genes"`
 	Band  int       `json:"band"`
-	Place int       `json:"place"`
-	Sure  float64   `json:"sure,omitempty"`
-	Why   string    `json:"why,omitempty"`
 }
 
 // leftHit is a hit of a recording put on its sound that its label leaves out:
@@ -1307,12 +1290,8 @@ type corpusManifest struct {
 	Families   []string `json:"families"`
 	VoiceGenes int      `json:"voice_genes"`
 	// a corpus whose loops play kits names the struck genome's genes, the
-	// order a kit's piece lists them in, and one whose labels hold a kit how
-	// many places its pieces are placed in (kitPlaces)
+	// order a kit's piece lists them in
 	StruckGenes []string `json:"struck_genes,omitempty"`
-	Places      int      `json:"places,omitempty"`
-	// a corpus of recordings, its pieces left at no place by a word of placeWhy
-	Unplaced map[string]int `json:"unplaced,omitempty"`
 }
 
 // newCorpusManifest is the manifest of a corpus of loops
@@ -1642,9 +1621,7 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	var (
 		mu         sync.Mutex
 		first      error
-		sat, notes int            // of the recordings a pitch track is named for
-		kitted     bool           // a recording's strikes make a kit
-		unplaced   map[string]int // its pieces at no place, by a word of placeWhy
+		sat, notes int // of the recordings a pitch track is named for
 	)
 	// each takes as many recordings at once as the process runs threads, four at
 	// most: a recording's samples, and a measured one's rings, take hundreds of
@@ -1771,15 +1748,6 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 		}
 		j.moved, j.skip, j.left = lab.Lag != nil, lab.Skip, lab.Left
 		mu.Lock()
-		kitted = kitted || len(lab.Kit) > 0
-		for _, pc := range lab.Kit {
-			if pc.Why != "" {
-				if unplaced == nil {
-					unplaced = map[string]int{}
-				}
-				unplaced[pc.Why]++
-			}
-		}
 		if !labels {
 			frames += lab.Frames
 		}
@@ -1791,11 +1759,7 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 	}); err != nil {
 		return err
 	}
-	man := newCorpusManifest(loops)
-	if kitted {
-		man.Places, man.Unplaced = kitPlaces, unplaced
-	}
-	if err := writeJSON(filepath.Join(dir, "corpus.json"), man); err != nil {
+	if err := writeJSON(filepath.Join(dir, "corpus.json"), newCorpusManifest(loops)); err != nil {
 		return err
 	}
 	// a recording whose hits are not put on its sound is named, and its loop
@@ -1884,16 +1848,6 @@ func (s *Session) corpusFrom(dir, list string, a []string) error {
 			}
 		}
 		what += fmt.Sprintf(", %d of their hit(s) left out of the labels in left.tsv: %s", len(cut), strings.Join(by, ", "))
-	}
-	if len(unplaced) > 0 {
-		var by []string
-		n := 0
-		for _, w := range placeWhy {
-			if unplaced[w] > 0 {
-				by, n = append(by, fmt.Sprintf("%d for %s", unplaced[w], w)), n+unplaced[w]
-			}
-		}
-		what += fmt.Sprintf(", %d of their piece(s) at no place: %s", n, strings.Join(by, ", "))
 	}
 	if len(skipped) > 0 {
 		fmt.Fprintf(s.out, "skipped %d whose MIDI has no notes and no kick, snare or hihat, as %s\n", len(skipped), skipped[0])
@@ -2009,7 +1963,7 @@ func corpusRecording(base, wav, source string, family int, vel func(float64) flo
 		lab.Events = append(lab.Events, ev)
 	}
 	for _, h := range hits {
-		e := corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: vel(h.Vel), Wave: -1, Family: familyIndex("drums"), Piece: new(h.Key)}
+		e := corpusEvent{Frame: frame(h.Start), End: frame(h.Start), Drum: int(h.Drum), Vel: vel(h.Vel), Wave: -1, Family: familyIndex("drums")}
 		// a hit put on its sound whose onset reads no rise there draws none
 		if r := onsetRise(flux, h.Start+lag+lagRise); lab.Lag != nil && e.Frame >= 0 && e.Frame < frames && r < hitBound {
 			lab.Left = append(lab.Left, leftHit{Frame: e.Frame, Key: h.Key, Drum: e.Drum, Vel: h.Vel, Why: hitWhy[0], sec: h.Start, rise: r})
@@ -2018,7 +1972,6 @@ func corpusRecording(base, wav, source string, family int, vel func(float64) flo
 		lab.Events = append(lab.Events, e)
 	}
 	lab.Events = slices.DeleteFunc(lab.Events, func(e corpusEvent) bool { return e.Frame < 0 || e.Frame >= frames })
-	pieceKit(&lab, rows)
 	for i, to := range []*[]int{&lab.Beats, &lab.Downbeats} {
 		for _, sec := range grid[i] {
 			if f := frame(sec); sec+lag >= 0 && f < frames {
@@ -2349,7 +2302,7 @@ func (s *Session) exportCorpus(dir string, o tuneOptions) error {
 	if o.parts == 0 && unheard == 0 {
 		man := newCorpusManifest(o.loops)
 		if o.kits {
-			man.StruckGenes, man.Places = audio.StruckGeneNames(), kitPlaces
+			man.StruckGenes = audio.StruckGeneNames()
 		}
 		if err := writeJSON(filepath.Join(dir, "corpus.json"), man); err != nil {
 			return err
@@ -2964,24 +2917,14 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	// the current parameters' rips hear every recording and read every
 	// transcript, a take at a time, each held after while o.hold has room
 	cur, sums, read := s.rip, make([]truthCount, len(conds)), 0
-	kept, unlabelled := map[string]int{}, 0
-	var sec, inHand float64       // the list's seconds of sound, and those held
-	var held int                  // the bytes held
-	var letGo, planes, heard bool // of the takes let go: any, one with its label's heads, one its ear heard
+	var sec, inHand float64 // the list's seconds of sound, and those held
+	var held int            // the bytes held
+	var letGo, heard bool   // of the takes let go: any, one its ear heard
 	for _, t := range takes {
 		t.judge = s.judge
-		t.read(o.heads)
 		snd, err := t.sound()
 		if err != nil {
 			return err
-		}
-		switch {
-		case o.heads != nil && snd.heads == nil:
-			unlabelled++
-		case snd.heads != nil:
-			for _, h := range snd.heads.kept {
-				kept[h]++
-			}
 		}
 		c, err := t.count(snd, cur, s.lead)
 		if kerr := snd.ear.keep(); err == nil {
@@ -3002,7 +2945,7 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 		if b := snd.bytes(); held+b <= int(o.hold*1e9) {
 			t.held, held, inHand = snd, held+b, inHand+d
 		} else {
-			letGo, planes, heard = true, planes || snd.heads != nil, heard || snd.ear.f != nil
+			letGo, heard = true, heard || snd.ear.f != nil
 		}
 	}
 	var all truthCount
@@ -3055,9 +2998,6 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	rest := "all held"
 	if letGo {
 		rest = "the rest read again as each is ripped from its recording"
-		if planes {
-			rest += ", its label's heads built again"
-		}
 		switch {
 		case heard && o.frames != "":
 			rest += ", its frames read back from " + o.frames
@@ -3066,12 +3006,6 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 		}
 	}
 	fmt.Fprintf(s.out, "%.0f s of sound in %d recording(s), %.0f s of it held between rips in %.2f GB of hold's %g; %s\n", sec, len(takes), inHand, float64(held)/1e9, o.hold, rest)
-	if len(kept) > 0 {
-		fmt.Fprintf(s.out, "the front end's heads kept where a take's label states none, by head: %s\n", countWords(kept))
-	}
-	if unlabelled > 0 {
-		fmt.Fprintf(s.out, "%d take(s) whose truth is no label kept every head the front end's\n", unlabelled)
-	}
 	var free []string
 	for _, p := range geneParts {
 		own := p.names()
@@ -3267,7 +3201,6 @@ type truthTake struct {
 	path, file     string            // its recording, and where its frames are kept, "" for nowhere
 	fe             audio.RipFrontEnd // what hears it
 	held           *takeSound        // what a rip of it reads, nil where each rip reads it again
-	named          []string          // the heads its label stands in for, nil for its ear alone
 	truth          func(*audio.Rip) ([]audio.RipNote, error)
 	hits           []audio.RipHit  // the drum hits its truth gives, nil for none
 	drums          bool            // its truth knows the drums, so a hit heard that it does not give is false
@@ -3277,35 +3210,19 @@ type truthTake struct {
 	timed          bool            // the truth's seconds are the recording's
 	judge          *audio.RipJudge // what rules its rip's strikes, nil for the installed scores
 	said           *labelSaid      // a label's key and chords, nil for a truth that is no label
-	lab            *corpusLoop     // its truth as a label, nil for none
 }
 
 // takeSound is what a rip of a take reads: its samples at the rip's rate, so no
-// candidate resamples them, its ear, and its ear with the heads its label stands
-// in for, nil for none
+// candidate resamples them, and its ear
 type takeSound struct {
-	x     []float64
-	ear   *heardOnce
-	heads *labelHeads
+	x   []float64
+	ear *heardOnce
 }
 
-// front is what a take is ripped through: its ear, with the heads its label
-// stands in for where it has them
-func (s *takeSound) front() audio.RipFrontEnd {
-	if s.heads == nil {
-		return s.ear
-	}
-	return s.heads
-}
-
-// bytes is what holding s costs: its samples, the frames its ear heard and its
-// label's planes, each slice by its capacity
+// bytes is what holding s costs: its samples and the frames its ear heard, each
+// slice by its capacity
 func (s *takeSound) bytes() int {
-	n := weight(reflect.ValueOf(s.x)) + weight(reflect.ValueOf(s.ear.f))
-	if s.heads != nil {
-		n += weight(reflect.ValueOf(s.heads.l))
-	}
-	return n
+	return weight(reflect.ValueOf(s.x)) + weight(reflect.ValueOf(s.ear.f))
 }
 
 // weight is the bytes v's slices hold, through its pointers, structs and arrays
@@ -3331,8 +3248,8 @@ func weight(v reflect.Value) int {
 }
 
 // sound is what a rip of t reads: the one it holds, or else its recording read
-// and resampled again, its frames read back from file or heard again and its
-// label's planes built again, the same to the bit
+// and resampled again and its frames read back from file or heard again, the
+// same to the bit
 func (t *truthTake) sound() (*takeSound, error) {
 	if t.held != nil {
 		return t.held, nil
@@ -3345,18 +3262,7 @@ func (t *truthTake) sound() (*takeSound, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", t.wav, err)
 	}
-	s := &takeSound{x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: t.fe, file: t.file}}
-	if t.named != nil {
-		s.heads = newLabelHeads(s.ear, t.lab, t.named)
-	}
-	return s, nil
-}
-
-// read has the take ripped with heads its label's, where its truth is a label
-func (t *truthTake) read(heads []string) {
-	if t.named = nil; heads != nil && t.lab != nil {
-		t.named = heads
-	}
+	return &takeSound{x: audio.Resample(x, rate, audio.RipRate), ear: &heardOnce{fe: t.fe, file: t.file}}, nil
 }
 
 // truthLine is a truth list's line: a recording and its truth, relative paths
@@ -3431,7 +3337,7 @@ func (l truthLine) take(sum [sha256.Size]byte, fe audio.RipFrontEnd, frames, wei
 		}
 		beats, downbeats := lab.grid()
 		notes := lab.notes()
-		t.truth, t.hits, t.beats, t.lines, t.said, t.lab = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }, lab.hits(), beats, downbeats, lab.said(), &lab
+		t.truth, t.hits, t.beats, t.lines, t.said = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }, lab.hits(), beats, downbeats, lab.said()
 		t.drums = true // a label holds every event of its loop, so no hit there is none played
 	case isMIDI(l.truth):
 		score, err := audio.ReadMIDI(bytes.NewReader(given))
@@ -3498,7 +3404,7 @@ func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule
 	} else if t.drums {
 		missed.drumless = minutes
 	}
-	r, err := audio.Ripper{Params: p, FrontEnd: snd.front(), Lead: lead, Judge: t.judge, Stages: true}.Samples(snd.x, audio.RipRate)
+	r, err := audio.Ripper{Params: p, FrontEnd: snd.ear, Lead: lead, Judge: t.judge, Stages: true}.Samples(snd.x, audio.RipRate)
 	if err != nil {
 		return missed, fmt.Errorf("%s: %w", t.wav, err)
 	}

@@ -2921,7 +2921,7 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	var held int            // the bytes held
 	var letGo, heard bool   // of the takes let go: any, one its ear heard
 	for _, t := range takes {
-		t.judge = s.judge
+		t.judge, t.kinds = s.judge, s.kinds
 		snd, err := t.sound()
 		if err != nil {
 			return err
@@ -3210,6 +3210,10 @@ type truthTake struct {
 	timed          bool            // the truth's seconds are the recording's
 	judge          *audio.RipJudge // what rules its rip's strikes, nil for the installed scores
 	said           *labelSaid      // a label's key and chords, nil for a truth that is no label
+	// kinds are the sets a root holds for a kind of sound, and kind what its
+	// first rip read it as (kindOf): one of a kind with a set is ripped under it
+	kinds map[string]audio.RipParams
+	kind  *string
 }
 
 // takeSound is what a rip of a take reads: its samples at the rip's rate, so no
@@ -3404,7 +3408,23 @@ func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule
 	} else if t.drums {
 		missed.drumless = minutes
 	}
-	r, err := audio.Ripper{Params: p, FrontEnd: snd.ear, Lead: lead, Judge: t.judge, Stages: true}.Samples(snd.x, audio.RipRate)
+	rip := func(p audio.RipParams) (*audio.Rip, error) {
+		return audio.Ripper{Params: p, FrontEnd: snd.ear, Lead: lead, Judge: t.judge, Stages: true}.Samples(snd.x, audio.RipRate)
+	}
+	if t.kind != nil {
+		if kp, ok := t.kinds[*t.kind]; ok {
+			p = kp
+		}
+	}
+	r, err := rip(p)
+	if err == nil && t.kinds != nil && t.kind == nil { // its kind is read once, as rip reads it
+		k := kindOf(r, snd.ear.f)
+		if t.kind = &k; t.kinds[k] != p {
+			if kp, ok := t.kinds[k]; ok {
+				r, err = rip(kp)
+			}
+		}
+	}
 	if err != nil {
 		return missed, fmt.Errorf("%s: %w", t.wav, err)
 	}

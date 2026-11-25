@@ -59,6 +59,7 @@ WEIGH=${WEIGH-ends}                  # fit: the readings a search weighs beside 
 GENES=${GENES:-}                     # fit: the genes a search moves, by commas; empty for all the list can score
 JUDGE=${JUDGE:-}                     # install: a judge's file, put beside the notes model as ripjudge.bin; empty for none
 SET=${SET:-}                         # install: a rip.toml, one of FIT's sets, put in the root; empty for none
+KINDS=${KINDS:-}                     # install, readback: the sets a kind of sound is ripped under, kind=file blank-separated (voice=$FIT/sets/voice.toml); empty for none
 WEIGHTS=${WEIGHTS:-}                 # keep: the folder a round's files are copied under, each a line in its MANIFEST.txt
 NAME=${NAME:-$(basename "$CORPUS")}  # keep: the round's folder under WEIGHTS
 BENCH_LOOPS=${BENCH_LOOPS:-12}
@@ -185,6 +186,11 @@ install() {
 		cp "$SET" "$ROOT/rip.toml"
 		echo "== installed $SET as $ROOT/rip.toml; rip hears with its thresholds, remove the file for the built-in ones"
 	fi
+	local kv
+	for kv in $KINDS; do
+		cp "${kv#*=}" "$ROOT/rip.${kv%%=*}.toml"
+		echo "== installed ${kv#*=} as $ROOT/rip.${kv%%=*}.toml; a recording read as ${kv%%=*} is ripped under it, remove the file for the root's own"
+	done
 }
 
 # The fit's root holds the pair, then the judge fitted on it. A script reads its
@@ -293,6 +299,9 @@ reading() {
 	cp -r "$FIT/root" "$FIT/read"
 	[ "${3:-}" != alone ] || rm -f "$FIT/read/ripjudge.bin"
 	[ -z "$2" ] || cp "$2" "$FIT/read/rip.toml"
+	if [ "$1" = kinds ]; then # each recording under the set of the kind it is read as
+		for from in $KINDS; do cp "${from#*=}" "$FIT/read/rip.${from%%=*}.toml"; done
+	fi
 	from=$(cat "$FIT/read"/* "$FIT/lists/readback.tsv" | sha256sum)
 	if [ ! -s "$FIT/logs/readback-$1.log" ] || [ "$from" != "$(cat "$FIT/logs/readback-$1.from" 2> /dev/null)" ]; then
 		echo "== readback: $1"
@@ -302,9 +311,9 @@ reading() {
 	rm -rf "$FIT/read"
 }
 
-# The read-back's rows: the models alone, under their judge, under START, and
-# under each kind's set that is not the start's own; a row whose set is gone
-# leaves the logs, so the table holds what stands
+# The read-back's rows: the models alone, under their judge, under START, under
+# each kind's set that is not the start's own, and under KINDS, as rip rips; a
+# row whose set is gone leaves the logs, so the table holds what stands
 readback() {
 	[ -e "$READBACK" ] || { echo "readback: READBACK names the truth list or corpus directory every set is read on; '$READBACK' is neither" >&2; exit 2; }
 	fitroot
@@ -325,6 +334,10 @@ readback() {
 			rows+="fit-$(basename "$set" .toml) "
 		fi
 	done
+	if [ -n "$KINDS" ]; then
+		reading kinds "$START"
+		rows+="kinds "
+	fi
 	for set in "$FIT"/logs/readback-*.log; do
 		set=$(basename "$set" .log)
 		[[ $rows == *" ${set#readback-} "* ]] || rm -f "$FIT/logs/$set".*

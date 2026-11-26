@@ -49,6 +49,16 @@ def label(events, frames=40, reach=None, **more) -> train.Label:
     return train.Label({"events": events, **more}, frames, MANIFEST if reach is None else {**MANIFEST, "reach": reach})
 
 
+def heads_before(head: str) -> list:
+    """the frame model's heads before head, as a model trained before it was added has them"""
+    return ripmodels.HEADS[:[k for k, _ in ripmodels.HEADS].index(head)]
+
+
+def hit(frame, drum=-1, vel=0.8, **more) -> dict:
+    """something struck at frame: a hit of drum's line, or with drum -1 a strike of no line"""
+    return {"frame": frame, "end": frame, "drum": drum, "midi": 0, "vel": vel, "wave": -1, "family": F["drums"], **more}
+
+
 def rendered(events, frames, bars) -> train.Label:
     """a rendered loop's label, bars of 4/4 held at 100 bpm from frame 0, its beats and bar lines as corpus lists them"""
     beats = [int(k * 51.68 + 0.5) for k in range(bars * 4)]
@@ -204,31 +214,11 @@ class WhatPlaysEachPitch(unittest.TestCase):
         model.sure.fill_(0.75)
         with tempfile.TemporaryDirectory() as d:
             ripmodels.export(model, os.path.join(d, "notes.bin"))
-            with open(os.path.join(d, "notes.bin"), "rb") as f:
-                body = f.read()
-        at = 4 + 16 + len(ripmodels._cells_header(model))
-
-        def take(fmt):
-            nonlocal at
-            v = struct.unpack_from("<" + fmt, body, at)
-            at += struct.calcsize("<" + fmt)
-            return v if len(v) > 1 else v[0]
-
-        def name():
-            nonlocal at
-            n = take("H")
-            at += n
-            return body[at - n:at].decode()
-        heads = [(name(), take("I")) for _ in range(take("I"))]
-        self.assertEqual([(name(), take("f")) for _ in range(take("I"))], [("layout", float(ripmodels.LAYOUT))])
+            heads, constants, tensors = exported(os.path.join(d, "notes.bin"), 4 + 16 + len(ripmodels._cells_header(model)))
+        self.assertEqual(constants, [("layout", float(ripmodels.LAYOUT))])
         p = ripmodels.PITCHES
         self.assertEqual(heads[4:8], [("cents", 2 * p), ("pitchfamily", ripmodels.NAMES * p), ("pitchwave", ripmodels.WAVES * p), ("pitchvoice", ripmodels.VOICE_GENES * p)])
         self.assertEqual(heads[-1], ("sure", 1))
-        tensors = {}
-        for _ in range(take("I")):
-            k, dims = name(), [take("I") for _ in range(take("B"))]
-            tensors[k] = np.frombuffer(body, "<f4", int(np.prod(dims)), at).reshape(dims)
-            at += 4 * int(np.prod(dims))
         frame = sum(n for k, n in heads[8:])
         self.assertEqual(tensors["frameout.weight"].shape, (frame, model.frame.in_features))
         self.assertEqual((float(np.abs(tensors["frameout.weight"][-1]).max()), float(tensors["frameout.bias"][-1])), (0.0, 0.75))
@@ -277,6 +267,32 @@ def run(*flags, steps=1) -> str:
     with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(io.StringIO()) as said:
         train.main()
     return said.getvalue()
+
+
+def exported(path: str, shape: int) -> tuple:
+    """a weight file's heads, constants and tensors, after the bytes that state its model's shape"""
+    with open(path, "rb") as f:
+        body = f.read()
+    at = shape
+
+    def take(fmt):
+        nonlocal at
+        v = struct.unpack_from("<" + fmt, body, at)
+        at += struct.calcsize("<" + fmt)
+        return v if len(v) > 1 else v[0]
+
+    def name():
+        nonlocal at
+        n = take("H")
+        at += n
+        return body[at - n:at].decode()
+
+    heads, constants, tensors = [(name(), take("I")) for _ in range(take("I"))], [(name(), take("f")) for _ in range(take("I"))], {}
+    for _ in range(take("I")):
+        k, dims = name(), [take("I") for _ in range(take("B"))]
+        tensors[k] = np.frombuffer(body, "<f4", int(np.prod(dims)), at).reshape(dims)
+        at += 4 * int(np.prod(dims))
+    return heads, constants, tensors
 
 
 def handed(*flags, steps=1) -> list:
@@ -414,68 +430,83 @@ class TheBeatAndTheBarLine(unittest.TestCase):
             corpus(os.path.join(d, "recordings"), [{"source": "a.wav", "events": [note(0, 10, 60, "guitar")]}])
             said = run("--corpus", d, "--out", os.path.join(d, "out.bin"), "--holdout", "1", "--validate", os.path.join(d, "recordings")).splitlines()
         held, validation = (next(line for line in said if line.startswith(f"step 1 {name} ")) for name in ("held-out", "validation"))
-        self.assertRegex(held, r", beats' F1 \d\.\d{3}, bar lines' \d\.\d{3} \(.* beat \d\.\d{3} downbeat \d\.\d{3}\)")
-        self.assertIn(", no beat or bar line asked (", validation)
-        self.assertNotIn("beat ", validation.split("asked (")[1])
+        self.assertRegex(held, r", beats' F1 \d\.\d{3}, bar lines' \d\.\d{3}, .*\(.* beat \d\.\d{3} downbeat \d\.\d{3}\)")
+        self.assertIn(", no beat or bar line asked, ", validation)
+        self.assertNotIn("beat ", re.search(r"\((onset [^)]*)\)", validation)[1])
 
     def test_init_grows_the_heads_and_carries_every_other_weight(self):
-        """A frame model from before the beat and downbeat heads starts a run through --init: every weight carries
-        over, the output layer's rows of the heads it had among them, the two heads' rows are new, and the weight
-        file lists them after the family."""
-        old = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodels.HEADS[:-2])
-        before = ripmodels.FrameModel(old).state_dict()
-        with tempfile.TemporaryDirectory() as d:
-            at = lambda name: os.path.join(d, name)
-            corpus(d, [{"bpm": 120, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
-            torch.save({"model": before, "layout": ripmodels.LAYOUT, "cfg": asdict(old)}, at("old.pt"))
-            said = run("--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--lr", "0")
-            after = torch.load(at("new.pt"))
-            with open(at("new.bin"), "rb") as f:
-                body = f.read()
-        self.assertIn("its heads but beat, downbeat, which start fresh", said)
-        self.assertEqual([tuple(h) for h in after["cfg"]["outputs"]], ripmodels.HEADS)
-        had = old.out_size
-        for k, v in before.items():
-            with self.subTest(tensor=k):
-                self.assertTrue(torch.equal(after["model"][k][:had] if k.startswith("out.") else after["model"][k], v))
-        self.assertEqual([len(after["model"][k]) for k in ("out.weight", "out.bias")], [had + 2, had + 2])
+        """A frame model from before a head added later starts a run through --init: the run grows the heads after its
+        own, every weight it had carried over, so after a step at a rate of 0 every output it had is the start's to the
+        bit, and the weight file lists the heads in order; a notes model has none of what is struck."""
+        x = torch.randn(1, 40, 2 * ripmodels.INPUTS, generator=torch.Generator().manual_seed(1))
         head = lambda name, size: struct.pack("<H", len(name)) + name.encode() + struct.pack("<I", size)
         layout = struct.pack("<IH", 1, 6) + b"layout" + struct.pack("<f", ripmodels.LAYOUT)
-        self.assertIn(head("family", len(ripmodels.FAMILIES)) + head("beat", 1) + head("downbeat", 1) + layout + struct.pack("<I", len(after["model"])), body)
+        for first, grew in (("beat", "beat, downbeat, struck, struckvel"), ("struck", "struck, struckvel")):
+            with self.subTest(grown=grew), tempfile.TemporaryDirectory() as d:
+                at = lambda name: os.path.join(d, name)
+                old = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=heads_before(first))
+                start = ripmodels.FrameModel(old).eval()
+                corpus(d, [{"bpm": 120, "bars": 1, "events": [note(0, 10, 60, "piano"), hit(20, 0)]}])
+                torch.save({"model": start.state_dict(), "layout": ripmodels.LAYOUT, "cfg": asdict(old)}, at("old.pt"))
+                said = run("--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--lr", "0")
+                after = torch.load(at("new.pt"))
+                with open(at("new.bin"), "rb") as f:
+                    body = f.read()
+                self.assertIn(f"its heads but {grew}, which start fresh", said)
+                self.assertEqual([tuple(h) for h in after["cfg"]["outputs"]], ripmodels.HEADS)
+                grown = ripmodels.FrameModel(ripmodels.shape(after["cfg"])).eval()
+                grown.load_state_dict(after["model"])
+                with torch.no_grad():
+                    was, now = start(x), grown(x)
+                self.assertEqual(now.shape[-1], ripmodels.Config().out_size)
+                self.assertTrue(torch.equal(now[..., :old.out_size], was))
+                listed = head("family", len(ripmodels.FAMILIES)) + head("beat", 1) + head("downbeat", 1) + head("struck", 1) + head("struckvel", 1)
+                self.assertIn(listed + layout + struct.pack("<I", len(after["model"])), body)
+        self.assertFalse({"struck", "struckvel"} & set(dict(ripmodels.PITCHNET_HEADS)))
 
-    def test_a_probe_trains_the_two_heads_alone_on_a_frame_model_held_as_it_was(self):
-        """--probe on a frame model started from one without the beat and downbeat heads trains those two heads' rows
-        of the output layer and holds the rest: after three steps every other weight is the start's, every other
-        head says bit for bit what the start's did, the two heads say something else, and the last step is exported."""
-        old = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodels.HEADS[:-2])
-        before = ripmodels.FrameModel(old).state_dict()
-        with tempfile.TemporaryDirectory() as d:
-            at = lambda name: os.path.join(d, name)
-            corpus(d, [{"bpm": 100, "bars": 1, "events": [note(0, 10, 60, "piano")]}])
-            torch.save({"model": before, "layout": ripmodels.LAYOUT, "cfg": asdict(old)}, at("old.pt"))
-            run("--corpus", d, "--out", at("start.bin"), "--init", at("old.pt"), "--checkpoint", at("start.pt"), "--lr", "0")  # the start: the two rows as grown
-            said = run("--corpus", d, "--out", at("probed.bin"), "--init", at("old.pt"), "--checkpoint", at("probed.pt"), "--probe", "--lr", "0.01", steps=3)
-            start, probed = torch.load(at("start.pt")), torch.load(at("probed.pt"))
-        self.assertIn("a probe: exporting its last step, 3", said)
-        had = old.out_size
-        for k, v in before.items():
-            with self.subTest(tensor=k):
-                self.assertTrue(torch.equal(probed["model"][k][:had] if k.startswith("out.") else probed["model"][k], v))
-        frames = torch.randn(1, 40, 2 * ripmodels.INPUTS, generator=torch.Generator().manual_seed(1))
-        says = []
-        for ck in (start, probed):
-            model = ripmodels.FrameModel(ripmodels.shape(ck["cfg"]))
-            model.load_state_dict(ck["model"])
+    def test_a_probe_trains_the_heads_it_names_alone_on_a_frame_model_held_as_it_was(self):
+        """--probe on a frame model started from one without the heads trained, the beat and the downbeat by itself or
+        those it names, trains their rows of the output layer and holds the rest: the file it exports, its last step's,
+        holds every other weight of the start's file, its every other output is the start's to the bit, and the two
+        heads say something else. A head the model lacks, or heads of two output layers, are refused."""
+        shape = dict(dim=8, heads=2, layers=1, ffn=16, window=4)
+        x = torch.randn(1, 40, 2 * ripmodels.INPUTS, generator=torch.Generator().manual_seed(1))
+        for first, words, trained in (("beat", ["--probe"], {"beat", "downbeat"}), ("struck", ["--probe", "struck,struckvel"], {"struck", "struckvel"})):
+            old = ripmodels.Config(**shape, outputs=heads_before(first))
+            start = ripmodels.FrameModel(old).eval()
+            with tempfile.TemporaryDirectory() as d:
+                at = lambda name: os.path.join(d, name)
+                corpus(d, [{"bpm": 100, "bars": 1, "events": [note(0, 10, 60, "piano"), hit(20, 0)]}])
+                torch.save({"model": start.state_dict(), "layout": ripmodels.LAYOUT, "cfg": asdict(old)}, at("old.pt"))
+                run("--corpus", d, "--out", at("start.bin"), "--init", at("old.pt"), "--lr", "0")  # the start's file, the new rows as grown
+                said = run("--corpus", d, "--out", at("probed.bin"), "--init", at("old.pt"), *words, "--lr", "0.01", steps=3)
+                with self.assertRaisesRegex(SystemExit, "no head tempo in this model"):
+                    run("--corpus", d, "--out", at("no.bin"), "--init", at("old.pt"), "--probe", "struck,tempo")
+                (heads, _, was), (_, _, now) = exported(at("start.bin"), 48), exported(at("probed.bin"), 48)
+            self.assertIn("a probe: exporting its last step, 3", said)
+            self.assertEqual(heads, ripmodels.HEADS)
+            model = ripmodels.FrameModel(ripmodels.Config(**shape)).eval()
+            for k, t in ripmodels.tensors(model):
+                t.copy_(torch.from_numpy(now[k].copy()))
+            rows = train.rows(model)
             with torch.no_grad():
-                says.append(model.eval()(frames))
-        self.assertTrue(torch.equal(says[0][..., :had], says[1][..., :had]))
-        for k in (had, had + 1):
-            self.assertFalse(torch.equal(says[0][..., k], says[1][..., k]))
+                said_by, says = start(x), model(x)
+            self.assertTrue(torch.equal(says[..., :old.out_size], said_by))
+            for k in was:
+                moved = np.zeros(len(was[k]), bool)
+                if k.startswith("out."):
+                    for h in trained:
+                        moved[rows[h][1]] = True
+                with self.subTest(first=first, tensor=k):
+                    self.assertTrue(np.array_equal(now[k][~moved], was[k][~moved]))
+                    self.assertFalse(moved.any() and any(np.array_equal(now[k][rows[h][1]], was[k][rows[h][1]]) for h in trained))
+        with self.assertRaisesRegex(SystemExit, "lie over several output layers"):
+            train.probe(ripmodels.PitchNet(CFG), "onset,pitchfamily")
 
     def test_a_family_unasked_has_no_term_and_its_rows_stay_zero(self):
         """--family-unasked on a frame model grown from the nine heads before the family: the step's loss has no
         family term, and after three steps of a free body the family's rows of the output layer are zero."""
-        old = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=ripmodels.HEADS[:-3])
+        old = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=heads_before("family"))
         before = ripmodels.FrameModel(old).state_dict()
         with tempfile.TemporaryDirectory() as d:
             at = lambda name: os.path.join(d, name)
@@ -483,13 +514,111 @@ class TheBeatAndTheBarLine(unittest.TestCase):
             torch.save({"model": before, "layout": ripmodels.LAYOUT, "cfg": asdict(old)}, at("old.pt"))
             said = run("--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--family-unasked", "--lr", "0.01", steps=3)
             after = torch.load(at("new.pt"))["model"]
-        self.assertIn("its heads but family, beat, downbeat, which start fresh", said)
+        self.assertIn("its heads but family, beat, downbeat, struck, struckvel, which start fresh", said)
         last = next(line for line in said.splitlines() if line.startswith("step 3 loss "))
         self.assertIn(" downbeat ", last)
         self.assertNotIn("family", last)
         family = ripmodels.Config().slice("family")
         self.assertEqual([after[k][family].abs().sum().item() for k in ("out.weight", "out.bias")], [0, 0])
         self.assertFalse(all(torch.equal(after[k], v) for k, v in before.items() if not k.startswith("out.")))
+
+
+class WhatIsStruck(unittest.TestCase):
+    """The frame model's struck and struckvel heads, and the hits a corpus's labels leave out"""
+
+    KIT = [{"genes": [0.5] * 13, "band": 120}]  # a kit drawn from the genome, whose pieces name no line
+
+    def test_what_is_struck_is_asked_at_every_frame_of_every_window(self):
+        """A hit of a line, a strike of no line and a kit's strike are struck, each marked a frame either side, and no
+        note is; the head is asked at every frame a window holds, a kit's loop's and a placed recording's among them,
+        a strike weighing as a hit does in the drums head."""
+        loop = label([hit(10, 0), hit(30), note(50, 60, 60, "piano", voice(0.1), 1), hit(70, piece=0)], 100, kit=self.KIT)
+        sung = label([note(20, 40, 52, "voice"), hit(60)], 100, source="a.wav", placed=True, reach=3)
+        t = [train.targets(Frames(100), lab, 0, 128) for lab in (loop, sung)]
+        self.assertEqual([x["struck"].tolist() for x in t], [marks(100, at) + [0] * 28 for at in ([10, 30, 70], [60])])
+        model = Heard(128)
+        model.y = torch.zeros(2, 128, model.cfg.out_size)  # every score a half
+        x, batch = train.stack([(np.zeros((128, 1), np.float32), tg) for tg in t])
+        self.assertAlmostEqual(train.losses(model, x, batch)["struck"].item(), math.log(2) * (188 + train.STRUCK_POS * 12) / 200, places=5)
+
+    def test_how_hard_is_asked_on_a_strikes_frames_where_its_label_says(self):
+        """The struckvel head is asked the velocity of a strike on its frame and one either side, of two there the
+        louder's, and nothing where the label gives none; its loss is the squared miss, in a laid or a spliced strike's
+        window none."""
+        lab = label([hit(10, 0, 0.4), hit(10, 2, 0.6), hit(12, 2, 0.2), hit(30, -1, 0.5), hit(50, 1, -1)], 64)
+        t = train.targets(Frames(64), lab, 0, 64)
+        self.assertEqual(np.flatnonzero(t["struckask"]).tolist(), [9, 10, 11, 12, 13, 29, 30, 31])
+        np.testing.assert_allclose(t["struckvel"][[9, 10, 11, 12, 13, 29, 30, 31]], [0.6] * 3 + [0.2] * 2 + [0.5] * 3)
+        model = Heard(64)
+        model.y[..., model.cfg.slice("struckvel")] = 0.0  # a half
+        frs, tgs, _ = train.validation([(Frames(64), lab)], 64, 2)
+        self.assertAlmostEqual(train.losses(model, frs[0], tgs[0])["struckvel"].item(), (3 * 0.1 ** 2 + 2 * 0.3 ** 2) / 8, places=6)
+
+    def test_a_laid_or_spliced_strike_counts_where_it_stands_out_of_a_line_or_of_none(self):
+        """A strike of drums laid over a loop, or spliced beside another clip, is struck and an onset where it stands
+        out of what else sounds, a line's hit or a strike of no line alike, and only a line's hit is a drum's; one
+        under the rest is neither. How hard goes unasked, and a hit its label left out asks nothing where it falls."""
+        n, e = train.CHUNK, np.zeros((train.CHUNK, ripmodels.VALUES))
+        for f, level in ((20, 100.0), (40, 100.0), (60, 1e-3)):
+            e[f:f + 2, ripmodels.BANDS + 150:ripmodels.BANDS + 180] = level
+        drums, quiet = Frames(n), Frames(n)
+        drums.fr[:], quiet.fr[:] = np.log1p(e), 0.01
+        struck, loop = train.Label({"events": [hit(20), hit(40, 1), hit(60)]}, n, MANIFEST, [70]), label([], n)
+        _, laid = train.sample(quiet, loop, 0, n, 2, (drums, struck, 0.0), random.Random(1))
+        turn = itertools.cycle([(drums, struck), (quiet, loop)])
+        _, spliced = train.shuffled(lambda rng: next(turn), n, 2, random.Random(1))
+        for t in (laid, spliced):
+            self.assertEqual([t[k].tolist() for k in ("struck", "onset", "left")], [marks(n, [20, 40])] * 2 + [marks(n, [70])])
+            self.assertEqual(t["drums"].T.tolist(), [[0] * n, marks(n, [40]), [0] * n])
+            self.assertFalse(t["struckask"].any())
+
+    def test_a_hit_a_label_left_out_asks_what_hears_a_strike_nothing(self):
+        """A hit a corpus's left.tsv lists, which its loop's label leaves out as drawing no sound, asks the onset, drums,
+        struck and struckvel heads nothing on its frame and one either side, whatever they say there, plain or bent, and
+        every other head what it was; a peak there is none a line reads, and a run says how many frames it covers."""
+        with tempfile.TemporaryDirectory() as d:
+            corpus(d, [{"events": [hit(8, 0)]}, {"events": [hit(8, 0), hit(32, 0), note(40, 60, 60, "piano")]}])
+            with open(os.path.join(d, "left.tsv"), "w") as f:
+                f.write("loop\tsource\tsec\tframe\tkey\tdrum\tvel\twhy\trise\n"
+                        "loop_001\ta.wav\t0.2\t20\t44\t2\t0.4\tno sound\t1e-05\nloop_001\ta.wav\t0.7\t63\t44\t2\t0.4\tno sound\t1e-05\n")
+            with contextlib.redirect_stdout(io.StringIO()) as said:
+                _, loops = train.load_corpus(d)
+        self.assertEqual(said.getvalue(), f"2 hits of {d} left out of its labels: 5 frames ask what hears a strike nothing\n")
+        self.assertEqual([lab.left.tolist() for _, lab in loops], [[], [19, 20, 21, 62, 63]])
+        fr, lab, model = Frames(64), loops[1][1], Heard(64)
+        frs, tgs, _ = train.validation([(fr, lab)], 64, 2)
+        model.y = torch.randn(1, 64, model.cfg.out_size, generator=torch.Generator().manual_seed(1))
+        was = {k: v.item() for k, v in train.losses(model, frs[0], tgs[0]).items()}
+        for head in ("onset", "drums", "struck", "struckvel"):
+            model.y[0, [19, 20, 21, 62, 63], model.cfg.slice(head).start] = 9.0
+        self.assertEqual({k: v.item() for k, v in train.losses(model, frs[0], tgs[0]).items()}, was)
+        model.y[..., model.cfg.slice("struck")] = -9.0
+        model.y[0, [8, 20, 32], model.cfg.slice("struck").start] = 9.0
+        self.assertEqual(train.evaluate(model, frs, tgs, "cpu")["hits"][0], 1.0)
+        _, bent = train.bent(fr, lab, 32, 2, None, random.Random(2), None)
+        self.assertTrue(bent["left"].any())
+
+    def test_a_line_reads_the_heads_peaks_against_what_is_struck_or_a_minute_where_nothing_is(self):
+        """A held-out or validation line gives the struck head's F1 at its peaks over the score its weight puts at a
+        posterior of a half, a peak right within four frames of something struck; over a corpus where nothing is
+        struck, its peaks a minute, and where no label says how hard, no loss of that head's."""
+        frames, model = 414, Heard(512)
+        loop, recording = label([hit(20, 0), hit(100), hit(200, piece=0), hit(300, 2)], frames, kit=self.KIT), label([note(0, 10, 60, "guitar")], frames, source="a.wav")
+        at = model.cfg.slice("struck").start
+        model.y[0, [20, 101, 250], at] = 9.0  # two right, one that is none
+        model.y[0, 350, at] = math.log(train.STRUCK_BAR / (1 - train.STRUCK_BAR)) - 0.1  # one under the bar
+        v, none = (train.evaluate(model, *train.validation([(Frames(frames), lab)], 512, 2)[:2], "cpu") for lab in (loop, recording))
+        self.assertAlmostEqual(v["hits"][0], 2 * (2 / 3) * (2 / 4) / (2 / 3 + 2 / 4))
+        self.assertEqual((none["hits"][0], "struckvel" in v, "struckvel" in none), (None, True, False))
+        self.assertAlmostEqual(none["hits"][1], 3 / frames * 60 * ripmodels.RATE / ripmodels.HOP)
+        with tempfile.TemporaryDirectory() as d:
+            os.mkdir(os.path.join(d, "recordings"))
+            corpus(d, [{"bpm": 100, "bars": 1, "events": [hit(8 * k, k % 3) for k in range(8)]}] * 2)
+            corpus(os.path.join(d, "recordings"), [{"source": "a.wav", "events": [note(0, 10, 60, "guitar")]}])
+            said = run("--corpus", d, "--out", os.path.join(d, "out.bin"), "--holdout", "1", "--validate", os.path.join(d, "recordings")).splitlines()
+        held, validation = (next(line for line in said if line.startswith(f"step 1 {name} ")) for name in ("held-out", "validation"))
+        self.assertRegex(held, r", struck's F1 \d\.\d{3} \(.* struck \d\.\d{3} struckvel \d\.\d{3}")
+        self.assertRegex(validation, r", nothing struck, struck's peaks \d+\.\d a minute \(.* struck \d\.\d{3}")
 
 
 def sounding(frames, events) -> np.ndarray:
@@ -779,12 +908,25 @@ class TheBatches(unittest.TestCase):
         a, b = (handed(*self.flags, "--shard-seed", shard, steps=3) for shard in ("0", "1"))
         self.assertFalse(any(torch.equal(x, y) for (x, _), (y, _) in zip(a, b)))
 
+    def test_a_run_asks_every_other_head_as_a_model_without_the_struck_heads_is_asked(self):
+        """Over a run's batches drawn through every share a model grown the struck heads has every other head's loss a
+        model without them has, bit for bit, and its total is that and theirs."""
+        old = ripmodels.Config(channels=4, dim=8, heads=2, layers=1, ffn=16, window=4, outputs=heads_before("struck"))
+        start = ripmodels.FrameModel(old)
+        grown = ripmodels.FrameModel(ripmodels.Config(**{**asdict(old), "outputs": list(ripmodels.HEADS)}))
+        grown.load_state_dict(ripmodels.carried(grown, old, start.state_dict()))
+        for x, t in handed(*self.flags, steps=6):
+            with torch.no_grad():
+                was, now = train.losses(start, x, t), train.losses(grown, x, t)
+            self.assertEqual({k: v.item() for k, v in now.items() if k not in ("struck", "struckvel", "total")}, {k: v.item() for k, v in was.items() if k != "total"})
+            self.assertEqual(now["total"].item(), (was["total"] + now["struck"] + 2.0 * now["struckvel"]).item())
+
     def test_without_a_placed_start_every_target_and_loss_is_as_without_reaches(self):
         """A digest of every other target over windows cut anywhere and padded, of labels whose notes hold their pitch
         or move, cents placed or not, two to a cell or outside the pitches, beside drums, is pinned, a placed start's
         targets unset there and in a run's batches of every kind, whose every loss is bit for bit an onset's and a
         strike's asked at every frame, written out here; a change to what a window holds pins it again. With no kit the
-        kit's mask is empty, so the digest leaves it."""
+        kit's mask is empty and with no hit left out its, so the digest leaves them, and what is struck, where a drum is."""
         rng, digest = random.Random(5), hashlib.sha1()
         with mock.patch.object(train, "GENES", array.array("f")):
             for _ in range(24):
@@ -802,7 +944,8 @@ class TheBatches(unittest.TestCase):
                 lab = label(events, frames, tuning=rng.choice([0.0, 50.0, -50.0, 23.4]))
                 for start in rng.sample(range(frames), 3):
                     t = train.targets(Frames(frames), lab, start, rng.choice([86, 512]), rng.random() < 0.5)
-                    for k in sorted(set(t) - {"kit"}):
+                    self.assertEqual((t["struck"].tolist(), int(t["left"].sum())), (t["drums"].max(1).tolist(), 0))
+                    for k in sorted(set(t) - {"kit", "left", "struck", "struckvel", "struckask"}):
                         if k in PLACED_STARTS:
                             self.assertFalse(t[k].any(), k)
                             continue
@@ -1056,14 +1199,15 @@ class TheRate(unittest.TestCase):
 
     def test_a_pass_that_carries_on_is_read_by_the_heads_audio_reads_from_its_model(self):
         """A pass that carries on sums, as its decoders' loss, the heads audio reads from its model in a pair, which
-        pick its step and move its rate: a frame model's onset, drums, beat and bar line, here a corpus that lists no
-        beat, a notes model's pitch, strike and release. A run without the word sums every decoders' head."""
+        pick its step and move its rate: a frame model's onset, drums, beat, bar line and what is struck and how hard,
+        here a corpus that lists no beat, a notes model's pitch, strike and release. A run without the word sums every
+        decoders' head."""
         flags = ("--corpus", self.at("kind1"), "--out", self.at("read.bin"))
         said, frame = passed(*flags, "--init", self.at("first.pt"), "--carry", steps=20)
         _, plain = passed(*flags, "--init", self.at("first.pt"), steps=20)
         _, notes = passed(*flags, "--pitchnet", "--cell", "4", "--carry", steps=20)
-        self.assertIn("read by its onset, drums, beat, downbeat, the heads audio reads from a frame model in a pair", said)
-        self.assertTrue(torch.equal(frame[0]["decoders"], frame[0]["onset"] + frame[0]["drums"]))
+        self.assertIn("read by its onset, drums, beat, downbeat, struck, struckvel, the heads audio reads from a frame model in a pair", said)
+        self.assertTrue(torch.equal(frame[0]["decoders"], frame[0]["onset"] + frame[0]["drums"] + frame[0]["struck"] + 2.0 * frame[0]["struckvel"]))
         self.assertTrue(torch.equal(plain[0]["decoders"], sum(f * plain[0][h] for h, f in train.DECODERS if h in plain[0])))
         self.assertTrue(torch.equal(notes[0]["decoders"], notes[0]["pitch"] + notes[0]["strike"] + notes[0]["release"]))
 
@@ -1594,12 +1738,16 @@ class TheDatacheck(unittest.TestCase):
 
 class TheRoundsTable(unittest.TestCase):
     def test_a_set_under_which_a_kind_fell_is_said_before_the_rows(self):
-        """A read-back's log gives a row a kind; a fitted set's falls against the start are the first line."""
+        """A read-back's log gives a row a kind, what is struck beside its lines' hits, a minute where none plays; a
+        fitted set's falls against the start are the first line."""
         logs = {"start": "guitar: F1 0.817 before, 0.817 after\n"
                          "guitar: ends 0.400 before, 0.400 after, of 2794 note(s) matched whose end is given\n"
                          "guitar: ends 1676 wrong, by stage: strikes early 1418 before and after\n"
-                         "voice: F1 0.424 before, 0.430 after\n",
-                "fit-voice": "guitar: F1 0.790 before, 0.790 after\nvoice: F1 0.470 before, 0.470 after\n"}
+                         "guitar: struck 0.2 strike(s) a minute before, 0.3 after, the lines' hits 0.1, 0.1, heard where none plays, against 231 instant(s) given elsewhere\n"
+                         "voice: F1 0.424 before, 0.430 after\n"
+                         "E-GMD: struck F1 0.912 before, 0.915 after, the lines' hits 0.882, 0.880, by time alone over 7767 instant(s) given; each of their 13622 strike(s) its own hit, 0.677, 0.678, the lines' 0.754, 0.753, and one hit an instant 0.726 at most\n",
+                "fit-voice": "guitar: F1 0.790 before, 0.790 after\nvoice: F1 0.470 before, 0.470 after\n"
+                             "E-GMD: struck F1 0.901 before, 0.901 after, the lines' hits 0.882, 0.882, by time alone\n"}
         with tempfile.TemporaryDirectory() as d:
             paths = []
             for name, text in logs.items():
@@ -1607,9 +1755,10 @@ class TheRoundsTable(unittest.TestCase):
                 with open(paths[-1], "w") as f:
                     f.write(text)
             lines = table.table(paths).splitlines()
-        self.assertEqual(lines[0], "fell under fit-voice, against start: notes on guitar 0.817 to 0.790")
-        self.assertEqual(lines[2].split(), ["guitar", "start", "0.817", "0.400", "1118", "of", "2794"] + ["-"] * 6)
+        self.assertEqual(lines[0], "fell under fit-voice, against start: notes on guitar 0.817 to 0.790, struck on E-GMD 0.912 to 0.901")
+        self.assertEqual(lines[2].split(), ["guitar", "start", "0.817", "0.400", "1118", "of", "2794", "-", "-", "0.2/min", "0.1/min"] + ["-"] * 4)
         self.assertEqual(lines[5].split()[:3], ["voice", "fit-voice", "0.470"])
+        self.assertEqual(lines[6].split(), ["E-GMD", "start"] + ["-"] * 5 + ["0.912", "0.882"] + ["-"] * 4)
 
 
 if __name__ == "__main__":

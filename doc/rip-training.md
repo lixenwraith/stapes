@@ -22,8 +22,8 @@ Where each part stands:
   `rows`, `judge.py` and the root's `ripjudge.bin`, the frame model's beat and downbeat
   heads, a `from` list's `beats` and `velocity` columns, `corpus ... gen`'s arranged
   loops, `corpus ... meters`, `corpus ... overlaps`, a loop's level and air, and a label's
-  `kind`, `chords`, an event's `part` and `instr`, and a rendered loop's `beats` and
-  `downbeats`.
+  `kind`, `chords`, an event's `part` and `instr`, a rendered loop's `beats` and
+  `downbeats`, and the frame model's struck heads.
 
 ## 1. The path
 
@@ -31,9 +31,9 @@ Where each part stands:
 2. Each training step draws 8 windows of 512 frames, 5.9 s each (§7).
 3. A window's frames may be changed in place, as §6 lists, then become the input
    planes (§4).
-4. A window's events and its loop's beats become per-frame targets for the 13 heads,
+4. A window's events and its loop's beats become per-frame targets for the 14 heads,
    and a notes model's cents head (§5).
-5. The frame model turns frames into 406 numbers a frame, and the losses train it (§7, §8).
+5. The frame model turns frames into 407 numbers a frame, and the losses train it (§7, §8).
 6. The best step is written as a weight file (§9).
 7. At a rip, Go computes the same planes, runs the file and hands the heads to the
    decoders (§10).
@@ -854,6 +854,8 @@ frame, whose rise is unread, stays. The rule names no key, line or strength: a h
 close after another on its line is judged as any is, so a buzz's bounces stay while
 each sounds, and no gap merges hits.
 
+The trainer asks what hears a strike nothing there (§5): a hit that draws no sound by this
+measure an ear may still hear, so the label says neither a strike nor silence.
 Each hit left out is listed in its label's `left`, the frame it would sit at, its
 General MIDI key (audio's `RipHit.Key`), its line (-1 a strike of no line), its
 file's velocity over 127 whatever the list says, and why (`hitWhy`):
@@ -993,6 +995,14 @@ glide's pitch target walks the cells it crosses.
 - `drums[d]`: the same as the onset, for that drum's hits; asked nothing on a loop whose
   label holds a kit drawn from the genome (`kit`, its frames' mask), whose pieces name
   no line.
+- `struck`: the same, for anything struck of no pitch: a hit of a line, a strike of no
+  line and a kit's strike, every event at `midi` 0 (`Label.struck`). The frame model's
+  alone, asked at every frame of every window.
+- `struckvel`: the `vel` of what is struck, on its frames (`struckask`), of two strikes
+  there the louder's; nothing where the label gives none, as E-GMD's gives none.
+- `left`: the frames a hit its label leaves out covers (§3), the frame it would sit at and
+  one either side, as its corpus's `left.tsv` lists it: an ear may hear it, so the onset,
+  the drums, `struck` and `struckvel` are asked nothing there, neither a strike nor silence.
 - `pitch[p]`: from a note's `frame` until its `end`, at least one frame.
 - `voicing`: any pitch on.
 - `strike[p]`: within one frame of a note's start, but a placed start (§3), which marks
@@ -1112,7 +1122,8 @@ against the loop's, and uncorrelated sounds add in power, so `e = e_loop + gain 
 A strike, a line's hit or one of no line, joins the onset and struck targets, and a hit
 its drum's, only where it can be heard: what it adds, over its best ten bands of the
 sharp plane, must top everything else sounding (`stands_out`), judged after the channel,
-a strike in a placed start's stretch as anywhere, the stretches kept.
+a strike in a placed start's stretch as anywhere, the stretches kept. How hard goes
+unasked, and a hit the drums' label leaves out asks nothing where it falls (`left`).
 The window is asked no beat and no bar line: the drums laid under it keep
 their own.
 
@@ -1123,7 +1134,8 @@ their own.
 from random places summed, the second at -6 to +6 dB of the first's power. Notes keep their
 labels, a placed start its stretches where they fall in its chunk, cut by the chunk's edges as
 by a window's, a strike counts where it stands out of the other clip, as a laid one does, a
-chunk of a kit's loop asks no drums, and wave, voice,
+hit either clip's label leaves out asks nothing where it falls, a
+chunk of a kit's loop asks no drums, and how hard, wave, voice,
 family, the beat and the bar line go unasked.
 
 **`--sung dir:share`** draws that share of the chunks from a corpus of solo singing.
@@ -1163,19 +1175,19 @@ conv 2         B x 32 x 512 x 79             3x3, GELU, max over 2 features
 flatten        B x 512 x 2528
 input layer    B x 512 x 256
 4 blocks       B x 512 x 256                 pre-norm attention and feed-forward 1024
-norm, output   B x 512 x 406                 raw scores
+norm, output   B x 512 x 407                 raw scores
 ```
 
 Attention has 8 heads and looks 64 frames (0.74 s) either side, in every block. There
 are no position embeddings: each head subtracts a slope of `2^(-8(h+1)/8)` per frame of
 distance from its scores (ALiBi), so a window of any length works.
 
-The 3,918,613 weights: 592 + 2,320 + 4,640 in the convolutions, 647,424 in the input
-layer, 789,760 in each block, 512 in the final norm, 104,085 in the output layer, 2,313
-of them the family head's and 514 the beat's and the downbeat's.
+The 3,919,127 weights: 592 + 2,320 + 4,640 in the convolutions, 647,424 in the input
+layer, 789,760 in each block, 512 in the final norm, 104,599 in the output layer, 2,313
+of them the family head's, 514 the beat's and the downbeat's and 514 the struck heads'.
 A model of the two dB planes has 288 fewer, all in `convs.0.weight`.
 
-The 406 outputs, in the order the file lists the heads:
+The 407 outputs, in the order the file lists the heads:
 
 ```
 offset    size  head       read as
@@ -1191,17 +1203,19 @@ offset    size  head       read as
 394..402    9   family     softmax: piano, guitar, voice, bass, strings, winds, synth, drums, unknown
 403         1   beat       sigmoid: a beat of the meter within a frame
 404         1   downbeat   sigmoid: a bar line within a frame
-405         1   struck     sigmoid: something struck within a frame, of no line or pitch
+405         1   struck     sigmoid: something of no pitch struck within a frame, of a line or of none
+406         1   struckvel  sigmoid: how hard, a velocity
 ```
 
 Every model's pitches are the piano's 88 keys, MIDI 21 to 108. A file has every head;
 only a notes model's may lack the cents head, as a probe's does (§9).
 
-`--pitchnet` builds another model on the same heads but `family`, `beat` and `downbeat`, the frame model's to hear:
-convolutions only, the same weights at every pitch, so 172,246 weights in all, 66 of them the
+`--pitchnet` builds another model on the same heads but `family`, `beat`, `downbeat`, `struck` and
+`struckvel`, the frame model's to hear:
+convolutions only, the same weights at every pitch, so 172,181 weights in all, 66 of them the
 cents head's and 1,485 those of what plays each pitch. Its file is `ripnotes.bin` (§9).
 `--dilations 3,9,27` adds a residual 3x3 over the cells for each, its frames that far apart:
-each note head then hears half a second either way instead of 80 ms, 199,990 weights, about
+each note head then hears half a second either way instead of 80 ms, 199,925 weights, about
 1.5 times the compute. `--init` grows them onto a model of none, or of the first of them, every
 weight it had carried whole and the optimizer fresh, as a head grows. Each adds its cells back
 before its GELU, so one of zero weights would hand on gelu(c), not c: a grown one starts with
@@ -1229,7 +1243,7 @@ near           B x 32 x T x 90          7x3 with a residual, GELU
 long           B x 32 x T x 90          3x3 dilated in time, one each of --dilations, with a residual, GELU
 notes          B x 51 x T x 88          1x1: pitch, strike, release, velocity, the cents head's two,
                                         and the 8, 5 and 32 of what plays the pitch
-frame          B x T x 43               wide pooled to 16 regions over every bin plus the four
+frame          B x T x 42               wide pooled to 16 regions over every bin plus the four
                                         scalars, a 1D conv of 5
                                         and one of 9 dilated by 2, linear: the other heads
 ```
@@ -1249,11 +1263,12 @@ unbroken run drew from k on, and two shards draw different batches.
 
 ```
 onset, drums, pitch, voicing, strike, release, struck: binary cross-entropy with a weight
-    on the positive class of 8, 8, 12, 2, 20, 20, 8, the drums' on frames of no kit, the
-    rest on every frame; the onset's and the strike's ask a stretch the window holds whole
-    one term, its highest logit against 1, the strike's at its pitch, and no cell inside a
-    stretch but another event's mark
+    on the positive class of 8, 8, 12, 2, 20, 20, 8, the onset's, the drums' and struck's on
+    frames no hit left out covers, the drums' of no kit, the rest on every frame; the onset's
+    and the strike's ask a stretch the window holds whole one term, its highest logit against
+    1, the strike's at its pitch, and no cell inside a stretch but another event's mark
 velocity: squared error, on strike frames with a known velocity
+struckvel: squared error, on what is struck's frames where its velocity is known
 wave:     cross-entropy, on frames with a known voice
 voice:    squared error, on frames with a known voice
 family:   cross-entropy, on frames with a known family, the frame model's alone
@@ -1268,8 +1283,9 @@ spread:   miss / e + log e where asked, e the error the head states and miss the
 
 total    = onset + drums + pitch + 0.5 voicing + strike + release + 2 velocity + 0.5 wave + 2 voice
            + 0.5 family + beat + downbeat + 2 cents + 0.2 spread
-           + 0.25 (0.5 pitchfamily + 0.5 pitchwave + 2 pitchvoice) + struck
-decoders = onset + drums + pitch + 0.5 voicing + strike + release + beat + downbeat
+           + 0.25 (0.5 pitchfamily + 0.5 pitchwave + 2 pitchvoice) + struck + 2 struckvel
+decoders = onset + drums + pitch + 0.5 voicing + strike + release + beat + downbeat + struck
+           + 2 struckvel
 ```
 
 A placed start's stretch asks the onset head to rise somewhere in it, and the strike
@@ -1289,6 +1305,13 @@ A loop whose label holds a kit drawn from the genome asks the drums head nothing
 pieces name no line, and the head would be taught silence under them.
 A strike in a loop of placed starts marks the onset where it is, as a drum hit does:
 it is heard, not placed.
+
+The struck heads are the frame model's: that something of no pitch was struck, of a line
+or of none, and how hard. The first is asked at every frame of every window, a recording's
+of guitar or voice among them, a strike weighing 8 as a hit does in the drums head; at that
+weight its score sits at `STRUCK_BAR`, 8/9, where a strike is as likely as not, which is
+where audio's bar on it starts. Audio reads both (§10), so both join `decoders` and what a
+pass that carries on is read by.
 
 The beat and the downbeat are the onset head's kind of loss with one difference: no
 weight. Audio reads the two by their level, as posteriors: the tempo from how the beat
@@ -1331,6 +1354,12 @@ are (`peaks`). Over a corpus that lists no beat, such as a `--validate` corpus w
 list has no `beats` column, the line says `no beat or bar line asked` and gives
 neither head's loss: a mean over no frame prints 0.000, which reads as a head never
 wrong, and adds nothing to `decoders` either way.
+
+Its lines then give `struck's F1`: the struck head's peaks at `STRUCK_BAR` or over against
+what its corpus strikes within four frames, counted so, a peak where a hit was left out none;
+or over a corpus where nothing is struck, as GuitarSet's and VocalSet's, `nothing struck,
+struck's peaks N a minute`, which a head that hears no strike there keeps near 0. A corpus
+that says nowhere how hard gives no `struckvel` loss.
 
 Over loops of placed starts, held out or `--validate`'s, either model's lines then
 give `placed starts' F1 ... within R frames, their strikes' ...`: the onset head's
@@ -1402,8 +1431,7 @@ its lines and its pick as they were, bit for bit.
 
 Such a pass is read by the heads audio reads from its model in a pair (`READ`), each at
 its weight in `decoders`: a notes model's pitch, strike and release, a frame model's
-onset, drums, beat and downbeat; not yet a notes model's onset, which audio reads beside
-its strikes (todo, "Tune the rip"). Their sum is its lines' `decoders`, picks its step
+onset, drums, beat, downbeat, struck and struckvel. Their sum is its lines' `decoders`, picks its step
 where the decoders' loss does, and is what the rate (`Rate`) follows over the held-out
 windows; a line before its start names them.
 
@@ -1488,8 +1516,8 @@ is the contract. All numbers are little-endian. An FNV-1a 64 of every byte befor
 ends the file. The checksum catches damage, not tampering. A file only ever holds
 numbers, and `Load` checks its shape against its tensors. The trainer writes version 6:
 a `kind` word
-after the version, 0 for the frame model, twelve heads, `beat` and `downbeat`
-of one value each after `family`, an `out.weight` of 405 x 256, and after the heads the
+after the version, 0 for the frame model, fourteen heads, `beat`, `downbeat`, `struck` and
+`struckvel` of one value each after `family`, an `out.weight` of 407 x 256, and after the heads the
 constants it states, a count and for each a name and a float32: one, `layout`, the layout
 of the frames it hears, 1 (audio's `ripmodels.Layout`, §2). Audio refuses a file of another
 layout, or of none, by name, and so do the trainer's `--init` and `average.py`; it loads a
@@ -1500,7 +1528,7 @@ transformer's cell net. Its sizes follow, from `bins` to the frame path's dilati
 scalars, then the long convolutions' spacings and the bins its regions pool, the first and
 how many (0 and 0, every bin), then the heads, the per-pitch ones first: pitch,
 strike, release, velocity, cents, pitchfamily, pitchwave and pitchvoice, then onset, drums,
-voicing, wave, voice, struck and sure. `cents` is 176 numbers a frame, the 88 offsets then the 88 log
+voicing, wave, voice and sure. `cents` is 176 numbers a frame, the 88 offsets then the 88 log
 errors, `cellout`'s fifth and sixth channels; `pitchfamily` 704, `pitchwave` 440 and
 `pitchvoice` 2,816, a value's 88 pitches together, `cellout`'s next 45. `sure` is the measure
 of §8, written as a frame head of one value whose row of `frameout.weight` is zero and whose
@@ -1526,6 +1554,8 @@ beat and downbeat heads fill `RipFrames.Beat` and `Downbeat`, and where the fram
 both, the tempo and the beats are read from the beat head and the bar lines from the
 downbeat head beside the cues' rules ([audio
 §9](https://github.com/lixenwraith/audio/blob/main/doc/audio.md#9-ripping-a-recording)).
+Its struck heads fill `RipFrames.Struck` and `StruckVel`, whose peaks over `struck` are the
+rip's strikes (`Rip.Struck`), which no bar holds.
 
 The decoders then read the frames: hits by peak picking, the bass by one hidden path,
 the melody register by strike peaks. `strike` and `strike_again` are the thresholds
@@ -1691,7 +1721,14 @@ relative's tonic chord as long as the label's has its tonic by the arranger's wo
   counts a note right when one of its pitch starts within 0.1 s of its place on that map
   (audio's `MatchNotes`). For a rhythm given with no pitches it matches onsets on a
   fitted time map. Against a MIDI file it also
-  counts hits per drum, within half a step, under a fitted stretch and offset.
+  counts hits per drum, within half a step, under a fitted stretch and offset, and what
+  is struck by its time alone.
+- **Strikes** are counted by instant, within the hits' tolerance: a strike and those within
+  `onset_gap` of an instant's first are one, whatever they strike, for a truth, a rip's
+  strikes and its lines' hits alike, as a rip keeps one strike an instant and the lines
+  several. Each given strike asking a hit of its own is said beside, with the most one
+  strike an instant reads there: of the 92,762 strikes of E-GMD's train labels (142 takes) 39%
+  lie within `onset_gap` of the one before, 63% are an instant's first, so 0.775 at most.
 - **`bench`** renders fresh loops and grades each against what was played: a note
   counts only at its exact step and pitch in the right bar. The total is `(tempo + bars
   + 2 drums + 2 melody + bass) / 7`, so its numbers can't be compared with F1 on

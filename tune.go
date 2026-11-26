@@ -1254,15 +1254,20 @@ type labelSaid struct {
 // says whether it gives a reading, which a rip that matches none still reads
 type statedCount struct{ ends, loud, hitLoud, parts, keys, chords int }
 
-// hits is a label's drum hits as a truth on the loop's own clock
-func (l corpusLoop) hits() []audio.RipHit {
+// strikes is every strike of a label's, a drum's hit or one of no line, as a
+// truth on the loop's own clock, and hits its drum hits
+func (l corpusLoop) strikes() []audio.RipHit {
 	var out []audio.RipHit
 	for _, e := range l.Events {
-		if e.Drum >= 0 {
+		if e.Drum >= 0 || e.MIDI == 0 {
 			out = append(out, audio.RipHit{Start: float64(e.Frame) * audio.RipFrameSec, Drum: audio.InstrumentType(e.Drum), Vel: e.Vel})
 		}
 	}
 	return out
+}
+
+func (l corpusLoop) hits() []audio.RipHit {
+	return slices.DeleteFunc(l.strikes(), func(h audio.RipHit) bool { return h.Drum < 0 })
 }
 
 // grid is a label's beats and bar lines in seconds
@@ -2809,12 +2814,14 @@ var modelGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.Retrigger },
 }
 
-// drumGenes is what tune truth searches beside them when a truth gives drum
-// hits, the bar a hit rises to against its drum's loudest; barGenes when one
-// gives bars: the tempo's prior, combs and cuts, the beats' tightness, the bar
-// lines' weights and the meter's margins, and the joint path's costs and levels
+// drumGenes is what tune truth searches beside them when a truth gives strikes,
+// the bar a hit rises to against its drum's loudest and, where the models hear what
+// is struck, that of a strike; barGenes when one gives bars: the tempo's prior,
+// combs and cuts, the beats' tightness, the bar lines' weights and the meter's
+// margins, and the joint path's costs and levels
 var drumGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.OnsetMin },
+	func(p *audio.RipParams) *float64 { return &p.Struck },
 }
 
 var barGenes = []func(*audio.RipParams) *float64{
@@ -2907,7 +2914,7 @@ func parseGenes(w string) ([]string, error) {
 // tuneTruth searches the decoders' parameters against the recordings a list
 // names, each heard once through fe or read back from o.frames, what a rip reads
 // of it held up to o.hold GB and the rest read again: modelGenes, drumGenes where
-// a truth gives hits and barGenes where one gives bars, of them those o.genes
+// a truth gives strikes and barGenes where one gives bars, of them those o.genes
 // names, the rest held. A set scores the mean of its conditions' scores (scores).
 func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontEnd) error {
 	takes, conds, err := readTruthList(list, fe, o.frames, s.earSum)
@@ -2933,7 +2940,7 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 		if err != nil {
 			return err
 		}
-		if c.notes.given+c.drums.given+c.lines == 0 {
+		if c.notes.given+c.drums.given+c.struck.own.given+c.lines == 0 {
 			return fmt.Errorf("%s: no notes, hits or bars given", t.truthFile)
 		}
 		t.given, sums[t.cond] = c, sums[t.cond].plus(c)
@@ -2953,7 +2960,7 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 		all = all.plus(c)
 	}
 	parts := []genePart{geneParts[0]}
-	if all.drums.given > 0 {
+	if all.drums.given+all.struck.own.given > 0 {
 		parts = append(parts, geneParts[1])
 	}
 	if all.lines > 0 {
@@ -2965,14 +2972,14 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	var fields []func(to, from *audio.RipParams)
 	for _, p := range parts {
 		for k, g := range p.names() {
-			if o.genes != nil && !slices.Contains(o.genes, g) {
+			if o.genes != nil && !slices.Contains(o.genes, g) || g == "struck" && all.struck.read == 0 {
 				continue
 			}
 			names, at, fields = append(names, g), append(at, geneOf(p.genes[k])), append(fields, field(p.genes[k]))
 		}
 	}
 	if len(at) == 0 {
-		return errors.New("genes: none named is searched here, the drums' only where a truth gives hits and the bars' where one gives bars")
+		return errors.New("genes: none named is searched here, the drums' only where a truth gives strikes, struck where the models hear them too and the bars' where one gives bars")
 	}
 	ranges, now := audio.RipGeneRanges(), cur.Genes()
 	bounds, start := make([]genetic.ParameterBounds, len(at)), make([]float64, len(at))
@@ -3046,7 +3053,7 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 			return err
 		}
 	}
-	rate := all.hitRate()
+	rate, struckRate := all.hitRate(), all.struck.rate()
 	for c, name := range conds {
 		if sums[c].notes.given > 0 {
 			fmt.Fprintf(s.out, "%s: F1 %.3f before, %.3f after\n", name, sums[c].notes.f1(), after[c].notes.f1())
@@ -3059,6 +3066,13 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 				fmt.Fprintf(s.out, "%s: drums %.3f before, %.3f after: %.1f and %.1f hit(s) a minute heard where none plays, against %.0f given elsewhere\n",
 					name, was, now, float64(sums[c].drums.heard)/sums[c].drumless, float64(after[c].drums.heard)/sums[c].drumless, rate)
 			}
+		}
+		if was, now := sums[c].struck, after[c].struck; was.by.given > 0 {
+			fmt.Fprintf(s.out, "%s: struck F1 %.3f before, %.3f after, the lines' hits %.3f, %.3f, by time alone over %d instant(s) given; each of their %d strike(s) its own hit, %.3f, %.3f, the lines' %.3f, %.3f, and one hit an instant %.3f at most\n",
+				name, was.by.f1(), now.by.f1(), was.lines.f1(), now.lines.f1(), was.by.given, was.own.given, was.own.f1(), now.own.f1(), was.linesOwn.f1(), now.linesOwn.f1(), was.most())
+		} else if was.quiet > 0 {
+			fmt.Fprintf(s.out, "%s: struck %.1f strike(s) a minute before, %.1f after, the lines' hits %.1f, %.1f, heard where none plays, against %.0f instant(s) given elsewhere\n",
+				name, float64(was.own.heard)/was.quiet, float64(now.own.heard)/was.quiet, float64(was.linesOwn.heard)/was.quiet, float64(now.linesOwn.heard)/was.quiet, struckRate)
 		}
 		if sums[c].lines > 0 {
 			l, b := sums[c].shares()
@@ -3203,6 +3217,7 @@ type truthTake struct {
 	held           *takeSound        // what a rip of it reads, nil where each rip reads it again
 	truth          func(*audio.Rip) ([]audio.RipNote, error)
 	hits           []audio.RipHit  // the drum hits its truth gives, nil for none
+	strikes        []audio.RipHit  // every strike it gives, theirs and those of no line, nil for none
 	drums          bool            // its truth knows the drums, so a hit heard that it does not give is false
 	beats, lines   []float64       // the beats and bar lines a label gives, in the recording's seconds, nil for none
 	given          truthCount      // what the truth gives, all missed by a rip that fails
@@ -3341,7 +3356,7 @@ func (l truthLine) take(sum [sha256.Size]byte, fe audio.RipFrontEnd, frames, wei
 		}
 		beats, downbeats := lab.grid()
 		notes := lab.notes()
-		t.truth, t.hits, t.beats, t.lines, t.said = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }, lab.hits(), beats, downbeats, lab.said()
+		t.truth, t.hits, t.strikes, t.beats, t.lines, t.said = func(*audio.Rip) ([]audio.RipNote, error) { return notes, nil }, lab.hits(), lab.strikes(), beats, downbeats, lab.said()
 		t.drums = true // a label holds every event of its loop, so no hit there is none played
 	case isMIDI(l.truth):
 		score, err := audio.ReadMIDI(bytes.NewReader(given))
@@ -3349,13 +3364,13 @@ func (l truthLine) take(sum [sha256.Size]byte, fe audio.RipFrontEnd, frames, wei
 			return nil, fmt.Errorf("%s: %w", l.truth, err)
 		}
 		// its drum channel's hits, and no bars: a transcription's are its writer's default signature and tempo
-		t.truth, t.hits = func(*audio.Rip) ([]audio.RipNote, error) { return score.Notes, nil }, score.Hits
+		t.truth, t.hits, t.strikes = func(*audio.Rip) ([]audio.RipNote, error) { return score.Notes, nil }, score.Hits, slices.Concat(score.Hits, score.Struck)
 	default:
 		text := string(given)
 		t.truth = func(r *audio.Rip) ([]audio.RipNote, error) { return transcript(text, r) }
 	}
-	if l.drumless && len(t.hits) > 0 {
-		return nil, fmt.Errorf("%s: drumless, and its truth gives %d drum hit(s)", l.truth, len(t.hits))
+	if l.drumless && len(t.strikes) > 0 {
+		return nil, fmt.Errorf("%s: drumless, and its truth gives %d strike(s)", l.truth, len(t.strikes))
 	}
 	t.drums = t.drums || len(t.hits) > 0
 	return t, nil
@@ -3395,11 +3410,11 @@ func readTruthList(list string, fe audio.RipFrontEnd, frames, weights string) ([
 
 // count rips the take's sound under p and counts it against its truth: its
 // notes by pitch and onset, its hits within half a step as truth counts them,
-// every hit heard false where the truth knows the drums and gives none, the
-// downbeats given that fall on a bar line of a bar the given's length and the
-// beats given that a beat of the rip's falls on (MatchBars)
+// every hit heard false where the truth knows the drums and gives none, its
+// strikes by time alone (countStruck), the downbeats given that fall on a bar line of
+// a bar the given's length and the beats given that a beat of it falls on (MatchBars)
 func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule) (truthCount, error) {
-	missed := truthCount{notes: noteCount{given: t.given.notes.given}, drums: noteCount{given: t.given.drums.given}, lines: t.given.lines, beats: t.given.beats}
+	missed := truthCount{notes: noteCount{given: t.given.notes.given}, drums: noteCount{given: t.given.drums.given}, struck: t.given.struck.missed(), lines: t.given.lines, beats: t.given.beats}
 	if t.said != nil { // a rip that fails names no key and no chord
 		missed.stated, missed.keys.given, missed.chords = t.said.stated, t.said.stated.keys, audio.MatchChords(&audio.Rip{}, t.said.chords)
 	}
@@ -3446,6 +3461,9 @@ func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule
 			c.drums = c.drums.plus(noteCount{l.Matched, l.B, l.A})
 		}
 	}
+	if t.drums || len(t.strikes) > 0 {
+		c.struck = countStruck(r, t.strikes, tol, t.timed, float64(len(snd.x))/audio.RipRate/60)
+	}
 	c.stages = audio.ReadStages(r, ag, hg, tol)
 	if t.said != nil {
 		c.read(r, ag, hg, t.said)
@@ -3458,14 +3476,14 @@ func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule
 	return c, nil
 }
 
-// truthCount is a rip against a truth: its notes, its drum hits, of the
-// downbeats the truth gives those on a bar line of the rip's and of its beats
-// those a beat of the rip's falls on, and those before its first downbeat and
-// after its last with those of them lost (edges); with the minutes of the
-// recordings whose truth gives hits and of those it knows play no drum; and
-// what a label says past them as the rip reads it (readings)
+// truthCount is a rip against a truth: its notes, its drum hits, its strikes by
+// time alone, of the downbeats the truth gives those on a bar line of the rip's and
+// of its beats those a beat of the rip's falls on, and those at its grid's edges
+// with those lost (edges); the minutes of the recordings whose truth gives hits and
+// of those it knows play no drum; and what a label says past them (readings)
 type truthCount struct {
 	notes, drums      noteCount
+	struck            struckCount
 	lines, beats      int
 	onLine, onBeat    float64
 	edges             [4]int
@@ -3499,7 +3517,7 @@ func (c truthCount) plus(o truthCount) truthCount {
 	levels := func(a, b audio.LevelReading) audio.LevelReading {
 		return audio.LevelReading{Given: a.Given + b.Given, Right: a.Right + b.Right, Off: slices.Concat(a.Off, b.Off)}
 	}
-	return truthCount{c.notes.plus(o.notes), c.drums.plus(o.drums), c.lines + o.lines, c.beats + o.beats, c.onLine + o.onLine, c.onBeat + o.onBeat,
+	return truthCount{c.notes.plus(o.notes), c.drums.plus(o.drums), c.struck.plus(o.struck), c.lines + o.lines, c.beats + o.beats, c.onLine + o.onLine, c.onBeat + o.onBeat,
 		[4]int{c.edges[0] + o.edges[0], c.edges[1] + o.edges[1], c.edges[2] + o.edges[2], c.edges[3] + o.edges[3]}, c.drummed + o.drummed, c.drumless + o.drumless,
 		audio.EndReading{Given: c.ends.Given + o.ends.Given, Right: c.ends.Right + o.ends.Right, Past: c.ends.Past + o.ends.Past, PastWrong: c.ends.PastWrong + o.ends.PastWrong,
 			Off: slices.Concat(c.ends.Off, o.ends.Off)},
@@ -3555,25 +3573,85 @@ func (c truthCount) hitRate() float64 {
 	return float64(c.drums.given) / c.drummed
 }
 
-// drumScore is c's drums where given carries a score of them: the F1 where it
-// gives hits; where it knows that none plays, the F1 of a rip that heard c's
+// drumScore is c's drums where given carries a score of them, the minutes it
+// knows none plays weighed at rate hits a minute (hitScore)
+func (c truthCount) drumScore(given truthCount, rate float64) (float64, bool) {
+	return hitScore(c.drums, given.drums, given.drumless, rate)
+}
+
+// hitScore is c's score where given carries one: the F1 where it gives hits;
+// where it knows that none plays over minutes, the F1 of a rip that heard c's
 // hits beside every hit such minutes hold at rate a minute, so one by none
 // heard and less by degrees. With no rate nothing weighs a hit: no score.
-func (c truthCount) drumScore(given truthCount, rate float64) (float64, bool) {
-	if given.drums.given > 0 {
-		return c.drums.f1(), true
+func hitScore(c, given noteCount, minutes, rate float64) (float64, bool) {
+	if given.given > 0 {
+		return c.f1(), true
 	}
-	even := rate * given.drumless
+	even := rate * minutes
 	if even == 0 {
 		return 0, false
 	}
-	return 2 * even / (2*even + float64(c.drums.heard)), true
+	return 2 * even / (2*even + float64(c.heard)), true
+}
+
+// struckCount is a rip's strikes of no pitch against those a truth gives, by their
+// time alone: by instant (audio's Instants), and each given strike with a hit of its
+// own, which one hit an instant cannot reach; the lines' hits counted alike; the
+// recordings whose rip keeps strikes, their minutes and those where none is struck
+type struckCount struct {
+	by, lines, own, linesOwn noteCount
+	read                     int
+	minutes, quiet           float64
+}
+
+// countStruck is r's strikes and its lines' hits against the strikes given, none
+// where r's front end hears no strike: what is heard alone where none is given
+func countStruck(r *audio.Rip, given []audio.RipHit, tol float64, timed bool, minutes float64) struckCount {
+	if r.Struck == nil {
+		return struckCount{}
+	}
+	count := func(heard, given []audio.RipHit) noteCount {
+		l := audio.MatchStruck(heard, given, tol, timed)
+		return noteCount{l.Matched, l.B, l.A}
+	}
+	at := func(hits []audio.RipHit) []audio.RipHit { return audio.Instants(hits, r.Params.OnsetGap) }
+	hits := r.Hits()
+	c := struckCount{by: count(at(r.Struck), at(given)), lines: count(at(hits), at(given)), own: count(r.Struck, given), linesOwn: count(hits, given), read: 1}
+	if len(given) > 0 {
+		c.minutes = minutes
+	} else {
+		c.quiet = minutes
+	}
+	return c
+}
+
+// missed is c as a rip that fails counts: nothing heard of what is given
+func (c struckCount) missed() struckCount {
+	none := func(n noteCount) noteCount { return noteCount{given: n.given} }
+	return struckCount{by: none(c.by), lines: none(c.lines), own: none(c.own), linesOwn: none(c.linesOwn), read: c.read, minutes: c.minutes, quiet: c.quiet}
+}
+
+func (c struckCount) plus(o struckCount) struckCount {
+	return struckCount{c.by.plus(o.by), c.lines.plus(o.lines), c.own.plus(o.own), c.linesOwn.plus(o.linesOwn), c.read + o.read, c.minutes + o.minutes, c.quiet + o.quiet}
+}
+
+// rate is the instants a minute the truths give, 0 where none gives any
+func (c struckCount) rate() float64 {
+	if c.minutes == 0 {
+		return 0
+	}
+	return float64(c.by.given) / c.minutes
+}
+
+// most is the F1 one hit an instant reads where each given strike asks its own
+func (c struckCount) most() float64 {
+	return noteCount{c.by.given, c.own.given, c.by.given}.f1()
 }
 
 // scores is every score the conditions carry, in their order: each one's notes'
-// F1, its drums' (drumScore) and its bars where given gives it any to count, and
-// each reading of weigh's words it gives, each a share of one capability, so a
-// set is weighed by their mean and held by each
+// F1, its drums' (drumScore), its strikes' by instant and its bars where given gives
+// it any to count, and each reading of weigh's words it gives, each a share of one
+// capability, so a set is weighed by their mean and held by each
 func scores(counts, given []truthCount, weigh []string) []float64 {
 	var all truthCount
 	for _, g := range given {
@@ -3585,6 +3663,9 @@ func scores(counts, given []truthCount, weigh []string) []float64 {
 			out = append(out, c.notes.f1())
 		}
 		if d, ok := c.drumScore(given[i], all.hitRate()); ok {
+			out = append(out, d)
+		}
+		if d, ok := hitScore(c.struck.by, given[i].struck.by, given[i].struck.quiet, all.struck.rate()); ok {
 			out = append(out, d)
 		}
 		if given[i].lines > 0 {

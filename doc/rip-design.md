@@ -155,7 +155,8 @@ flowchart TD
      Where a truth gives drum hits a condition carries its drums' F1 beside
      its notes', a hit heard where a truth knows no drum plays counted
      against it (by the list's own hits a minute where a condition gives
-     none), and `onset_min` is searched; where a corpus label gives bars,
+     none), and `onset_min` is searched; where the models hear what is struck
+     too, its strikes' F1 by their time alone, and `struck` is searched; where a corpus label gives bars,
      its bars (the downbeats given on a bar line, `MatchBars`), and the
      tempo's prior, combs and cuts, `tightness`, the bar lines' weights and the
      meter's margins are searched, which audio holds as parameters. The mean

@@ -28,7 +28,7 @@ HEADS=${HEADS:-8}
 LAYERS=${LAYERS:-4}
 FFN=${FFN:-1024}
 CONVS=${CONVS:-}                     # convolutions before the input layer, e.g. 16x3x3/1,16x3x3/2,32x3x3/2; empty for none
-TOWERS=${TOWERS:-}                   # stacks of their own, layers:heads each, e.g. 2:2,4:11; empty for one of LAYERS
+TOWERS=${TOWERS:-}                   # stacks of their own, layers:heads each, e.g. 2:2,4:12; empty for one of LAYERS
 MIX=${MIX:-}                         # another corpus and the share of windows drawn from it, dir:share; empty for none
 OVER=${OVER:-}                       # a corpus of drums alone and the share of windows that lay it over a loop where nothing is struck, dir:share; empty for none
 CHANNEL=${CHANNEL:-}                 # a noise bank and the share of windows heard through a small speaker, a room and a phone, file.npz:share; empty for none
@@ -44,6 +44,7 @@ DILATIONS=${DILATIONS:-}             # notes: its long convolutions' frames apar
 LR=${LR:-}                           # the learning rate; empty for train.py's own
 EXTRA=${EXTRA:-}                     # more corpora and the share of windows each draws, dir:share by commas, such as recorded sets; empty for none
 CARRY=${CARRY:-}                     # carry: a pass that carries on from INIT with its optimizer's state; empty for a fresh run
+PROBE=${PROBE:-}                     # heads of INIT's model trained alone, by commas, every other weight held; empty for a whole model
 FIT=${FIT:-$CORPUS/fit}              # where a pair's fit goes: its root, rows, sets, logs and table; a new pair takes a new folder
 ROWS=${ROWS:-}                       # rows: the truth lists and corpus directories the judge is fitted on, blank-separated
 LEAVE_OUT=${LEAVE_OUT:-}             # judge: conditions its fit leaves out and counts, blank-separated
@@ -126,7 +127,7 @@ train() {
 	echo "== train: $STEPS steps of batch $BATCH on $CORPUS, $HOLDOUT loops held out${VALIDATE:+, the step picked on $VALIDATE}, width $DIM, $HEADS heads, $LAYERS layers, feed-forward $FFN"
 	(cd "$here" && "$PYTHON" train.py --corpus "$(realpath "$CORPUS")" --out "$(realpath -m "$OUT")" --steps "$STEPS" --batch "$BATCH" --every "$EVERY" --holdout "$HOLDOUT" --checkpoint "$(realpath -m "$CHECKPOINT")" \
 		--dim "$DIM" --heads "$HEADS" --layers "$LAYERS" --ffn "$FFN" --convs "$CONVS" --towers "$TOWERS" ${MIX:+--mix "$MIX"} ${OVER:+--over "$OVER"} ${CHANNEL:+--channel "$CHANNEL"} ${PCEN:+--pcen} ${VALIDATE:+--validate "$(realpath "$VALIDATE")"} \
-		${LR:+--lr "$LR"} ${EXTRA:+--extra "$EXTRA"} ${INIT:+--init "$(realpath "$INIT")"} ${CARRY:+--carry} "$@")
+		${LR:+--lr "$LR"} ${EXTRA:+--extra "$EXTRA"} ${INIT:+--init "$(realpath "$INIT")"} ${CARRY:+--carry} ${PROBE:+--probe "$PROBE"} "$@")
 }
 
 # A shard's files are named by SHARD, so a round never resumes an earlier one's checkpoint.

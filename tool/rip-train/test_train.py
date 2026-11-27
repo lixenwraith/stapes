@@ -464,6 +464,37 @@ class TheBeatAndTheBarLine(unittest.TestCase):
                 self.assertIn(listed + layout + struct.pack("<I", len(after["model"])), body)
         self.assertFalse({"struck", "struckvel"} & set(dict(ripmodels.PITCHNET_HEADS)))
 
+    def test_init_carries_each_head_by_its_name_wherever_the_start_laid_it(self):
+        """A frame model whose heads are this run's in another order, one short and with one this run has no more starts
+        a run through --init: each head both have keeps its rows of the output layer to the bit, so says what the start's
+        did as near as a row's place in the layer lets a sum round, the line names what starts fresh and what is left
+        behind, and a start whose head is of another size is refused."""
+        x = torch.randn(1, 40, 2 * ripmodels.INPUTS, generator=torch.Generator().manual_seed(1))
+        heads = [h for h in ripmodels.HEADS if h[0] != "downbeat"]
+        with tempfile.TemporaryDirectory() as d:
+            at = lambda name: os.path.join(d, name)
+            had = ripmodels.Config(dim=8, heads=2, layers=1, ffn=16, window=4, outputs=heads[5:] + [("gone", 3)] + heads[:5])
+            start = ripmodels.FrameModel(had).eval()
+            corpus(d, [{"bpm": 120, "bars": 1, "events": [note(0, 10, 60, "piano"), hit(20, 0)]}])
+            torch.save({"model": start.state_dict(), "layout": ripmodels.LAYOUT, "cfg": asdict(had)}, at("old.pt"))
+            said = run("--corpus", d, "--out", at("new.bin"), "--init", at("old.pt"), "--checkpoint", at("new.pt"), "--lr", "0")
+            self.assertIn("its heads but downbeat, which start fresh, and without its gone, which this run's model has none of", said)
+            after = torch.load(at("new.pt"))
+            self.assertEqual([tuple(h) for h in after["cfg"]["outputs"]], ripmodels.HEADS)
+            grown = ripmodels.FrameModel(ripmodels.shape(after["cfg"])).eval()
+            grown.load_state_dict(after["model"])
+            with torch.no_grad():
+                was, now = start(x), grown(x)
+            for k, _ in heads:
+                for rows in ("out.weight", "out.bias"):
+                    self.assertTrue(torch.equal(after["model"][rows][grown.cfg.slice(k)], start.state_dict()[rows][had.slice(k)]), (k, rows))
+                self.assertTrue(torch.allclose(now[..., grown.cfg.slice(k)], was[..., had.slice(k)], rtol=0, atol=1e-6), k)
+            wider = ripmodels.Config(**{**asdict(had), "outputs": [("pitch", ripmodels.PITCHES + 1) if k == "pitch" else (k, n) for k, n in had.outputs]})
+            torch.save({"model": ripmodels.FrameModel(wider).state_dict(), "layout": ripmodels.LAYOUT, "cfg": asdict(wider)}, at("wider.pt"))
+            with self.assertRaises(SystemExit) as err:
+                run("--corpus", d, "--out", at("no.bin"), "--init", at("wider.pt"))
+            self.assertIn("holds a model of", str(err.exception))
+
     def test_a_probe_trains_the_heads_it_names_alone_on_a_frame_model_held_as_it_was(self):
         """--probe on a frame model started from one without the heads trained, the beat and the downbeat by itself or
         those it names, trains their rows of the output layer and holds the rest: the file it exports, its last step's,
@@ -738,9 +769,9 @@ class TheLongConvolutions(unittest.TestCase):
     def tearDown(self):
         self.dir.cleanup()
 
-    def start(self, dilations=(), outputs=ripmodels.PITCHNET_HEADS) -> ripmodels.PitchNet:
-        """a notes model of those long convolutions and heads, saved as a run's checkpoint is, start.pt"""
-        cfg = ripmodels.Config(**NOTES, outputs=list(outputs), dilations=dilations)
+    def start(self, dilations=(), outputs=ripmodels.PITCHNET_HEADS, **widths) -> ripmodels.PitchNet:
+        """a notes model of those long convolutions, heads and widths, saved as a run's checkpoint is, start.pt"""
+        cfg = ripmodels.Config(**{**NOTES, **widths}, outputs=list(outputs), dilations=dilations)
         torch.manual_seed(1)
         model = ripmodels.PitchNet(cfg).eval()
         torch.save({"model": model.state_dict(), "layout": ripmodels.LAYOUT, "cfg": asdict(cfg)}, self.at("start.pt"))
@@ -779,6 +810,31 @@ class TheLongConvolutions(unittest.TestCase):
                 was, now = (self.heard(m, x)[1] for m in (start, grown))
                 for k in ripmodels.FRAME_HEADS:
                     self.assertTrue(torch.equal(now[..., grown.cfg.slice(k)], was[..., start.cfg.slice(k)]), k)
+
+    def test_a_start_with_a_head_this_code_has_no_row_for_leaves_it_behind(self):
+        """A notes model trained when its frame layer had a head more, laid after its others, starts a run through
+        --init: every head this run has says what the start's did to the bit and the line names the head left behind;
+        rows no head of the start accounts for are refused."""
+        start = self.start((3, 9, 27))
+        state, cfg = dict(start.state_dict()), asdict(start.cfg)
+        more = lambda: {k: torch.cat([state[k], torch.ones_like(state[k][:1])]) for k in ("frame.weight", "frame.bias")}
+        state.update(more())
+        cfg["outputs"] = cfg["outputs"] + [("struck", 1)]
+        torch.save({"model": state, "layout": ripmodels.LAYOUT, "cfg": cfg}, self.at("start.pt"))
+        said = self.grow("left", "--lr", "0")
+        self.assertIn(f"started from {self.at('start.pt')}, without its struck, which this run's model has none of\n", said)
+        ck = torch.load(self.at("left.pt"))
+        self.assertEqual([tuple(h) for h in ck["cfg"]["outputs"]], ripmodels.PITCHNET_HEADS)
+        grown = ripmodels.build(ripmodels.shape(ck["cfg"]))
+        grown.load_state_dict(ck["model"])
+        x = torch.from_numpy(ripmodels.features(sounding(128, self.EVENTS), 4))[None]
+        was, now = (self.heard(m, x)[1] for m in (start, grown))
+        self.assertTrue(torch.equal(now, was))
+        state.update(more())
+        torch.save({"model": state, "layout": ripmodels.LAYOUT, "cfg": cfg}, self.at("start.pt"))
+        with self.assertRaises(SystemExit) as err:
+            self.grow("odd", "--lr", "0")
+        self.assertIn("rows are not those of its heads", str(err.exception))
 
     def test_a_grown_long_convolution_hands_the_cells_on_nearer_than_one_started_at_zero(self):
         """Each long convolution adds its cells back before a GELU, so one of zero weights hands on gelu(c), three of
@@ -819,7 +875,7 @@ class TheLongConvolutions(unittest.TestCase):
         """The file a grown model's run writes, its long convolutions moved off their start by a step, is read by
         lixenwraith/transformer at the version stapes' go.mod names, whose outputs over a corpus's frames of notes are
         Python's forward in float64 within 1e-5 and as much again of each, as its cell net's own test holds them to its
-        definition."""
+        definition; so is one of other widths over the stack and over thirteen semitones, which the file carries."""
         go = shutil.which("go")
         if go is None:
             self.skipTest("no go here to hear the file with")
@@ -829,16 +885,22 @@ class TheLongConvolutions(unittest.TestCase):
         if mod.returncode != 0 or not path:
             self.skipTest(f"the transformer module is not here ({mod.stderr.strip()}): go mod download github.com/lixenwraith/transformer")
         toolchain = subprocess.run([go, "env", "GOVERSION"], cwd=root, capture_output=True, text=True).stdout.strip()
-        self.start()
-        self.grow("grown", "--lr", "0.01")
-        ck = torch.load(self.at("grown.pt"))
+        for name, widths in (("grown", {}), ("wider", {"reduce": 3, "wide": 5})):  # the trainer's widths, and others the file must carry
+            with self.subTest(widths=widths):
+                self.heard_in_go(go, toolchain, version, path, name, widths)
+
+    def heard_in_go(self, go, toolchain, version, path, name, widths):
+        self.start(**widths)
+        self.grow(name, "--lr", "0.01", *(f for k, v in widths.items() for f in ("--span" if k == "wide" else "--" + k, str(v))))
+        ck = torch.load(self.at(name + ".pt"))
         model = ripmodels.build(ripmodels.shape(ck["cfg"])).eval()
         model.load_state_dict(ck["model"])
+        self.assertEqual((model.reduce.out_channels, model.wide.out_channels), (widths.get("reduce", 8), widths.get("wide", 16)))
         x = torch.from_numpy(ripmodels.features(sounding(300, [note(30 * k, 30 * k + 40, 33 + 7 * k, "piano") for k in range(10)]), 4))[None]
         with torch.no_grad():
             stacked, y = model.stack(x)[0], model.double()(x.double())[0]
         heads = [k for k, _ in model.cfg.outputs]
-        prog = self.at("heard")
+        prog = self.at("heard-" + name)
         os.mkdir(prog)
         with open(os.path.join(prog, "go.mod"), "w") as f:
             f.write(f"module heard\n\ngo {toolchain.removeprefix('go')}\n\nrequire github.com/lixenwraith/transformer {version}\n\n"
@@ -846,7 +908,7 @@ class TheLongConvolutions(unittest.TestCase):
         with open(os.path.join(prog, "main.go"), "w") as f:
             f.write(HEARD_GO)
         stacked.numpy().astype("<f4").tofile(self.at("frames.raw"))
-        got = subprocess.run([go, "run", ".", self.at("grown.bin"), self.at("frames.raw"), self.at("heard.raw"), *heads], cwd=prog,
+        got = subprocess.run([go, "run", ".", self.at(name + ".bin"), self.at("frames.raw"), self.at("heard.raw"), *heads], cwd=prog,
                              capture_output=True, text=True, env={**os.environ, "GOWORK": "off", "GOFLAGS": "-mod=mod"})
         self.assertEqual(got.returncode, 0, got.stderr)
         heard = torch.from_numpy(np.fromfile(self.at("heard.raw"), "<f4").reshape(len(y), -1))
@@ -1738,15 +1800,18 @@ class TheDatacheck(unittest.TestCase):
 
 class TheRoundsTable(unittest.TestCase):
     def test_a_set_under_which_a_kind_fell_is_said_before_the_rows(self):
-        """A read-back's log gives a row a kind, what is struck beside its lines' hits, a minute where none plays; a
-        fitted set's falls against the start are the first line."""
+        """A read-back's log gives a row a kind, what is struck beside its lines' hits, a minute where none plays, as the
+        notes of a kind whose truth gives none; a fitted set's falls against the start are the first line, and with
+        them such notes where they rose."""
         logs = {"start": "guitar: F1 0.817 before, 0.817 after\n"
                          "guitar: ends 0.400 before, 0.400 after, of 2794 note(s) matched whose end is given\n"
                          "guitar: ends 1676 wrong, by stage: strikes early 1418 before and after\n"
                          "guitar: struck 0.2 strike(s) a minute before, 0.3 after, the lines' hits 0.1, 0.1, heard where none plays, against 231 instant(s) given elsewhere\n"
                          "voice: F1 0.424 before, 0.430 after\n"
+                         "E-GMD: notes 35.9 a minute before, 35.9 after, heard where none plays\n"
                          "E-GMD: struck F1 0.912 before, 0.915 after, the lines' hits 0.882, 0.880, by time alone over 7767 instant(s) given; each of their 13622 strike(s) its own hit, 0.677, 0.678, the lines' 0.754, 0.753, and one hit an instant 0.726 at most\n",
                 "fit-voice": "guitar: F1 0.790 before, 0.790 after\nvoice: F1 0.470 before, 0.470 after\n"
+                             "E-GMD: notes 41.2 a minute before, 41.2 after, heard where none plays\n"
                              "E-GMD: struck F1 0.901 before, 0.901 after, the lines' hits 0.882, 0.882, by time alone\n"}
         with tempfile.TemporaryDirectory() as d:
             paths = []
@@ -1755,10 +1820,11 @@ class TheRoundsTable(unittest.TestCase):
                 with open(paths[-1], "w") as f:
                     f.write(text)
             lines = table.table(paths).splitlines()
-        self.assertEqual(lines[0], "fell under fit-voice, against start: notes on guitar 0.817 to 0.790, struck on E-GMD 0.912 to 0.901")
+        self.assertEqual(lines[0], "fell under fit-voice, against start: notes on guitar 0.817 to 0.790, struck on E-GMD 0.912 to 0.901, "
+                                   "notes where none plays on E-GMD 35.9 to 41.2 a minute")
         self.assertEqual(lines[2].split(), ["guitar", "start", "0.817", "0.400", "1118", "of", "2794", "-", "-", "0.2/min", "0.1/min"] + ["-"] * 4)
         self.assertEqual(lines[5].split()[:3], ["voice", "fit-voice", "0.470"])
-        self.assertEqual(lines[6].split(), ["E-GMD", "start"] + ["-"] * 5 + ["0.912", "0.882"] + ["-"] * 4)
+        self.assertEqual(lines[6].split(), ["E-GMD", "start", "35.9/min"] + ["-"] * 4 + ["0.912", "0.882"] + ["-"] * 4)
 
 
 if __name__ == "__main__":

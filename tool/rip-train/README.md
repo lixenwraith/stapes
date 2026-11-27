@@ -102,13 +102,14 @@ tool/rip-train/pipeline.sh rows judge fit readback table keep   # the fit of a p
 | `MIX` | empty | another corpus and the share of windows drawn from it, `dir:share`, such as recordings with their MIDI files (`corpus <dir> from`) |
 | `OVER` | empty | a corpus of drums alone and the share of windows that lay it over a loop where nothing is struck, `dir:share`, at -12 to +6 dB of the loop's power, a strike labelled only where it can be heard, `train.py`'s `--over` |
 | `CHANNEL` | empty | a noise bank and the share of windows heard through a small speaker, a room and a phone, `file.npz:share`, `train.py`'s `--channel`; `make_noise.py` builds the bank ([Phones](#turning-a-run-toward-your-music)) |
-| `PCEN` | empty | `pcen`: a second input channel, each band's PCEN and their mean, `train.py`'s `--pcen`; a `CHECKPOINT` or `INIT` of the other channel count is refused |
+| `PCEN` | empty | `pcen`: two more input planes after the two in dB, the fine bands' PCEN and the sharp ones', each with its mean, `train.py`'s `--pcen`; a `CHECKPOINT` or `INIT` of the other plane count is refused |
 | `HOLDOUT`, `EVERY` | 200, 1000 | loops held out, and how often they are scored and a checkpoint written |
 | `VALIDATE` | empty | a corpus of recordings, `corpus <dir> from`'s, cut into fixed windows and scored every `EVERY` steps beside the held-out loops: its best score picks the step `OUT` gets, the decoders' loss or, for a notes model, its strikes' F1 at the decoder's bars, the held-out loss printed beside it, `train.py`'s `--validate`; empty for the held-out loops' pick |
 | `OUT`, `CHECKPOINT` | `$CORPUS/ripframe.bin`, `$CORPUS/ripframe.pt` | the weight file, and the checkpoint a stopped run resumes from |
 | `ROOT` | `~/.config/stapes` | the stapes root, under `$XDG_CONFIG_HOME` when that is set: `install` copies the weights into it as `ripframe.bin`, and `bench` hears with its `rip.toml` |
 | `NOTES` | empty | a notes model's weight file: `notes` trains it by `train`'s knobs with `--pitchnet`, its checkpoint beside it as `.pt`, and `bench`, `install` and the fit put it beside `OUT` as `ripnotes.bin` |
 | `DILATIONS` | empty | `notes`: the notes model's long convolutions, their frames apart, `train.py`'s `--dilations` |
+| `CELL`, `REDUCE`, `SPAN` | empty | `notes`: the notes model's widths, its channels at each cell, after its 1x1 over the stack's and of its convolution over thirteen semitones, `train.py`'s `--cell`, `--reduce` and `--span` (32, 8 and 16); the weight file carries them, and a `CHECKPOINT` or `INIT` of other widths is refused |
 | `LR`, `EXTRA`, `CARRY`, `PROBE` | empty | `train.py`'s `--lr`; `--extra`, more corpora and the share of windows each draws, `dir:share` by commas, such as the recorded sets; `carry` for `--carry`, a pass that carries on from `INIT`; and the heads `--probe` trains alone, by commas |
 | `JUDGE`, `SET` | empty | `install`: a judge's file and a `rip.toml`, one of the fit's sets, put in the root as `ripjudge.bin` and `rip.toml` |
 | `KINDS` | empty | `install`, `readback`: the sets a kind of sound is ripped under, `kind=file` blank-separated (`voice=$FIT/sets/voice.toml`), put in the root as `rip.<kind>.toml` |
@@ -173,12 +174,14 @@ tool/rip-train/pipeline.sh rows judge fit readback table keep
   A reading stands while its root and the list do, and one whose set is gone
   leaves the logs.
 - `table` writes `$FIT/table.txt` from those logs (`table.py`): a kind a
-  block and a set a row, notes, ends (their share and the notes whose end is
-  right), loudness, drums, what is struck by instant and beside it the lines'
-  hits counted so (`by line`), either a minute where none plays, bars, parts,
-  key and chords, and before the rows
+  block and a set a row, notes (a minute, where a kind's truths give none:
+  what a rip writes over drums alone), ends (their share and the notes whose
+  end is right), loudness, drums, what is struck by instant and beside it the
+  lines' hits counted so (`by line`), either a minute where none plays, bars,
+  parts, key and chords, and before the rows
   each fitted set's falls of more than 0.005 against the start, or the judge
-  where no start is named.
+  where no start is named, and with them such notes where they rose by over
+  0.5 a minute.
 - `keep` copies the pair, its checkpoints, the judge, the sets and the table
   under `$WEIGHTS/$NAME`, a file not there yet or changed, each with its line
   in `$WEIGHTS/MANIFEST.txt`. `install` takes `JUDGE`, `SET` and `KINDS` by
@@ -588,10 +591,12 @@ targets and the loss.
 - **The loss carries no positive weight**: audio reads each head's level as a
   posterior, which a weight on the marks would lift most where the head is unsure.
 - **A head added later** grows through `--init` onto weights trained since the
-  refresh but before it, whose heads are the first of the run's: every other
-  weight carries over and the new head's rows of the output layer start fresh.
-  That is what growing is for, since no file from before the refresh starts a
-  run ([below](#parity)). Audio loads a frame model whose heads start with
+  refresh but before it: every weight both have carries over, each head's rows
+  of the output layer by its name wherever each model lays them, the new
+  head's rows start fresh, and a head the run's model has no more is left
+  behind; the run's first line names both. A frame model in towers grows only
+  by the heads after its last. That is what growing is for, since no file from
+  before the refresh starts a run ([below](#parity)). Audio loads a frame model whose heads start with
   `FrameSpec`'s, any after them read by nothing ("frame model's heads are [...],
   want [...] first"), so the start's file loads in no audio that reads the new
   head. With `--probe` a run trains the
@@ -737,10 +742,8 @@ loader checks ([format](https://github.com/lixenwraith/transformer/blob/main/doc
 `--pitchnet` builds the convolutions-only model of [Rip training](../../doc/rip-training.md)
 §7, and `--out` gets its weight file, `ripnotes.bin` in the stapes root, beside the
 `ripframe.bin` it gives the notes for. `average.py --out ripnotes.bin a.pt` turns one `.pt`
-of either model into its file. `--shuffle <share>` and
-`--extra <dir>:<share>,...` are `train.py` flags with no `pipeline.sh` setting,
-as are `--builders <n>` (by hand, above), `--cell <n>`, the notes model's width
-(its channels at each cell, 32, which its weight file carries),
+of either model into its file. `--shuffle <share>` is a `train.py` flag with no
+`pipeline.sh` setting, as are `--builders <n>` (by hand, above)
 and `--dip <share>`, the share of the channel's
 windows given a dip of 6 to 20 dB centred 100 to 500 Hz, as a phone across a room
 hears. `--family-holdout <family>` tells no head a family's name: its notes stay
@@ -749,9 +752,10 @@ the measure a name must pass to be given (below). A checkpoint states
 the band frames' layout, and `--init`, `--checkpoint` and `average.py` refuse one
 of another layout or of none before they read its shape, so no file from before
 the refresh starts a run. One from before a setting existed loads with that
-setting's default, and `--init` takes one whose heads are the first of the
-run's, weights trained before a head added later: every weight carries over and
-a new head's rows start fresh ([Rip training
+setting's default, and `--init` takes one of other heads, weights trained before
+a head added later or with one the run's model has no more: every weight both
+have carries over, each head's rows by its name, a new head's rows start fresh
+and one the run lacks is left behind ([Rip training
 §7](../../doc/rip-training.md#7-the-models)), though resuming one is refused. A
 notes model's long convolutions grow so under `--dilations` from a model of none
 or of the first of them, each new one started to hand its cells on as near as the

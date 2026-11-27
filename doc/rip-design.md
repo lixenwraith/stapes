@@ -78,8 +78,10 @@ flowchart TD
      pitches (`VoiceAt`, `Voices`);
    - the judge, `ripjudge.bin` (`audio.LoadRipJudge`): a small network a stage
      over a strike's row, ruling which strikes are notes in the installed
-     scores' place, loaded only beside a frame model and refused beside notes
-     weights it was not fitted on.
+     scores' place, loaded only beside a frame model and refused beside models
+     whose heads its row reads are not those it was fitted through;
+   - the bundle, `rip.bundle.toml`: these files as one line, by which a root
+     that holds one is loaded.
 
    With no `ripframe.bin`, or where the models fail to load, the built-in
    analysis listens: a harmonic and a percussive part split by medians, each

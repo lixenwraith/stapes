@@ -15,13 +15,25 @@ import (
 )
 
 // rowsManifest is a rows directory's rows.json: the row's version and size and
-// the checksum of the notes weights the rows were read through, which a judge
-// fitted on them names; a directory holds one kind
+// what the rows were read through, the digests of the heads the row reads of the
+// notes and of the frame model (audio.RipWeights), which a judge fitted on them
+// names; a directory holds one kind. One of version 1 names the checksum the
+// notes weights' file ends in, and a judge fitted on it names that.
 type rowsManifest struct {
-	Version    int    `json:"version"`
-	RowVersion int    `json:"row_version"`
-	RowSize    int    `json:"row_size"`
-	Notes      string `json:"notes"`
+	Version     int    `json:"version"`
+	RowVersion  int    `json:"row_version"`
+	RowSize     int    `json:"row_size"`
+	Notes       string `json:"notes,omitempty"`
+	NotesDigest string `json:"notes_digest,omitempty"`
+	FrameDigest string `json:"frame_digest,omitempty"`
+}
+
+// through says what rows of the manifest's kind were read through
+func (m rowsManifest) through() string {
+	if m.Version < 2 {
+		return fmt.Sprintf("of row version %d read through the notes weights %s", m.RowVersion, m.Notes)
+	}
+	return fmt.Sprintf("of row version %d read through heads of the notes model of digest %s and of the frame model of %s", m.RowVersion, m.NotesDigest, m.FrameDigest)
 }
 
 // rowsRecording is a recording's label beside its rows: its condition, its
@@ -69,14 +81,15 @@ func cmdRows(s *Session, a []string) error {
 	if s.frontEnd == nil {
 		return fmt.Errorf("rows reads a strike's row off the models' heads, and no %s is loaded", frameFile)
 	}
-	return s.rows(s.path(a[0]), s.path(a[2]), o, s.frontEnd, s.frontEnd.NotesSum)
+	return s.rows(s.path(a[0]), s.path(a[2]), o, s.frontEnd, s.frontEnd.Weights)
 }
 
 // rows rips each recording from names, a truth list's or a corpus directory's
 // loops that kept their audio, through fe with no judge, and writes every
 // strike's row into dir with its label (rightStrikes): <checksum>.rows as a
 // loop's frames are written, then <checksum>.json. A recording on disk is kept.
-func (s *Session) rows(dir, from string, o tuneOptions, fe audio.RipFrontEnd, notes uint64) error {
+// w is what fe's rows are read through, which the directory's manifest names.
+func (s *Session) rows(dir, from string, o tuneOptions, fe audio.RipFrontEnd, w audio.RipWeights) error {
 	lines, silent, err := truthSources(from)
 	if err != nil {
 		return err
@@ -88,12 +101,13 @@ func (s *Session) rows(dir, from string, o tuneOptions, fe audio.RipFrontEnd, no
 			}
 		}
 	}
-	m := rowsManifest{Version: 1, RowVersion: audio.RipRowVersion, RowSize: audio.RipRowSize, Notes: fmt.Sprintf("%016x", notes)}
+	m := rowsManifest{Version: 2, RowVersion: audio.RipRowVersion, RowSize: audio.RipRowSize,
+		NotesDigest: fmt.Sprintf("%016x", w.Notes), FrameDigest: fmt.Sprintf("%016x", w.Frame)}
 	manifest := filepath.Join(dir, rowsFile)
 	if data, err := os.ReadFile(manifest); err == nil {
 		var was rowsManifest
 		if json.Unmarshal(data, &was) != nil || was != m {
-			return fmt.Errorf("%s holds rows of version %d read through the notes weights %s, and these are of version %d through %s: a directory holds one kind", dir, was.RowVersion, was.Notes, m.RowVersion, m.Notes)
+			return fmt.Errorf("%s holds rows %s, and these are %s: a directory holds one kind", dir, was.through(), m.through())
 		}
 	} else {
 		// whole or not there, as parts started together each write it

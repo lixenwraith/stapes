@@ -480,9 +480,9 @@ proves wrong or that a document now states, and link the document instead.
   `seed`, or a list of the loops with their labels written as transcripts.
 - **A test's judge is `judgeBytes`**, a unit a layer whose hidden layers give
   0 and whose output's bias is the logit of the odds named, so a stage rules
-  every row alike. It must name the notes weights: a test model's checksum is
-  its file's last eight bytes, which `ripmodels.Load` keeps as `NotesSum`; a
-  front end built by `ripmodels.New` has 0 there.
+  every row alike. It names what its row is read through, the front end's
+  `Weights`, whose digests `ripmodels.New` sets from the models, so a front end
+  built in a test names them as one loaded from files does.
 - **The trainer's judge and audio's are held together by their odds.**
   `judge.py` repeats byte for byte on CPU, a directory's fits writing one file,
   and on audio's own rows of left-out loops the two sides' odds differ by
@@ -733,15 +733,13 @@ proves wrong or that a document now states, and link the document instead.
   kit. The analysis hears a kick still ringing at 50 to 60 Hz as the bass line,
   and a snare's fixed modes move the melody's key.
 
-- A frame model's heads start with audio's `FrameSpec`'s, and any after them
-  are read by nothing, as a notes model's heads are read by name:
-  `ripmodels.New` refuses a frame model whose heads do not start with them
-  ("frame model's heads are [...], want [...] first"), so after a head audio
-  reads is added the weights trained before it load in no audio that reads it.
-  A head no decoder reads goes after them and loads in audio
-  from v0.34.0, which keeps the prefix rule; an older audio wants the heads
-  exactly. Install frame weights beside the audio tag whose `FrameSpec` they
-  start with; `--init` grows the head onto the weights from before it.
+- A frame model's heads are read by name wherever its file lays them, as a
+  notes model's are, and one no decoder reads is ignored: audio from v0.50.0
+  refuses a file without one of `FrameSpec`'s twelve, or with one of another
+  size, by the head's name, and a head added since is optional, so weights
+  trained before it load. An audio before v0.50.0 wants the twelve first and in
+  order, and one before v0.34.0 the heads exactly; `--init` grows a head onto
+  the weights from before it.
 - **A rendered loop's beats are in its label**, where audio's `BeatStarts`
   puts them under the bars' tempos (`music.label`), and the trainer reads them
   as it reads a recording's, asking every frame of a rendered loop but its last
@@ -1194,6 +1192,11 @@ proves wrong or that a document now states, and link the document instead.
   a mix.** On singers and a guitarist it never trained on it names `voice` for
   0.99 of the notes and `guitar` for 0.98; on held-out generated mixes 0.55 of
   the notes, a sung one 0.08. No decoder reads the name.
+- **A root that holds a bundle is loaded by it alone**: `tune` writes the root's
+  `rip.toml`, and at the next start the bundle refuses the root by that file's
+  name and the analysis listens. A reading or a search runs in a copy of the
+  fit's root, which holds none (`pipeline.sh`'s `reading`, `fit`), and
+  `install` writes the bundle again over what it put there.
 - **`tune 2 1 truth` is the smallest reading, and it writes.** A pool is two at
   least and a search one generation: the figures `before` are the root's own
   set's, and a set that beats it lands in the root's `rip.toml`. So a read-back

@@ -204,6 +204,8 @@ class Config:
     # the frames apart of each convolution over the cells after the near ones, PitchNet's alone
     dilations: tuple = ()
     cell: int = 32  # PitchNet's channels at each cell, its width
+    reduce: int = 8  # PitchNet's channels after its 1x1 over the stack's, and
+    wide: int = 16  # those of its convolution over thirteen semitones
 
     @property
     def pitches(self) -> int:
@@ -361,13 +363,13 @@ class PitchNet(nn.Module):
     def __init__(self, cfg: Config):
         super().__init__()
         self.cfg, self.bins = cfg, STACK_BINS
-        self.reduce = nn.Conv2d(STACK_CHANNELS, 8, 1)
-        self.wide = nn.Conv2d(8, 16, (3, 39), padding=(1, 19))  # thirteen semitones
-        self.cells = nn.Conv2d(16, cfg.cell, (7, 3), stride=(1, 3), padding=(3, 0))  # to one cell a semitone
+        self.reduce = nn.Conv2d(STACK_CHANNELS, cfg.reduce, 1)
+        self.wide = nn.Conv2d(cfg.reduce, cfg.wide, (3, 39), padding=(1, 19))  # thirteen semitones
+        self.cells = nn.Conv2d(cfg.wide, cfg.cell, (7, 3), stride=(1, 3), padding=(3, 0))  # to one cell a semitone
         self.near = nn.Conv2d(cfg.cell, cfg.cell, (7, 3), padding=(3, 1))
         self.long = nn.ModuleList(nn.Conv2d(cfg.cell, cfg.cell, 3, padding=(d, 1), dilation=(d, 1)) for d in cfg.dilations)
         self.notes = nn.Conv2d(cfg.cell, sum(n for _, n in cell_heads(cfg)), 1)  # a channel for each value a cell head reads at a pitch
-        self.frame1 = nn.Conv1d(16 * 16 + STACK_PLANES, 64, 5, padding=2)  # the regions, then each plane's scalar
+        self.frame1 = nn.Conv1d(cfg.wide * 16 + STACK_PLANES, 64, 5, padding=2)  # the regions, then each plane's scalar
         self.frame2 = nn.Conv1d(64, 64, 9, padding=8, dilation=2)
         sizes = dict(cfg.outputs)
         self.frame = nn.Linear(64, sum(n for _, n in frame_heads(cfg)))
@@ -395,7 +397,7 @@ class PitchNet(nn.Module):
         for layer in self.long:
             c = F.gelu(layer(c) + c)
         n = self.notes(c)[..., 1:self.cfg.pitches + 1]  # B channels T pitches
-        f = F.adaptive_avg_pool2d(w, (T, 16)).transpose(2, 3).flatten(1, 2)  # B 16*16 T
+        f = F.adaptive_avg_pool2d(w, (T, 16)).transpose(2, 3).flatten(1, 2)  # B wide*16 T
         f = torch.cat([f, scalars], 1)
         f = F.gelu(self.frame1(f))
         f = self.frame(F.gelu(self.frame2(f) + f).transpose(1, 2))  # B T frame heads
@@ -434,23 +436,59 @@ def frame_heads(cfg: Config) -> list:
     return [(k, sizes[k]) for k in FRAME_HEADS if k in sizes]
 
 
+def head_rows(cfg: Config, notes: bool) -> dict:
+    """the heads each output tensor of a model of this shape lays its rows by, in its order, under the tensor's name
+    less .weight or .bias: a frame model's one output layer, a notes model's notes convolution, a row for each value a
+    cell head reads at a pitch, and its frame layer; none for a frame model in towers, whose heads lie over several"""
+    if notes:
+        return {"notes": cell_heads(cfg), "frame": frame_heads(cfg)}
+    return {} if cfg.towers else {"out": [tuple(h) for h in cfg.outputs]}
+
+
 def carried(model: nn.Module, had: Config, state: dict) -> dict:
-    """model's weights with those of a model of the shape had, whose heads are the first of model's, and a notes
-    model's long convolutions the first of its: every weight they share whole, and of an output layer, or of a notes
-    model's notes convolution, the rows of the heads it had, a new head's rows and a new long convolution fresh;
-    ValueError where one does not grow into the other"""
+    """model's weights with those of a model of the shape had: every weight they share whole, and of an output layer,
+    or of a notes model's notes convolution, the rows of each head both have, by its name, wherever each lays it; a head
+    had lacks keeps its fresh rows and one model lacks is left behind, as a notes model's long convolutions after had's
+    stay fresh. A frame model in towers grows as before, by the heads after its last. ValueError where a head they
+    share differs in size, where had's long convolutions are not the first of model's, or a tensor fits neither way.
+    A head of had's that this code has no name for is taken to lie after its layer's others, as each new head was laid"""
     cfg, out = model.cfg, model.state_dict()
-    if [tuple(h) for h in had.outputs] != [tuple(h) for h in cfg.outputs[:len(had.outputs)]]:
-        raise ValueError(f"heads {'+'.join(k for k, _ in had.outputs)} are not the first of {'+'.join(k for k, _ in cfg.outputs)}")
+    sizes = dict((k, n) for k, n in cfg.outputs)
+    for k, n in had.outputs:
+        if sizes.get(k, n) != n:
+            raise ValueError(f"head {k} is of {n}, this run's of {sizes[k]}")
     if tuple(had.dilations) != tuple(cfg.dilations[:len(had.dilations)]):  # a kernel's shape does not say its frames apart
         raise ValueError(f"long convolutions {', '.join(map(str, had.dilations))} frames apart are not the first of {', '.join(map(str, cfg.dilations))}")
+    notes = isinstance(model, PitchNet)
+    now, was = head_rows(cfg, notes), head_rows(had, notes)
+    if not now and [tuple(h) for h in had.outputs] != [tuple(h) for h in cfg.outputs[:len(had.outputs)]]:
+        raise ValueError(f"heads {'+'.join(k for k, _ in had.outputs)} are not the first of {'+'.join(k for k, _ in cfg.outputs)}: a model in towers grows by the heads after its last")
+    # a notes model's head this code has no row for lay its rows after its layer's others, as a new head adds them: left behind
+    placed = {head for rows in was.values() for head, _ in rows}
+    left = sum(n for k, n in had.outputs if k not in placed) if now else 0
     for k, v in state.items():
-        if out[k].shape == v.shape:
+        layer = k.rpartition(".")[0]
+        if layer in now:  # an output layer: each head's rows to where this model lays them
+            at, to = 0, {}
+            for head, n in now[layer]:
+                to[head], at = at, at + n
+            at = 0
+            for head, n in was[layer]:
+                if head in to:
+                    out[k][to[head]:to[head] + n] = v[at:at + n]
+                at += n
+            if at > len(v) or out[k].shape[1:] != v.shape[1:]:
+                raise ValueError(f"{k} is {tuple(v.shape)}, this run's {tuple(out[k].shape)}")
+            if k.endswith(".bias"):
+                left -= (len(v) - at) * (cfg.pitches if layer == "notes" else 1)
+        elif out[k].shape == v.shape:
             out[k] = v
         elif v.dim() and out[k].shape[1:] == v.shape[1:] and len(out[k]) > len(v):
-            out[k][:len(v)] = v  # the rows of the heads it had, a head's rows after the last's
+            out[k][:len(v)] = v  # a tower's rows of the heads it had, a head's rows after the last's
         else:
             raise ValueError(f"{k} is {tuple(v.shape)}, this run's {tuple(out[k].shape)}")
+    if left:
+        raise ValueError(f"its output layers' rows are not those of its heads {'+'.join(k for k, _ in had.outputs)} as this code lays them")
     return out
 
 

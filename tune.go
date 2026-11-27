@@ -3057,6 +3057,8 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 	for c, name := range conds {
 		if sums[c].notes.given > 0 {
 			fmt.Fprintf(s.out, "%s: F1 %.3f before, %.3f after\n", name, sums[c].notes.f1(), after[c].notes.f1())
+		} else if sums[c].noteless > 0 {
+			fmt.Fprintf(s.out, "%s: notes %.1f a minute before, %.1f after, heard where none plays\n", name, float64(sums[c].notes.heard)/sums[c].noteless, float64(after[c].notes.heard)/sums[c].noteless)
 		}
 		if was, ok := sums[c].drumScore(sums[c], rate); ok {
 			now, _ := after[c].drumScore(sums[c], rate)
@@ -3423,6 +3425,7 @@ func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule
 	} else if t.drums {
 		missed.drumless = minutes
 	}
+	missed.noteless = t.given.noteless
 	rip := func(p audio.RipParams) (*audio.Rip, error) {
 		return audio.Ripper{Params: p, FrontEnd: snd.ear, Lead: lead, Judge: t.judge, Stages: true}.Samples(snd.x, audio.RipRate)
 	}
@@ -3450,6 +3453,9 @@ func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule
 	ag, _ := matchHeard(r, given, t.timed)
 	ag = ag.Until(float64(len(snd.x)) / audio.RipRate) // nothing heard ends past the recording
 	c := truthCount{notes: everyNote(ag), lines: len(t.lines), drummed: missed.drummed, drumless: missed.drumless}
+	if c.notes.given == 0 { // a truth is its recording's notes: one that gives none says none plays
+		c.noteless = float64(len(snd.x)) / audio.RipRate / 60
+	}
 	if c.lines > 0 && len(t.beats) > 1 {
 		c.beats = len(t.beats)
 	}
@@ -3479,22 +3485,23 @@ func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule
 // truthCount is a rip against a truth: its notes, its drum hits, its strikes by
 // time alone, of the downbeats the truth gives those on a bar line of the rip's and
 // of its beats those a beat of the rip's falls on, and those at its grid's edges
-// with those lost (edges); the minutes of the recordings whose truth gives hits and
-// of those it knows play no drum; and what a label says past them (readings)
+// with those lost (edges); the minutes of the recordings whose truth gives hits, of
+// those it knows play no drum and of those it gives no note of; and what a label
+// says past them (readings)
 type truthCount struct {
-	notes, drums      noteCount
-	struck            struckCount
-	lines, beats      int
-	onLine, onBeat    float64
-	edges             [4]int
-	drummed, drumless float64
-	ends              audio.EndReading
-	loud, hitLoud     audio.LevelReading
-	parts             audio.PartReading
-	keys              keyCount
-	chords            audio.ChordReading
-	stated            statedCount
-	stages            audio.StageReading // what each stage of the decoders lost and added
+	notes, drums                noteCount
+	struck                      struckCount
+	lines, beats                int
+	onLine, onBeat              float64
+	edges                       [4]int
+	drummed, drumless, noteless float64
+	ends                        audio.EndReading
+	loud, hitLoud               audio.LevelReading
+	parts                       audio.PartReading
+	keys                        keyCount
+	chords                      audio.ChordReading
+	stated                      statedCount
+	stages                      audio.StageReading // what each stage of the decoders lost and added
 }
 
 // keyCount is of the recordings whose truth names a key those whose rip names
@@ -3518,7 +3525,7 @@ func (c truthCount) plus(o truthCount) truthCount {
 		return audio.LevelReading{Given: a.Given + b.Given, Right: a.Right + b.Right, Off: slices.Concat(a.Off, b.Off)}
 	}
 	return truthCount{c.notes.plus(o.notes), c.drums.plus(o.drums), c.struck.plus(o.struck), c.lines + o.lines, c.beats + o.beats, c.onLine + o.onLine, c.onBeat + o.onBeat,
-		[4]int{c.edges[0] + o.edges[0], c.edges[1] + o.edges[1], c.edges[2] + o.edges[2], c.edges[3] + o.edges[3]}, c.drummed + o.drummed, c.drumless + o.drumless,
+		[4]int{c.edges[0] + o.edges[0], c.edges[1] + o.edges[1], c.edges[2] + o.edges[2], c.edges[3] + o.edges[3]}, c.drummed + o.drummed, c.drumless + o.drumless, c.noteless + o.noteless,
 		audio.EndReading{Given: c.ends.Given + o.ends.Given, Right: c.ends.Right + o.ends.Right, Past: c.ends.Past + o.ends.Past, PastWrong: c.ends.PastWrong + o.ends.PastWrong,
 			Off: slices.Concat(c.ends.Off, o.ends.Off)},
 		levels(c.loud, o.loud), levels(c.hitLoud, o.hitLoud),

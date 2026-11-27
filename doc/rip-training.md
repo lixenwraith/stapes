@@ -1167,12 +1167,7 @@ audio.
 the same numbers in Go. The shapes through a window, with B the batch:
 
 ```
-input          B x 512 x 1264
-reshape        B x 4 x 512 x 316             channels x frames x features
-conv 0         B x 16 x 512 x 316            3x3, GELU
-conv 1         B x 16 x 512 x 158            3x3, GELU, max over 2 features
-conv 2         B x 32 x 512 x 79             3x3, GELU, max over 2 features
-flatten        B x 512 x 2528
+input          B x 512 x 632                 the two planes in dB, 316 values each
 input layer    B x 512 x 256
 4 blocks       B x 512 x 256                 pre-norm attention and feed-forward 1024
 norm, output   B x 512 x 407                 raw scores
@@ -1182,10 +1177,28 @@ Attention has 8 heads and looks 64 frames (0.74 s) either side, in every block. 
 are no position embeddings: each head subtracts a slope of `2^(-8(h+1)/8)` per frame of
 distance from its scores (ALiBi), so a window of any length works.
 
-The 3,919,127 weights: 592 + 2,320 + 4,640 in the convolutions, 647,424 in the input
-layer, 789,760 in each block, 512 in the final norm, 104,599 in the output layer, 2,313
-of them the family head's, 514 the beat's and the downbeat's and 514 the struck heads'.
-A model of the two dB planes has 288 fewer, all in `convs.0.weight`.
+The 3,426,199 weights: 162,048 in the input layer, 789,760 in each block, 512 in the
+final norm, 104,599 in the output layer, 2,313 of them the family head's, 514 the beat's
+and the downbeat's and 514 the struck heads'.
+
+That is the model `train.py` builds with no flag for its shape. `--pcen` gives it the
+two PCEN planes after the two in dB, 1,264 inputs and 161,792 weights more in the input
+layer. `--convs 16x3x3/1,16x3x3/2,32x3x3/2` puts three convolutions before the input
+layer, the planes their channels:
+
+```
+input          B x 512 x 1264                with --pcen
+reshape        B x 4 x 512 x 316             channels x frames x features
+conv 0         B x 16 x 512 x 316            3x3, GELU
+conv 1         B x 16 x 512 x 158            3x3, GELU, max over 2 features
+conv 2         B x 32 x 512 x 79             3x3, GELU, max over 2 features
+flatten        B x 512 x 2528
+input layer    B x 512 x 256
+```
+
+which is 3,919,127 weights: 592 + 2,320 + 4,640 in the convolutions and 647,424 in the
+input layer, the rest as above; of the two planes in dB alone it has 288 fewer, all in
+`convs.0.weight`.
 
 The 407 outputs, in the order the file lists the heads:
 
@@ -1236,9 +1249,9 @@ heads at twelve pitches a frame, 552 bytes. The eight names share one softmax.
 ```
 input          B x T x 1264             the four planes
 stack          B x 32 x T x 271         the harmonic stack of section 4
-reduce         B x 8 x T x 270          1x1, GELU, the scalars set aside
-wide           B x 16 x T x 270         3x39, thirteen semitones, GELU
-cells          B x 32 x T x 90          7x3, stride 3 over features, one cell a semitone, GELU
+reduce         B x 8 x T x 270          1x1, GELU, the scalars set aside; --reduce
+wide           B x 16 x T x 270         3x39, thirteen semitones, GELU; --span
+cells          B x 32 x T x 90          7x3, stride 3 over features, one cell a semitone, GELU; --cell
 near           B x 32 x T x 90          7x3 with a residual, GELU
 long           B x 32 x T x 90          3x3 dilated in time, one each of --dilations, with a residual, GELU
 notes          B x 51 x T x 88          1x1: pitch, strike, release, velocity, the cents head's two,

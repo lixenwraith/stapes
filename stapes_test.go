@@ -2823,6 +2823,7 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 	l, dir := loops[0], t.TempDir()
 	s.rip.OnsetMin = 0.02
 	start := s.rip
+	var noteless float64 // the notes a minute the start hears in the beat alone, whose truth gives none
 	for name, slots := range map[string][audio.MusicSlots]audio.PatternID{"drums": {steady}, "bare": {audio.PatternSilence, l.slots[1], l.slots[2], l.slots[3]}} {
 		x, err := s.eng.RenderMusic(slots, l.bpm, l.meter, 4, l.root, l.scale, nil, 1)
 		if err != nil {
@@ -2843,7 +2844,7 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 		}
 		notes, hits := r.Notes, []audio.RipHit(nil)
 		if name == "drums" {
-			notes, hits = nil, r.Hits()
+			notes, hits, noteless = nil, r.Hits(), float64(len(r.Notes))/(float64(len(x))/float64(rate)/60)
 		}
 		var mid bytes.Buffer
 		if err := audio.WriteMIDI(&mid, notes, hits, r.BPM, r.Meter); err != nil {
@@ -2872,6 +2873,14 @@ func TestTuneTruthCountsADrumHeardWhereTheTruthKnowsNonePlays(t *testing.T) {
 	n, _ := fmt.Sscanf(said, "%f before, %f after: %f and %f hit(s) a minute heard where none plays, against %f given elsewhere", &was, &now, &before, &after, &rate)
 	if n != 5 || !strings.Contains(out.String(), "drums: drums F1 1.000 before, ") || before == 0 || after >= before || now <= was {
 		t.Errorf("want the drums' own F1 one at the start, and of the drumless loop a score that rose as the hits a minute heard there fell from over none:\n%s", out.String())
+	}
+	var notesWas, notesNow float64
+	_, said, _ = strings.Cut(out.String(), "drums: notes ")
+	if n, _ := fmt.Sscanf(said, "%f a minute before, %f after, heard where none plays", &notesWas, &notesNow); n != 2 || math.Abs(notesWas-noteless) > 0.05 {
+		t.Errorf("of the beat alone, whose truth gives no note, want the %.1f notes a minute the start hears there said, before and after, got %.1f and %.1f:\n%s", noteless, notesWas, notesNow, out.String())
+	}
+	if strings.Contains(out.String(), "bare: notes ") {
+		t.Errorf("notes heard where none plays said of a loop whose truth gives notes:\n%s", out.String())
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {

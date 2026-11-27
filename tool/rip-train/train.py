@@ -713,15 +713,14 @@ def evaluate(model: ripmodels.FrameModel, frs, tgs, device: str, low: int | None
     with torch.no_grad():
         for fr, t in zip(frs, tgs):
             fr, t = fr.to(device), {k: v.to(device) for k, v in t.items()}
-            l = losses(model, fr, t)
+            out = model(fr)
+            l = losses(model, fr, t, out)
             for k, v in l.items():
                 x = v.item()
                 sums[k] = sums.get(k, 0.0) + x
                 each.setdefault(k, []).append(x)
             loops.append(int(t["loop"][0]) if "loop" in t else len(loops))
             starting = "reach" in t and bool(t["placed"].any())  # a window of a loop whose starts are placed
-            if low is not None or timed or starting or hit:
-                out = model(fr)
             if starting:
                 reach = int(t["reach"][0])
                 for i in range(len(out)):
@@ -913,8 +912,10 @@ def rise_loss(logits: torch.Tensor, marks: torch.Tensor, stretch: torch.Tensor, 
     return (((l * cells).mean(-1) * valid).sum() + (rose * whole).sum() / k) / ((cells.mean(-1) * valid).sum() + whole.sum() / k).clamp(min=1)
 
 
-def losses(model: ripmodels.FrameModel, fr: torch.Tensor, t: dict) -> dict:
-    y = model(fr)
+def losses(model: ripmodels.FrameModel, fr: torch.Tensor, t: dict, y: torch.Tensor | None = None) -> dict:
+    """each head's loss over a batch of windows and their total; y is the model's scores for them where the caller has them"""
+    if y is None:
+        y = model(fr)
     cfg = model.cfg
     valid = t["valid"]
     def bce(name, target, pos_weight, asked=valid):
@@ -1256,6 +1257,8 @@ def main() -> None:
     ap.add_argument("--dilations", default="", help="PitchNet's long convolutions, their frames apart, comma-separated: 3,9,27 hears half a second either way; "
                     "from an --init of none or of the first of them, the rest grow, started to hand its cells on as near as the GELU after each lets")
     ap.add_argument("--cell", type=int, default=32, help="PitchNet's channels at each cell, its width; the weight file carries it")
+    ap.add_argument("--reduce", type=int, default=8, help="PitchNet's channels after its 1x1 over the stack's 32; the weight file carries it")
+    ap.add_argument("--span", type=int, default=16, help="PitchNet's channels of its convolution over thirteen semitones, which the cells and the frame's heads read; the weight file carries it")
     ap.add_argument("--family-unasked", action="store_true", help="a frame model's family head grown and asked nothing: no term for it in the loss and its rows of the output layer zero from the start, so every frame's shares are even and the file says nothing there")
     ap.add_argument("--plays", type=float, default=PLAYS, help="the weight of the heads of what plays each pitch in the total, against what plays the frame: a quarter by default")
     ap.add_argument("--probe", nargs="?", const="", metavar="HEADS", help="heads of one output layer, comma-separated, trained alone from --init's weights, every other weight held as it was; by itself a notes model's heads of what plays each pitch, or a frame model's beat and downbeat: a notes model carries no cents head, so its file rips as its start, and a frame model's other heads say what its start's did; the last step is exported")
@@ -1310,7 +1313,7 @@ def main() -> None:
     heard = dict(inputs=ripmodels.STACK_BINS + 1, channels=ripmodels.STACK_CHANNELS, outputs=heads) if args.pitchnet else \
         dict(channels=4 if args.pcen else 2, outputs=list(ripmodels.HEADS))
     cfg = ripmodels.Config(**heard, convs=convs, dim=args.dim, layers=args.layers, heads=args.heads, ffn=args.ffn, window=args.attention_window, towers=towers,
-                          dilations=tuple(int(d) for d in filter(None, args.dilations.split(","))), cell=args.cell)
+                          dilations=tuple(int(d) for d in filter(None, args.dilations.split(","))), cell=args.cell, reduce=args.reduce, wide=args.span)
     planes = ripmodels.planes(cfg)  # what the data loader makes; a notes model stacks them
     resume = bool(args.checkpoint) and os.path.exists(args.checkpoint)
     start = args.checkpoint if resume else args.init
@@ -1324,14 +1327,17 @@ def main() -> None:
         had = ripmodels.shape(ck["cfg"])  # a setting newer than the checkpoint takes the value it was built with
         had.outputs, had.dilations = [tuple(h) for h in had.outputs], tuple(had.dilations)
         ck["cfg"] = asdict(had)
-    # a start from a model of the heads before the last added, such as the beat and the downbeat, or a notes model of
-    # the long convolutions before the last: its weights carry over, a new head's rows fresh, a new long convolution
-    # started to hand its cells on
+    # a start from a model of other heads, such as one from before the beat and the downbeat or one with a head this
+    # run's has no more, or from a notes model of the long convolutions before the last: its weights carry over, each
+    # head's rows by its name, a new head's rows fresh, a head this run lacks left behind, a new long convolution
+    # started to hand its cells on; a model in towers grows only by the heads after its last
     grown = False
     if had is not None and not resume and asdict(had) != asdict(cfg):
         rest = lambda c: {k: v for k, v in asdict(c).items() if k not in ("outputs", "dilations")}
         longs = cfg.dilations[:len(had.dilations)] if args.pitchnet else cfg.dilations  # a frame model has none
-        grown = rest(had) == rest(cfg) and had.outputs == cfg.outputs[:len(had.outputs)] and had.dilations == longs
+        sizes = dict(cfg.outputs)
+        heads = all(sizes.get(k, n) == n for k, n in had.outputs) if args.pitchnet or not towers else had.outputs == cfg.outputs[:len(had.outputs)]
+        grown = rest(had) == rest(cfg) and heads and had.dilations == longs
     # refused before the corpus loads: load_state_dict names only a tensor's size,
     # and takes another head count or window without a word
     if ck is not None and ck.get("cfg") != asdict(cfg) and not grown:
@@ -1383,7 +1389,10 @@ def main() -> None:
             model.load_state_dict(ripmodels.carried(model, had, ck["model"]))
         except ValueError as err:
             raise SystemExit(f"{start}: {err}")
-        grew = [f"its heads but {', '.join(h for h, _ in cfg.outputs[len(had.outputs):])}, which start fresh"] if cfg.outputs != had.outputs else []
+        fresh, gone = [h for h, _ in cfg.outputs if h not in dict(had.outputs)], [h for h, _ in had.outputs if h not in dict(cfg.outputs)]
+        grew = [f"its heads but {', '.join(fresh)}, which start fresh"] if fresh else []
+        if gone:
+            grew.append(f"without its {', '.join(gone)}, which this run's model has none of")
         if cfg.dilations != had.dilations:
             frs = validation(loops[:GROWN_WINDOWS], args.window, planes)[0][:GROWN_WINDOWS]
             miss = ripmodels.start_long(model, len(had.dilations), torch.cat(frs).to(args.device))

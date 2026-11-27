@@ -873,9 +873,11 @@ proves wrong or that a document now states, and link the document instead.
 - A notes model's per-pitch heads are rows of two tables, `CELL_HEADS` in
   `ripmodels.py` and audio's `notesHeads`: a new head adds a row to each, with
   the values it reads at a pitch, and goes after the others in
-  `PITCHNET_HEADS`, since `--init` grows a model only from weights whose heads
-  are the first of the new one's. The file's version holds while its header
-  does; an older audio reads the heads it knows by name.
+  `PITCHNET_HEADS`. `--init` carries each head's rows by its name
+  (`ripmodels.carried`), so a start one head short or with one this code has
+  no more opens; a head the code has no row for is taken to lie after its
+  layer's others, as each new head was laid. The file's version holds while its
+  header does; an older audio reads the heads it knows by name.
 - What plays each pitch is three more of those rows, and the trainer reads a
   note from them as audio does (`said`, `noted` against `RipFrames.tell`):
   the cells' say weighed by salience, over the cells among a frame's twelve

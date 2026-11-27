@@ -41,6 +41,9 @@ CHECKPOINT=${CHECKPOINT:-$CORPUS/ripframe.pt}
 ROOT=${ROOT:-${XDG_CONFIG_HOME:-$HOME/.config}/stapes}   # the stapes root rip hears with
 NOTES=${NOTES:-}                     # a notes model's weight file: notes trains it, and the stages after put it beside OUT as ripnotes.bin; empty for none
 DILATIONS=${DILATIONS:-}             # notes: its long convolutions' frames apart, e.g. 3,9,27; empty for none
+CELL=${CELL:-}                       # notes: its channels at each cell, over the stack's and over thirteen semitones; empty for train.py's own, 32, 8 and 16
+REDUCE=${REDUCE:-}
+SPAN=${SPAN:-}
 LR=${LR:-}                           # the learning rate; empty for train.py's own
 EXTRA=${EXTRA:-}                     # more corpora and the share of windows each draws, dir:share by commas, such as recorded sets; empty for none
 CARRY=${CARRY:-}                     # carry: a pass that carries on from INIT with its optimizer's state; empty for a fresh run
@@ -141,7 +144,7 @@ shard() {
 notes() {
 	[ -n "$NOTES" ] || { echo "notes: NOTES names the notes model's weight file" >&2; exit 2; }
 	echo "== notes: the notes model, into $NOTES"
-	OUT=$NOTES CHECKPOINT=${NOTES%.bin}.pt train --pitchnet ${DILATIONS:+--dilations "$DILATIONS"}
+	OUT=$NOTES CHECKPOINT=${NOTES%.bin}.pt train --pitchnet ${DILATIONS:+--dilations "$DILATIONS"} ${CELL:+--cell "$CELL"} ${REDUCE:+--reduce "$REDUCE"} ${SPAN:+--span "$SPAN"}
 }
 
 merge() {

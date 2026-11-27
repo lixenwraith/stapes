@@ -535,6 +535,34 @@ full-scale peak where its comment says a third clip, so the bank's levels move
 the corpus's bytes; decide whether a loop meets its room at a drawn level, as the
 lag's fit does.
 
+### Give the frame model's blocks a convolution, and a gated feed-forward
+
+- Priority: P2
+- Affected files: `tool/rip-train/ripmodels.py` (`Block`, `export`),
+  `tool/rip-train/train.py`, and transformer
+  ([its todo](https://github.com/lixenwraith/transformer/blob/main/doc/todo.md#blocks))
+
+The frame model's block is attention and a feed-forward, as a model of text has
+them. What it hears lies close: an onset, a strike, a beat are a few frames
+wide. And its recipe trades one kind of sound for another by the step, as the
+frame passes' tables by kind show. Two changes to a block, each read by itself,
+the first first:
+
+- **A convolution after the attention, a Conformer's block:** a 1×1 to twice the
+  width, a gate, a depthwise convolution over some fifteen frames, a norm, a
+  swish and a 1×1, added back.
+- **A gated feed-forward, GeGLU or SwiGLU,** at the same count of weights.
+
+What decides each: two frame models trained from no weights by one recipe and
+seed, alike in steps and in weights, with it and without, read by kind on the
+read-back's recordings (the bars, the drums' hits, what is struck by instant,
+and a pair's notes with each) with what each costs a second of sound and the
+wait a stream gains from the kernels. Kept where a kind reads better and none
+falls by more than a threshold fitted for the candidate gives back; else its
+flag leaves the trainer and its item transformer's list. It waits for a frame
+model built whole: grown onto the weights in use, it would be read against a
+trunk that never had it.
+
 ### Carry a pass's rate further
 
 - Priority: P2

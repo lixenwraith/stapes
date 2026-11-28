@@ -205,14 +205,15 @@ proves wrong or that a document now states, and link the document instead.
   `Rip.Stages`, which the session's rips and every take keep). A reading is
   `tune 2 1 truth <list>`, its figures before: a pool of 2 is the least, and a
   set its search finds is written into the root's `rip.toml`, so each reading
-  takes a root of its own (`tool/rip-train/pipeline.sh readback`). A root whose
-  `rip.toml` sets `joint = 1` reads the joint path's.
+  takes a root of its own (`tool/rip-train/pipeline.sh readback`). A condition's
+  `grids` line counts its rips by the path that decoded their grid (audio's
+  `Rip.Path`), which a set's `grid_margin` chooses.
 - **A label's truth is `timed`**, the list's fourth field: a label is on its
   recording's clock, and untimed the matcher fits a map from the notes, which a
   change to the notes moves. A corpus's loops under four seconds `tune ...
   truth` refuses: list by the WAV's length.
 - **A reading takes minutes where `genes` names one gene its path never
-  moves** (`joint_margin` under `joint` 0): `tune 2 1 truth` settles each gene
+  moves** (`joint_margin` under `grid_margin` 2): `tune 2 1 truth` settles each gene
   it moved over every loop, an hour for 580, and its before figures are the same.
 - **Beside the heads the decoders read the recording**: the bass's own-pitch
   and steady-rise rules, `dynamics`, the accounting, `bright` and the drums'

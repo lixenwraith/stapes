@@ -2818,7 +2818,7 @@ var modelGenes = []func(*audio.RipParams) *float64{
 // the bar a hit rises to against its drum's loudest and, where the models hear what
 // is struck, that of a strike; barGenes when one gives bars: the tempo's prior,
 // combs and cuts, the beats' tightness, the bar lines' weights and the meter's
-// margins, and the joint path's costs and levels
+// margins, the joint path's costs and levels and the grid's choice
 var drumGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.OnsetMin },
 	func(p *audio.RipParams) *float64 { return &p.Struck },
@@ -2848,6 +2848,7 @@ var barGenes = []func(*audio.RipParams) *float64{
 	func(p *audio.RipParams) *float64 { return &p.JointBeat },
 	func(p *audio.RipParams) *float64 { return &p.JointLine },
 	func(p *audio.RipParams) *float64 { return &p.JointMargin },
+	func(p *audio.RipParams) *float64 { return &p.GridMargin },
 }
 
 // field copies a parameter from one set to another
@@ -3083,6 +3084,9 @@ func (s *Session) tuneTruth(o tuneOptions, list, file string, fe audio.RipFrontE
 			fmt.Fprintf(s.out, "%s: bars %.3f before, %.3f after: downbeats on a line %.3f, %.3f, beats on a beat %.3f, %.3f; of those before the first downbeat %d, %d of %d lost, after the last %d, %d of %d\n",
 				name, sums[c].bars(), after[c].bars(), l, la, b, ba, e[1], ea[1], e[0], e[3], ea[3], e[2])
 		}
+		pw, pn := sums[c].paths, after[c].paths
+		fmt.Fprintf(s.out, "%s: grids tracked %d before, %d after, joint %d, %d, cues %d, %d\n", name,
+			pw[audio.PathTracked], pn[audio.PathTracked], pw[audio.PathJoint], pn[audio.PathJoint], pw[audio.PathCues], pn[audio.PathCues])
 		var lacks []string
 		for _, rd := range readings {
 			switch {
@@ -3471,6 +3475,7 @@ func (t *truthTake) count(snd *takeSound, p audio.RipParams, lead audio.LeadRule
 		c.struck = countStruck(r, t.strikes, tol, t.timed, float64(len(snd.x))/audio.RipRate/60)
 	}
 	c.stages = audio.ReadStages(r, ag, hg, tol)
+	c.paths[r.Path]++
 	if t.said != nil {
 		c.read(r, ag, hg, t.said)
 	}
@@ -3501,7 +3506,8 @@ type truthCount struct {
 	keys                        keyCount
 	chords                      audio.ChordReading
 	stated                      statedCount
-	stages                      audio.StageReading // what each stage of the decoders lost and added
+	stages                      audio.StageReading       // what each stage of the decoders lost and added
+	paths                       [audio.PathJoint + 1]int // the rips whose grid each path decoded
 }
 
 // keyCount is of the recordings whose truth names a key those whose rip names
@@ -3533,7 +3539,14 @@ func (c truthCount) plus(o truthCount) truthCount {
 		c.keys.plus(o.keys),
 		audio.ChordReading{Given: c.chords.Given + o.chords.Given, Right: c.chords.Right + o.chords.Right},
 		statedCount{c.stated.ends + o.stated.ends, c.stated.loud + o.stated.loud, c.stated.hitLoud + o.stated.hitLoud, c.stated.parts + o.stated.parts, c.stated.keys + o.stated.keys, c.stated.chords + o.stated.chords},
-		addStages(c.stages, o.stages)}
+		addStages(c.stages, o.stages), addPaths(c.paths, o.paths)}
+}
+
+func addPaths(a, b [audio.PathJoint + 1]int) [audio.PathJoint + 1]int {
+	for i := range a {
+		a[i] += b[i]
+	}
+	return a
 }
 
 // addStages is two stage readings counted as one, nil where neither has any

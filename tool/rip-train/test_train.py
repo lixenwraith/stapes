@@ -1801,9 +1801,10 @@ class TheDatacheck(unittest.TestCase):
 class TheRoundsTable(unittest.TestCase):
     def test_a_set_under_which_a_kind_fell_is_said_before_the_rows(self):
         """A read-back's log gives a row a kind, what is struck beside its lines' hits, a minute where none plays, as the
-        notes of a kind whose truth gives none; a fitted set's falls against the start are the first line, and with
-        them such notes where they rose."""
+        notes of a kind whose truth gives none, and the rips whose grid the joint path decoded; a fitted set's falls
+        against the start are the first line, and with them such notes where they rose."""
         logs = {"start": "guitar: F1 0.817 before, 0.817 after\n"
+                         "guitar: grids tracked 18 before, 17 after, joint 2, 3, cues 0, 0\n"
                          "guitar: ends 0.400 before, 0.400 after, of 2794 note(s) matched whose end is given\n"
                          "guitar: ends 1676 wrong, by stage: strikes early 1418 before and after\n"
                          "guitar: struck 0.2 strike(s) a minute before, 0.3 after, the lines' hits 0.1, 0.1, heard where none plays, against 231 instant(s) given elsewhere\n"
@@ -1822,9 +1823,9 @@ class TheRoundsTable(unittest.TestCase):
             lines = table.table(paths).splitlines()
         self.assertEqual(lines[0], "fell under fit-voice, against start: notes on guitar 0.817 to 0.790, struck on E-GMD 0.912 to 0.901, "
                                    "notes where none plays on E-GMD 35.9 to 41.2 a minute")
-        self.assertEqual(lines[2].split(), ["guitar", "start", "0.817", "0.400", "1118", "of", "2794", "-", "-", "0.2/min", "0.1/min"] + ["-"] * 4)
+        self.assertEqual(lines[2].split(), ["guitar", "start", "0.817", "0.400", "1118", "of", "2794", "-", "-", "0.2/min", "0.1/min", "-", "2", "of", "20"] + ["-"] * 3)
         self.assertEqual(lines[5].split()[:3], ["voice", "fit-voice", "0.470"])
-        self.assertEqual(lines[6].split(), ["E-GMD", "start", "35.9/min"] + ["-"] * 4 + ["0.912", "0.882"] + ["-"] * 4)
+        self.assertEqual(lines[6].split(), ["E-GMD", "start", "35.9/min"] + ["-"] * 4 + ["0.912", "0.882"] + ["-"] * 5)
 
 
 if __name__ == "__main__":

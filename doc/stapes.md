@@ -293,8 +293,10 @@ Over the library's rip (library
   loudness with `onset_min` and the bars, which the drums' F1 sees.
   With strikes given `onset_min` is searched too (`drumGenes`), and `struck`
   where the models hear them, with bars the tempo's
-  prior, combs, cuts, `tightness`, the bars' weights, the meter's margins and
-  the joint path's costs and levels (`barGenes`). `genes` frees of these those
+  prior, combs, cuts, `tightness`, the bars' weights, the meter's margins, the
+  joint path's costs and levels and the grid's choice (`barGenes`). Each
+  condition's `grids` line counts its rips by the path that decoded their grid,
+  the tracked, the joint or the cues'. `genes` frees of these those
   it names alone (`parseGenes`), a gene by its key in `rip.toml` or a part,
   `notes`, `drums` or `bars`, by its genes (`geneParts`), every other held at
   the current set, so a part is searched apart; a name it does not know is

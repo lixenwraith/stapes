@@ -24,10 +24,12 @@ READINGS = (
     ("chords", r"chords ([0-9.]+) before"),
 )
 WRONG = r"ends (\d+) wrong"
+GRIDS = r"grids tracked (\d+) before, \d+ after, joint (\d+), \d+, cues (\d+),"  # what decoded each rip's grid
 QUIET = r"struck ([0-9.]+) strike\(s\) a minute before, [0-9.]+ after, the lines' hits ([0-9.]+),"  # where none plays
 NOTELESS = r"notes ([0-9.]+) a minute before, [0-9.]+ after, heard where none plays"
-# the table's columns and their widths: the readings, the ends right in notes after the ends' share
-COLUMNS = (("notes", 10), ("ends", 7), ("ends right", 15), ("loudness", 10), ("drums", 7), ("struck", 9), ("by line", 9), ("bars", 7), ("parts", 7), ("key", 7), ("chords", 8))
+# the table's columns and their widths: the readings, the ends right in notes after the ends' share, the grids the joint path
+# decoded of the rips after the bars
+COLUMNS = (("notes", 10), ("ends", 7), ("ends right", 15), ("loudness", 10), ("drums", 7), ("struck", 9), ("by line", 9), ("bars", 7), ("joint grids", 13), ("parts", 7), ("key", 7), ("chords", 8))
 FIRST = ("models", "judge", "start")  # the rows no search made, in the order they stand
 FELL = 0.005  # a fall under this is not said
 ROSE = 0.5  # nor a rise of the notes a minute heard where none plays under this
@@ -43,6 +45,9 @@ def read(path: str) -> dict[str, dict[str, float]]:
                 continue
             if m := re.match(WRONG, rest):
                 kinds.setdefault(kind, {})["wrong"] = int(m.group(1))
+                continue
+            if m := re.match(GRIDS, rest):
+                kinds.setdefault(kind, {})["grids"] = tuple(int(g) for g in m.groups())
                 continue
             if m := re.match(QUIET, rest):
                 kinds.setdefault(kind, {}).update({"struck a minute": float(m.group(1)), "by line a minute": float(m.group(2))})
@@ -85,6 +90,7 @@ def table(paths: list[str]) -> str:
             right = f"{row['matched'] - row['wrong']} of {row['matched']}" if "wrong" in row and "matched" in row else "-"
             cells = [f"{row[c]:.3f}" if c in row else f"{row[c + ' a minute']:.1f}/min" if c + " a minute" in row else "-" for c, _ in READINGS]
             cells.insert(2, right)
+            cells.insert(8, f"{row['grids'][1]} of {sum(row['grids'])}" if "grids" in row else "-")
             out.append(k.ljust(width) + s.ljust(width) + "".join(c.rjust(w) for c, (_, w) in zip(cells, COLUMNS)))
     return "\n".join(out) + "\n"
 

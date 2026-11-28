@@ -442,16 +442,15 @@ Left open by what landed, each with the option not taken:
 A recording read as singing is ripped under singing's own set (`rip.voice.toml`), the
 others under the root's ([Stapes §4](stapes.md#4-the-rips-verbs)). Left:
 
-- **The grid's margin by kind.** A rip takes the joint path's grid where the heads
-  agree with it by `grid_margin` more than with the tracked path's, so a kind's set
-  holds the margin fitted for it: drums 0.19, a guitar 0.27, the root's own -0.29, on
-  the fit side's guitars of players 00 to 02, E-GMD's validation takes and generated
-  loops of a seed no round drew, no set of them reading fewer recordings right than
-  the tracked path alone. Drums alone and drums under music are one kind, and they
-  pull the margin apart (E-GMD's best over 0.1, the loops' under 0). A root with no
-  set reads at 0, which takes a lone guitar's grid from the joint path too often (3 of
-  player 04's 38 unseen recordings right where 7). No real mix with its bars given has
-  been read. Close: such a list, read under the sets.
+- **The grid's margin by kind.** The joint path is run, and its grid taken where the
+  heads agree with it by `grid_margin` more than with the tracked path's, only under a
+  kind's set that names a margin under 2: drums 0.19, the highest pooled bars of the
+  fit side's E-GMD validation takes and generated loops of a seed no round drew. A
+  guitar has none, the joint path reading no guitar right that the tracked path
+  misses, nor a recording of no kind, whose curve rises along no stretch; a root with
+  no set rips as before. Drums alone and drums under music are one kind to `kindOf`,
+  and a guitar read as drums takes the drums' margin. No real mix with its bars given
+  has been read. Close: such a list, read under the sets.
 - **Drums alone are not told from drums under music**: over a kit the pitch head finds
   pitches and the family head a bass, and the pair writes a median of 40 notes a minute
   on E-GMD's test takes, where none plays. No reading counts them. Close: `tune ...

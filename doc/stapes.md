@@ -315,7 +315,9 @@ Over the library's rip (library
   parameters searched, so each recording is heard once (`heardOnce`) and a
   candidate pays the decoders alone; `frames <dir>` keeps what was heard
   between runs, a gob of the `RipFrames` named by the checksums of the
-  recording and of the weight files (`Session.earSum`). What a rip reads of a
+  recording and of the weight files (`Session.earSum`) and `-ear`, the mark of
+  the ear audio hears a recording in hand with; one kept by a build that heard
+  it whole, without the mark, is refused by name. What a rip reads of a
   take (`takeSound`), its samples at the rip's rate and its frames, some 450 kB
   a second of sound, is held after its first rip in the list's order while
   `hold` has room (`truthTake.held`); every other take is read again as each

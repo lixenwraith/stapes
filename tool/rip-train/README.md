@@ -178,7 +178,8 @@ tool/rip-train/pipeline.sh rows judge fit readback table keep
   what a rip writes over drums alone), ends (their share and the notes whose
   end is right), loudness, drums, what is struck by instant and beside it the
   lines' hits counted so (`by line`), either a minute where none plays, bars,
-  parts, key and chords, and before the rows
+  the rips whose grid the joint path decoded (`joint grids`), parts, key and
+  chords, and before the rows
   each fitted set's falls of more than 0.005 against the start, or the judge
   where no start is named, and with them such notes where they rose by over
   0.5 a minute.

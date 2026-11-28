@@ -241,6 +241,16 @@ proves wrong or that a document now states, and link the document instead.
   so a rule the heads settle (a 12/8 read over its eighths or over its dotted
   quarters) is tested through a front end that hears through the analysis and
   writes `Beat` and `Downbeat` by hand (`builtHeads`).
+- **A truth of two sections is read as one.** A rip's downbeats count only
+  where its one bar is within a tenth of the truth's median bar, which over two
+  loops of other bars is one loop's or the joint's: of recordings of two loops
+  laid end to end (`tool/rip-lab/audit/joinloops.py`), 22 of 40 whose tempo
+  changes and 22 of 40 whose meter does read no downbeat at all. A label's
+  `sections` is read by nothing yet.
+- **The held-out loops hold few pairs alike in tempo, meter and key**: 12
+  ordered pairs among the 126 arranged loops of `heldout-dad4f44`'s read-back
+  185, the tempos six and the keys 72; a control of 40 took 480 more loops of
+  their line on their build under another seed.
 - **`live` keeps the offline rip, and its test compares that, not the
   stream.** `RipStream.Final` rips the samples the stream kept as float32,
   which a 16-bit WAV's are exactly (a 32-bit integer or 64-bit float one's

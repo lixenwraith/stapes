@@ -66,7 +66,7 @@ type Session struct {
 	modelFiles []string // the weight files frontEnd loaded, in their order
 	earSum     string   // the checksum of the weight files frontEnd loaded, which names the frames tune truth keeps
 	// judge rules the model's strikes in the installed scores' place: the root's
-	// ripjudge.bin, fitted on the notes weights loaded; nil for the installed scores
+	// ripjudge.bin, fitted through the heads its row reads; nil for the installed scores
 	judge *audio.RipJudge
 	// rips keeps what rip heard of each recording, by the name it was ripped as,
 	// with the samples, so fit and compress work on it without the file; songs

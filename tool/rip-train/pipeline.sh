@@ -65,6 +65,7 @@ JUDGE=${JUDGE:-}                     # install: a judge's file, put beside the n
 SET=${SET:-}                         # install: a rip.toml, one of FIT's sets, put in the root; empty for none
 KINDS=${KINDS:-}                     # install, readback: the sets a kind of sound is ripped under, kind=file blank-separated (voice=$FIT/sets/voice.toml); empty for none
 WEIGHTS=${WEIGHTS:-}                 # keep: the folder a round's files are copied under, each a line in its MANIFEST.txt
+TABLE=${TABLE:-$FIT/table.txt}       # keep, install: the read-back's table the files were read with, which their bundle states
 NAME=${NAME:-$(basename "$CORPUS")}  # keep: the round's folder under WEIGHTS
 BENCH_LOOPS=${BENCH_LOOPS:-12}
 BENCH_BARS=${BENCH_BARS:-4}
@@ -195,6 +196,16 @@ install() {
 		cp "${kv#*=}" "$ROOT/rip.${kv%%=*}.toml"
 		echo "== installed ${kv#*=} as $ROOT/rip.${kv%%=*}.toml; a recording read as ${kv%%=*} is ripped under it, remove the file for the root's own"
 	done
+	bundle "$ROOT"
+}
+
+# bundle writes $1/rip.bundle.toml, the files a rip reads there as one line with
+# TABLE, by stapes on a root of its own, so that what $1 holds loads only there
+bundle() {
+	scratch
+	mkdir -p "$tmp/bundle"
+	printf 'bundle %s%s\n' "$(realpath "$1")" "$([ ! -s "$TABLE" ] || printf ' table %s' "$(realpath "$TABLE")")" > "$tmp/bundle.slab"
+	stapes -config-dir "$tmp/bundle" -s "$tmp/bundle.slab" < /dev/null
 }
 
 # The fit's root holds the pair, then the judge fitted on it. A script reads its
@@ -360,7 +371,8 @@ table() {
 }
 
 # keep copies what a round made under WEIGHTS, a file not there yet or changed, each
-# with its line in MANIFEST.txt: its path, bytes, sha256, when, what it is
+# with its line in MANIFEST.txt: its path, bytes, sha256, when, what it is; the sets
+# it is ripped under as a root names them, and the bundle of what a rip reads there
 keep() {
 	[ -n "$WEIGHTS" ] || { echo "keep: WEIGHTS names the folder the round's files are kept under" >&2; exit 2; }
 	local file as what
@@ -379,12 +391,21 @@ keep() {
 			"$NOTES" ripnotes.bin "the notes model" \
 			"${NOTES%.bin}.pt" ripnotes.pt "the notes model's checkpoint, the step a later pass starts from" \
 			"$FIT/root/ripjudge.bin" ripjudge.bin "the judge fitted on this notes model's rows" \
-			"$FIT/table.txt" table.txt "the read-back's table: where the rip stands under each set" \
-			"$CORPUS/round.log" round.log "the round's log"
+			"$TABLE" table.txt "the read-back's table: where the rip stands under each set" \
+			"$CORPUS/round.log" round.log "the round's log" \
+			"$SET" rip.toml "the set the line is ripped under"
 		for file in "$FIT"/sets/*.toml; do
 			printf '%s\tsets/%s\tthe thresholds fitted for %s\n' "$file" "$(basename "$file")" "$(basename "$file" .toml)"
 		done
+		for file in $KINDS; do
+			printf '%s\trip.%s.toml\tthe set a recording read as %s is ripped under\n' "${file#*=}" "${file%%=*}" "${file%%=*}"
+		done
 	)
+	[ -s "$WEIGHTS/$NAME/ripframe.bin" ] || return 0
+	bundle "$WEIGHTS/$NAME"
+	file=$WEIGHTS/$NAME/rip.bundle.toml as=$(sha256sum "$WEIGHTS/$NAME/rip.bundle.toml" | cut -d' ' -f1)
+	[ "$(awk -F'\t' -v f="$NAME/rip.bundle.toml" '$1 == f { s = $3 } END { print s }' "$WEIGHTS/MANIFEST.txt")" = "$as" ] ||
+		printf '%s\t%s\t%s\t%s\t%s\n' "$NAME/rip.bundle.toml" "$(wc -c < "$file")" "$as" "$(date -u '+%F %T UTC')" "the kept files a rip reads, as one line" >> "$WEIGHTS/MANIFEST.txt"
 }
 
 [ $# -gt 0 ] || set -- all

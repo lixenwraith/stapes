@@ -1759,9 +1759,12 @@ gives the procedure and [audio
 the row's layout, 544 `float32` in version 1.
 
 `rows <dir> from <list|corpus dir>` writes a directory. Its `rows.json` names the
-kind, and a directory holds one: `version`, `row_version`, `row_size` and `notes`,
-the checksum of the weights that give the notes, the last eight bytes of
-`ripnotes.bin` (§9's trailer) read as one little-endian number and written in hex. A
+kind, and a directory holds one: `version` 2, `row_version`, `row_size`, and
+`notes_digest` and `frame_digest`, what the rows were read through, the digests of
+the heads the row reads (transformer's `Model.Digest`, written in hex) of the
+notes model (pitch, strike, release, velocity and cents) and of the frame model
+(the onset). A directory of version 1 names `notes` instead, the last eight bytes of
+`ripnotes.bin` (§9's trailer) read as one little-endian number. A
 recording is two files named by the first eight bytes of its audio's SHA-256. Its
 `.rows` file is laid out as a loop's frames are (§2):
 
@@ -1790,32 +1793,37 @@ Its `.json` file labels them, a strike a row in the same order:
 - `kept` is the installed verdict.
 
 `judge.py --rows <dir>... --leave-out <condition>... --out ripjudge.bin` fits a
-network a stage and writes the file audio's `LoadRipJudge` reads, 1,257,008 bytes at
+network a stage and writes the file audio's `LoadRipJudge` reads, 1,257,016 bytes at
 hidden layers of 256 and 64:
 
 ```
 offset   size        field
 0        4 bytes     magic "VIFJ"
-4        u32         version 1
+4        u32         version 2
 8        u32         row version 1
 12       u32         row size 544
 16       u32         first hidden layer 256
 20       u32         second hidden layer 64
-24       u64         the notes weights' checksum, as rows.json names it
-32       544         the reported stage: mean
-2208     544         spread
-4384     256 x 544   w1, an output's inputs together
-561440   256         b1
-562464   64 x 256    w2
-628000   64          b2
-628256   64          w3
-628512   1           b3
-628516               the dropped stage, the same eight again
-1257000  u64         FNV-1a 64 of every byte before it
+24       u64         the notes model's digest, as rows.json names it
+32       u64         the frame model's digest
+40       544         the reported stage: mean
+2216     544         spread
+4392     256 x 544   w1, an output's inputs together
+561448   256         b1
+562472   64 x 256    w2
+628008   64          b2
+628264   64          w3
+628520   1           b3
+628524               the dropped stage, the same eight again
+1257008  u64         FNV-1a 64 of every byte before it
 ```
+
+Rows of a manifest of version 1 give a file of version 1, the notes weights'
+checksum at 24 in place of the two digests, every offset after it 8 less.
 
 A stage's odds for a row are the sigmoid of `w3 · relu(w2 · relu(w1 · (row - mean) /
 spread + b1) + b2) + b3`, in `float32`, and a strike stands at a half or more. The
-file names the row and the notes weights it was fitted on, so audio refuses it beside
-any other: new notes weights mean new rows and a new fit. In the stapes root the file
-is `ripjudge.bin`, beside `ripnotes.bin`.
+file names the row and the heads it was read through, so audio refuses it beside
+models whose heads the row reads are other weights, naming the model, and keeps it
+through a pass that trains other heads alone: a new trunk means new rows and a new
+fit. In the stapes root the file is `ripjudge.bin`, beside `ripnotes.bin`.

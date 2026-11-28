@@ -29,7 +29,7 @@ from torch import nn
 import ripmodels
 
 MAGIC = b"VIFJ"
-VERSION = 1
+VERSION = 2  # the file names the digests of the heads its row reads; 1, of rows whose manifest names the notes weights' checksum
 HIDDEN = (256, 64)
 DROPOUT = 0.2  # after the first hidden layer
 BATCH = 2048
@@ -47,7 +47,7 @@ class Rows:
 
     version: int
     size: int
-    notes: int  # the checksum of the notes weights the rows were read through
+    through: tuple  # what the rows were read through: the digests of the heads the row reads, of the notes and the frame model, or ("sum", the notes weights' checksum)
     x: np.ndarray  # strikes x size, float32
     reported: np.ndarray
     held: np.ndarray
@@ -60,8 +60,22 @@ class Rows:
     unanswered: np.ndarray
 
 
+def through(m: dict) -> tuple:
+    """what a manifest's rows were read through: a manifest of version 2 names the digests of the heads the row reads, of the
+    notes model and of the frame model; one of version 1 the checksum the notes weights' file ends in"""
+    if m["version"] >= 2:
+        return (int(m["notes_digest"], 16), int(m["frame_digest"], 16))
+    return ("sum", int(m["notes"], 16))
+
+
+def said(through: tuple) -> str:
+    if through[0] == "sum":
+        return f"the notes weights {through[1]:016x}"
+    return f"heads of the notes model of digest {through[0]:016x} and of the frame model of {through[1]:016x}"
+
+
 def load(dirs: list[str]) -> Rows:
-    kind: tuple[int, int, int] | None = None
+    kind: tuple | None = None
     conds: list[str] = []
     xs: list[np.ndarray] = []
     flags: list[tuple[bool, bool, bool, bool, int]] = []
@@ -71,9 +85,9 @@ def load(dirs: list[str]) -> Rows:
     for d in dirs:
         with open(os.path.join(d, "rows.json")) as f:
             m = json.load(f)
-        this = (m["row_version"], m["row_size"], int(m["notes"], 16))
+        this = (m["row_version"], m["row_size"], through(m))
         if kind is not None and this != kind:
-            sys.exit(f"{d}: rows of version {this[0]} read through the notes weights {this[2]:016x}, the directories before it version {kind[0]} through {kind[2]:016x}: a judge is fitted on one kind")
+            sys.exit(f"{d}: rows of version {this[0]} read through {said(this[2])}, the directories before it version {kind[0]} through {said(kind[2])}: a judge is fitted on one kind")
         kind = this
         for label in sorted(glob.glob(os.path.join(d, "*.json"))):
             if os.path.basename(label) == "rows.json":
@@ -152,9 +166,12 @@ def count(kept: np.ndarray, right: np.ndarray, given: int) -> str:
 
 
 def export(path: str, rows: Rows, stages: list[tuple[nn.Sequential, np.ndarray, np.ndarray]]) -> None:
-    """The judge file: a header naming the row and the notes weights, each
-    stage's mean, spread and layers as audio reads them, an FNV-1a 64 trailer."""
-    body = bytearray(MAGIC + struct.pack("<5IQ", VERSION, rows.version, rows.size, HIDDEN[0], HIDDEN[1], rows.notes))
+    """The judge file: a header naming the row and what it was read through, the two digests (version 2) or the notes
+    weights' checksum (1), each stage's mean, spread and layers as audio reads them, an FNV-1a 64 trailer."""
+    if rows.through[0] == "sum":
+        body = bytearray(MAGIC + struct.pack("<5IQ", 1, rows.version, rows.size, HIDDEN[0], HIDDEN[1], rows.through[1]))
+    else:
+        body = bytearray(MAGIC + struct.pack("<5I2Q", VERSION, rows.version, rows.size, HIDDEN[0], HIDDEN[1], *rows.through))
     for net, mean, spread in stages:
         body += mean.astype("<f4").tobytes() + spread.astype("<f4").tobytes()
         for layer in net:
@@ -167,7 +184,7 @@ def export(path: str, rows: Rows, stages: list[tuple[nn.Sequential, np.ndarray, 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--rows", nargs="+", required=True, help="directories stapes' rows verb wrote, all read through one notes model")
+    ap.add_argument("--rows", nargs="+", required=True, help="directories stapes' rows verb wrote, all read through the same heads")
     ap.add_argument("--leave-out", nargs="*", default=[], help="conditions the fit leaves out and counts")
     ap.add_argument("--out", default="", help="the judge file to write, the root's ripjudge.bin beside ripnotes.bin; none written without it")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -179,7 +196,7 @@ def main() -> None:
             sys.exit(f"--leave-out {name}: no such condition among {', '.join(rows.conds)}")
     out = np.isin(rows.cond, [rows.conds.index(name) for name in args.leave_out])
     fitted = [name for name in rows.conds if name not in args.leave_out]
-    print(f"{len(rows.x)} row(s) of {rows.size} (version {rows.version}) read through the notes weights {rows.notes:016x}; fitting on {', '.join(fitted) or 'nothing'}")
+    print(f"{len(rows.x)} row(s) of {rows.size} (version {rows.version}) read through {said(rows.through)}; fitting on {', '.join(fitted) or 'nothing'}")
     stages: list[tuple[nn.Sequential, np.ndarray, np.ndarray]] = []
     verdict = rows.held.copy()  # a held note stays, unjudged
     for stage in STAGES:
@@ -200,7 +217,7 @@ def main() -> None:
         print("  right      " + count((rows.right | rows.held)[of], rows.right[of], given))
     if args.out:
         export(args.out, rows, stages)
-        print(f"wrote {args.out}: a judge of layers {HIDDEN[0]} and {HIDDEN[1]} a stage, for the notes weights {rows.notes:016x}")
+        print(f"wrote {args.out}: a judge of layers {HIDDEN[0]} and {HIDDEN[1]} a stage, for {said(rows.through)}")
 
 
 if __name__ == "__main__":

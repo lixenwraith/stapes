@@ -111,8 +111,8 @@ tool/rip-train/pipeline.sh rows judge fit readback table keep   # the fit of a p
 | `DILATIONS` | empty | `notes`: the notes model's long convolutions, their frames apart, `train.py`'s `--dilations` |
 | `CELL`, `REDUCE`, `SPAN` | empty | `notes`: the notes model's widths, its channels at each cell, after its 1x1 over the stack's and of its convolution over thirteen semitones, `train.py`'s `--cell`, `--reduce` and `--span` (32, 8 and 16); the weight file carries them, and a `CHECKPOINT` or `INIT` of other widths is refused |
 | `LR`, `EXTRA`, `CARRY`, `PROBE` | empty | `train.py`'s `--lr`; `--extra`, more corpora and the share of windows each draws, `dir:share` by commas, such as the recorded sets; `carry` for `--carry`, a pass that carries on from `INIT`; and the heads `--probe` trains alone, by commas |
-| `JUDGE`, `SET` | empty | `install`: a judge's file and a `rip.toml`, one of the fit's sets, put in the root as `ripjudge.bin` and `rip.toml` |
-| `KINDS` | empty | `install`, `readback`: the sets a kind of sound is ripped under, `kind=file` blank-separated (`voice=$FIT/sets/voice.toml`), put in the root as `rip.<kind>.toml` |
+| `JUDGE`, `SET` | empty | `install`: a judge's file and a `rip.toml`, one of the fit's sets, put in the root as `ripjudge.bin` and `rip.toml`; `keep` keeps `SET` |
+| `KINDS` | empty | `install`, `keep`, `readback`: the sets a kind of sound is ripped under, `kind=file` blank-separated (`voice=$FIT/sets/voice.toml`), put in the root as `rip.<kind>.toml` |
 | `BENCH_LOOPS`, `BENCH_BARS` | 12, 4 | the fresh loops `bench` grades on |
 | `INIT`, `SHARD` | none, 0 | the `.pt` a training starts from, `train.py`'s `--init`: a shard's round, or a pass's, the pass before it; and `shard`'s stream of windows, which writes `$CORPUS/shard$SHARD.pt` and `.bin` |
 | `MERGE_FILES`, `TRIM` | none, 0 | `merge`: the round's shard checkpoints, blank-separated or a glob, and the share of them dropped at each end of each weight before the mean |
@@ -182,10 +182,14 @@ tool/rip-train/pipeline.sh rows judge fit readback table keep
   each fitted set's falls of more than 0.005 against the start, or the judge
   where no start is named, and with them such notes where they rose by over
   0.5 a minute.
-- `keep` copies the pair, its checkpoints, the judge, the sets and the table
+- `keep` copies the pair, its checkpoints, the judge, the sets and `TABLE`
   under `$WEIGHTS/$NAME`, a file not there yet or changed, each with its line
-  in `$WEIGHTS/MANIFEST.txt`. `install` takes `JUDGE`, `SET` and `KINDS` by
-  name: which sets a root hears with is a decision, not a stage's.
+  in `$WEIGHTS/MANIFEST.txt`, `SET` and `KINDS` as a root names them. `install`
+  takes `JUDGE`, `SET` and `KINDS` by name: which sets a root hears with is a
+  decision, not a stage's. Both then write `rip.bundle.toml` beside the files
+  (stapes' `bundle`, `TABLE` the table it states), which the root is loaded by:
+  each file with its sha256, each model's heads, the judge's digests, the sets
+  by kind, the table and the audio the build ran on.
 
 A list's paths are absolute, since `fit` cuts it a kind into `FIT`. `TRUTH`
 and `READBACK` may name a corpus directory that kept its audio: its loops of
@@ -208,6 +212,7 @@ before such a change are heard again.
 | `WEIGH` | `ends` | the readings a search weighs beside the notes, by commas; empty for the notes alone |
 | `GENES` | empty | the genes a search moves, by commas; empty for all the list can score |
 | `WEIGHTS`, `NAME` | empty, `CORPUS`'s name | `keep`: the folder the round's files go under, and the round's folder in it |
+| `TABLE` | `$FIT/table.txt` | `keep`, `install`: the read-back's table the files were read with, which their bundle states |
 
 ## Reading a run
 
@@ -596,10 +601,10 @@ targets and the loss.
   head's rows start fresh, and a head the run's model has no more is left
   behind; the run's first line names both. A frame model in towers grows only
   by the heads after its last. That is what growing is for, since no file from
-  before the refresh starts a run ([below](#parity)). Audio loads a frame model whose heads start with
-  `FrameSpec`'s, any after them read by nothing ("frame model's heads are [...],
-  want [...] first"), so the start's file loads in no audio that reads the new
-  head. With `--probe` a run trains the
+  before the refresh starts a run ([below](#parity)). Audio reads a frame model's heads by
+  name wherever its file lays them, `FrameSpec`'s twelve refused by name when
+  missing and every head added since optional, so the start's file still loads
+  in an audio that reads the new head. With `--probe` a run trains the
   beat and downbeat heads' rows of the output layer alone, or those of the heads
   it names (`--probe struck,struckvel`): every other weight
   stays the start's bit for bit, as a notes model's probe holds it
@@ -699,8 +704,10 @@ python3 tool/rip-train/judge.py --rows "$dir/rows" --leave-out guitar --out "$di
     unjudged, one the fit cannot see), `right` (a truth note of its pitch starts within the
     matcher's window of it; a truth note answers one strike, the nearest, a
     reported note before a dropped strike) and `kept` (the installed verdict);
-  - `rows.json`, the row's version and size and the notes weights' checksum.
-    A directory holds one kind, and `judge.py` refuses directories of two.
+  - `rows.json`, the row's version and size and the digests of the heads the
+    row reads, of the notes model and of the frame model (a directory of
+    version 1 names the notes weights' checksum instead). A directory holds one
+    kind, and `judge.py` refuses directories of two.
 
   A recording already written is kept, `part k/n` takes every `n`-th from the
   `k`-th so parts run side by side, and `frames <dir>` keeps what the models
@@ -727,9 +734,11 @@ python3 tool/rip-train/judge.py --rows "$dir/rows" --leave-out guitar --out "$di
 - **The file.** `--out` writes `ripjudge.bin`, which stapes loads from the
   root beside `ripnotes.bin`: `rip`, `truth`, `tune` and `live` then run under
   it, and the session and `stat` name it. It names the row's version and the
-  notes weights it was fitted on, so new weights or a new row refuse it by
-  name and the installed scores judge until it is fitted again; remove the
-  file to go back to them.
+  digests `rows.json` names (version 2; of a directory of version 1, the notes
+  weights' checksum, version 1): a pass that trains other heads alone on either
+  model leaves it, and another trunk or a new row refuses it by name, the
+  installed scores judging until it is fitted again; remove the file to go
+  back to them.
 
 ## Parity
 

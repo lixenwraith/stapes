@@ -773,6 +773,18 @@ folders, not only the first that holds a name; and the UI to show them, the
 files overlay naming each file and a status bar at the foot of the screen giving
 the full path of the one selected, as a file manager or a browser shows a link.
 
+### Refuse a bundle whose decoders this build lacks
+
+- Priority: P2
+- Affected files: `bundle.go` (`readBundle`)
+
+A bundle states `needs`, the audio whose decoders its files were read under,
+and a root is loaded by its bundle, but the loader does not compare `needs`
+with the audio it was built with (`builtAudio`): an older build loads a bundle
+fitted under newer decoders, whose table it will not read. What remains: refuse
+such a bundle by its version, a build's `(devel)` audio passing, and say which;
+and a site that keeps, for each older build, the last bundle it can read.
+
 ### Give stapes a bank of its own
 
 - Priority: P3

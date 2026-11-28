@@ -1,6 +1,6 @@
 # Checks that share no code with what they check
 
-Seven scripts that read what the generator and the label tools write, from the files alone: the labels, the WAVs, a set's own annotations. None imports stapes, the trainer or a label tool, so a figure here that agrees with theirs was reached twice. They print figures; `corpuscount.py`, `guitarcount.py`, `vocalcheck.py` and `linescheck.py` exit 1 on what may not be. They need Python with numpy; the listening page also needs `ffmpeg`. `corpuscount.py` has a smoke test, on a corpus of recordings it writes by hand (`python3 -m unittest discover tool/rip-lab/audit`, which CI does not run); the others have none yet.
+Seven scripts that read what the generator and the label tools write, from the files alone: the labels, the WAVs, a set's own annotations; and one that lays two loops end to end, for a reading of a recording that changes. None imports stapes, the trainer or a label tool, so a figure here that agrees with theirs was reached twice. They print figures; `corpuscount.py`, `guitarcount.py`, `vocalcheck.py` and `linescheck.py` exit 1 on what may not be. They need Python with numpy; the listening page also needs `ffmpeg`. `corpuscount.py` has a smoke test, on a corpus of recordings it writes by hand (`python3 -m unittest discover tool/rip-lab/audit`, which CI does not run); the others have none yet.
 
 ## A corpus
 
@@ -30,6 +30,14 @@ Seven scripts that read what the generator and the label tools write, from the f
   - On top of the picture is the recording's waveform with the label over it: a line where a note or a hit starts, a tick where a note ends, a dashed line at the left edge for a note held from before the clip. Under it are the label's notes as bars and its hits in lanes.
   - A pick is a line: the loop (with its folder, for another corpus's), the stretch's start and end in seconds, the question, and optionally spans to shade.
 - Every page has a speed row that stays at the top: slower lowers the pitch as a tape does, so that timing stays exact, and Keep pitch corrects it. The time beside a clip says when it is playing and not moving, and why.
+
+## A recording of two sections
+
+- **`joinloops.py <out dir> <seed> <corpus dir or truth list>...`** lays two arranged loops end to end as one recording with one label, a rip deciding its tempo, meter and key once a recording.
+  - The loops: every arranged loop with beats the sources name whose WAV holds four seconds or more, in the sources' order.
+  - Four conditions of 40 pairs, no loop twice in one, by `random.Random(seed)`: each condition's candidate pairs shuffled and taken in turn, then split into a fit half and a read-back half of 20. `tempo`: the second's bpm 15% or more off the first's, the same meter and key; `meter`: another meter, the bpm within 5%, the same key; `key`: another scale's tones, the bpm within 5%, the same meter; `alike`: the bpm within 5%, the same meter and key. A key is a tonic and a scale.
+  - A recording: the first's WAV with silence to its label's whole frames, then the second's. Its label is the first's but for `frames` and `bars`, which add, the first's notes, which end at its end, the second's events, beats, downbeats and chords, moved by the first's frames, and `sections`, a row a section: its first frame, `bpm`, `meter` (4/4 written too), `root` and `scale`. A reader of no `sections` reads one, the first's. The second keeps its own tuning, which the label does not state.
+  - `list.tsv`, a line a recording: its condition and half as the condition (`tempo-fit`, `tempo-read`, ...), `timed`. `pairs.tsv`: each recording's condition, half, the frame its second part starts at, its two loops, their bpm, meters, keys and tunings.
 
 ## Labels made from a set
 

@@ -3060,8 +3060,8 @@ func TestTuneTruthReadsWhatIsStruckByItsTimeAlone(t *testing.T) {
 
 // TestTuneTruthReadsKeptFramesBack: with frames, tune truth keeps what it heard
 // of a recording under the checksums of the recording and of the weight files; a
-// second run reads it back and scores as the first, and another model hears the
-// recording again.
+// second run reads it back and scores as the first, another model hears the
+// recording again, and frames kept without the ear's mark are refused by name.
 func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	open := func(seed uint64) (*Session, *bytes.Buffer) {
@@ -3116,9 +3116,17 @@ func TestTuneTruthReadsKeptFramesBack(t *testing.T) {
 	s, out = open(2)
 	defer teardown(t, s)
 	other, _ := run(s, out)
-	names, _ := filepath.Glob(filepath.Join(kept, "*.frames"))
+	names, _ := filepath.Glob(filepath.Join(kept, "*-ear.frames"))
 	if other != said(1, 0) || len(names) != 2 {
 		t.Errorf("another model said %q over %d file(s) of frames, want the recording heard again and kept beside the first", other, len(names))
+	}
+	for _, name := range names {
+		if err := os.Rename(name, strings.TrimSuffix(name, "-ear.frames")+".frames"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := RunScript(s, strings.NewReader(fmt.Sprintf("tune 2 1 truth %s frames %s\n", list, kept))); err == nil || !strings.Contains(err.Error(), ".frames: kept by a build that heard a recording whole") {
+		t.Errorf("frames kept without the ear's mark: %v", err)
 	}
 }
 

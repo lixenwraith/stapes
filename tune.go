@@ -3353,7 +3353,7 @@ func (l truthLine) take(sum [sha256.Size]byte, fe audio.RipFrontEnd, frames, wei
 	t := &truthTake{wav: l.wav, truthFile: l.truth, path: l.at(l.wav), fe: fe, timed: l.timed, drums: l.drumless}
 	if frames != "" {
 		name := filepath.Join(frames, fmt.Sprintf("%x-%.16s", sum[:8], weights))
-		if _, err := os.Stat(name + ".frames"); err == nil { // Forward's of the whole, kept before the ear heard a file
+		if _, err := os.Stat(name + ".frames"); err == nil { // without the ear's mark: frames heard whole, by Forward
 			return nil, fmt.Errorf("%s.frames: kept by a build that heard a recording whole, not by the ear; give frames a folder of its own", name)
 		}
 		t.file = name + "-ear.frames"
